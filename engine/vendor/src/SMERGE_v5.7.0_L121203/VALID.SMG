@@ -1,0 +1,27 @@
+c----------------------------------------------------------------------
+c --- COMMON BLOCK /VALID/ -- Table of valid data, calms         SMERGE
+c----------------------------------------------------------------------
+c
+      common/VALID/nvalid(mxss,8),ncalms(mxss),xpercent(8),ntotal
+c
+c --- COMMON BLOCK /VALID/ Variables:
+c       NVALID(mxss,8) - integer array - Array of valid record count for 
+c                                        each parameter and station:
+c                                        (-,1) = Wind speed
+c                                        (-,2) = Wind direction
+c                                        (-,3) = Ceiling height
+c                                        (-,4) = Cloud cover
+c                                        (-,5) = Temperature
+c                                        (-,6) = Relative humidity
+c                                        (-,7) = Pressure
+c                                        (-,8) = Precipitation code
+c       NCALM(mxss)    - integer array - Array of calm hours for each
+c                                        surface station
+c       XPERCENT(8)    - real array    - Work array containing a
+c                                        set of valid percentages for
+c                                        the 8 data variables
+c       NTOTAL         - integer       - Count of the total number of
+c                                        data time periods processed
+
+
+

@@ -1,0 +1,81 @@
+Lahey/Fujitsu Fortran 95 Express Release 7.20.00  S/N: 00608146772706932
+Copyright (C) 1994-2009 Lahey Computer Systems.  All rights reserved.
+Copyright (C) 1998-2009 FUJITSU LIMITED. All rights reserved.
+Options:
+-nap           -nc            -nchk          -nchkglobal    -concc 
+-ndal          -ndbl          -ndll          -nf95          -fix 
+-ng            -nin           -ninfo         -ninline       -li 
+-nlst          -nlong         -maxfatals 50  -o0            -out smerge.exe 
+-npause        -nprefetch     -nprivate      -npca          -nquad 
+-sav           -nsse2         -staticlib     -nstaticlink   -stchk 
+-tpp           -trace         -trap doi      -nunroll       -nvarheap 
+-w             -nwide         -winconsole    -nwo           -nxref 
+-zero          -nzfm 
+
+Compiling program unit SMERGE at line 1:
+Compiling program unit __BLKDT__ at line 357:
+Compiling program unit xtractll at line 392:
+Compiling program unit yr4 at line 272:
+Compiling program unit yr4c at line 323:
+Compiling program unit qayr4 at line 367:
+Compiling program unit julday at line 454:
+Compiling program unit grday at line 519:
+Compiling program unit dedat at line 569:
+Compiling program unit deltt at line 597:
+Compiling program unit incr at line 663:
+Compiling program unit indecr at line 757:
+Compiling program unit incrs at line 836:
+Compiling program unit deltsec at line 903:
+Compiling program unit midnite at line 947:
+Compiling program unit utcbasr at line 1016:
+Compiling program unit basrutc at line 1052:
+Compiling program unit filcase at line 1099:
+Compiling program unit readin at line 1173:
+Compiling program unit altonu at line 1825:
+Compiling program unit deblnk at line 2161:
+Compiling program unit deplus at line 2222:
+Compiling program unit tright at line 2278:
+Compiling program unit tleft at line 2356:
+Compiling program unit setvar at line 2435:
+Compiling program unit allcap at line 2531:
+Compiling program unit datetm at line 2583:
+Compiling program unit fmt_date at line 2651:
+Compiling program unit etime at line 2786:
+Compiling program unit undrflw at line 2807:
+Compiling program unit comline at line 2840:
+Compiling program unit alp2stp at line 396:
+Compiling program unit stp2alp at line 60:
+Compiling program unit slp2stp at line 93:
+Compiling program unit stp2slp at line 157:
+Compiling program unit scan144 at line 221:
+Compiling program unit regress at line 309:
+Compiling program unit scanishwo at line 355:
+Compiling program unit sqaccum at line 458:
+Compiling program unit setup at line 490:
+Compiling program unit readcf at line 463:
+Compiling program unit comp at line 1167:
+Compiling program unit opens at line 1400:
+Compiling program unit rdwrits at line 1474:
+Compiling program unit clouds at line 2920:
+Compiling program unit pcodes at line 3002:
+Compiling program unit pcodes2 at line 3057:
+Compiling program unit rdhd at line 3165:
+Compiling program unit wrhd at line 3496:
+Compiling program unit wrhdp at line 3688:
+Compiling program unit rds at line 3828:
+Compiling program unit rdsn at line 3930:
+Compiling program unit unpcks at line 4085:
+Compiling program unit wrs at line 4198:
+Compiling program unit wrp at line 4398:
+Compiling program unit packs at line 4465:
+Compiling program unit chkhushd at line 4566:
+Compiling program unit getish at line 4636:
+Compiling program unit readish at line 4871:
+Compiling program unit ishqc at line 5868:
+Compiling program unit rdssta at line 5943:
+Compiling program unit fin at line 6101:
+Encountered 0 errors, 0 warnings in file smerge.for.
+Microsoft (R) Incremental Linker Version 6.00.8447
+Copyright (C) Microsoft Corp 1992-1998. All rights reserved.
+
+Compiling file smerge.for.
