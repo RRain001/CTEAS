@@ -41,6 +41,34 @@
 - `docs/refactor_logs/removed_native_binaries_backup/`
 - `bin/linux-x86_64/*.x`
 
+## Local Environment Maintenance
+
+2026-06-26 收尾轮补充说明：
+
+- 本地 `.venv` 曾因迁移遗留坏链失效：
+  - `.venv/bin/python -> python3.14 -> /usr/local/opt/python@3.14/bin/python3.14`
+- 已执行重建：
+  - `rm -rf .venv`
+  - `python3 -m venv .venv`
+  - `./.venv/bin/python -m pip install --upgrade pip`
+  - `./.venv/bin/python -m pip install -r requirements.txt`
+- 当前宿主机检查已恢复使用 `./.venv/bin/python`
+- `.venv/` 仍应继续忽略，不纳入 Git
+
+同一轮还清理了测试 case 中允许删除的旧历史目录：
+
+- 已清理：
+  - `project/cases/smoke5d_docker_test/deliverables/calmet`
+  - `project/cases/smoke5d_docker_test/deliverables/calpuff`
+- 未清理：
+  - `project/cases/smoke5d_docker_test/runs/20260514_152231_calmet`
+  - `project/cases/smoke5d_docker_test/runs/20260514_152537_calpuff`
+
+说明：
+
+- 上述 `runs/*_calmet` / `runs/*_calpuff` 属于历史运行记录目录
+- 它们同样位于 `project/cases/*/runs/` 忽略范围内
+
 ## Native Binary Decision
 
 - `bin/linux-x86_64/*.x` 体量差异很大。

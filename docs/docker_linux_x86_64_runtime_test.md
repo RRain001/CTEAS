@@ -11,6 +11,28 @@
 - `scripts/docker_network_diagnose.sh`
 - `scripts/test_linux_x86_64_runtime_in_docker.sh`
 
+## 后续收尾
+
+同日后续又做了一轮非 Docker 收尾清理，本轮没有重跑 Docker runtime，只处理：
+
+1. `project/cases/smoke5d_docker_test` 中允许删除的旧历史目录
+2. 本地 `.venv` 坏链修复与重建
+
+收尾结果：
+
+- 已清理：
+  - `project/cases/smoke5d_docker_test/deliverables/calmet`
+  - `project/cases/smoke5d_docker_test/deliverables/calpuff`
+- 未清理：
+  - `project/cases/smoke5d_docker_test/runs/20260514_152231_calmet`
+  - `project/cases/smoke5d_docker_test/runs/20260514_152537_calpuff`
+
+说明：
+
+- 上述 `runs/*_calmet` / `runs/*_calpuff` 是历史运行记录目录，不在本轮允许删除范围内
+- 本轮没有重跑 `./scripts/test_linux_x86_64_runtime_in_docker.sh`
+- 下文 Docker runtime 结果仍对应前一轮已经通过的容器实跑
+
 ## 本轮修复范围
 
 本轮按最新 `plan.md` 完成了以下修复：
@@ -52,12 +74,34 @@
 
 补充说明：
 
-- 当前仓库内 `.venv/bin/python` 是坏链，指向不存在的 `/usr/local/opt/python@3.14/bin/python3.14`
-- 因此宿主机静态检查改为：
-  - `python3`
-  - 配合 `PYTHONPATH=.venv/lib/python3.14/site-packages`
+- 早先宿主机检查阶段曾遇到 `.venv/bin/python` 坏链
+- 后续收尾轮已执行：
+  - `rm -rf .venv`
+  - `python3 -m venv .venv`
+  - `./.venv/bin/python -m pip install --upgrade pip`
+  - `./.venv/bin/python -m pip install -r requirements.txt`
+- 当前宿主机检查已恢复使用：
+  - `./.venv/bin/python`
 
 ## 本地静态检查结果
+
+后续收尾轮宿主机检查结果：
+
+- `./.venv/bin/python -m compileall engine scripts`：通过
+- `./.venv/bin/python scripts/check_current_case.py`：通过
+- `./.venv/bin/python scripts/check_native_binaries.py --platform linux-x86_64`：通过
+- `./.venv/bin/python scripts/check_native_runner_mapping.py --platform linux-x86_64`：通过
+- `bash -n scripts/test_linux_x86_64_runtime_in_docker.sh`：通过
+- `bash -n scripts/docker_network_diagnose.sh`：通过
+- `MPLCONFIGDIR=/private/tmp/mpl QT_QPA_PLATFORM=offscreen ./.venv/bin/python scripts/test_gui_does_not_switch_current_case.py`：通过
+
+GUI current-case 检查输出：
+
+```text
+before: smoke5d
+after: smoke5d
+PASS: MainWindow initialization did not switch current case
+```
 
 ### current case
 
@@ -231,16 +275,18 @@ Docker 脚本当前状态：
 
 ## 残留说明
 
-当前 case 目录下仍可见历史遗留目录：
-
-- `deliverables/calmet/`
-- `deliverables/calpuff/`
-
-它们来自旧命名阶段的历史产物，本轮没有做删除操作。当前运行链路已经不依赖这些旧目录：
+当前运行链路已经不依赖旧命名目录：
 
 - MET 正式工作文件：`run/met/calmet.*`
 - PUFF 正式 `METDAT`：`deliverables/met/calmet.dat`
 - PUFF 正式输出：`run/puff/calpuff.*` 与 `deliverables/puff/calpuff.*`
+
+后续收尾轮已进一步清理：
+
+- `deliverables/calmet/`
+- `deliverables/calpuff/`
+
+因此当前保留的旧命名残留只剩不在本轮删除范围内的历史 `runs/*_calmet` / `runs/*_calpuff` 目录。
 
 ## 本轮修改文件
 
