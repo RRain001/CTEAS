@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from engine.core.paths import case_dir
 from engine.preprocess.grid.center_location_to_utm import convert_lon_lat
 
 from .common import PUFF_TEMPLATE_FALLBACK, case_paths, load_case_config_with_name, parse_research_time
@@ -330,7 +331,7 @@ def render_puff_inp(case_name: str, config: dict[str, Any], work_dir: Path) -> t
             "For H-3 decay, HE-3 must be included as child species, or set ndecay=0."
         )
 
-    metdat = paths["run_met_dir"] / "calmet.dat"
+    metdat = case_dir(case_name) / "deliverables" / "met" / "calmet.dat"
     values = {
         "METDAT": _rel_to(work_dir, metdat),
         "PUFLST": "calpuff.lst",

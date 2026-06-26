@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
-from engine.core.paths import BIN_ROOT, VENDOR_BIN_DIR, resolve_executable
+from engine.core.paths import BIN_ROOT, VENDOR_BIN_DIR, case_dir, resolve_executable
 from engine.core.runner import run_binary
 
 from .common import case_paths, load_case_config_with_name, parse_research_time
@@ -27,7 +29,7 @@ def resolve_from_workdir(work_dir: Path, path_str: str | None, fallback: str) ->
     path = Path(path_str or fallback)
     if path.is_absolute():
         return path
-    return (work_dir / path).resolve()
+    return Path(os.path.abspath(work_dir / path))
 
 
 def find_keywords(text: str, keywords: list[str]) -> list[str]:
@@ -48,6 +50,20 @@ def size_to_mbs(size_bytes: int) -> int:
     if size_bytes <= 0:
         return 0
     return max(1, int(round(size_bytes / 1000000.0)))
+
+
+def prepare_output_path(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        path.unlink()
+
+
+def sync_deliverable(case_name: str, source: Path, relative_dir: str) -> None:
+    if not source.exists():
+        return
+    dest = case_dir(case_name) / "deliverables" / relative_dir / source.name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, dest)
 
 
 def main() -> int:
@@ -78,6 +94,8 @@ def main() -> int:
     metlst = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "METLST"), "calmet.lst")
     metdat = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "METDAT"), "calmet.dat")
     runtime_log = work_dir / RUNTIME_LOG
+    prepare_output_path(metlst)
+    prepare_output_path(metdat)
     if runtime_log.exists():
         runtime_log.unlink()
 
@@ -128,6 +146,11 @@ def main() -> int:
     metdat_exists = metdat.exists()
     metlst_size = metlst.stat().st_size if metlst_exists else 0
     metdat_size = metdat.stat().st_size if metdat_exists else 0
+
+    if metlst_exists:
+        sync_deliverable(case_name, metlst, "met")
+    if metdat_exists:
+        sync_deliverable(case_name, metdat, "met")
 
     print(f"[CHECK] 运行记录生成: {metlst_exists}, 大小: {size_to_mbs(metlst_size)} Mbs")
     print(f"[CHECK] 风场文件生成: {metdat_exists}, 大小: {size_to_mbs(metdat_size)} Mbs")

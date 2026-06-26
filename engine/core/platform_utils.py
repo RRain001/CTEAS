@@ -3,6 +3,8 @@ from __future__ import annotations
 import platform
 from pathlib import Path
 
+from engine.native.registry import get_physical_binary_name
+
 
 LINUX_X86_64 = "linux-x86_64"
 LINUX_ARM64 = "linux-arm64"
@@ -45,12 +47,13 @@ def get_binary_path(
     bin_root: Path,
     legacy_bin_root: Path | None = None,
 ) -> Path:
-    candidate = bin_root / platform_key / binary_filename(binary_name, platform_key)
+    physical_name = get_physical_binary_name(binary_name)
+    candidate = bin_root / platform_key / binary_filename(physical_name, platform_key)
     if candidate.exists():
         return candidate
 
     if legacy_bin_root is not None:
-        legacy_candidate = legacy_bin_root / binary_filename(binary_name, platform_key)
+        legacy_candidate = legacy_bin_root / binary_filename(physical_name, platform_key)
         if legacy_candidate.exists():
             return legacy_candidate
 

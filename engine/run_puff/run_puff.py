@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -9,7 +10,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from engine.core.paths import BIN_ROOT, VENDOR_BIN_DIR, resolve_executable
+from engine.core.paths import BIN_ROOT, VENDOR_BIN_DIR, case_dir, resolve_executable
 from engine.core.runner import run_binary
 
 from .common import case_paths, load_case_config_with_name, parse_research_time
@@ -28,7 +29,7 @@ def resolve_from_workdir(work_dir: Path, path_str: str | None, fallback: str) ->
     path = Path(path_str or fallback)
     if path.is_absolute():
         return path
-    return (work_dir / path).resolve()
+    return Path(os.path.abspath(work_dir / path))
 
 
 def find_keywords(text: str, keywords: list[str]) -> list[str]:
@@ -71,6 +72,20 @@ def size_to_mbs(size_bytes: int) -> int:
     return int(round(size_bytes / 1000000.0))
 
 
+def prepare_output_path(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        path.unlink()
+
+
+def sync_deliverable(case_name: str, source: Path, relative_dir: str) -> None:
+    if not source.exists():
+        return
+    dest = case_dir(case_name) / "deliverables" / relative_dir / source.name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, dest)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Render and run CALPUFF for the current case")
     ap.add_argument("--case", help="Case name under project/cases; defaults to project/current")
@@ -108,6 +123,8 @@ def main() -> int:
         print(f"[ERROR] METDAT not found: {metdat}")
         print(f"[HINT] expected MET output at: {met_dir / 'calmet.dat'}")
         return 1
+    prepare_output_path(puflst)
+    prepare_output_path(condat)
 
     if runtime_log.exists():
         runtime_log.unlink()
@@ -163,6 +180,11 @@ def main() -> int:
     condat_exists = condat.exists()
     puflst_size = puflst.stat().st_size if puflst_exists else 0
     condat_size = condat.stat().st_size if condat_exists else 0
+
+    if puflst_exists:
+        sync_deliverable(case_name, puflst, "puff")
+    if condat_exists:
+        sync_deliverable(case_name, condat, "puff")
 
     print(f"[CHECK] 运行记录生成: {puflst_exists}, 大小: {size_to_mbs(puflst_size)} Mbs")
     print(f"[CHECK] 浓度文件生成: {condat_exists}, 大小: {size_to_mbs(condat_size)} Mbs")

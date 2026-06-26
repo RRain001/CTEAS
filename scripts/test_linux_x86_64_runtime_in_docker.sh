@@ -42,7 +42,7 @@ if [[ ${#PROXY_ARGS[@]} -gt 0 ]]; then
 fi
 DOCKER_CMD+=("${RUNTIME_IMAGE}" bash -lc)
 
-if ! docker image inspect "${RUNTIME_IMAGE}" >/dev/null 2>&1; then
+if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -Fx "${RUNTIME_IMAGE}" >/dev/null 2>&1; then
   if ! docker pull "${RUNTIME_IMAGE}"; then
     echo "Docker image pull failed. Check Docker Desktop proxy settings or run with USE_DOCKER_PROXY=1." >&2
     exit 1
@@ -127,6 +127,7 @@ PY
 
 echo "=== registry check ==="
 python scripts/check_native_binaries.py --platform linux-x86_64
+python scripts/check_native_runner_mapping.py --platform linux-x86_64
 
 echo "=== case check ==="
 python scripts/check_current_case.py

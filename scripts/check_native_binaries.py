@@ -30,9 +30,12 @@ def main() -> int:
 
     missing: list[str] = []
     for name, spec in iter_required_programs():
-        path = bin_dir / binary_filename(spec["binary"], platform)
+        physical_name = str(spec["binary"])
+        filename = binary_filename(physical_name, platform)
+        path = bin_dir / filename
         status = "OK" if path.exists() else "MISSING"
-        print(f"{status}: {name} -> {path}")
+        print(f"{name} -> {filename} {status}")
+        print(f"  path: {path}")
         if not path.exists():
             missing.append(name)
 

@@ -1,253 +1,255 @@
 # Docker Linux x86_64 Runtime Test
 
-脚本：`scripts/test_linux_x86_64_runtime_in_docker.sh`
+执行日期：2026-06-26
 
-## 当前推荐策略
+项目根目录：
 
-- 默认镜像：`debian:12`
-- 默认不启用代理：`USE_DOCKER_PROXY=0`
-- 仅在必要时启用：
+- `/Users/rain/CTEAS/tutorial`
 
-```bash
-USE_DOCKER_PROXY=1 PROXY_PORT=7897 ./scripts/test_linux_x86_64_runtime_in_docker.sh
-```
-
-- Docker runtime 测试不安装 `PySide6`
-- Docker runtime 测试使用最小依赖文件：
-  - `requirements-docker-runtime.txt`
-  - 当前内容：`pyyaml==6.0.3`、`numpy==2.4.4`、`pandas==3.0.2`
-
-## 默认测试 case
-
-- 默认 case 已改为：`smoke5d_docker_test`
-- 测试前已复制：
-
-```bash
-cp -a project/cases/smoke5d project/cases/smoke5d_docker_test
-```
-
-- 测试后已确认当前工作 case 仍为：
-  - `current_case.yaml -> smoke5d`
-  - `project/current -> cases/smoke5d`
-
-## 已执行命令
-
-```bash
-./scripts/test_linux_x86_64_runtime_in_docker.sh
-```
-
-容器参数：
-
-- `--platform linux/amd64`
-- 旧策略镜像：`python:3.12-slim-bookworm`
-
-## 实际结果
-
-主测试未能进入项目运行阶段，失败发生在容器环境准备阶段，属于外部环境/网络问题，不是仓库内科学计算逻辑问题。
-
-### 第一次执行
-
-失败点：
-
-- Docker Hub 拉取镜像鉴权阶段
-
-关键报错：
-
-```text
-docker: failed to authorize: failed to fetch oauth token:
-Post "https://auth.docker.io/token": net/http: TLS handshake timeout
-```
-
-失败分类：
-
-- Python 路径问题：否
-- `.x` 程序运行错误：否
-- MET/PUFF 输入配置错误：否
-- 缺 Linux 动态库：否
-- 缺输入文件：否
-- 权限问题：否
-- 容器外部网络 / 镜像拉取问题：是
-
-### 第二次执行
-
-失败点：
-
-- Docker Hub manifest 请求阶段
-
-关键报错：
-
-```text
-docker: Error response from daemon: failed to resolve reference
-"docker.io/library/python:3.12-slim-bookworm":
-failed to do request: Head "https://registry-1.docker.io/v2/library/python/manifests/3.12-slim-bookworm":
-net/http: TLS handshake timeout
-```
-
-失败分类：
-
-- 容器外部网络 / 镜像拉取问题：是
-
-### 本地镜像回退探测
-
-为了确认不是仓库代码问题，额外探测了本地已有镜像 `debian:12`：
-
-1. `docker images` 显示本地已有：
-   - `debian:12`
-   - `alpine:latest`
-2. 在 `debian:12` 容器内做 `apt-get update` 最小探测，报错：
-
-```text
-E: Failed to fetch http://deb.debian.org/debian/dists/bookworm-updates/main/binary-amd64/Packages  502  Bad Gateway
-```
-
-这进一步说明 Docker 容器内的外部网络访问本身不稳定，阻断了后续 Python/依赖准备，因此无法进入：
-
-- `prepare_met`
-- `prepare_puff`
-- `run_read62`
-- `run_met`
-- `run_puff`
-
-## 当前结论
-
-- 已按计划实际执行 Docker linux/amd64 runtime test。
-- 当前阻塞点是容器网络层：
-  - Docker Hub TLS 握手超时
-  - Debian 源 `bookworm-updates` 返回 `502 Bad Gateway`
-- 在未修复容器网络前，无法把这次失败归因到项目代码、native `.x`、输入文件或 MET/PUFF 配置。
-
-## 新增诊断与代理支持
-
-本轮新增：
+测试脚本：
 
 - `scripts/docker_network_diagnose.sh`
-- `docs/docker_setup_for_macos_clash.md`
-
-并更新了：
-
 - `scripts/test_linux_x86_64_runtime_in_docker.sh`
 
-当前 Docker runtime 脚本支持以下环境变量：
+## 本轮修复范围
 
-```bash
-USE_DOCKER_PROXY=1
-PROXY_HOST=host.docker.internal
-PROXY_PORT=7897
-```
+本轮按最新 `plan.md` 完成了以下修复：
 
-代理启用示例：
+1. 修复 native logical name 到 physical binary 的正式映射：
+   - `met -> calmet.x`
+   - `puff -> calpuff.x`
+2. 新增 runner 映射检查脚本：
+   - `scripts/check_native_runner_mapping.py`
+3. 更新 `scripts/check_native_binaries.py` 输出，明确显示 logical -> physical 映射结果。
+4. 移除 Docker 测试脚本中的临时 symlink workaround：
+   - 不再创建 `bin/linux-x86_64/met.x`
+   - 不再创建 `bin/linux-x86_64/puff.x`
+5. 修复 `run_met` 对旧坏链输出的处理：
+   - 不再沿用旧的 `run/met/calmet.lst -> ../../deliverables/calmet/calmet.lst`
+   - 运行时直接在 `run/met/` 生成 `calmet.lst` / `calmet.dat`
+6. 修复 `prepare_puff` 的 `METDAT` 口径：
+   - `../../deliverables/met/calmet.dat`
+7. 修复 `run_puff` 对旧坏链输出的处理：
+   - 运行时直接在 `run/puff/` 生成 `calpuff.con`
+   - 同步复制到 `deliverables/puff/`
+8. 修复 Docker 脚本对本地镜像存在性的探测方式：
+   - 不再用 `docker image inspect`
+   - 改为用 `docker images` 判断本地 `debian:12` 是否存在
 
-```bash
-USE_DOCKER_PROXY=1 PROXY_PORT=7897 ./scripts/test_linux_x86_64_runtime_in_docker.sh
-```
+## 执行前检查
 
-诊断示例：
+已执行：
 
-```bash
-PROXY_PORT=7897 bash scripts/docker_network_diagnose.sh
-```
+- `git status --short`
+- `python3 -m compileall engine scripts`
+- `PYTHONPATH=.venv/lib/python3.14/site-packages python3 scripts/check_current_case.py`
+- `PYTHONPATH=.venv/lib/python3.14/site-packages python3 scripts/check_native_binaries.py --platform linux-x86_64`
+- `PYTHONPATH=.venv/lib/python3.14/site-packages python3 scripts/check_native_runner_mapping.py --platform linux-x86_64`
+- `PYTHONPATH=.venv/lib/python3.14/site-packages python3 -m engine.run_met.prepare_met --case smoke5d_docker_test`
+- `PYTHONPATH=.venv/lib/python3.14/site-packages python3 -m engine.run_puff.prepare_puff --case smoke5d_docker_test`
+- `bash -n scripts/test_linux_x86_64_runtime_in_docker.sh`
+- `bash -n scripts/docker_network_diagnose.sh`
 
-旧策略下，如果拉取 `python:3.12-slim-bookworm` 失败，脚本会直接提示：
+补充说明：
 
-```text
-Docker image pull failed. Check Docker Desktop proxy settings or run with USE_DOCKER_PROXY=1.
-```
+- 当前仓库内 `.venv/bin/python` 是坏链，指向不存在的 `/usr/local/opt/python@3.14/bin/python3.14`
+- 因此宿主机静态检查改为：
+  - `python3`
+  - 配合 `PYTHONPATH=.venv/lib/python3.14/site-packages`
 
-如果容器内 `apt-get update` 失败，当前脚本会直接提示：
+## 本地静态检查结果
 
-```text
-Container apt network failed. Check Clash Allow LAN and Docker proxy settings.
-```
-
-## 新诊断结果
-
-已实际运行：
-
-```bash
-PROXY_PORT=7897 ./scripts/docker_network_diagnose.sh
-```
-
-得到的结论是：
-
-- Docker 本身可用。
-- `linux/arm64` 容器可启动，`uname -m` 返回 `aarch64`。
-- `linux/amd64` 容器可启动，`uname -m` 返回 `x86_64`。
-- 容器无代理时，`debian:12` 的 `apt-get update` 本次成功。
-- 容器可以连到宿主机代理端口：`host.docker.internal:7897`。
-- 容器启用代理后，`debian-security` 通过代理返回 `502 Bad Gateway [IP: 192.168.65.254 7897]`。
-- `python:3.12-slim-bookworm` 的 Docker Hub 拉取在两种情况下都不稳定：
-  - 无代理：`TLS handshake timeout`
-  - 代理相关重试：`failed to fetch oauth token: EOF` / `TLS handshake timeout`
-
-因此当前更精确的判断是：
-
-- Debian 主源并非完全不可达。
-- 代理链路并非完全不可达。
-- 但 Docker Hub 鉴权/manifest 拉取仍不稳定。
-- Clash 代理下的 Debian security 源当前也不稳定。
-
-## 当前脚本调整
-
-本轮已把 runtime 脚本改为：
-
-- 默认使用本地已有的 `debian:12`
-- 容器内通过 `apt` 安装 `python3/python3-venv/python3-pip`
-- `pip` 只安装 `requirements-docker-runtime.txt`
-- `apt-get update`
-- `apt-get install`
-- `pip install`
-  都带简单 `retry` 重试
-
-这条路线的目标是：
-
-- 避开默认拉取 `python:3.12-slim-bookworm`
-- 降低 GUI 依赖带来的下载体积和失败概率
-- 优先验证后端 runtime
-
-## 更新后的 runtime 脚本验证
-
-旧脚本验证时，已实际看到：
-
-```bash
-./scripts/test_linux_x86_64_runtime_in_docker.sh
-```
+### current case
 
 结果：
 
-- 脚本按预期打印了：
-  - `Docker platform: linux/amd64`
-  - `Test case: smoke5d_docker_test`
-  - `Proxy enabled: 0`
-  - `Proxy host: host.docker.internal`
-  - `Proxy port: 7897`
-- 在镜像拉取失败后，脚本按预期输出了明确提示：
+- `current_case_name: smoke5d`
+- `current_case_dir: /Users/rain/CTEAS/tutorial/project/cases/smoke5d`
+
+### native binary presence
+
+结果：
+
+- `terrel -> terrel.x OK`
+- `ctgproc -> ctgproc.x OK`
+- `makegeo -> makegeo.x OK`
+- `read62 -> read62.x OK`
+- `smerge -> smerge.x OK`
+- `met -> calmet.x OK`
+- `puff -> calpuff.x OK`
+
+### runner mapping
+
+结果：
+
+- `met resolves to /Users/rain/CTEAS/tutorial/bin/linux-x86_64/calmet.x`
+- `puff resolves to /Users/rain/CTEAS/tutorial/bin/linux-x86_64/calpuff.x`
+- `runner mapping OK`
+
+### prepare 输出核对
+
+`prepare_met` 结果：
+
+- `run/met/calmet.inp` 正常生成
+
+`prepare_puff` 结果：
+
+- `run/puff/calpuff.inp` 正常生成
+- `METDAT` 已渲染为：
 
 ```text
-Docker image pull failed. Check Docker Desktop proxy settings or run with USE_DOCKER_PROXY=1.
+../../deliverables/met/calmet.dat
 ```
 
-## 本轮执行说明
+## Docker linux/amd64 runtime
 
-本轮已经完成：
+实际执行：
 
-- `requirements-docker-runtime.txt`
-- `debian:12` 默认镜像切换
-- no-proxy 默认策略
-- runtime 脚本重试逻辑
-- 文档更新
+```bash
+./scripts/test_linux_x86_64_runtime_in_docker.sh
+```
 
-但在继续实跑更新后的 `debian:12` runtime 脚本时，当前会话的 Docker 提权执行额度被平台拦截，因此这轮没有拿到新的容器内 `apt/pip/prepare_met` 实跑结果。
+容器内关键信息：
 
-因此当前最新的事实边界是：
+- `uname -m = x86_64`
+- `platform_key = linux-x86_64`
 
-- 新脚本逻辑已改完并通过 `bash -n`
-- 旧网络诊断结果仍然有效
-- 新的 `debian:12` runtime 全流程需要在下一次可用的 Docker 提权执行中继续验证
+Docker 脚本当前状态：
 
-## 已完成但可独立验证的前置项
+- 已移除 `met.x` / `puff.x` symlink workaround
+- 运行过程中不再创建：
+  - `bin/linux-x86_64/met.x`
+  - `bin/linux-x86_64/puff.x`
 
-以下内容已在宿主机完成验证：
+## 运行结果
 
-- `scripts/test_gui_does_not_switch_current_case.py` 通过，`MainWindow` 初始化不会切换 current case。
-- `scripts/check_native_binaries.py --platform linux-x86_64` 通过。
-- `smoke5d_docker_test` 已创建，未污染 `smoke5d` 当前工作 case。
+### Docker 平台与依赖
+
+1. 是否使用代理：否
+2. Docker 平台：`linux/amd64`
+3. apt 是否成功：成功
+4. pip 是否成功：成功
+
+### case 核对
+
+1. 当前 case 是否仍为 `smoke5d`：是
+2. 测试 case 是否为 `smoke5d_docker_test`：是
+
+### READ62
+
+结果：
+
+- `run_read62` 成功进入 `read62.x`
+- 返回：
+  - `成功: 1`
+  - `失败: 0`
+
+分类：
+
+- 通过
+
+### MET
+
+结果：
+
+- `run_met` 成功调用 `calmet.x`
+- `run/met/calmet.inp` 正常使用
+- `run/met/calmet.lst` 正常生成
+- `run/met/calmet.dat` 正常生成
+
+运行期打印：
+
+```text
+[INFO] 工作目录: /work/project/cases/smoke5d_docker_test/run/met
+[INFO] 风场数据: /work/project/cases/smoke5d_docker_test/run/met/calmet.dat
+[INFO] 运行记录: /work/project/cases/smoke5d_docker_test/run/met/calmet.lst
+```
+
+检查结果：
+
+- `运行记录生成: True`
+- `风场文件生成: True`
+- `[RESULT] 诊断风场计算完毕`
+
+分类：
+
+- 通过
+
+### PUFF
+
+结果：
+
+- `run_puff` 成功调用 `calpuff.x`
+- `calpuff.inp` 中 `METDAT` 已指向：
+  - `/work/project/cases/smoke5d_docker_test/deliverables/met/calmet.dat`
+- `run/puff/calpuff.lst` 正常生成
+- `run/puff/calpuff.con` 正常生成
+
+运行期打印：
+
+```text
+[INFO] 工作目录: /work/project/cases/smoke5d_docker_test/run/puff
+[INFO] 气象数据: /work/project/cases/smoke5d_docker_test/deliverables/met/calmet.dat
+[INFO] 运行记录: /work/project/cases/smoke5d_docker_test/run/puff/calpuff.lst
+[INFO] 浓度文件: /work/project/cases/smoke5d_docker_test/run/puff/calpuff.con
+```
+
+检查结果：
+
+- `运行记录生成: True`
+- `浓度文件生成: True`
+- `[RESULT] 烟团模型计算完毕`
+
+分类：
+
+- 通过
+
+## 结果汇总
+
+1. Docker 脚本是否已移除 symlink workaround：是
+2. `met` 是否正确映射到 `calmet.x`：是
+3. `puff` 是否正确映射到 `calpuff.x`：是
+4. MET 是否生成/读取 `calmet.inp`、`calmet.lst`、`calmet.dat`：是
+5. PUFF 的 `METDAT` 是否指向 `../../deliverables/met/calmet.dat`：是
+6. READ62/MET/PUFF 运行结果：全部通过
+7. 当前失败点如果还有：无
+
+## inspect outputs 结果
+
+容器内最终确认存在：
+
+- `project/cases/smoke5d_docker_test/run/met/calmet.inp`
+- `project/cases/smoke5d_docker_test/run/met/calmet.lst`
+- `project/cases/smoke5d_docker_test/run/met/calmet.dat`
+- `project/cases/smoke5d_docker_test/run/puff/calpuff.inp`
+- `project/cases/smoke5d_docker_test/run/puff/calpuff.lst`
+- `project/cases/smoke5d_docker_test/run/puff/calpuff.con`
+- `project/cases/smoke5d_docker_test/deliverables/met/calmet.dat`
+- `project/cases/smoke5d_docker_test/deliverables/met/calmet.lst`
+- `project/cases/smoke5d_docker_test/deliverables/puff/calpuff.con`
+- `project/cases/smoke5d_docker_test/deliverables/puff/calpuff.lst`
+
+## 残留说明
+
+当前 case 目录下仍可见历史遗留目录：
+
+- `deliverables/calmet/`
+- `deliverables/calpuff/`
+
+它们来自旧命名阶段的历史产物，本轮没有做删除操作。当前运行链路已经不依赖这些旧目录：
+
+- MET 正式工作文件：`run/met/calmet.*`
+- PUFF 正式 `METDAT`：`deliverables/met/calmet.dat`
+- PUFF 正式输出：`run/puff/calpuff.*` 与 `deliverables/puff/calpuff.*`
+
+## 本轮修改文件
+
+- `engine/native/registry.py`
+- `engine/core/platform_utils.py`
+- `engine/run_met/run_met.py`
+- `engine/run_puff/prepare_puff.py`
+- `engine/run_puff/run_puff.py`
+- `scripts/check_native_binaries.py`
+- `scripts/check_native_runner_mapping.py`
+- `scripts/test_linux_x86_64_runtime_in_docker.sh`
+- `docs/docker_linux_x86_64_runtime_test.md`

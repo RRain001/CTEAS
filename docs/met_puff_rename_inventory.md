@@ -96,6 +96,56 @@
 - 当前没有发现 GUI stage 显示仍使用 `CALMET` / `CALPUFF` 的位置。
 - 当前没有发现 `case.yaml` 仍使用 `calmet` / `calpuff` 作为运行层配置键的活跃案例配置。
 
+## Runtime Mapping Fix
+
+本轮继续完成了逻辑名和物理名的运行时收口：
+
+- `engine.native.registry.NATIVE_PROGRAMS`
+  - `met -> binary="calmet"`
+  - `puff -> binary="calpuff"`
+- `engine.core.platform_utils.get_binary_path()`
+  - 现在会先查 registry，再解析到物理二进制路径
+- `scripts/check_native_binaries.py`
+  - 现在明确输出：
+    - `met -> calmet.x OK`
+    - `puff -> calpuff.x OK`
+- 新增 `scripts/check_native_runner_mapping.py`
+  - 用于直接验证：
+    - `met resolves to .../bin/linux-x86_64/calmet.x`
+    - `puff resolves to .../bin/linux-x86_64/calpuff.x`
+
+## Runtime Path Fix
+
+本轮同时修正了运行期文件路径口径：
+
+- Docker 脚本已移除临时 workaround：
+  - 不再创建 `met.x -> calmet.x`
+  - 不再创建 `puff.x -> calpuff.x`
+- MET 正式运行目录与文件名：
+  - 目录：`run/met/`
+  - 文件：`calmet.inp`、`calmet.lst`、`calmet.dat`
+- PUFF 正式运行目录与文件名：
+  - 目录：`run/puff/`
+  - 文件：`calpuff.inp`、`calpuff.lst`、`calpuff.con`
+- PUFF 的 `METDAT` 正式口径：
+  - `../../deliverables/met/calmet.dat`
+
+## Verification Update
+
+2026-06-26 的 Docker `linux/amd64` runtime 复测结果：
+
+- READ62：通过
+- MET：通过
+- PUFF：通过
+
+说明：
+
+- `run_met` 已不再依赖 `met.x` 假名
+- `run_puff` 已不再依赖 `puff.x` 假名
+- `run/met` 和 `run/puff` 已直接生成上游原始文件名产物
+- `deliverables/met` 和 `deliverables/puff` 已同步得到新产物
+- 历史遗留的 `deliverables/calmet` / `deliverables/calpuff` 仍存在，但本轮运行链路已不再依赖它们
+
 ## Verification Basis
 
 - 改名前全量命中清单：
