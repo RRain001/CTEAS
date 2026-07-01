@@ -14,8 +14,8 @@ from matplotlib.font_manager import FontProperties
 
 from engine.core.paths import current_project_path, tutorial_path
 
-DEFAULT_CSV = current_project_path("run", "calpuff", "postprocessing", "point_timeseries.csv")
-DEFAULT_OUTPUT = current_project_path("run", "calpuff", "postprocessing", "daily_concentration.png")
+DEFAULT_CSV = current_project_path("run", "puff", "postprocessing", "point_timeseries.csv")
+DEFAULT_OUTPUT = current_project_path("run", "puff", "postprocessing", "daily_concentration.png")
 LOCAL_TIMES_TTF = tutorial_path("Times New Roman.ttf")
 
 

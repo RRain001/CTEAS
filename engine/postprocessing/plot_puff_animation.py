@@ -14,8 +14,8 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 try:
     from ._core import (
-        DEFAULT_CALMET_INP,
         DEFAULT_CONC_FILE,
+        DEFAULT_MET_INP,
         DEFAULT_POSTPROCESS_DIR,
         build_colorbar_ticks,
         index_time_records,
@@ -33,8 +33,8 @@ try:
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _core import (
-        DEFAULT_CALMET_INP,
         DEFAULT_CONC_FILE,
+        DEFAULT_MET_INP,
         DEFAULT_POSTPROCESS_DIR,
         build_colorbar_ticks,
         index_time_records,
@@ -52,9 +52,9 @@ except ImportError:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Render yearly CALPUFF concentration animation")
-    parser.add_argument("--conc-file", type=Path, default=DEFAULT_CONC_FILE, help="Path to CALPUFF calpuff.con")
-    parser.add_argument("--calmet-inp", type=Path, default=DEFAULT_CALMET_INP, help="Path to CALMET input file")
+    parser = argparse.ArgumentParser(description="Render yearly PUFF concentration animation")
+    parser.add_argument("--conc-file", type=Path, default=DEFAULT_CONC_FILE, help="Path to PUFF puff.con")
+    parser.add_argument("--met-inp", "--calmet-inp", dest="met_inp", type=Path, default=DEFAULT_MET_INP, help="Path to MET input file")
     parser.add_argument("--terrain-file", type=Path, default=None, help="Optional Surfer ASCII terrain grid")
     parser.add_argument(
         "--out",
@@ -143,14 +143,14 @@ def main() -> None:
     cmap_name = args.cmap or defaults["cmap"]
     validate_scale_args(scale, vmin, vmax)
 
-    grid = parse_calmet_grid(args.calmet_inp)
-    window = parse_calmet_run_window(args.calmet_inp)
+    grid = parse_calmet_grid(args.met_inp)
+    window = parse_calmet_run_window(args.met_inp)
     terrain_data = load_default_terrain(grid, args.conc_file, args.terrain_file)
     records = index_time_records(args.conc_file, grid.nx, grid.ny)
     frame_indices = _select_frame_indices(len(records), args.start_step, args.end_step, args.stride, args.max_frames)
 
     print(f"Grid: nx={grid.nx}, ny={grid.ny}, dgrid={grid.dgrid_km} km")
-    print(f"CALMET window: {window.start:%Y-%m-%d %H:%M:%S} -> {window.end:%Y-%m-%d %H:%M:%S}")
+    print(f"MET window: {window.start:%Y-%m-%d %H:%M:%S} -> {window.end:%Y-%m-%d %H:%M:%S}")
     print(f"Detected timesteps: {len(records)}")
     print(
         f"Animation frames: {len(frame_indices)} "

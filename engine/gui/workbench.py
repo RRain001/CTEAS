@@ -59,6 +59,7 @@ from engine.core.paths import (
     resolve_case_path,
     tutorial_path,
 )
+from engine.core.runtime_names import MET_DAT, MET_INP, MET_LST, PUFF_CON, PUFF_LST
 from engine.gui.app import create_case, list_case_summaries, load_case_yaml
 from engine.preprocess.grid.center_location_to_utm import convert_lon_lat
 from engine.postprocessing._core import index_time_records, parse_calmet_grid
@@ -144,7 +145,7 @@ STAGES: list[StageSpec] = [
         desc="执行诊断风场并生成中间气象场。",
         deps=["preprocess"],
         inputs=["geo/makegeo/geo.dat", "met/surface/final/surf.dat", "met/upperair/final/UP.DAT"],
-        outputs=["run/met/calmet.dat", "run/met/calmet.lst"],
+        outputs=[f"run/met/{MET_DAT}", f"run/met/{MET_LST}"],
         output_dir_rel="run/met",
     ),
     StageSpec(
@@ -152,8 +153,8 @@ STAGES: list[StageSpec] = [
         stage="puff",
         desc="执行烟团模型扩散计算。",
         deps=["met"],
-        inputs=["run/met/calmet.dat", "run/met/calmet.lst"],
-        outputs=["run/puff/calpuff.con", "run/puff/calpuff.lst"],
+        inputs=[f"run/met/{MET_DAT}", f"run/met/{MET_LST}"],
+        outputs=[f"run/puff/{PUFF_CON}", f"run/puff/{PUFF_LST}"],
         output_dir_rel="run/puff",
     ),
 ]
@@ -2078,10 +2079,10 @@ class MainWindow(QMainWindow):
             geo_ok = (croot / "geo" / "makegeo" / "geo.dat").exists()
             return bool(geo_ok)
         if stage == "met":
-            return (croot / "run" / "met" / "calmet.dat").exists() and (croot / "run" / "met" / "calmet.lst").exists()
+            return (croot / "run" / "met" / MET_DAT).exists() and (croot / "run" / "met" / MET_LST).exists()
         if stage == "puff":
-            lst_ok = (croot / "run" / "puff" / "calpuff.lst").exists() or (croot / "run" / "puff" / "CALPUFF.LST").exists()
-            con_ok = (croot / "run" / "puff" / "calpuff.con").exists() or (croot / "run" / "puff" / "CALPUFF.CON").exists()
+            lst_ok = (croot / "run" / "puff" / PUFF_LST).exists() or (croot / "run" / "puff" / PUFF_LST.upper()).exists()
+            con_ok = (croot / "run" / "puff" / PUFF_CON).exists() or (croot / "run" / "puff" / PUFF_CON.upper()).exists()
             return bool(lst_ok and con_ok)
         return False
 
@@ -2099,15 +2100,15 @@ class MainWindow(QMainWindow):
             if not (croot / "geo" / "makegeo" / "geo.dat").exists():
                 missing.append("geo/makegeo/geo.dat")
         elif stage == "met":
-            if not (croot / "run" / "met" / "calmet.dat").exists():
-                missing.append("run/met/calmet.dat")
-            if not (croot / "run" / "met" / "calmet.lst").exists():
-                missing.append("run/met/calmet.lst")
+            if not (croot / "run" / "met" / MET_DAT).exists():
+                missing.append(f"run/met/{MET_DAT}")
+            if not (croot / "run" / "met" / MET_LST).exists():
+                missing.append(f"run/met/{MET_LST}")
         elif stage == "puff":
-            if not ((croot / "run" / "puff" / "calpuff.con").exists() or (croot / "run" / "puff" / "CALPUFF.CON").exists()):
-                missing.append("run/puff/calpuff.con")
-            if not ((croot / "run" / "puff" / "calpuff.lst").exists() or (croot / "run" / "puff" / "CALPUFF.LST").exists()):
-                missing.append("run/puff/calpuff.lst")
+            if not ((croot / "run" / "puff" / PUFF_CON).exists() or (croot / "run" / "puff" / PUFF_CON.upper()).exists()):
+                missing.append(f"run/puff/{PUFF_CON}")
+            if not ((croot / "run" / "puff" / PUFF_LST).exists() or (croot / "run" / "puff" / PUFF_LST.upper()).exists()):
+                missing.append(f"run/puff/{PUFF_LST}")
         return missing
 
     def _latest_run_by_stage(self, stage: str) -> dict[str, Any] | None:
@@ -2336,8 +2337,8 @@ class MainWindow(QMainWindow):
 
     def postprocess_case_inputs(self) -> tuple[Path, Path, Path | None]:
         croot = case_dir(self.current_case)
-        conc_file = croot / "run" / "puff" / "calpuff.con"
-        calmet_inp = croot / "run" / "met" / "calmet.inp"
+        conc_file = croot / "run" / "puff" / PUFF_CON
+        calmet_inp = croot / "run" / "met" / MET_INP
         terrain_candidates = [
             croot / "run" / "puff" / "qaterr.grd",
             croot / "geo" / "makegeo" / "qaterr.grd",
@@ -2346,7 +2347,7 @@ class MainWindow(QMainWindow):
         return conc_file, calmet_inp, terrain_file
 
     def _load_calpuff_times(self) -> list[str]:
-        """从当前 case 的 calpuff.con 读取所有时刻，返回格式化字符串列表。"""
+        """从当前 case 的 puff.con 读取所有时刻，返回格式化字符串列表。"""
         try:
             ok, msg = self._require_conc_inputs()
             if not ok:
@@ -2363,7 +2364,7 @@ class MainWindow(QMainWindow):
         if times:
             self._set_status(f"已加载 {len(times)} 个时刻")
         else:
-            self._set_status_error("未能加载时刻，请确认案例已选择且 calpuff.con 存在")
+            self._set_status_error("未能加载时刻，请确认案例已选择且 puff.con 存在")
 
     def _require_post_case(self) -> tuple[bool, str]:
         if not self.current_case:
@@ -2378,7 +2379,7 @@ class MainWindow(QMainWindow):
         if not conc_file.exists():
             return False, f"缺少浓度文件: {conc_file}"
         if not calmet_inp.exists():
-            return False, f"缺少 CALMET 输入文件: {calmet_inp}"
+            return False, f"缺少 MET 输入文件: {calmet_inp}"
         return True, ""
 
     def _float_from_widget(self, widget: QLineEdit, label: str) -> float:
@@ -2611,10 +2612,10 @@ class MainWindow(QMainWindow):
             self._validate_scale_values(scale, vmin, vmax)
             output_path = self.postprocess_output_path(self.post_conc_output.text())
             cmd = [
-                sys.executable, "-u", "-m", "engine.postprocessing.plot_calpuff_snapshot",
+                sys.executable, "-u", "-m", "engine.postprocessing.plot_puff_snapshot",
                 "--mode", self.post_conc_mode.currentData(),
                 "--conc-file", str(conc_file),
-                "--calmet-inp", str(calmet_inp),
+                "--met-inp", str(calmet_inp),
                 "--out", str(output_path),
                 "--scale", scale,
                 "--vmin", str(vmin),
@@ -2648,9 +2649,9 @@ class MainWindow(QMainWindow):
             self._validate_scale_values(scale, vmin, vmax)
             output_path = self.postprocess_output_path(self.post_anim_output.text())
             cmd = [
-                sys.executable, "-u", "-m", "engine.postprocessing.plot_calpuff_animation",
+                sys.executable, "-u", "-m", "engine.postprocessing.plot_puff_animation",
                 "--conc-file", str(conc_file),
-                "--calmet-inp", str(calmet_inp),
+                "--met-inp", str(calmet_inp),
                 "--out", str(output_path),
                 "--fps", self.post_anim_fps.text().strip() or "10",
                 "--stride", self.post_anim_stride.text().strip() or "1",
@@ -2694,9 +2695,9 @@ class MainWindow(QMainWindow):
             csv_path = self.postprocess_output_path(self.post_point_output.text())
             output_path = self.postprocess_output_path(self.post_point_daily_output.text())
             cmd = [
-                sys.executable, "-u", "-m", "engine.postprocessing.plot_daily_from_calpuff",
+                sys.executable, "-u", "-m", "engine.postprocessing.plot_daily_from_puff",
                 "--conc-file", str(conc_file),
-                "--calmet-inp", str(calmet_inp),
+                "--met-inp", str(calmet_inp),
                 "--x", str(round(utm["x_km"], 3)),
                 "--y", str(round(utm["y_km"], 3)),
                 "--csv-output", str(csv_path),

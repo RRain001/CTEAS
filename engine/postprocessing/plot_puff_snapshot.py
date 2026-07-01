@@ -6,8 +6,8 @@ from pathlib import Path
 
 try:
     from ._core import (
-        DEFAULT_CALMET_INP,
         DEFAULT_CONC_FILE,
+        DEFAULT_MET_INP,
         DEFAULT_POSTPROCESS_DIR,
         common_parser,
         resolve_mode_defaults,
@@ -20,8 +20,8 @@ try:
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _core import (
-        DEFAULT_CALMET_INP,
         DEFAULT_CONC_FILE,
+        DEFAULT_MET_INP,
         DEFAULT_POSTPROCESS_DIR,
         common_parser,
         resolve_mode_defaults,
@@ -34,7 +34,7 @@ except ImportError:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = common_parser("Plot CALPUFF concentration in snapshot, annual, or seasonal mode")
+    parser = common_parser("Plot PUFF concentration in snapshot, annual, or seasonal mode")
     parser.add_argument("--mode", choices=["snapshot", "annual", "seasonal"], default="snapshot")
     parser.add_argument(
         "--time",
@@ -62,7 +62,7 @@ def main() -> None:
     threshold = args.threshold if args.threshold is not None else defaults["threshold"]
     cmap_name = args.cmap or defaults["cmap"]
     conc_file = args.conc_file or DEFAULT_CONC_FILE
-    calmet_inp = args.calmet_inp or DEFAULT_CALMET_INP
+    met_inp = args.met_inp or DEFAULT_MET_INP
     out_dir = args.out_dir or DEFAULT_POSTPROCESS_DIR
     out_path = resolve_output_path(args.mode, args.out, out_dir)
 
@@ -74,7 +74,7 @@ def main() -> None:
     if args.mode == "snapshot":
         saved = run_snapshot(
             conc_file=conc_file,
-            calmet_inp=calmet_inp,
+            calmet_inp=met_inp,
             out_png=out_path,
             scale=scale,
             vmin=vmin,
@@ -88,7 +88,7 @@ def main() -> None:
     elif args.mode == "annual":
         saved = run_annual(
             conc_file=conc_file,
-            calmet_inp=calmet_inp,
+            calmet_inp=met_inp,
             out_png=out_path,
             scale=scale,
             vmin=vmin,
@@ -100,7 +100,7 @@ def main() -> None:
     else:
         saved = run_seasonal(
             conc_file=conc_file,
-            calmet_inp=calmet_inp,
+            calmet_inp=met_inp,
             out_png=out_path,
             scale=scale,
             vmin=vmin,

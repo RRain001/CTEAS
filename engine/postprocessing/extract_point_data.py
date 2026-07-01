@@ -12,10 +12,11 @@ from typing import Iterable, List, Tuple
 import numpy as np
 
 from engine.core.paths import current_project_path
+from engine.core.runtime_names import MET_INP, PUFF_CON
 
-DEFAULT_CONC_FILE = current_project_path("run", "calpuff", "calpuff.con")
-DEFAULT_CALMET_INP = current_project_path("run", "calmet", "calmet.inp")
-DEFAULT_OUTPUT_CSV = current_project_path("run", "calpuff", "postprocessing", "point_timeseries.csv")
+DEFAULT_CONC_FILE = current_project_path("run", "puff", PUFF_CON)
+DEFAULT_MET_INP = current_project_path("run", "met", MET_INP)
+DEFAULT_OUTPUT_CSV = current_project_path("run", "puff", "postprocessing", "point_timeseries.csv")
 CONC_UNIT = "Bq/m³"
 
 
@@ -348,19 +349,21 @@ def extract_point_time_series(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Extract time series of concentrations at a specific point from CALPUFF CONC.DAT"
+        description="Extract time series of concentrations at a specific point from PUFF puff.con"
     )
     parser.add_argument(
         "--conc-file",
         type=Path,
         default=DEFAULT_CONC_FILE,
-        help="Path to CALPUFF CONC.DAT (binary)",
+        help="Path to PUFF puff.con (binary)",
     )
     parser.add_argument(
+        "--met-inp",
         "--calmet-inp",
+        dest="met_inp",
         type=Path,
-        default=DEFAULT_CALMET_INP,
-        help="Path to CALMET.INP for grid metadata",
+        default=DEFAULT_MET_INP,
+        help="Path to MET input file for grid metadata",
     )
     parser.add_argument(
         "--x",
@@ -402,7 +405,7 @@ def main():
     
     extract_point_time_series(
         conc_file=args.conc_file,
-        calmet_inp=args.calmet_inp,
+        calmet_inp=args.met_inp,
         point_x_km=args.x,
         point_y_km=args.y,
         output_csv=args.output,

@@ -14,12 +14,13 @@ from matplotlib import font_manager
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from engine.core.paths import current_project_path, tutorial_path
+from engine.core.runtime_names import MET_INP, PUFF_CON
 
 
-DEFAULT_CONC_FILE = current_project_path("run", "calpuff", "calpuff.con")
-DEFAULT_CALMET_INP = current_project_path("run", "calmet", "calmet.inp")
-DEFAULT_POSTPROCESS_DIR = current_project_path("run", "calpuff", "postprocessing")
-DEFAULT_TERRAIN_FILE = current_project_path("run", "calpuff", "qaterr.grd")
+DEFAULT_CONC_FILE = current_project_path("run", "puff", PUFF_CON)
+DEFAULT_MET_INP = current_project_path("run", "met", MET_INP)
+DEFAULT_POSTPROCESS_DIR = current_project_path("run", "puff", "postprocessing")
+DEFAULT_TERRAIN_FILE = current_project_path("run", "puff", "qaterr.grd")
 
 UNIFIED_DEFAULTS = {
     "scale": "linear",
@@ -222,7 +223,7 @@ def index_time_records(conc_file: Path, nx: int, ny: int) -> list[TimeRecord]:
             _finish_fortran_record(f, payload_offset, nbytes)
 
     if not records:
-        raise RuntimeError("No timestep data records found. Please verify calpuff.con and grid size.")
+        raise RuntimeError("No timestep data records found. Please verify puff.con and grid size.")
     return records
 
 
@@ -746,8 +747,8 @@ def resolve_output_path(mode: str, out: Path | None, out_dir: Path | None) -> Pa
 
 def common_parser(description: str) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument("--conc-file", type=Path, default=DEFAULT_CONC_FILE, help="Path to CALPUFF calpuff.con")
-    parser.add_argument("--calmet-inp", type=Path, default=DEFAULT_CALMET_INP, help="Path to CALMET input file")
+    parser.add_argument("--conc-file", type=Path, default=DEFAULT_CONC_FILE, help="Path to PUFF puff.con")
+    parser.add_argument("--met-inp", "--calmet-inp", dest="met_inp", type=Path, default=DEFAULT_MET_INP, help="Path to MET input file")
     parser.add_argument("--terrain-file", type=Path, default=None, help="Optional Surfer ASCII terrain grid")
     parser.add_argument("--out", type=Path, default=None, help="Output file path")
     parser.add_argument("--out-dir", type=Path, default=None, help="Output directory")
@@ -761,7 +762,7 @@ def common_parser(description: str) -> argparse.ArgumentParser:
 
 def print_case_summary(grid: GridSpec, window: RunWindow) -> None:
     print(f"Grid: nx={grid.nx}, ny={grid.ny}, dgrid={grid.dgrid_km} km")
-    print(f"CALMET window: {window.start:%Y-%m-%d %H:%M:%S} -> {window.end:%Y-%m-%d %H:%M:%S}")
+    print(f"MET window: {window.start:%Y-%m-%d %H:%M:%S} -> {window.end:%Y-%m-%d %H:%M:%S}")
 
 
 def run_snapshot(

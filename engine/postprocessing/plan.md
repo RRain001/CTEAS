@@ -5,7 +5,7 @@
 目标是在现有 PySide6 桌面 GUI 的“结果后处理”页面接入已有后处理能力。所有任务使用当前 case 的显式路径，输出统一写入：
 
 ```text
-project/cases/<case>/run/calpuff/postprocessing/
+project/cases/<case>/run/puff/postprocessing/
 ```
 
 任务日志统一写入：
@@ -20,7 +20,7 @@ project/cases/<case>/runs/<timestamp>_post_<job>/
 
 1. 浓度空间图：`snapshot`、`annual`、`seasonal`
 2. 年度动画：`mp4`、`gif`
-3. 点位浓度提取：从 `calpuff.con` 提取点位时序 CSV
+3. 点位浓度提取：从 `puff.con` 提取点位时序 CSV
 4. 日浓度曲线：从点位浓度时序生成日均浓度曲线 PNG
 5. 风玫瑰图：默认从前处理地面气象 `surf.dat` 绘制站点风玫瑰，保留自定义 CSV 入口
 
@@ -28,15 +28,15 @@ project/cases/<case>/runs/<timestamp>_post_<job>/
 
 - 后处理脚本默认路径必须基于 `tutorial` 或显式传入的当前 case 路径，不再把脚本目录作为默认输出位置。
 - GUI 调用空间图、动画、点位提取、日浓度曲线时显式传入：
-  - `--conc-file <case>/run/calpuff/calpuff.con`
-  - `--calmet-inp <case>/run/calmet/calmet.inp`
+  - `--conc-file <case>/run/puff/puff.con`
+  - `--met-inp <case>/run/met/met.inp`
   - `--terrain-file <case>/geo/makegeo/qaterr.grd`
   - `--out` 或 `--output` 到当前 case 的 postprocessing 目录
 - 地形文件缺失不阻止运行，只提示无地形底图。
-- 日浓度曲线不再使用旧 CSV 的“cfd对应放大”列作为默认值，默认使用点位浓度提取出的真实 `calpuff.con` 浓度值。
+- 日浓度曲线不再使用旧 CSV 的“cfd对应放大”列作为默认值，默认使用点位浓度提取出的真实 `puff.con` 浓度值。
 - 点位浓度提取输出单位统一为 `Bq/m³`。
 - 风玫瑰第一版默认解析 `met/surface/final/surf.dat`；自定义 CSV 模式保留列名参数。
-- 不接入 `plot_calpuff_annual-dixing.py`，它保留为旧实验脚本。
+- 不接入旧的 annual-dixing 实验脚本，它保留为历史实验实现。
 
 ## GUI 行为
 
@@ -53,8 +53,8 @@ project/cases/<case>/runs/<timestamp>_post_<job>/
 - 后处理任务复用现有 `QProcess` 单任务机制。
 - 后处理任务运行时禁止启动其他任务。
 - GUI 侧提前拦截：
-  - 缺失 `calpuff.con`
-  - 缺失 `calmet.inp`
+  - 缺失 `puff.con`
+  - 缺失 `met.inp`
   - 缺失必要 CSV
   - `vmin >= vmax`
   - `scale=log` 且 `vmin <= 0`
@@ -106,10 +106,10 @@ project/cases/<case>/runs/<timestamp>_post_<job>/
   - 后处理运行按钮执行期间会禁用，继续保持单任务策略。
 - `engine/postprocessing/_core.py`
   - 空间图流程支持显式 `--terrain-file`。
-  - 地形文件按显式参数、`calpuff.con` 同目录、case `geo/makegeo/qaterr.grd`、旧 `project/current` 兜底顺序查找。
-- `engine/postprocessing/plot_calpuff_snapshot.py`
+  - 地形文件按显式参数、`puff.con` 同目录、case `geo/makegeo/qaterr.grd`、旧 `project/current` 兜底顺序查找。
+- `engine/postprocessing/plot_puff_snapshot.py`
   - CLI 已把 `--terrain-file` 传入空间图核心流程。
-- `engine/postprocessing/plot_calpuff_animation.py`
+- `engine/postprocessing/plot_puff_animation.py`
   - CLI 支持 `--terrain-file`。
   - 优先使用系统 `ffmpeg`，否则回退到 `.venv` 中的 `imageio-ffmpeg` 二进制。
   - gif 在缺少 `ffmpeg` 时仍可使用 Pillow writer 兜底。
@@ -121,8 +121,8 @@ project/cases/<case>/runs/<timestamp>_post_<job>/
   - 改为通用点位时序 CSV 日均曲线绘图。
   - 默认列为 `concentration`，不再依赖“cfd对应放大”。
   - 已接入 `tutorial/Times New Roman.ttf`。
-- `engine/postprocessing/plot_daily_from_calpuff.py`
-  - 新增包装 CLI：先从 `calpuff.con` 提取点位时序，再绘制日均浓度曲线。
+- `engine/postprocessing/plot_daily_from_puff.py`
+  - 新增包装 CLI：先从 `puff.con` 提取点位时序，再绘制日均浓度曲线。
 - `engine/postprocessing/plot_windrose_style.py`
   - 新增 CLI 参数。
   - 默认列名改为 `Month`/`deg`/`ms-1`，匹配 `isd2smerge_ready` 目录中 CSV 的真实列名。
@@ -137,11 +137,11 @@ project/cases/<case>/runs/<timestamp>_post_<job>/
 - 语法检查通过：
   - `python3 -c "compile(...)"` 覆盖修改过的 GUI 与后处理脚本。
 - 浓度空间图最小命令通过：
-  - 生成 `project/cases/test/run/calpuff/postprocessing/check_snapshot.png`。
+  - 生成 `project/cases/test/run/puff/postprocessing/check_snapshot.png`。
 - 点位浓度提取最小命令通过：
   - 生成 `check_point.csv`，单位为 `Bq/m³`。
 - 日浓度曲线最小命令通过：
-  - 从 `calpuff.con` 生成点位 CSV，再生成 `check_daily.png`。
+  - 从 `puff.con` 生成点位 CSV，再生成 `check_daily.png`。
 - 风玫瑰最小命令通过：
   - 从 `project/cases/test/met/surface/final/surf.dat` 生成 `check_windrose.png`。
 - 年度动画 gif 最小命令通过：

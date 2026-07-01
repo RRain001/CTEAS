@@ -16,7 +16,7 @@ from engine.core.paths import current_project_path, tutorial_path
 
 CSV_PATH = current_project_path("met", "surface", "final", "surface_wind.csv")
 SURF_DAT_PATH = current_project_path("met", "surface", "final", "surf.dat")
-OUT_PATH = current_project_path("run", "calpuff", "postprocessing", "windrose.png")
+OUT_PATH = current_project_path("run", "puff", "postprocessing", "windrose.png")
 LOCAL_TIMES_TTF = tutorial_path("Times New Roman.ttf")
 
 COL_MONTH = 'Month'

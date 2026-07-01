@@ -5,31 +5,31 @@ from pathlib import Path
 
 try:
     from ._core import (
-        DEFAULT_CALMET_INP,
         DEFAULT_CONC_FILE,
+        DEFAULT_MET_INP,
         DEFAULT_POSTPROCESS_DIR,
         MEAN_DEFAULTS,
         common_parser,
         resolve_output_path,
-        run_seasonal,
+        run_annual,
         validate_scale_args,
     )
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _core import (
-        DEFAULT_CALMET_INP,
         DEFAULT_CONC_FILE,
+        DEFAULT_MET_INP,
         DEFAULT_POSTPROCESS_DIR,
         MEAN_DEFAULTS,
         common_parser,
         resolve_output_path,
-        run_seasonal,
+        run_annual,
         validate_scale_args,
     )
 
 
 def main() -> None:
-    parser = common_parser("Plot seasonal mean concentration from CALPUFF calpuff.con")
+    parser = common_parser("Plot annual mean concentration from PUFF puff.con")
     args = parser.parse_args()
 
     scale = args.scale or MEAN_DEFAULTS["scale"]
@@ -42,10 +42,10 @@ def main() -> None:
     except ValueError as exc:
         parser.error(str(exc))
 
-    saved = run_seasonal(
+    saved = run_annual(
         conc_file=args.conc_file or DEFAULT_CONC_FILE,
-        calmet_inp=args.calmet_inp or DEFAULT_CALMET_INP,
-        out_png=resolve_output_path("seasonal", args.out, args.out_dir or DEFAULT_POSTPROCESS_DIR),
+        calmet_inp=args.met_inp or DEFAULT_MET_INP,
+        out_png=resolve_output_path("annual", args.out, args.out_dir or DEFAULT_POSTPROCESS_DIR),
         scale=scale,
         vmin=vmin,
         vmax=vmax,

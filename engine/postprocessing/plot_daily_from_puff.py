@@ -4,14 +4,14 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
-from .extract_point_data import DEFAULT_CALMET_INP, DEFAULT_CONC_FILE, DEFAULT_OUTPUT_CSV, extract_point_time_series
+from .extract_point_data import DEFAULT_CONC_FILE, DEFAULT_MET_INP, DEFAULT_OUTPUT_CSV, extract_point_time_series
 from .plot_daily_concentration_fangda import DEFAULT_OUTPUT, plot_reference_style
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Extract a CALPUFF point time series and plot daily mean concentration.")
+    parser = argparse.ArgumentParser(description="Extract a PUFF point time series and plot daily mean concentration.")
     parser.add_argument("--conc-file", type=Path, default=DEFAULT_CONC_FILE)
-    parser.add_argument("--calmet-inp", type=Path, default=DEFAULT_CALMET_INP)
+    parser.add_argument("--met-inp", "--calmet-inp", dest="met_inp", type=Path, default=DEFAULT_MET_INP)
     parser.add_argument("--x", type=float, required=True)
     parser.add_argument("--y", type=float, required=True)
     parser.add_argument("--csv-output", type=Path, default=DEFAULT_OUTPUT_CSV)
@@ -26,7 +26,7 @@ def main() -> None:
     end_time = datetime.strptime(args.end_time, "%Y-%m-%d %H:%M") if args.end_time else None
     extract_point_time_series(
         conc_file=args.conc_file,
-        calmet_inp=args.calmet_inp,
+        calmet_inp=args.met_inp,
         point_x_km=args.x,
         point_y_km=args.y,
         output_csv=args.csv_output,
