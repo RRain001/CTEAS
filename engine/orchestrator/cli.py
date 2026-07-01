@@ -194,7 +194,6 @@ def _publish_deliverables(case_name: str, case_root: Path, stage_results: dict[s
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     copied: dict[str, str] = {}
-    linked: dict[str, str] = {}
 
     for spec in _deliverable_specs(case_root):
         src = _existing_path(spec.source_candidates)
@@ -236,20 +235,21 @@ def _publish_deliverables(case_name: str, case_root: Path, stage_results: dict[s
         published = deliverables_dir / spec.deliverable_rel
         if not published.exists():
             continue
-        link_path = case_root / spec.link_back_rel
-        link_path.parent.mkdir(parents=True, exist_ok=True)
-        if link_path.exists() or link_path.is_symlink():
-            link_path.unlink()
-        rel_target = os.path.relpath(published, start=link_path.parent)
-        link_path.symlink_to(rel_target)
-        linked[spec.name] = str(link_path.relative_to(case_root))
+        run_path = case_root / spec.link_back_rel
+        run_path.parent.mkdir(parents=True, exist_ok=True)
+        if run_path.exists() or run_path.is_symlink():
+            if run_path.is_dir() and not run_path.is_symlink():
+                raise RuntimeError(f"Refusing to overwrite directory with deliverable file: {run_path}")
+            run_path.unlink()
+        shutil.copy2(published, run_path)
 
-    summary_link = case_root / "logs" / "run_summary.json"
-    if summary_link.exists() or summary_link.is_symlink():
-        summary_link.unlink()
-    summary_link.parent.mkdir(parents=True, exist_ok=True)
-    summary_rel = os.path.relpath(deliverables_dir / "logs" / "run_summary.json", start=summary_link.parent)
-    summary_link.symlink_to(summary_rel)
+    summary_path = case_root / "logs" / "run_summary.json"
+    if summary_path.exists() or summary_path.is_symlink():
+        if summary_path.is_dir() and not summary_path.is_symlink():
+            raise RuntimeError(f"Refusing to overwrite directory with run summary: {summary_path}")
+        summary_path.unlink()
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(deliverables_dir / "logs" / "run_summary.json", summary_path)
 
 
 def _resolve_case(case_arg: str | None, case_yaml_arg: str | None) -> str:
