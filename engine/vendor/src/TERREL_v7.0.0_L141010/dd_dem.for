@@ -11,7 +11,7 @@ c --- of 1024 bytes (insert delimiters)
       write(*,*)' Enter filename for output:  '
       read(*,*) fileout
 
-      open(7,file=filein,form='binary',access='transparent',
+      open(7,file=filein,form='unformatted',access='stream',
      &                   status='old')
       open(8,file=fileout)
 

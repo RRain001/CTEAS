@@ -4914,7 +4914,7 @@ c --- XYUNIT
 c --- More added after dataset version 2.0
 c --- Protect array space for now
       ncat=MIN(nluoutcat,mxcat)
-      read(dataver,'(f)') rver
+      read(dataver,*) rver
       if(rver.GT.2.01) then
          read(io,*) (luoutcat(n),n=1,ncat)
       else

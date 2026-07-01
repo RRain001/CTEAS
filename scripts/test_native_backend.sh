@@ -24,11 +24,7 @@ if [[ ! -d "$BIN_DIR" ]]; then
 fi
 
 for name in "${REQUIRED[@]}"; do
-  case "$name" in
-    met) binary_name="calmet" ;;
-    puff) binary_name="calpuff" ;;
-    *) binary_name="$name" ;;
-  esac
+  binary_name="$name"
   bin="$BIN_DIR/${binary_name}.x"
   if [[ ! -f "$bin" ]]; then
     echo "[ERROR] Missing binary: $bin"
@@ -39,11 +35,7 @@ for name in "${REQUIRED[@]}"; do
 done
 
 for name in "${REQUIRED[@]}"; do
-  case "$name" in
-    met) binary_name="calmet" ;;
-    puff) binary_name="calpuff" ;;
-    *) binary_name="$name" ;;
-  esac
+  binary_name="$name"
   bin="$BIN_DIR/${binary_name}.x"
   if "$bin" --help >/tmp/"${name}_help.out" 2>/tmp/"${name}_help.err"; then
     echo "[CHECK] $name --help exited 0"

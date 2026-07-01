@@ -1,1 +1,26 @@
-SUBMET.R62
+c----------------------------------------------------------------------
+c --- COMMON BLOCK /SUBMET/ -- Upper-Air profile data arrays    READ62
+c                           -- for substitution
+c----------------------------------------------------------------------
+      common/submet/psub(mxlev),zlsub(mxlev),
+     1 tzsub(mxlev),wdsub(mxlev),wssub(mxlev),
+     2 iwdsub(mxlev),iwssub(mxlev),
+     3 nlori,nlsub,jusdt,ntzsub,iyrsub,imosub,idysub,julsub,ihrsub
+
+c --- COMMON BLOCK /UPMET/ Variables:
+c      PSUB(mxlev) - real array - pressure (mb)
+c     ZLSUB(mxlev) - real array - height (m above LGL)
+c     TZSUB(mxlev) - real array - air temp. (deg. K)
+c     WDSUB(mxlev) - real array - wind direction (deg)
+c     WSSUB(mxlev) - real array - wind speed (m/s)
+c    IWDSUB(mxlev) - int. array - wind direction (deg)
+c    IWSSUB(mxlev) - int. array - wind speed (m/s)
+c            NLORI - integer    - Original number of sounding levels
+c            NLSUB - integer    - Number of sounding levels
+c            JUSDT - integer    - No. hours between sounding times
+c           NTZSUB - integer    - Julian YYYYDDDHH GMT
+c           IYRSUB - integer    - Year YYYY GMT
+c           IMOSUB - integer    - Month MM GMT
+c           IDYSUB - integer    - Day DD GMT
+c           JULSUB - integer    - Julian Day DDD GMT
+c           IHRSUB - integer    - Hour HH GMT

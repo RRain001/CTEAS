@@ -27,9 +27,9 @@ c ----------------------
 c --- parameter(cform='unformatted', caccess='transparent', irecl=1)
 c --- parameter(cd3access='transparent')
 c ----------------------
-c --- Intel ifort/ifx
+c --- GNU gfortran
 c ----------------------
-      parameter(cform='binary', caccess='direct', irecl=1)
+      parameter(cform='unformatted', caccess='direct', irecl=1)
       parameter(cd3access='sequential')
 c ----------------------
 c --- Compaq DF Compiler

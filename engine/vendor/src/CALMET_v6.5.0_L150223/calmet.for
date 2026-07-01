@@ -1879,10 +1879,10 @@ c --- MM4HDO common block
       data iluoc3d/16/
 c
 c --- FILNAM common block - (UPDAT,SEADAT,m3ddat initialized in READFN)
-      data metinp/'calmet.inp'/,geodat/'geo.dat'/,srfdat/'surf.dat'/,
+      data metinp/'met.inp'/,geodat/'geo.dat'/,srfdat/'surf.dat'/,
      1 prcdat/'precip.dat'/,diadat/'diag.dat'/,prgdat/'prog.dat'/,
      2 mm4dat/'mm4.dat'/,wtdat/'wt.dat'/,clddat/'cloud.dat'/
-      data metlst/'calmet.lst'/,metdat/'calmet.dat'/,
+      data metlst/'met.lst'/,metdat/'met.dat'/,
      1 pacdat/'pacout.dat'/,tstprt/'test.dat'/,tstout/'test.out'/,
      2 tstkin/'test.kin'/,tstfrd/'test.frd'/,tstslp/'test.slp'/,
      3 dcstgd/'dcst.grd'/

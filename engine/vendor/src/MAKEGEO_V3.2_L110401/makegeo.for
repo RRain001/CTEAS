@@ -1613,7 +1613,7 @@ c ---    XYUNIT
          enddo
 c ---    LU categories (dataset v2.1)
          nincat0=MIN(mxcatin,mxcat)
-         read(dataver,'(f)') rver
+         read(dataver,*) rver
          if(rver.GT.2.01) then
             read(io,*) (incat0(n),n=1,nincat0)
             write(io6,*) (incat0(n),n=1,nincat0)

@@ -29,9 +29,9 @@ c --- Lahey F77 Compiler
 c ----------------------
 c --- parameter(cform='unformatted', caccess='transparent', irecl=1)
 c ----------------------
-c --- Intel ifort/ifx
+c --- GNU gfortran
 c ----------------------
-      parameter(cform='binary', caccess='direct', irecl=1)
+      parameter(cform='unformatted', caccess='direct', irecl=1)
 c ----------------------
 c --- Compaq DF Compiler
 c ----------------------

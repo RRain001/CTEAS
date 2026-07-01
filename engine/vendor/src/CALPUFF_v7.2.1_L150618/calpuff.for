@@ -2219,10 +2219,10 @@ c --- DRYPART common block
       data rho/mxpdep*1.0/,npsint/9/,dconst4/0.6666667/
 c
 c --- FILNAM, FILLOG common blocks
-      data pufinp/'calpuff.inp'/,metdat/'calmet.dat'/,
-     1 iscdat/'iscmet.dat'/,plmdat/'plmmet.dat'/,puflst/'calpuff.lst'/,
-     2 condat/'conc.dat'/,dfdat/'df.dat'/,wfdat/'wf.dat'/,
-     3 visdat/'visb.dat'/,t2ddat/'tk2d.dat'/,rhodat/'rho2d.dat'/,
+      data pufinp/'puff.inp'/,metdat/'met.dat'/,
+     1 iscdat/'iscmet.dat'/,plmdat/'plmmet.dat'/,puflst/'puff.lst'/,
+     2 condat/'puff.con'/,dfdat/'puff.dry'/,wfdat/'puff.wet'/,
+     3 visdat/'puff.vis'/,t2ddat/'tk2d.dat'/,rhodat/'rho2d.dat'/,
      4 ptdat/'ptemarb.dat',mxem1*' '/,voldat/'volemarb.dat',mxem1*' '/,
      5 ardat/'baemarb.dat',mxem1*' '/,lndat/'lnemarb.dat'/,
      6 fldat/'flemarb.dat',mxem1*' '/,
@@ -40080,7 +40080,7 @@ c ---          Substitute a blank (anything else)
 c --- Remove blanks
       call RM_BLANK(cfver)
 c --- Assign dataset version as a real
-      read(cfver,'(f)') cfdataset
+      read(cfver,*) cfdataset
 
 c --- Interpret control-file version
       if(cfdataset.LT.2.99) then
@@ -86654,32 +86654,32 @@ c ---       Convert to upper case
 c ---       Interpret subset of inputs
             if(INDEX(aline320(l1:l2),'NRDDAT').GT.0 .AND.
      &             nl.EQ.6) then
-               read(aline320(r1:r2),'(i)') nrddat
+               read(aline320(r1:r2),*) nrddat
             elseif(INDEX(aline320(l1:l2),'NRD1').GT.0 .AND.
      &             nl.EQ.4) then
-               read(aline320(r1:r2),'(i)') nrd1
+               read(aline320(r1:r2),*) nrd1
             elseif(INDEX(aline320(l1:l2),'NSFRDS').GT.0 .AND.
      &             nl.EQ.6) then
-               read(aline320(r1:r2),'(i)') nsfrds
+               read(aline320(r1:r2),*) nsfrds
             elseif(INDEX(aline320(l1:l2),'NRD2').GT.0 .AND.
      &             nl.EQ.4) then
-               read(aline320(r1:r2),'(i)') nrd2
+               read(aline320(r1:r2),*) nrd2
             elseif(INDEX(aline320(l1:l2),'NSFTAB').GT.0 .AND.
      &             nl.EQ.6) then
-               read(aline320(r1:r2),'(i)') nqsftab
+               read(aline320(r1:r2),*) nqsftab
 c ---       Scan for other scale-factor source-species tables
             elseif(INDEX(aline320(l1:l2),'NSPT1').GT.0 .AND.
      &             nl.EQ.5) then
-               read(aline320(r1:r2),'(i)') nspt1
+               read(aline320(r1:r2),*) nspt1
             elseif(INDEX(aline320(l1:l2),'NSAR1').GT.0 .AND.
      &             nl.EQ.5) then
-               read(aline320(r1:r2),'(i)') nsar1
+               read(aline320(r1:r2),*) nsar1
             elseif(INDEX(aline320(l1:l2),'NSLN1').GT.0 .AND.
      &             nl.EQ.5) then
-               read(aline320(r1:r2),'(i)') nsln1
+               read(aline320(r1:r2),*) nsln1
             elseif(INDEX(aline320(l1:l2),'NSVL1').GT.0 .AND.
      &             nl.EQ.5) then
-               read(aline320(r1:r2),'(i)') nsvl1
+               read(aline320(r1:r2),*) nsvl1
             endif
          endif
       enddo
