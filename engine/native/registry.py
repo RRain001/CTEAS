@@ -35,14 +35,14 @@ NATIVE_PROGRAMS = {
         "required": True,
     },
     "met": {
-        "binary": "calmet",
+        "binary": "met",
         "suffix": ".x",
         "display_name": "MET",
         "module": "diagnostic wind field",
         "required": True,
     },
     "puff": {
-        "binary": "calpuff",
+        "binary": "puff",
         "suffix": ".x",
         "display_name": "PUFF",
         "module": "puff dispersion model",

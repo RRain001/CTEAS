@@ -60,9 +60,9 @@ find . -type f -name '*.x' -exec file {} \;
 ### Pure-Python postprocessing checks
 
 ```bash
-./.venv/bin/python -m engine.postprocessing.plot_daily_from_calpuff \
-  --conc-file project/current/run/puff/calpuff.con \
-  --calmet-inp project/current/run/met/calmet.inp \
+./.venv/bin/python -m engine.postprocessing.plot_daily_from_puff \
+  --conc-file project/current/run/puff/puff.con \
+  --met-inp project/current/run/met/met.inp \
   --x 500.0 --y 3540.436 \
   --csv-output project/current/run/puff/postprocessing/regression_point_timeseries.csv \
   --output project/current/run/puff/postprocessing/regression_daily_concentration.png
@@ -73,10 +73,10 @@ find . -type f -name '*.x' -exec file {} \;
   --month-column Month --direction-column deg --speed-column ms-1
 
 MPLBACKEND=Agg MPLCONFIGDIR=/private/tmp/cteas-mpl-snapshot \
-./.venv/bin/python -m engine.postprocessing.plot_calpuff_snapshot \
+./.venv/bin/python -m engine.postprocessing.plot_puff_snapshot \
   --mode snapshot \
-  --conc-file project/current/run/puff/calpuff.con \
-  --calmet-inp project/current/run/met/calmet.inp \
+  --conc-file project/current/run/puff/puff.con \
+  --met-inp project/current/run/met/met.inp \
   --out project/current/run/puff/postprocessing/regression_snapshot.png \
   --scale linear --vmin 0.0005 --vmax 0.05 --threshold 1.2e-3 \
   --terrain-file project/current/run/puff/qaterr.grd
@@ -180,8 +180,8 @@ MPLBACKEND=Agg MPLCONFIGDIR=/private/tmp/cteas-mpl-snapshot \
 - Actual `.x` execution must be tested on a supported Linux host:
   - `read62.x`
   - `smerge.x`
-  - `calmet.x`
-  - `calpuff.x`
+  - `met.x`
+  - `puff.x`
 - If local GUI launch is required on macOS, use a writable Matplotlib config/cache directory to reduce font-cache noise.
 - `engine.preprocess.smerge_surf_data.run_smerge_and_monitor` has an unrelated `subprocess` import bug that should be fixed separately if this module is expected to run.
 

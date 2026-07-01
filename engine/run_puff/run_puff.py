@@ -11,13 +11,23 @@ from datetime import datetime
 from pathlib import Path
 
 from engine.core.paths import BIN_ROOT, VENDOR_BIN_DIR, case_dir, resolve_executable
+from engine.core.runtime_names import (
+    MET_DAT,
+    PUFF_CON,
+    PUFF_DRY,
+    PUFF_INP,
+    PUFF_LST,
+    PUFF_RUNTIME_LOG,
+    PUFF_VIS,
+    PUFF_WET,
+)
 from engine.core.runner import run_binary
 
 from .common import case_paths, load_case_config_with_name, parse_research_time
 from .prepare_puff import render_puff_inp
 
 
-RUNTIME_LOG = "calpuff_runtime.log"
+RUNTIME_LOG = PUFF_RUNTIME_LOG
 
 
 def parse_inp_assignment(inp_text: str, key: str) -> str | None:
@@ -48,7 +58,7 @@ def find_patterns(text: str, patterns: list[str]) -> list[str]:
 def ensure_metdat(work_dir: Path, metdat: Path, met_dir: Path) -> None:
     if metdat.exists():
         return
-    fallback = met_dir / "calmet.dat"
+    fallback = met_dir / MET_DAT
     if not fallback.exists():
         return
     metdat.parent.mkdir(parents=True, exist_ok=True)
@@ -87,9 +97,9 @@ def sync_deliverable(case_name: str, source: Path, relative_dir: str) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Render and run CALPUFF for the current case")
+    ap = argparse.ArgumentParser(description="Render and run PUFF for the current case")
     ap.add_argument("--case", help="Case name under project/cases; defaults to project/current")
-    ap.add_argument("--skip-prepare", action="store_true", help="Skip input rendering and use existing calpuff.inp")
+    ap.add_argument("--skip-prepare", action="store_true", help="Skip input rendering and use existing puff.inp")
     args = ap.parse_args()
 
     case_name, config = load_case_config_with_name(args.case)
@@ -97,7 +107,7 @@ def main() -> int:
     work_dir = paths["run_puff_dir"]
     met_dir = paths["run_met_dir"]
     work_dir.mkdir(parents=True, exist_ok=True)
-    inp_path = work_dir / "calpuff.inp"
+    inp_path = work_dir / PUFF_INP
 
     if not args.skip_prepare:
         rendered, _summary = render_puff_inp(case_name, config, work_dir)
@@ -109,19 +119,22 @@ def main() -> int:
         print(f"[ERROR] {exc}")
         return 1
     if not inp_path.exists():
-        print(f"[ERROR] calpuff.inp not found: {inp_path}")
+        print(f"[ERROR] puff.inp not found: {inp_path}")
         return 1
 
     inp_text = inp_path.read_text(encoding="utf-8", errors="ignore")
-    metdat = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "METDAT"), "calmet.dat")
-    puflst = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "PUFLST"), "calpuff.lst")
-    condat = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "CONDAT"), "calpuff.con")
+    metdat = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "METDAT"), MET_DAT)
+    puflst = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "PUFLST"), PUFF_LST)
+    condat = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "CONDAT"), PUFF_CON)
+    drydat = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "DFDAT"), PUFF_DRY)
+    wetdat = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "WFDAT"), PUFF_WET)
+    visdat = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "VISDAT"), PUFF_VIS)
     runtime_log = work_dir / RUNTIME_LOG
 
     ensure_metdat(work_dir, metdat, met_dir)
     if not metdat.exists():
         print(f"[ERROR] METDAT not found: {metdat}")
-        print(f"[HINT] expected MET output at: {met_dir / 'calmet.dat'}")
+        print(f"[HINT] expected MET output at: {met_dir / MET_DAT}")
         return 1
     prepare_output_path(puflst)
     prepare_output_path(condat)
@@ -138,8 +151,8 @@ def main() -> int:
     print(f"[INFO] 浓度文件: {condat}")
     print(f"[INFO] 运行日志: {runtime_log}")
     print()
-    print("[INFO] 可通过 calpuff.lst 查询报错原因")
-    print("[INFO] 可通过 calpuff_runtime.log 查询实时进程")
+    print("[INFO] 可通过 puff.lst 查询报错原因")
+    print("[INFO] 可通过 puff_runtime.log 查询实时进程")
     print("[INFO] 计算中, 请耐心等待...")
 
     with runtime_log.open("w", encoding="utf-8") as logf:
@@ -155,6 +168,9 @@ def main() -> int:
 
     puflst = pick_existing_output(puflst)
     condat = pick_existing_output(condat)
+    drydat = pick_existing_output(drydat)
+    wetdat = pick_existing_output(wetdat)
+    visdat = pick_existing_output(visdat)
 
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
@@ -185,6 +201,9 @@ def main() -> int:
         sync_deliverable(case_name, puflst, "puff")
     if condat_exists:
         sync_deliverable(case_name, condat, "puff")
+    for optional_output in (drydat, wetdat, visdat):
+        if optional_output.exists():
+            sync_deliverable(case_name, optional_output, "puff")
 
     print(f"[CHECK] 运行记录生成: {puflst_exists}, 大小: {size_to_mbs(puflst_size)} Mbs")
     print(f"[CHECK] 浓度文件生成: {condat_exists}, 大小: {size_to_mbs(condat_size)} Mbs")

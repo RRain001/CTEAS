@@ -11,6 +11,7 @@ from typing import Any
 import yaml
 
 from engine.core.paths import TEMPLATE_FILES, TUTORIAL_ROOT, case_dir, case_yaml_path, current_case_name, engine_path
+from engine.core.runtime_names import MET_INP, PUFF_INP
 
 
 ROOT = engine_path("preprocess")
@@ -28,8 +29,8 @@ INP_TEMPLATES = [
     ("terrel", Path("geo") / "terrel" / "terrel.inp"),
     ("ctgproc", Path("geo") / "ctgproc" / "ctgproc.inp"),
     ("makegeo", Path("geo") / "makegeo" / "makegeo.inp"),
-    ("met", Path("run") / "met" / "calmet.inp"),
-    ("puff", Path("run") / "puff" / "calpuff.inp"),
+    ("met", Path("run") / "met" / MET_INP),
+    ("puff", Path("run") / "puff" / PUFF_INP),
     ("read62", Path("run") / "read62" / "read62.inp"),
     ("smerge", Path("run") / "smerge" / "smerge.inp"),
 ]

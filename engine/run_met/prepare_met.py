@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from engine.core.runtime_names import MET_DAT, MET_INP, MET_LST
+
 from .common import (
     TEMPLATE_INP,
     case_paths,
@@ -215,8 +217,8 @@ def render_met_inp(case_name: str, config: dict[str, Any], work_dir: Path) -> tu
     values = {
         "GEODAT": _rel_to(work_dir, geo_dat),
         "SRFDAT": _rel_to(work_dir, surf_dat),
-        "METLST": "calmet.lst",
-        "METDAT": "calmet.dat",
+        "METLST": MET_LST,
+        "METDAT": MET_DAT,
         "LCFILES": "T" if options.get("lcfiles", True) else "F",
         "NUSTA": str(len(upperair_files)),
         "NOWSTA": "0",
@@ -300,13 +302,13 @@ def render_met_inp(case_name: str, config: dict[str, Any], work_dir: Path) -> tu
 def main() -> int:
     ap = argparse.ArgumentParser(description="Render CALMET input file from current case metadata")
     ap.add_argument("--case", help="Case name under project/cases; defaults to project/current")
-    ap.add_argument("--output", help="Override output path; default project/current/run/calmet/calmet.inp")
+    ap.add_argument("--output", help="Override output path; default project/current/run/met/met.inp")
     args = ap.parse_args()
 
     case_name, config = load_case_config_with_name(args.case)
     work_dir = case_paths(config, case_name, required=["run_met_dir"])["run_met_dir"]
     work_dir.mkdir(parents=True, exist_ok=True)
-    output = Path(args.output).resolve() if args.output else (work_dir / "calmet.inp")
+    output = Path(args.output).resolve() if args.output else (work_dir / MET_INP)
 
     rendered, summary = render_met_inp(case_name, config, work_dir)
     output.write_text(rendered, encoding="utf-8")

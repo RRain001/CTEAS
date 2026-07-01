@@ -38,7 +38,7 @@
 - `project/cases/*/geo/`
 - `project/cases/*/met/`
 - 大型地形/土地利用数据目录 `calpuff_terrain_and_landuse_data/`
-- `docs/refactor_logs/removed_native_binaries_backup/`
+- `docs/refactor_logs/removed_native_binaries_backup/`（历史备份目录，现已删除）
 - `bin/linux-x86_64/*.x`
 
 ## Local Environment Maintenance
@@ -61,18 +61,18 @@
   - `project/cases/smoke5d_docker_test/deliverables/calmet`
   - `project/cases/smoke5d_docker_test/deliverables/calpuff`
 - 未清理：
-  - `project/cases/smoke5d_docker_test/runs/20260514_152231_calmet`
-  - `project/cases/smoke5d_docker_test/runs/20260514_152537_calpuff`
+  - `project/cases/smoke5d_docker_test/runs/20260514_152231_met`
+  - `project/cases/smoke5d_docker_test/runs/20260514_152537_puff`
 
 说明：
 
-- 上述 `runs/*_calmet` / `runs/*_calpuff` 属于历史运行记录目录
+- 上述 `runs/*_met` / `runs/*_puff` 属于历史运行记录目录
 - 它们同样位于 `project/cases/*/runs/` 忽略范围内
 
 ## Native Binary Decision
 
 - `bin/linux-x86_64/*.x` 体量差异很大。
-- 当前最大的是 `bin/linux-x86_64/calpuff.x`，约 `545M`。
+- 当前最大的是 `bin/linux-x86_64/puff.x`，约 `545M`。
 - 因此当前不建议把 `bin/linux-x86_64/*.x` 纳入普通 Git 跟踪。
 - 推荐只保留目录结构，二进制通过本地备份、发布包或源码重建恢复。
 - 如果后续确实需要跟踪，优先考虑 Git LFS。
@@ -103,4 +103,4 @@
 
 ## Git LFS Outlook
 
-- 由于 `calmet.x`、`terrel.x`、尤其 `calpuff.x` 体量很大，如果未来要推远程仓库，建议改用 Git LFS 或发布附件。
+- 由于 `met.x`、`terrel.x`、尤其 `puff.x` 体量很大，如果未来要推远程仓库，建议改用 Git LFS 或发布附件。

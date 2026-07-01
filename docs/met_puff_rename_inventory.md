@@ -2,29 +2,36 @@
 
 ## Scope
 
-本轮按 `plan.md` 完成了以下命名统一：
+本轮正式把项目自有运行文件族从 `calmet/calpuff` 收口到 `met/puff`：
 
-- Python 运行包：
-  - `engine/run_calmet/ -> engine/run_met/`
-  - `engine/run_calpuff/ -> engine/run_puff/`
-- Python 入口文件：
-  - `prepare_calmet.py -> prepare_met.py`
-  - `run_calmet.py -> run_met.py`
-  - `prepare_calpuff.py -> prepare_puff.py`
-  - `run_calpuff.py -> run_puff.py`
-- 逻辑 stage 名称：
-  - `calmet -> met`
-  - `calpuff -> puff`
-- case 配置键：
-  - `calmet:` -> `met:`
-  - `calpuff:` -> `puff:`
-  - `run_calmet_dir -> run_met_dir`
-  - `run_calpuff_dir -> run_puff_dir`
-- 运行目录：
-  - `run/calmet -> run/met`
-  - `run/calpuff -> run/puff`
-  - `deliverables/calmet -> deliverables/met`
-  - `deliverables/calpuff -> deliverables/puff`
+- 物理二进制：
+  - `calmet.x -> met.x`
+  - `calpuff.x -> puff.x`
+- 运行输入/输出文件：
+  - `calmet.inp -> met.inp`
+  - `calmet.lst -> met.lst`
+  - `calmet.dat -> met.dat`
+  - `calpuff.inp -> puff.inp`
+  - `calpuff.lst -> puff.lst`
+  - `calpuff.con -> puff.con`
+  - `calpuff.dry -> puff.dry`
+  - `calpuff.wet -> puff.wet`
+  - `calpuff.vis -> puff.vis`
+- 运行日志：
+  - `calmet_runtime.log -> met_runtime.log`
+  - `calpuff_runtime.log -> puff_runtime.log`
+- 项目后处理入口：
+  - `plot_calpuff_snapshot -> plot_puff_snapshot`
+  - `plot_calpuff_animation -> plot_puff_animation`
+  - `plot_calpuff_annual -> plot_puff_annual`
+  - `plot_calpuff_seasonal -> plot_puff_seasonal`
+  - `plot_daily_from_calpuff -> plot_daily_from_puff`
+- CLI 参数：
+  - 默认帮助文案改用 `--met-inp`
+  - 兼容别名 `--calmet-inp` 仅短期保留
+- 历史运行记录目录：
+  - `runs/*_calmet -> runs/*_met`
+  - `runs/*_calpuff -> runs/*_puff`
 
 ## Files Changed
 
@@ -62,17 +69,13 @@
 以下旧名保留是有意为之，不属于本轮遗漏：
 
 - `allowed_upstream_binary_name`
-  - `engine/native/registry.py` 中 `binary="calmet"` / `binary="calpuff"`
-  - `scripts/build_native_linux_x86_64.sh`
-  - `scripts/build_native_linux_arm64.sh`
-  - `scripts/test_native_backend.sh` 中 `met -> calmet`、`puff -> calpuff` 的物理映射
-  - 原因：本轮只改逻辑名，不重命名底层 `.x`
+  - `engine/vendor/src/CALMET_v6.5.0_L150223/*`
+  - `engine/vendor/src/CALPUFF_v7.2.1_L150618/*`
+  - 原因：这些是上游源码/脚本名称，不代表当前正式物理二进制名
 
 - `allowed_template_or_output_filename`
-  - `engine/templates/calmet.inp`
-  - `engine/templates/calpuff.inp`
-  - `run/met/calmet.inp`、`run/met/calmet.dat`、`run/puff/calpuff.inp`、`run/puff/calpuff.con` 这类文件名引用
-  - 原因：这些是上游控制文件/输出文件名接口，不是项目逻辑 stage 名
+  - `scripts/migrate_runtime_names_to_met_puff.py`
+  - 原因：这是唯一官方升级脚本，脚本内必须显式列出旧名到新名的替换表
 
 - `allowed_history_note`
   - `engine/run_met/log.md`
@@ -84,7 +87,7 @@
 - `allowed_binary_inventory_doc`
   - `docs/native_binaries.md`
   - `docs/native_binary_cleanup_report.md`
-  - 原因：文档记录的是实际物理二进制 `calmet.x` / `calpuff.x`
+  - 原因：文档可同时记录当前正式名 `met.x` / `puff.x` 与历史旧名 `calmet.x` / `calpuff.x`
 
 - `allowed_backward_alias`
   - `engine/orchestrator/cli.py` 中临时保留 `calmet -> met`、`calpuff -> puff`
@@ -92,43 +95,45 @@
 
 ## Remaining Actionable Matches
 
-- 当前没有发现需要继续修改的 `run_calmet` / `run_calpuff` 正式运行入口引用。
-- 当前没有发现 GUI stage 显示仍使用 `CALMET` / `CALPUFF` 的位置。
-- 当前没有发现 `case.yaml` 仍使用 `calmet` / `calpuff` 作为运行层配置键的活跃案例配置。
+- 活跃代码、活跃脚本、活跃文档中，不应再把 `calmet.*` / `calpuff.*` 当正式运行文件名使用。
+- 当前允许的活跃残留仅限：
+  - vendor 上游模型源码/批处理文件名
+  - 一次性迁移脚本中的旧名替换表
+  - 历史日志与 `docs/refactor_logs/*`
 
 ## Runtime Mapping Fix
 
 本轮继续完成了逻辑名和物理名的运行时收口：
 
 - `engine.native.registry.NATIVE_PROGRAMS`
-  - `met -> binary="calmet"`
-  - `puff -> binary="calpuff"`
+  - `met -> binary="met"`
+  - `puff -> binary="puff"`
 - `engine.core.platform_utils.get_binary_path()`
   - 现在会先查 registry，再解析到物理二进制路径
 - `scripts/check_native_binaries.py`
   - 现在明确输出：
-    - `met -> calmet.x OK`
-    - `puff -> calpuff.x OK`
+    - `met -> met.x OK`
+    - `puff -> puff.x OK`
 - 新增 `scripts/check_native_runner_mapping.py`
   - 用于直接验证：
-    - `met resolves to .../bin/linux-x86_64/calmet.x`
-    - `puff resolves to .../bin/linux-x86_64/calpuff.x`
+    - `met resolves to .../bin/linux-x86_64/met.x`
+    - `puff resolves to .../bin/linux-x86_64/puff.x`
 
 ## Runtime Path Fix
 
 本轮同时修正了运行期文件路径口径：
 
-- Docker 脚本已移除临时 workaround：
-  - 不再创建 `met.x -> calmet.x`
-  - 不再创建 `puff.x -> calpuff.x`
+- Docker 脚本已移除临时 workaround，且当前正式物理名已直接切换为：
+  - `bin/<platform>/met.x`
+  - `bin/<platform>/puff.x`
 - MET 正式运行目录与文件名：
   - 目录：`run/met/`
-  - 文件：`calmet.inp`、`calmet.lst`、`calmet.dat`
+  - 文件：`met.inp`、`met.lst`、`met.dat`
 - PUFF 正式运行目录与文件名：
   - 目录：`run/puff/`
-  - 文件：`calpuff.inp`、`calpuff.lst`、`calpuff.con`
+  - 文件：`puff.inp`、`puff.lst`、`puff.con`
 - PUFF 的 `METDAT` 正式口径：
-  - `../../deliverables/met/calmet.dat`
+  - `../../deliverables/met/met.dat`
 
 ## Verification Update
 
@@ -140,8 +145,8 @@
 
 说明：
 
-- `run_met` 已不再依赖 `met.x` 假名
-- `run_puff` 已不再依赖 `puff.x` 假名
+- `run_met` 现在直接依赖正式物理名 `met.x`
+- `run_puff` 现在直接依赖正式物理名 `puff.x`
 - `run/met` 和 `run/puff` 已直接生成上游原始文件名产物
 - `deliverables/met` 和 `deliverables/puff` 已同步得到新产物
 - 历史遗留的 `deliverables/calmet` / `deliverables/calpuff` 仍存在，但本轮运行链路已不再依赖它们

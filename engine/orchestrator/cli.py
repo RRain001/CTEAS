@@ -15,6 +15,7 @@ from typing import Any
 import yaml
 
 from engine.core.paths import case_dir, case_yaml_path, current_case_name, load_case_config, resolve_case_name
+from engine.core.runtime_names import MET_DAT, MET_LST, PUFF_CON, PUFF_DRY, PUFF_LST, PUFF_VIS, PUFF_WET
 from engine.validators.case_schema import CaseSchemaError, validate_case_config
 
 
@@ -72,14 +73,14 @@ def _stage_completion(case_root: Path, stage: str) -> bool:
             surface_ok = (case_root / "met" / "surface" / "final" / "surf.dat").exists()
         return bool(upper_ok and surface_ok)
     if stage == "met":
-        return (case_root / "run" / "met" / "calmet.dat").exists() and (case_root / "run" / "met" / "calmet.lst").exists()
+        return (case_root / "run" / "met" / MET_DAT).exists() and (case_root / "run" / "met" / MET_LST).exists()
     if stage == "upperair":
         return (case_root / "met" / "upperair" / "final" / "UP.DAT").exists()
     if stage == "surface":
         return (case_root / "met" / "surface" / "final" / "surf.dat").exists()
     if stage == "puff":
-        lst_ok = _existing_path([case_root / "run" / "puff" / "calpuff.lst", case_root / "run" / "puff" / "CALPUFF.LST"]) is not None
-        con_ok = _existing_path([case_root / "run" / "puff" / "calpuff.con", case_root / "run" / "puff" / "CALPUFF.CON"]) is not None
+        lst_ok = _existing_path([case_root / "run" / "puff" / PUFF_LST, case_root / "run" / "puff" / PUFF_LST.upper()]) is not None
+        con_ok = _existing_path([case_root / "run" / "puff" / PUFF_CON, case_root / "run" / "puff" / PUFF_CON.upper()]) is not None
         return bool(lst_ok and con_ok)
     raise ValueError(f"Unknown stage: {stage}")
 
@@ -113,20 +114,20 @@ def _ensure_stage_dependencies(case_root: Path, stage: str) -> None:
     if stage == "met" and not _stage_completion(case_root, "preprocess"):
         raise RuntimeError("met stage requires preprocess outputs (geo/makegeo/geo.dat)")
     if stage == "puff" and not _stage_completion(case_root, "met"):
-        raise RuntimeError("puff stage requires met outputs (run/met/calmet.dat, calmet.lst)")
+        raise RuntimeError("puff stage requires met outputs (run/met/met.dat, met.lst)")
 
 
 def _materialize_runtime_paths(case_root: Path, stage: str) -> None:
     stage = _normalize_stage_name(stage)
     if stage == "met":
-        paths = [case_root / "run" / "met" / "calmet.dat", case_root / "run" / "met" / "calmet.lst"]
+        paths = [case_root / "run" / "met" / MET_DAT, case_root / "run" / "met" / MET_LST]
     elif stage == "puff":
         paths = [
-            case_root / "run" / "puff" / "calpuff.con",
-            case_root / "run" / "puff" / "calpuff.lst",
-            case_root / "run" / "puff" / "calpuff.dry",
-            case_root / "run" / "puff" / "calpuff.wet",
-            case_root / "run" / "puff" / "calpuff.vis",
+            case_root / "run" / "puff" / PUFF_CON,
+            case_root / "run" / "puff" / PUFF_LST,
+            case_root / "run" / "puff" / PUFF_DRY,
+            case_root / "run" / "puff" / PUFF_WET,
+            case_root / "run" / "puff" / PUFF_VIS,
         ]
     else:
         return
@@ -140,44 +141,44 @@ def _deliverable_specs(case_root: Path) -> list[DeliverableSpec]:
     return [
         DeliverableSpec(
             name="met_dat",
-            source_candidates=[case_root / "run" / "met" / "calmet.dat"],
-            deliverable_rel=Path("met") / "calmet.dat",
-            link_back_rel=Path("run") / "met" / "calmet.dat",
+            source_candidates=[case_root / "run" / "met" / MET_DAT],
+            deliverable_rel=Path("met") / MET_DAT,
+            link_back_rel=Path("run") / "met" / MET_DAT,
             required=False,
         ),
         DeliverableSpec(
             name="met_lst",
-            source_candidates=[case_root / "run" / "met" / "calmet.lst"],
-            deliverable_rel=Path("met") / "calmet.lst",
-            link_back_rel=Path("run") / "met" / "calmet.lst",
+            source_candidates=[case_root / "run" / "met" / MET_LST],
+            deliverable_rel=Path("met") / MET_LST,
+            link_back_rel=Path("run") / "met" / MET_LST,
             required=False,
         ),
         DeliverableSpec(
             name="puff_con",
-            source_candidates=[case_root / "run" / "puff" / "calpuff.con", case_root / "run" / "puff" / "CALPUFF.CON"],
-            deliverable_rel=Path("puff") / "calpuff.con",
-            link_back_rel=Path("run") / "puff" / "calpuff.con",
+            source_candidates=[case_root / "run" / "puff" / PUFF_CON, case_root / "run" / "puff" / PUFF_CON.upper()],
+            deliverable_rel=Path("puff") / PUFF_CON,
+            link_back_rel=Path("run") / "puff" / PUFF_CON,
             required=False,
         ),
         DeliverableSpec(
             name="puff_dry",
-            source_candidates=[case_root / "run" / "puff" / "calpuff.dry", case_root / "run" / "puff" / "CALPUFF.DRY"],
-            deliverable_rel=Path("puff") / "calpuff.dry",
-            link_back_rel=Path("run") / "puff" / "calpuff.dry",
+            source_candidates=[case_root / "run" / "puff" / PUFF_DRY, case_root / "run" / "puff" / PUFF_DRY.upper()],
+            deliverable_rel=Path("puff") / PUFF_DRY,
+            link_back_rel=Path("run") / "puff" / PUFF_DRY,
             required=False,
         ),
         DeliverableSpec(
             name="puff_wet",
-            source_candidates=[case_root / "run" / "puff" / "calpuff.wet", case_root / "run" / "puff" / "CALPUFF.WET"],
-            deliverable_rel=Path("puff") / "calpuff.wet",
-            link_back_rel=Path("run") / "puff" / "calpuff.wet",
+            source_candidates=[case_root / "run" / "puff" / PUFF_WET, case_root / "run" / "puff" / PUFF_WET.upper()],
+            deliverable_rel=Path("puff") / PUFF_WET,
+            link_back_rel=Path("run") / "puff" / PUFF_WET,
             required=False,
         ),
         DeliverableSpec(
             name="puff_vis",
-            source_candidates=[case_root / "run" / "puff" / "calpuff.vis", case_root / "run" / "puff" / "CALPUFF.VIS"],
-            deliverable_rel=Path("puff") / "calpuff.vis",
-            link_back_rel=Path("run") / "puff" / "calpuff.vis",
+            source_candidates=[case_root / "run" / "puff" / PUFF_VIS, case_root / "run" / "puff" / PUFF_VIS.upper()],
+            deliverable_rel=Path("puff") / PUFF_VIS,
+            link_back_rel=Path("run") / "puff" / PUFF_VIS,
             required=False,
         ),
     ]

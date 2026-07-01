@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from engine.core.runtime_names import MET_DAT, PUFF_CON, PUFF_DRY, PUFF_INP, PUFF_LST, PUFF_VIS, PUFF_WET
+
 from engine.core.paths import case_dir
 from engine.preprocess.grid.center_location_to_utm import convert_lon_lat
 
@@ -287,9 +289,9 @@ def render_puff_inp(case_name: str, config: dict[str, Any], work_dir: Path) -> t
     grid = _parse_grid_kv(grid_dir / "grid.cmn")
 
     template_candidates = [
-        work_dir / "calpuff_7.0.inp",
+        work_dir / "puff_7.0.inp",
         PUFF_TEMPLATE_FALLBACK,
-        work_dir / "calpuff.inp",
+        work_dir / PUFF_INP,
     ]
     template_path = next((p for p in template_candidates if p.exists()), None)
     if template_path is None:
@@ -317,27 +319,28 @@ def render_puff_inp(case_name: str, config: dict[str, Any], work_dir: Path) -> t
     elif source_mode == "case_yaml":
         point_sources = _normalize_point_sources(puff_cfg, nspec, grid, grid_dir)
     else:
-        raise ValueError(f"Unsupported calpuff.options.source_mode: {source_mode}")
+        raise ValueError(f"Unsupported puff.options.source_mode: {source_mode}")
 
     if tpl_species and nspec != len(tpl_species):
         raise ValueError(
-            f"Invalid CALPUFF config: NSPEC={nspec} but template has {len(tpl_species)} CSPEC entries {tpl_species}. "
+            f"Invalid PUFF config: NSPEC={nspec} but template has {len(tpl_species)} CSPEC entries {tpl_species}. "
             "Please keep NSPEC consistent with template species, or edit template species blocks first."
         )
 
     if nspec == 1 and ndecay > 0:
         raise ValueError(
-            "Invalid CALPUFF config: NSPEC=1 with NDECAY>0. "
+            "Invalid PUFF config: NSPEC=1 with NDECAY>0. "
             "For H-3 decay, HE-3 must be included as child species, or set ndecay=0."
         )
 
-    metdat = case_dir(case_name) / "deliverables" / "met" / "calmet.dat"
+    metdat = case_dir(case_name) / "deliverables" / "met" / MET_DAT
     values = {
         "METDAT": _rel_to(work_dir, metdat),
-        "PUFLST": "calpuff.lst",
-        "CONDAT": "calpuff.con",
-        "DFDAT": "calpuff.dry",
-        "WFDAT": "calpuff.wet",
+        "PUFLST": PUFF_LST,
+        "CONDAT": PUFF_CON,
+        "DFDAT": PUFF_DRY,
+        "WFDAT": PUFF_WET,
+        "VISDAT": PUFF_VIS,
         "LCFILES": "T" if opts.get("lcfiles", True) else "F",
         "MOZ": str(int(opts.get("moz", 0))),
         "ABTZ": _xbtz_to_abtz(grid.get("XBTZ"), config.get("settings", {}).get("timezone", "UTC+0000")),
@@ -415,14 +418,14 @@ def render_puff_inp(case_name: str, config: dict[str, Any], work_dir: Path) -> t
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Render CALPUFF input for current case")
+    ap = argparse.ArgumentParser(description="Render PUFF input for current case")
     ap.add_argument("--case", help="Case name under project/cases; defaults to project/current")
     args = ap.parse_args()
 
     case_name, config = load_case_config_with_name(args.case)
     work_dir = case_paths(config, case_name, required=["run_puff_dir"])["run_puff_dir"]
     work_dir.mkdir(parents=True, exist_ok=True)
-    out_inp = work_dir / "calpuff.inp"
+    out_inp = work_dir / PUFF_INP
 
     rendered, summary = render_puff_inp(case_name, config, work_dir)
     out_inp.write_text(rendered, encoding="utf-8")

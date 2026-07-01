@@ -22,8 +22,8 @@ CLOUD.DAT     input    * CLDDAT=            *
 PRECIP.DAT    input    * PRCDAT=            *
 WT.DAT        input    * WTDAT=             *
 
-CALMET.LST    output   ! METLST=/workspace/data/2023HEFEI/CALMET.lst     !
-CALMET.DAT    output   ! METDAT=/workspace/data/2023HEFEI/CALMET.DAT      !
+CALMET.LST    output   ! METLST=met.lst !
+CALMET.DAT    output   ! METDAT=met.dat !
 PACOUT.DAT    output   * PACDAT=            *
 
 All file names will be converted to lower case if LCFILES = T

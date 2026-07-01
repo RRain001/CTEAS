@@ -24,12 +24,12 @@
   - `project/cases/smoke5d_docker_test/deliverables/calmet`
   - `project/cases/smoke5d_docker_test/deliverables/calpuff`
 - 未清理：
-  - `project/cases/smoke5d_docker_test/runs/20260514_152231_calmet`
-  - `project/cases/smoke5d_docker_test/runs/20260514_152537_calpuff`
+  - `project/cases/smoke5d_docker_test/runs/20260514_152231_met`
+  - `project/cases/smoke5d_docker_test/runs/20260514_152537_puff`
 
 说明：
 
-- 上述 `runs/*_calmet` / `runs/*_calpuff` 是历史运行记录目录，不在本轮允许删除范围内
+- 上述 `runs/*_met` / `runs/*_puff` 是历史运行记录目录，不在本轮允许删除范围内
 - 本轮没有重跑 `./scripts/test_linux_x86_64_runtime_in_docker.sh`
 - 下文 Docker runtime 结果仍对应前一轮已经通过的容器实跑
 
@@ -38,21 +38,21 @@
 本轮按最新 `plan.md` 完成了以下修复：
 
 1. 修复 native logical name 到 physical binary 的正式映射：
-   - `met -> calmet.x`
-   - `puff -> calpuff.x`
+   - `met -> met.x`
+   - `puff -> puff.x`
 2. 新增 runner 映射检查脚本：
    - `scripts/check_native_runner_mapping.py`
 3. 更新 `scripts/check_native_binaries.py` 输出，明确显示 logical -> physical 映射结果。
-4. 移除 Docker 测试脚本中的临时 symlink workaround：
-   - 不再创建 `bin/linux-x86_64/met.x`
-   - 不再创建 `bin/linux-x86_64/puff.x`
+4. 移除 Docker 测试脚本中的临时 symlink workaround，并直接使用正式物理名：
+   - `bin/linux-x86_64/met.x`
+   - `bin/linux-x86_64/puff.x`
 5. 修复 `run_met` 对旧坏链输出的处理：
-   - 不再沿用旧的 `run/met/calmet.lst -> ../../deliverables/calmet/calmet.lst`
-   - 运行时直接在 `run/met/` 生成 `calmet.lst` / `calmet.dat`
+   - 不再沿用旧的 `run/met/met.lst -> ../../deliverables/calmet/met.lst`
+   - 运行时直接在 `run/met/` 生成 `met.lst` / `met.dat`
 6. 修复 `prepare_puff` 的 `METDAT` 口径：
-   - `../../deliverables/met/calmet.dat`
+   - `../../deliverables/met/met.dat`
 7. 修复 `run_puff` 对旧坏链输出的处理：
-   - 运行时直接在 `run/puff/` 生成 `calpuff.con`
+   - 运行时直接在 `run/puff/` 生成 `puff.con`
    - 同步复制到 `deliverables/puff/`
 8. 修复 Docker 脚本对本地镜像存在性的探测方式：
    - 不再用 `docker image inspect`
@@ -119,30 +119,30 @@ PASS: MainWindow initialization did not switch current case
 - `makegeo -> makegeo.x OK`
 - `read62 -> read62.x OK`
 - `smerge -> smerge.x OK`
-- `met -> calmet.x OK`
-- `puff -> calpuff.x OK`
+- `met -> met.x OK`
+- `puff -> puff.x OK`
 
 ### runner mapping
 
 结果：
 
-- `met resolves to /Users/rain/CTEAS/tutorial/bin/linux-x86_64/calmet.x`
-- `puff resolves to /Users/rain/CTEAS/tutorial/bin/linux-x86_64/calpuff.x`
+- `met resolves to /Users/rain/CTEAS/tutorial/bin/linux-x86_64/met.x`
+- `puff resolves to /Users/rain/CTEAS/tutorial/bin/linux-x86_64/puff.x`
 - `runner mapping OK`
 
 ### prepare 输出核对
 
 `prepare_met` 结果：
 
-- `run/met/calmet.inp` 正常生成
+- `run/met/met.inp` 正常生成
 
 `prepare_puff` 结果：
 
-- `run/puff/calpuff.inp` 正常生成
+- `run/puff/puff.inp` 正常生成
 - `METDAT` 已渲染为：
 
 ```text
-../../deliverables/met/calmet.dat
+../../deliverables/met/met.dat
 ```
 
 ## Docker linux/amd64 runtime
@@ -160,8 +160,8 @@ PASS: MainWindow initialization did not switch current case
 
 Docker 脚本当前状态：
 
-- 已移除 `met.x` / `puff.x` symlink workaround
-- 运行过程中不再创建：
+- 当前已不再使用旧物理名 `calmet.x` / `calpuff.x`
+- 运行过程中直接调用：
   - `bin/linux-x86_64/met.x`
   - `bin/linux-x86_64/puff.x`
 
@@ -196,17 +196,17 @@ Docker 脚本当前状态：
 
 结果：
 
-- `run_met` 成功调用 `calmet.x`
-- `run/met/calmet.inp` 正常使用
-- `run/met/calmet.lst` 正常生成
-- `run/met/calmet.dat` 正常生成
+- `run_met` 成功调用 `met.x`
+- `run/met/met.inp` 正常使用
+- `run/met/met.lst` 正常生成
+- `run/met/met.dat` 正常生成
 
 运行期打印：
 
 ```text
 [INFO] 工作目录: /work/project/cases/smoke5d_docker_test/run/met
-[INFO] 风场数据: /work/project/cases/smoke5d_docker_test/run/met/calmet.dat
-[INFO] 运行记录: /work/project/cases/smoke5d_docker_test/run/met/calmet.lst
+[INFO] 风场数据: /work/project/cases/smoke5d_docker_test/run/met/met.dat
+[INFO] 运行记录: /work/project/cases/smoke5d_docker_test/run/met/met.lst
 ```
 
 检查结果：
@@ -223,19 +223,19 @@ Docker 脚本当前状态：
 
 结果：
 
-- `run_puff` 成功调用 `calpuff.x`
-- `calpuff.inp` 中 `METDAT` 已指向：
-  - `/work/project/cases/smoke5d_docker_test/deliverables/met/calmet.dat`
-- `run/puff/calpuff.lst` 正常生成
-- `run/puff/calpuff.con` 正常生成
+- `run_puff` 成功调用 `puff.x`
+- `puff.inp` 中 `METDAT` 已指向：
+  - `/work/project/cases/smoke5d_docker_test/deliverables/met/met.dat`
+- `run/puff/puff.lst` 正常生成
+- `run/puff/puff.con` 正常生成
 
 运行期打印：
 
 ```text
 [INFO] 工作目录: /work/project/cases/smoke5d_docker_test/run/puff
-[INFO] 气象数据: /work/project/cases/smoke5d_docker_test/deliverables/met/calmet.dat
-[INFO] 运行记录: /work/project/cases/smoke5d_docker_test/run/puff/calpuff.lst
-[INFO] 浓度文件: /work/project/cases/smoke5d_docker_test/run/puff/calpuff.con
+[INFO] 气象数据: /work/project/cases/smoke5d_docker_test/deliverables/met/met.dat
+[INFO] 运行记录: /work/project/cases/smoke5d_docker_test/run/puff/puff.lst
+[INFO] 浓度文件: /work/project/cases/smoke5d_docker_test/run/puff/puff.con
 ```
 
 检查结果：
@@ -251,10 +251,10 @@ Docker 脚本当前状态：
 ## 结果汇总
 
 1. Docker 脚本是否已移除 symlink workaround：是
-2. `met` 是否正确映射到 `calmet.x`：是
-3. `puff` 是否正确映射到 `calpuff.x`：是
-4. MET 是否生成/读取 `calmet.inp`、`calmet.lst`、`calmet.dat`：是
-5. PUFF 的 `METDAT` 是否指向 `../../deliverables/met/calmet.dat`：是
+2. `met` 是否正确映射到 `met.x`：是
+3. `puff` 是否正确映射到 `puff.x`：是
+4. MET 是否生成/读取 `met.inp`、`met.lst`、`met.dat`：是
+5. PUFF 的 `METDAT` 是否指向 `../../deliverables/met/met.dat`：是
 6. READ62/MET/PUFF 运行结果：全部通过
 7. 当前失败点如果还有：无
 
@@ -262,31 +262,31 @@ Docker 脚本当前状态：
 
 容器内最终确认存在：
 
-- `project/cases/smoke5d_docker_test/run/met/calmet.inp`
-- `project/cases/smoke5d_docker_test/run/met/calmet.lst`
-- `project/cases/smoke5d_docker_test/run/met/calmet.dat`
-- `project/cases/smoke5d_docker_test/run/puff/calpuff.inp`
-- `project/cases/smoke5d_docker_test/run/puff/calpuff.lst`
-- `project/cases/smoke5d_docker_test/run/puff/calpuff.con`
-- `project/cases/smoke5d_docker_test/deliverables/met/calmet.dat`
-- `project/cases/smoke5d_docker_test/deliverables/met/calmet.lst`
-- `project/cases/smoke5d_docker_test/deliverables/puff/calpuff.con`
-- `project/cases/smoke5d_docker_test/deliverables/puff/calpuff.lst`
+- `project/cases/smoke5d_docker_test/run/met/met.inp`
+- `project/cases/smoke5d_docker_test/run/met/met.lst`
+- `project/cases/smoke5d_docker_test/run/met/met.dat`
+- `project/cases/smoke5d_docker_test/run/puff/puff.inp`
+- `project/cases/smoke5d_docker_test/run/puff/puff.lst`
+- `project/cases/smoke5d_docker_test/run/puff/puff.con`
+- `project/cases/smoke5d_docker_test/deliverables/met/met.dat`
+- `project/cases/smoke5d_docker_test/deliverables/met/met.lst`
+- `project/cases/smoke5d_docker_test/deliverables/puff/puff.con`
+- `project/cases/smoke5d_docker_test/deliverables/puff/puff.lst`
 
 ## 残留说明
 
 当前运行链路已经不依赖旧命名目录：
 
-- MET 正式工作文件：`run/met/calmet.*`
-- PUFF 正式 `METDAT`：`deliverables/met/calmet.dat`
-- PUFF 正式输出：`run/puff/calpuff.*` 与 `deliverables/puff/calpuff.*`
+- MET 正式工作文件：`run/met/met.*`
+- PUFF 正式 `METDAT`：`deliverables/met/met.dat`
+- PUFF 正式输出：`run/puff/puff.*` 与 `deliverables/puff/puff.*`
 
 后续收尾轮已进一步清理：
 
 - `deliverables/calmet/`
 - `deliverables/calpuff/`
 
-因此当前保留的旧命名残留只剩不在本轮删除范围内的历史 `runs/*_calmet` / `runs/*_calpuff` 目录。
+因此当前保留的旧命名残留只剩不在本轮删除范围内的历史 `runs/*_met` / `runs/*_puff` 目录。
 
 ## 本轮修改文件
 

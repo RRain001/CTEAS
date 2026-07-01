@@ -3,10 +3,10 @@
 本目录提供 MET 第一阶段自动化脚本：
 
 - `prepare_met.py`
-  - 从 `project/current` 和 `case.yaml` 渲染 `project/current/run/met/calmet.inp`
+  - 从 `project/current` 和 `case.yaml` 渲染 `project/current/run/met/met.inp`
 - `run_met.py`
-  - 调用 `calmet.x`
-  - 写运行日志并检查 `calmet.lst` / `calmet.dat`
+  - 调用 `met.x`
+  - 写运行日志并检查 `met.lst` / `met.dat`
 
 ## 输入契约
 
@@ -19,7 +19,7 @@
 
 ## 运行
 
-仅生成 `calmet.inp`：
+仅生成 `met.inp`：
 
 ```bash
 python3 -m engine.run_met.prepare_met --case smoke5d
@@ -77,12 +77,12 @@ met:
 
 主要产物：
 
-- `calmet.inp`
-- `calmet.lst`
-- `calmet.dat`
-- `calmet_runtime.log`
+- `met.inp`
+- `met.lst`
+- `met.dat`
+- `met_runtime.log`
 
-## `calmet.inp` 迁移规则（必须改 / 可选改）
+## `met.inp` 迁移规则（必须改 / 可选改）
 
 以下规则来自对历史可运行样例与新样例的逐项对比，可作为跨案例迁移检查清单。
 

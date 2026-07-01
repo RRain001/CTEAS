@@ -11,13 +11,14 @@ from datetime import datetime
 from pathlib import Path
 
 from engine.core.paths import BIN_ROOT, VENDOR_BIN_DIR, case_dir, resolve_executable
+from engine.core.runtime_names import MET_DAT, MET_INP, MET_LST, MET_RUNTIME_LOG
 from engine.core.runner import run_binary
 
 from .common import case_paths, load_case_config_with_name, parse_research_time
 from .prepare_met import render_met_inp
 
 
-RUNTIME_LOG = "calmet_runtime.log"
+RUNTIME_LOG = MET_RUNTIME_LOG
 
 
 def parse_inp_assignment(inp_text: str, key: str) -> str | None:
@@ -69,13 +70,13 @@ def sync_deliverable(case_name: str, source: Path, relative_dir: str) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Render and run MET for the current case")
     ap.add_argument("--case", help="Case name under project/cases; defaults to project/current")
-    ap.add_argument("--skip-prepare", action="store_true", help="Skip input rendering and use existing calmet.inp")
+    ap.add_argument("--skip-prepare", action="store_true", help="Skip input rendering and use existing met.inp")
     args = ap.parse_args()
 
     case_name, config = load_case_config_with_name(args.case)
     work_dir = case_paths(config, case_name, required=["run_met_dir"])["run_met_dir"]
     work_dir.mkdir(parents=True, exist_ok=True)
-    inp_path = work_dir / "calmet.inp"
+    inp_path = work_dir / MET_INP
 
     if not args.skip_prepare:
         rendered, _summary = render_met_inp(case_name, config, work_dir)
@@ -87,12 +88,12 @@ def main() -> int:
         print(f"[ERROR] {exc}")
         return 1
     if not inp_path.exists():
-        print(f"[ERROR] calmet.inp not found: {inp_path}")
+        print(f"[ERROR] met.inp not found: {inp_path}")
         return 1
 
     inp_text = inp_path.read_text(encoding="utf-8", errors="ignore")
-    metlst = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "METLST"), "calmet.lst")
-    metdat = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "METDAT"), "calmet.dat")
+    metlst = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "METLST"), MET_LST)
+    metdat = resolve_from_workdir(work_dir, parse_inp_assignment(inp_text, "METDAT"), MET_DAT)
     runtime_log = work_dir / RUNTIME_LOG
     prepare_output_path(metlst)
     prepare_output_path(metdat)
@@ -107,8 +108,8 @@ def main() -> int:
     print(f"[INFO] 运行记录: {metlst}")
     print(f"[INFO] 运行日志: {runtime_log}")
     print()
-    print("[INFO] 可通过 calmet.lst 查询报错原因")
-    print("[INFO] 可通过 calmet_runtime.log 查询实时进程")
+    print("[INFO] 可通过 met.lst 查询报错原因")
+    print("[INFO] 可通过 met_runtime.log 查询实时进程")
     print("[INFO] 计算中, 请耐心等待...")
 
     with runtime_log.open("w", encoding="utf-8") as logf:

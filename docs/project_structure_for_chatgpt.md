@@ -91,9 +91,9 @@ Top-level directories found:
 - Preprocess code:
   - `engine/preprocess/`
 - CALMET code:
-  - `engine/run_calmet/`
+  - `engine/run_met/`
 - CALPUFF code:
-  - `engine/run_calpuff/`
+  - `engine/run_puff/`
 - Postprocessing code:
   - `engine/postprocessing/`
 - Case data:
@@ -293,21 +293,21 @@ python3 -m engine.run_puff.run_puff --case smoke5d --skip-prepare
 
 Main CLI modules:
 
-- `engine.postprocessing.plot_calpuff_snapshot`
-- `engine.postprocessing.plot_calpuff_animation`
-- `engine.postprocessing.plot_calpuff_annual`
-- `engine.postprocessing.plot_calpuff_seasonal`
+- `engine.postprocessing.plot_puff_snapshot`
+- `engine.postprocessing.plot_puff_animation`
+- `engine.postprocessing.plot_puff_annual`
+- `engine.postprocessing.plot_puff_seasonal`
 - `engine.postprocessing.extract_point_data`
-- `engine.postprocessing.plot_daily_from_calpuff`
+- `engine.postprocessing.plot_daily_from_puff`
 - `engine.postprocessing.plot_daily_concentration_fangda`
 - `engine.postprocessing.plot_windrose_style`
 
 Recommended commands:
 
 ```bash
-python3 -m engine.postprocessing.plot_calpuff_snapshot --mode snapshot --conc-file project/current/run/puff/calpuff.con --calmet-inp project/current/run/met/calmet.inp
-python3 -m engine.postprocessing.extract_point_data --conc-file project/current/run/puff/calpuff.con --calmet-inp project/current/run/met/calmet.inp --x 500.0 --y 3540.436
-python3 -m engine.postprocessing.plot_daily_from_calpuff --conc-file project/current/run/puff/calpuff.con --calmet-inp project/current/run/met/calmet.inp --x 500.0 --y 3540.436
+python3 -m engine.postprocessing.plot_puff_snapshot --mode snapshot --conc-file project/current/run/puff/puff.con --met-inp project/current/run/met/met.inp
+python3 -m engine.postprocessing.extract_point_data --conc-file project/current/run/puff/puff.con --met-inp project/current/run/met/met.inp --x 500.0 --y 3540.436
+python3 -m engine.postprocessing.plot_daily_from_puff --conc-file project/current/run/puff/puff.con --met-inp project/current/run/met/met.inp --x 500.0 --y 3540.436
 python3 -m engine.postprocessing.plot_windrose_style --csv project/current/met/surface/isd2smerge_ready/583210-99999.csv --month-column Month --direction-column deg --speed-column ms-1
 ```
 
@@ -453,17 +453,17 @@ All primary runtime binaries currently present under `bin/linux-x86_64/` are Lin
 | `bin/linux-x86_64/makegeo.x` | ELF 64-bit LSB executable, x86-64, dynamically linked, GNU/Linux 3.2.0 | yes | geo merge / MAKEGEO |
 | `bin/linux-x86_64/read62.x` | ELF 64-bit LSB executable, x86-64, dynamically linked, GNU/Linux 3.2.0 | yes | upperair conversion / READ62 |
 | `bin/linux-x86_64/smerge.x` | ELF 64-bit LSB executable, x86-64, dynamically linked, GNU/Linux 3.2.0 | yes | surface meteorology merge / SMERGE |
-| `bin/linux-x86_64/calmet.x` | ELF 64-bit LSB executable, x86-64, dynamically linked, GNU/Linux 3.2.0 | yes | diagnostic wind field / CALMET |
-| `bin/linux-x86_64/calpuff.x` | ELF 64-bit LSB executable, x86-64, dynamically linked, GNU/Linux 3.2.0 | yes | puff dispersion model / CALPUFF |
+| `bin/linux-x86_64/met.x` | ELF 64-bit LSB executable, x86-64, dynamically linked, GNU/Linux 3.2.0 | yes | diagnostic wind field / CALMET |
+| `bin/linux-x86_64/puff.x` | ELF 64-bit LSB executable, x86-64, dynamically linked, GNU/Linux 3.2.0 | yes | puff dispersion model / CALPUFF |
 
 ### Duplicate copies
 
-Equivalent ELF x86_64 copies also exist in:
+Historical cleanup records show that equivalent ELF x86_64 copies once existed in:
 
 - `engine/vendor/bin/*.x`
 - `engine/vendor/src/*/*.x`
 
-These appear to be legacy runtime or source-adjacent duplicates, not the normalized target layout.
+Those duplicates are no longer part of the active runtime layout; the normalized target layout is `bin/<platform>/`.
 
 ### Current architecture status
 
@@ -505,20 +505,20 @@ Current Python code resolves native executables mostly through unified helpers:
 - Python entry:
   - `engine.run_met.run_met`
 - Executable:
-  - `calmet.x`
+  - `met.x`
 - Resolution path:
-  - `resolve_executable("calmet")`
-  - `run_binary("calmet", ...)`
+  - `resolve_executable("met")`
+  - `run_binary("met", ...)`
 
 ### CALPUFF
 
 - Python entry:
   - `engine.run_puff.run_puff`
 - Executable:
-  - `calpuff.x`
+  - `puff.x`
 - Resolution path:
-  - `resolve_executable("calpuff")`
-  - `run_binary("calpuff", ...)`
+  - `resolve_executable("puff")`
+  - `run_binary("puff", ...)`
 
 ### TERREL / CTGPROC / MAKEGEO
 
@@ -642,8 +642,8 @@ Run-stage working files:
 
 - `project/current/run/read62/read62.inp`
 - `project/current/run/smerge/smerge.inp`
-- `project/current/run/met/calmet.inp`
-- `project/current/run/puff/calpuff.inp`
+- `project/current/run/met/met.inp`
+- `project/current/run/puff/puff.inp`
 
 ### Existing outputs already on disk
 
@@ -657,10 +657,10 @@ Preprocess outputs:
 
 Model outputs:
 
-- `project/current/deliverables/met/calmet.dat`
-- `project/current/deliverables/met/calmet.lst`
-- `project/current/deliverables/puff/calpuff.con`
-- `project/current/run/puff/calpuff.lst`
+- `project/current/deliverables/met/met.dat`
+- `project/current/deliverables/met/met.lst`
+- `project/current/deliverables/puff/puff.con`
+- `project/current/run/puff/puff.lst`
 
 Historical run records:
 
@@ -683,28 +683,28 @@ Likely overwrite targets:
 
 Likely overwrite targets:
 
-- `project/current/run/met/calmet.inp`
-- `project/current/run/met/calmet_runtime.log`
-- `project/current/run/met/calmet.dat`
-- `project/current/run/met/calmet.lst`
+- `project/current/run/met/met.inp`
+- `project/current/run/met/met_runtime.log`
+- `project/current/run/met/met.dat`
+- `project/current/run/met/met.lst`
 
 If run through orchestrator, deliverables may also be refreshed:
 
-- `project/current/deliverables/met/calmet.dat`
-- `project/current/deliverables/met/calmet.lst`
+- `project/current/deliverables/met/met.dat`
+- `project/current/deliverables/met/met.lst`
 
 #### CALPUFF
 
 Likely overwrite targets:
 
-- `project/current/run/puff/calpuff.inp`
-- `project/current/run/puff/calpuff_runtime.log`
-- `project/current/run/puff/calpuff.lst`
-- `project/current/run/puff/calpuff.con`
+- `project/current/run/puff/puff.inp`
+- `project/current/run/puff/puff_runtime.log`
+- `project/current/run/puff/puff.lst`
+- `project/current/run/puff/puff.con`
 
 If run through orchestrator, deliverables may also be refreshed:
 
-- `project/current/deliverables/puff/calpuff.con`
+- `project/current/deliverables/puff/puff.con`
 
 ## 9. Docker Testing Recommendations
 

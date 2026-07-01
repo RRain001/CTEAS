@@ -14,7 +14,7 @@ INPUT GROUP: 0 -- Input and Output File Names
 --------------
 Default Name  Type          File Name
 ------------  ----          ---------
-CALMET.DAT    output   ! METDAT=../calmet/calmet.dat      !
+CALMET.DAT    output   ! METDAT=../met/met.dat !
     or
 ISCMET.DAT    input    * ISCDAT =             *
     or
@@ -24,12 +24,12 @@ PROFILE.DAT   input    * PRFDAT =             *
 SURFACE.DAT   input    * SFCDAT =             *
 RESTARTB.DAT  input    * RSTARTB=             *
 --------------------------------------------------------------------------------
-CALPUFF.LST   output   ! PUFLST =calpuff.lst !
-CONC.DAT      output   ! CONDAT =calpuff.con !
-DFLX.DAT      output   * DFDAT  =             *
-WFLX.DAT      output   * WFDAT  =             *
+CALPUFF.LST   output   ! PUFLST =puff.lst !
+CONC.DAT      output   ! CONDAT =puff.con !
+DFLX.DAT      output   ! DFDAT  =puff.dry !
+WFLX.DAT      output   ! WFDAT  =puff.wet !
 
-VISB.DAT      output   * VISDAT =             *
+VISB.DAT      output   ! VISDAT =puff.vis !
 TK2D.DAT      output   * T2DDAT =             *
 RHO2D.DAT     output   * RHODAT =             *
 RESTARTE.DAT  output   * RSTARTE=             *

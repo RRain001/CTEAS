@@ -5,6 +5,7 @@ import shutil
 import math
 
 from engine.core.paths import CASES_ROOT, TEMPLATES_DIR, VENDOR_SRC_DIR
+from engine.core.runtime_names import MET_INP, PUFF_INP
 from engine.preprocess.grid.center_location_to_utm import convert_lon_lat
 
 
@@ -100,8 +101,8 @@ def main() -> int:
         "terrel.inp": case_dir / "geo" / "terrel" / "terrel.inp",
         "ctgproc.inp": case_dir / "geo" / "ctgproc" / "ctgproc.inp",
         "makegeo.inp": case_dir / "geo" / "makegeo" / "makegeo.inp",
-        "calmet.inp": case_dir / "run" / "met" / "calmet.inp",
-        "calpuff.inp": case_dir / "run" / "puff" / "calpuff.inp",
+        MET_INP: case_dir / "run" / "met" / MET_INP,
+        PUFF_INP: case_dir / "run" / "puff" / PUFF_INP,
         "read62.inp": case_dir / "run" / "read62" / "read62.inp",
         "smerge.inp": case_dir / "run" / "smerge" / "smerge.inp",
     }

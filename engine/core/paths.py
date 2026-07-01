@@ -7,6 +7,7 @@ import yaml
 
 from engine.core.case_manager import get_current_case_dir, get_current_case_name, set_current_case
 from engine.native.registry import NATIVE_PROGRAMS
+from engine.core.runtime_names import MET_TEMPLATE, PUFF_TEMPLATE
 
 from .platform_utils import (
     LINUX_ARM64,
@@ -44,10 +45,10 @@ TEMPLATE_FILES = {
     "terrel": TEMPLATES_DIR / "terrel.inp",
     "ctgproc": TEMPLATES_DIR / "ctgproc.inp",
     "makegeo": TEMPLATES_DIR / "makegeo.inp",
-    "met": TEMPLATES_DIR / "calmet.inp",
-    "puff": TEMPLATES_DIR / "calpuff.inp",
-    "calmet": TEMPLATES_DIR / "calmet.inp",
-    "calpuff": TEMPLATES_DIR / "calpuff.inp",
+    "met": TEMPLATES_DIR / MET_TEMPLATE,
+    "puff": TEMPLATES_DIR / PUFF_TEMPLATE,
+    "calmet": TEMPLATES_DIR / MET_TEMPLATE,
+    "calpuff": TEMPLATES_DIR / PUFF_TEMPLATE,
     "read62": TEMPLATES_DIR / "read62.inp",
     "smerge": TEMPLATES_DIR / "smerge.inp",
 }

@@ -3,14 +3,14 @@
 本目录提供 PUFF 串行自动化脚本：
 
 - `prepare_puff.py`
-  - 读取案例中的 `calpuff_7.0.inp` 模板（优先 `project/current/run/puff`）
-  - 自动写入 `METDAT` 为 `run/met/calmet.dat`
+  - 读取案例中的 `puff_7.0.inp` 模板（优先 `project/current/run/puff`）
+  - 自动写入 `METDAT` 为 `run/met/met.dat`
   - 保留模板中的源项配置（点源/面源等参数）
-  - 生成 `project/current/run/puff/calpuff.inp`
+  - 生成 `project/current/run/puff/puff.inp`
 - `run_puff.py`
-  - 调用 `calpuff.x`
-  - 自动检查并补齐 `METDAT`（若缺失则从 `run/met/calmet.dat` 复制）
-  - 写运行日志并检查 `calpuff.lst` / `calpuff.con`
+  - 调用 `puff.x`
+  - 自动检查并补齐 `METDAT`（若缺失则从 `run/met/met.dat` 复制）
+  - 写运行日志并检查 `puff.lst` / `puff.con`
 
 ## 配置入口（case.yaml）
 
@@ -64,7 +64,7 @@ puff:
 
 ## 运行
 
-仅生成 `calpuff.inp`：
+仅生成 `puff.inp`：
 
 ```bash
 python3 -m engine.run_puff.prepare_puff --case smoke5d
@@ -78,13 +78,13 @@ python3 -m engine.run_puff.run_puff --case smoke5d
 
 ## 串行流程记录
 
-1. 前处理与 MET 完成，确保 `project/current/run/met/calmet.dat` 已存在。
+1. 前处理与 MET 完成，确保 `project/current/run/met/met.dat` 已存在。
 2. 编辑 `project/current/case.yaml` 中 `puff.options` 和 `puff.point_sources`。
-3. 执行 `prepare_puff.py`，生成 `project/current/run/puff/calpuff.inp`。
-4. 执行 `run_puff.py` 串行计算，输出 `calpuff.con`、`calpuff.dry`、`calpuff.wet`、`calpuff.vis` 等结果。
-5. 检查 `run/puff/calpuff.lst` 与 `run/puff/calpuff_runtime.log`。
+3. 执行 `prepare_puff.py`，生成 `project/current/run/puff/puff.inp`。
+4. 执行 `run_puff.py` 串行计算，输出 `puff.con`、`puff.dry`、`puff.wet`、`puff.vis` 等结果。
+5. 检查 `run/puff/puff.lst` 与 `run/puff/puff_runtime.log`。
 
-## `calpuff.inp` 必改参数清单
+## `puff.inp` 必改参数清单
 
 跨案例迁移时，以下参数应视为必改项：
 
@@ -101,5 +101,5 @@ python3 -m engine.run_puff.run_puff --case smoke5d
 建议同步检查：
 
 - `NSPEC` 与所有源项排放数组长度一致
-- `METDAT` 的网格/层数与 `calpuff.inp` 网格定义一致
+- `METDAT` 的网格/层数与 `puff.inp` 网格定义一致
 - `METRUN=1` 时，起止时间字段通常不参与控制，避免误以为已按时间截断

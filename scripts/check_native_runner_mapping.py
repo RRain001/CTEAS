@@ -24,8 +24,8 @@ def main() -> int:
     platform = args.platform
 
     expected = {
-        "met": BIN_ROOT / platform / "calmet.x",
-        "puff": BIN_ROOT / platform / "calpuff.x",
+        "met": BIN_ROOT / platform / "met.x",
+        "puff": BIN_ROOT / platform / "puff.x",
     }
 
     failures: list[str] = []
