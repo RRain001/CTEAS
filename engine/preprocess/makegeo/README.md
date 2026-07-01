@@ -4,7 +4,7 @@
 
 ## 脚本
 
-- [auto_config_makegeo.py](/home/ai/code/calpuff/tutorial/data/makegeo/auto_config_makegeo.py)
+- [auto_config_makegeo.py](./engine/preprocess/makegeo/auto_config_makegeo.py)
 
 ## 为什么需要自动配置
 
@@ -12,7 +12,7 @@
 
 ## 自动修改项（必要项）
 
-脚本会从 `/home/ai/code/calpuff/tutorial/data/grid/grid.cmn` 同步：
+脚本会从 `./project/current/grid/grid.cmn` 同步：
 
 - `PMAP`
 - `IUTMZN`
@@ -26,8 +26,8 @@
 
 脚本还会更新输入文件路径：
 
-- `LUDAT` -> `/home/ai/code/calpuff/tutorial/data/ctgproc/lu.dat`
-- `TERRDAT` -> `/home/ai/code/calpuff/tutorial/data/terrel/terrel.dat`
+- `LUDAT` -> `./project/current/geo/ctgproc/lu.dat`
+- `TERRDAT` -> `./project/current/geo/terrel/terrel.dat`
 
 并保留备份文件：
 
@@ -38,7 +38,7 @@
 脚本最后会执行：
 
 ```bash
-/home/ai/code/calpuff/tutorial/MAKEGEO_V3.2_L110401/makegeo.x makegeo.inp
+./bin/<platform>/makegeo.x makegeo.inp
 ```
 
 工作目录为 `makegeo.inp` 所在目录。
@@ -46,7 +46,7 @@
 ## 运行方式
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/makegeo/auto_config_makegeo.py
+python3 -m engine.preprocess.makegeo.auto_config_makegeo
 ```
 
 ## 常用参数
@@ -54,19 +54,19 @@ python3 /home/ai/code/calpuff/tutorial/data/makegeo/auto_config_makegeo.py
 只预览，不写文件、不运行：
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/makegeo/auto_config_makegeo.py --dry-run
+python3 -m engine.preprocess.makegeo.auto_config_makegeo --dry-run
 ```
 
 只改 `makegeo.inp`，不执行 MAKEGEO：
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/makegeo/auto_config_makegeo.py --no-run-makegeo
+python3 -m engine.preprocess.makegeo.auto_config_makegeo --no-run-makegeo
 ```
 
 覆盖输入文件：
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/makegeo/auto_config_makegeo.py \
+python3 -m engine.preprocess.makegeo.auto_config_makegeo \
   --ludat /path/to/lu.dat \
   --terrdat /path/to/terrel.dat
 ```
@@ -75,9 +75,9 @@ python3 /home/ai/code/calpuff/tutorial/data/makegeo/auto_config_makegeo.py \
 
 已成功生成以下输出文件：
 
-- `/home/ai/code/calpuff/tutorial/data/makegeo/geo.dat`
-- `/home/ai/code/calpuff/tutorial/data/makegeo/makegeo.lst`
-- `/home/ai/code/calpuff/tutorial/data/makegeo/qaluse.grd`
-- `/home/ai/code/calpuff/tutorial/data/makegeo/qaterr.grd`
+- `./project/current/geo/makegeo/geo.dat`
+- `./project/current/geo/makegeo/makegeo.lst`
+- `./project/current/geo/makegeo/qaluse.grd`
+- `./project/current/geo/makegeo/qaterr.grd`
 
 `makegeo.lst` 中未发现 `ERROR`，且网格信息为 `NX=40, NY=40`，与当前配置一致。

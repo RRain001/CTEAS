@@ -50,6 +50,11 @@ def _existing_path(candidates: list[Path]) -> Path | None:
     return None
 
 
+def _upperair_complete(case_root: Path) -> bool:
+    final_dir = case_root / "met" / "upperair" / "final"
+    return any(final_dir.glob("up_*.dat"))
+
+
 def _stage_completion(case_root: Path, stage: str) -> bool:
     stage = _normalize_stage_name(stage)
     if stage == "preprocess":
@@ -68,14 +73,14 @@ def _stage_completion(case_root: Path, stage: str) -> bool:
         upper_ok = True
         surface_ok = True
         if run_upperair:
-            upper_ok = (case_root / "met" / "upperair" / "final" / "UP.DAT").exists()
+            upper_ok = _upperair_complete(case_root)
         if run_surface:
             surface_ok = (case_root / "met" / "surface" / "final" / "surf.dat").exists()
         return bool(upper_ok and surface_ok)
     if stage == "met":
         return (case_root / "run" / "met" / MET_DAT).exists() and (case_root / "run" / "met" / MET_LST).exists()
     if stage == "upperair":
-        return (case_root / "met" / "upperair" / "final" / "UP.DAT").exists()
+        return _upperair_complete(case_root)
     if stage == "surface":
         return (case_root / "met" / "surface" / "final" / "surf.dat").exists()
     if stage == "puff":

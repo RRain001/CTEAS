@@ -4,7 +4,7 @@
 
 项目根目录：
 
-- `/Users/rain/CTEAS/tutorial`
+- `.`
 
 测试脚本：
 
@@ -108,7 +108,7 @@ PASS: MainWindow initialization did not switch current case
 结果：
 
 - `current_case_name: smoke5d`
-- `current_case_dir: /Users/rain/CTEAS/tutorial/project/cases/smoke5d`
+- `current_case_dir: ./project/cases/smoke5d`
 
 ### native binary presence
 
@@ -126,8 +126,8 @@ PASS: MainWindow initialization did not switch current case
 
 结果：
 
-- `met resolves to /Users/rain/CTEAS/tutorial/bin/linux-x86_64/met.x`
-- `puff resolves to /Users/rain/CTEAS/tutorial/bin/linux-x86_64/puff.x`
+- `met resolves to ./bin/linux-x86_64/met.x`
+- `puff resolves to ./bin/linux-x86_64/puff.x`
 - `runner mapping OK`
 
 ### prepare 输出核对

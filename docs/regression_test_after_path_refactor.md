@@ -3,7 +3,7 @@
 Date: 2026-06-26
 
 Scope:
-- Workspace: `/Users/rain/CTEAS/tutorial`
+- Workspace: `.`
 - Current case: `project/current -> cases/smoke5d`
 - Excluded: `win_puff`
 
@@ -23,7 +23,6 @@ Scope:
 ### Static checks
 
 ```bash
-cd /Users/rain/CTEAS/tutorial
 python3 -m compileall engine
 python3 -m py_compile engine/pyside_gui.py engine/gui/workbench.py
 python3 -m py_compile engine/preprocess/bin/run_preprocessing_pipeline.py
@@ -87,11 +86,11 @@ MPLBACKEND=Agg MPLCONFIGDIR=/private/tmp/cteas-mpl-snapshot \
 - `engine` compileall passed.
 - `engine/pyside_gui.py` and `engine/gui/workbench.py` py_compile passed.
 - `engine/core/paths.py` self-check passed:
-  - `TUTORIAL_ROOT=/Users/rain/CTEAS/tutorial`
-  - `ENGINE_DIR=/Users/rain/CTEAS/tutorial/engine`
-  - `PROJECT_DIR=/Users/rain/CTEAS/tutorial/project`
-  - `CURRENT_PROJECT_DIR=/Users/rain/CTEAS/tutorial/project/current`
-  - `BIN_DIR=/Users/rain/CTEAS/tutorial/bin`
+  - `TUTORIAL_ROOT=.`
+  - `ENGINE_DIR=./engine`
+  - `PROJECT_DIR=./project`
+  - `CURRENT_PROJECT_DIR=./project/current`
+  - `BIN_DIR=./bin`
   - All required executables resolved to `bin/linux-x86_64/*.x`
 - `project/current` integrity check passed:
   - current case points to `smoke5d`

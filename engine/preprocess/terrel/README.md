@@ -17,10 +17,10 @@
 
 ## 默认输入输出路径
 
-- 网格文件：`/home/ai/code/calpuff/tutorial/data/grid/grid.cmn`
-- 控制文件：`/home/ai/code/calpuff/tutorial/data/terrel/terrel.inp`
-- 地形目录：`/home/ai/calpuff_terrain_and_landuse_data/china_srtm`
-- TERREL 程序：`/home/ai/code/calpuff/tutorial/TERREL_v7.0.0_L141010/terrel.x`
+- 网格文件：`./project/current/grid/grid.cmn`
+- 控制文件：`./project/current/geo/terrel/terrel.inp`
+- 地形目录：`./calpuff_terrain_and_landuse_data/china_srtm`
+- TERREL 程序：`./bin/<platform>/terrel.x`
 
 输出文件（TERREL 运行后）：
 
@@ -34,7 +34,7 @@
 ## 一键运行
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/terrel/auto_select_srtm_to_terrel.py
+python3 -m engine.preprocess.terrel.auto_select_srtm_to_terrel
 ```
 
 ---
@@ -44,19 +44,19 @@ python3 /home/ai/code/calpuff/tutorial/data/terrel/auto_select_srtm_to_terrel.py
 仅预览，不写文件、不运行 TERREL：
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/terrel/auto_select_srtm_to_terrel.py --dry-run
+python3 -m engine.preprocess.terrel.auto_select_srtm_to_terrel --dry-run
 ```
 
 只更新 `terrel.inp`，不执行 `terrel.x`：
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/terrel/auto_select_srtm_to_terrel.py --no-run-terrel
+python3 -m engine.preprocess.terrel.auto_select_srtm_to_terrel --no-run-terrel
 ```
 
 指定非默认路径：
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/terrel/auto_select_srtm_to_terrel.py \
+python3 -m engine.preprocess.terrel.auto_select_srtm_to_terrel \
   --grid /path/to/grid.cmn \
   --terrel /path/to/terrel.inp \
   --srtm-dir /path/to/tif_dir \
@@ -66,7 +66,7 @@ python3 /home/ai/code/calpuff/tutorial/data/terrel/auto_select_srtm_to_terrel.py
 如果网格是 `IGRID=2`（`XREF/YREF` 为 cell(1,1)中心）：
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/terrel/auto_select_srtm_to_terrel.py --igrid 2
+python3 -m engine.preprocess.terrel.auto_select_srtm_to_terrel --igrid 2
 ```
 
 ---

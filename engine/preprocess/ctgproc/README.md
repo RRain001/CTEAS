@@ -4,19 +4,19 @@
 
 ## 脚本
 
-- [auto_select_landuse_to_ctgproc.py](/home/ai/code/calpuff/tutorial/data/ctgproc/auto_select_landuse_to_ctgproc.py)
+- [auto_select_landuse_to_ctgproc.py](./engine/preprocess/ctgproc/auto_select_landuse_to_ctgproc.py)
 
 ## 固定土地利用数据
 
 当前默认直接使用单一土地利用文件（亚洲/欧洲覆盖）：
 
-- `/home/ai/calpuff_terrain_and_landuse_data/eurasia_asia_landuse/eausgs2_0la.img`
+- `./calpuff_terrain_and_landuse_data/eurasia_asia_landuse/eausgs2_0la.img`
 
 不再做目录扫描和自动挑选多文件。
 
 ## 会自动同步/修改的内容
 
-脚本会从 `/home/ai/code/calpuff/tutorial/data/grid/grid.cmn` 同步以下参数到 `ctgproc.inp`：
+脚本会从 `./project/current/grid/grid.cmn` 同步以下参数到 `ctgproc.inp`：
 
 - `PMAP`
 - `IUTMZN`
@@ -50,10 +50,10 @@
 在任意目录执行：
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/ctgproc/auto_select_landuse_to_ctgproc.py
+python3 -m engine.preprocess.ctgproc.auto_select_landuse_to_ctgproc
 ```
 
-执行后会在 `/home/ai/code/calpuff/tutorial/data/ctgproc/` 生成或更新：
+执行后会在 `./project/current/geo/ctgproc/` 生成或更新：
 
 - `ctgproc.inp`
 - `ctgproc.lst`
@@ -64,18 +64,18 @@ python3 /home/ai/code/calpuff/tutorial/data/ctgproc/auto_select_landuse_to_ctgpr
 只预览修改，不写文件、不运行 CTGPROC：
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/ctgproc/auto_select_landuse_to_ctgproc.py --dry-run
+python3 -m engine.preprocess.ctgproc.auto_select_landuse_to_ctgproc --dry-run
 ```
 
 只更新 `ctgproc.inp`，不执行 `ctgproc.x`：
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/ctgproc/auto_select_landuse_to_ctgproc.py --no-run-ctgproc
+python3 -m engine.preprocess.ctgproc.auto_select_landuse_to_ctgproc --no-run-ctgproc
 ```
 
 覆盖默认土地利用文件：
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/ctgproc/auto_select_landuse_to_ctgproc.py \
+python3 -m engine.preprocess.ctgproc.auto_select_landuse_to_ctgproc \
   --landuse-file /path/to/your_landuse.img
 ```

@@ -3,13 +3,13 @@
 Date: 2026-06-26
 
 Scope:
-- Project root: `/Users/rain/CTEAS/tutorial`
+- Project root: `.`
 - This report is read-only and based on on-disk inspection only
 - `win_puff` is out of scope
 
 ## 1. Basic Environment Information
 
-Commands requested by `plan.md` were executed from `/Users/rain/CTEAS/tutorial`.
+Commands requested by `plan.md` were executed from `.`.
 
 ### Host
 
@@ -165,7 +165,6 @@ It prefers project `.venv/bin/python`, otherwise falls back to system `python3`.
 Recommended commands:
 
 ```bash
-cd /Users/rain/CTEAS/tutorial
 ./calpuff-cli desktopgui
 ```
 
@@ -324,7 +323,7 @@ TUTORIAL_ROOT = Path(__file__).resolve().parents[2]
 Given the current on-disk layout, this resolves to:
 
 ```text
-/Users/rain/CTEAS/tutorial
+.
 ```
 
 ### `project/current`
@@ -339,7 +338,7 @@ CURRENT_PROJECT_DIR = PROJECT_DIR / "current"
 So the path object points to:
 
 ```text
-/Users/rain/CTEAS/tutorial/project/current
+./project/current
 ```
 
 At runtime this is a symlink to:
@@ -365,7 +364,7 @@ LINUX_X86_64 = "linux-x86_64"
 So Linux x86_64 native binaries resolve under:
 
 ```text
-/Users/rain/CTEAS/tutorial/bin/linux-x86_64
+./bin/linux-x86_64
 ```
 
 ### Current platform detection

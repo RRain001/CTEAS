@@ -2,7 +2,7 @@
 
 ## 依赖文件
 
-- 已有：`/Users/rain/CTEAS/tutorial/requirements.txt`
+- 已有：`./requirements.txt`
 - 未发现：
   - `environment.yml`
   - `pyproject.toml`
@@ -11,7 +11,6 @@
 ## 推荐创建方式
 
 ```bash
-cd /Users/rain/CTEAS/tutorial
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
@@ -21,7 +20,6 @@ pip install -r requirements.txt
 或直接使用仓库脚本：
 
 ```bash
-cd /Users/rain/CTEAS/tutorial
 ./bootstrap_venv.sh
 ```
 

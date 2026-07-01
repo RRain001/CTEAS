@@ -8,10 +8,10 @@ try:
     from PySide6.QtWidgets import QApplication
 except ModuleNotFoundError as exc:  # pragma: no cover
     if exc.name == "PySide6":
-        install_cmd = f"cd {TUTORIAL_ROOT} && .venv/bin/pip install PySide6"
+        install_cmd = ".venv/bin/pip install PySide6"
         print(
             "Desktop GUI requires PySide6.\n"
-            "Install it first:\n"
+            f"Run this from the repo root ({TUTORIAL_ROOT}):\n"
             f"  {install_cmd}",
             file=sys.stderr,
         )

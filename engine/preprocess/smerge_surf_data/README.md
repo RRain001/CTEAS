@@ -24,43 +24,43 @@
 
 ## 一键串行执行（推荐）
 ```bash
-.venv/bin/python /home/ai/code/calpuff/tutorial/data_pre_processing/smerge_surf_data/run_isd_surface_pipeline.py
+.venv/bin/python -m engine.preprocess.smerge_surf_data.run_isd_surface_pipeline
 ```
 
 跳过下载（仅重做后处理）：
 ```bash
-.venv/bin/python /home/ai/code/calpuff/tutorial/data_pre_processing/smerge_surf_data/run_isd_surface_pipeline.py --skip-download
+.venv/bin/python -m engine.preprocess.smerge_surf_data.run_isd_surface_pipeline --skip-download
 ```
 
 ## 分步执行
 1) 下载（按研究时段自动推导年份）：
 ```bash
-.venv/bin/python /home/ai/code/calpuff/tutorial/data_pre_processing/smerge_surf_data/download_isd_by_grid.py
+.venv/bin/python -m engine.preprocess.smerge_surf_data.download_isd_by_grid
 ```
 
 2) 转换并插值：
 ```bash
-.venv/bin/python /home/ai/code/calpuff/tutorial/data_pre_processing/smerge_surf_data/isd_to_smerge_and_fill.py
+.venv/bin/python -m engine.preprocess.smerge_surf_data.isd_to_smerge_and_fill
 ```
 
 3) 清洗并跨年合并（每站一个连续文件）：
 ```bash
-.venv/bin/python /home/ai/code/calpuff/tutorial/data_pre_processing/smerge_surf_data/clean_merge_filled_by_research_time.py
+.venv/bin/python -m engine.preprocess.smerge_surf_data.clean_merge_filled_by_research_time
 ```
 
 4) 转换为 SMERGE ready：
 ```bash
-.venv/bin/python /home/ai/code/calpuff/tutorial/data_pre_processing/smerge_surf_data/convert_cleaned_to_smerge_ready.py
+.venv/bin/python -m engine.preprocess.smerge_surf_data.convert_cleaned_to_smerge_ready
 ```
 
 5) 更新 SMERGE 输入段：
 ```bash
-.venv/bin/python /home/ai/code/calpuff/tutorial/data_pre_processing/smerge_surf_data/generate_smerge_input_sections.py
+.venv/bin/python -m engine.preprocess.smerge_surf_data.generate_smerge_input_sections
 ```
 
 6) 运行 SMERGE 并发布最终地面数据：
 ```bash
-.venv/bin/python /home/ai/code/calpuff/tutorial/data_pre_processing/smerge_surf_data/run_smerge_and_monitor.py
+.venv/bin/python -m engine.preprocess.smerge_surf_data.run_smerge_and_monitor
 ```
 
 ## 备注

@@ -11,7 +11,7 @@
 ## 运行方式
 
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data/grid/configure_grid_cmn.py
+python3 -m engine.preprocess.grid.configure_grid_cmn
 ```
 
 ## 交互输入顺序
@@ -59,5 +59,5 @@ python3 /home/ai/code/calpuff/tutorial/data/grid/configure_grid_cmn.py
 
 并落盘修改：
 
-- `/home/ai/code/calpuff/tutorial/data/grid/center_location`
-- `/home/ai/code/calpuff/tutorial/data/grid/grid.cmn`
+- `./project/current/grid/center_location`
+- `./project/current/grid/grid.cmn`

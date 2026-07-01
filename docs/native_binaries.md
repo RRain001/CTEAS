@@ -14,4 +14,4 @@
 
 - 本轮未发现 `source_missing` 的 `.x` 文件。
 - `engine/vendor/src/*/*.x` 与 `engine/vendor/bin/*.x` 为历史重复分发副本，活跃运行面已切换到 `bin/<platform>/met.x`、`puff.x` 等正式命名。
-- 7 个上游源码目录的重编译经验、典型坑点和当前验证边界，见 [docs/vendor_src_rebuild_notes.md](/Users/rain/CTEAS/tutorial/docs/vendor_src_rebuild_notes.md)。
+- 7 个上游源码目录的重编译经验、典型坑点和当前验证边界，见 [docs/vendor_src_rebuild_notes.md](./docs/vendor_src_rebuild_notes.md)。

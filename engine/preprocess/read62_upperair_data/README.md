@@ -16,7 +16,7 @@
 
 ## 一键串行脚本（推荐）
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data_pre_processing/read62_upperair_data/run_upperair_pipeline.py
+python3 -m engine.preprocess.read62_upperair_data.run_upperair_pipeline
 ```
 
 常用参数：
@@ -26,8 +26,8 @@ python3 /home/ai/code/calpuff/tutorial/data_pre_processing/read62_upperair_data/
 
 示例：
 ```bash
-python3 /home/ai/code/calpuff/tutorial/data_pre_processing/read62_upperair_data/run_upperair_pipeline.py --pstop 500
-python3 /home/ai/code/calpuff/tutorial/data_pre_processing/read62_upperair_data/run_upperair_pipeline.py --skip-download --pstop 500
+python3 -m engine.preprocess.read62_upperair_data.run_upperair_pipeline --pstop 500
+python3 -m engine.preprocess.read62_upperair_data.run_upperair_pipeline --skip-download --pstop 500
 ```
 
 ## 新增非交互参数

@@ -4,7 +4,7 @@
 
 Dockerfile：
 
-- `/Users/rain/CTEAS/tutorial/docker/fortran/Dockerfile`
+- `./docker/fortran/Dockerfile`
 
 基础镜像：
 
@@ -20,24 +20,22 @@ Dockerfile：
 ## 构建 Linux x86_64
 
 ```bash
-cd /Users/rain/CTEAS/tutorial
 ./scripts/build_native_linux_x86_64.sh
 ```
 
 产物输出到：
 
-- `/Users/rain/CTEAS/tutorial/bin/linux-x86_64/`
+- `./bin/linux-x86_64/`
 
 ## 构建 Linux ARM64
 
 ```bash
-cd /Users/rain/CTEAS/tutorial
 ./scripts/build_native_linux_arm64.sh
 ```
 
 产物输出到：
 
-- `/Users/rain/CTEAS/tutorial/bin/linux-arm64/`
+- `./bin/linux-arm64/`
 
 说明：
 

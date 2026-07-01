@@ -1,14 +1,14 @@
-# CTEAS Tutorial Project Inventory
+# CTEAS Project Inventory
 
 ## 当前项目入口
 
-- CLI 总入口：`/Users/rain/CTEAS/tutorial/calpuff-cli`
-- 编排入口：`/Users/rain/CTEAS/tutorial/engine/orchestrator/cli.py`
-- GUI 入口：`/Users/rain/CTEAS/tutorial/engine/pyside_gui.py`
+- CLI 总入口：`./calpuff-cli`
+- 编排入口：`./engine/orchestrator/cli.py`
+- GUI 入口：`./engine/pyside_gui.py`
 - GUI 主模块：
-  - `/Users/rain/CTEAS/tutorial/engine/gui/app.py`
-  - `/Users/rain/CTEAS/tutorial/engine/gui/workbench.py`
-- 已废弃入口：`/Users/rain/CTEAS/tutorial/engine/gui/__main__.py`
+  - `./engine/gui/app.py`
+  - `./engine/gui/workbench.py`
+- 已废弃入口：`./engine/gui/__main__.py`
   - 当前只提示 Web GUI 已移除。
 
 ## 项目结构
@@ -30,20 +30,20 @@
 
 ### Python 入口脚本
 
-- `/Users/rain/CTEAS/tutorial/calpuff-cli`
-- `/Users/rain/CTEAS/tutorial/engine/pyside_gui.py`
-- `/Users/rain/CTEAS/tutorial/engine/orchestrator/cli.py`
+- `./calpuff-cli`
+- `./engine/pyside_gui.py`
+- `./engine/orchestrator/cli.py`
 
 ### GUI 主脚本
 
-- `/Users/rain/CTEAS/tutorial/engine/gui/app.py`
-- `/Users/rain/CTEAS/tutorial/engine/gui/workbench.py`
+- `./engine/gui/app.py`
+- `./engine/gui/workbench.py`
 
 ### YAML / JSON / INI
 
 - YAML
-  - `/Users/rain/CTEAS/tutorial/engine/config/case.schema.yaml`
-  - `/Users/rain/CTEAS/tutorial/project/cases/*/case.yaml`
+  - `./engine/config/case.schema.yaml`
+  - `./project/cases/*/case.yaml`
 - JSON
   - 未发现项目级运行状态 JSON；当前 case 选择依赖 `project/current` 软链接
 - INI
@@ -51,8 +51,8 @@
 
 ### shell 脚本
 
-- `/Users/rain/CTEAS/tutorial/bootstrap_venv.sh`
-- `/Users/rain/CTEAS/tutorial/calpuff-cli`
+- `./bootstrap_venv.sh`
+- `./calpuff-cli`
 
 ### native 源码
 
@@ -63,7 +63,7 @@
 
 ### 依赖文件
 
-- 已有：`/Users/rain/CTEAS/tutorial/requirements.txt`
+- 已有：`./requirements.txt`
 - 未发现：
   - `environment.yml`
   - `pyproject.toml`
@@ -72,13 +72,13 @@
 ### 数据文件和示例工程
 
 - 示例 case：
-  - `/Users/rain/CTEAS/tutorial/project/cases/test`
-  - `/Users/rain/CTEAS/tutorial/project/cases/test2`
-  - `/Users/rain/CTEAS/tutorial/project/cases/123`
+  - `./project/cases/test`
+  - `./project/cases/test2`
+  - `./project/cases/123`
 - 地形数据：
-  - `/Users/rain/CTEAS/tutorial/calpuff_terrain_and_landuse_data/china_srtm`
+  - `./calpuff_terrain_and_landuse_data/china_srtm`
 - 土地利用数据：
-  - `/Users/rain/CTEAS/tutorial/calpuff_terrain_and_landuse_data/eurasia_asia_landuse/eausgs2_0la.img`
+  - `./calpuff_terrain_and_landuse_data/eurasia_asia_landuse/eausgs2_0la.img`
 
 ## 当前 Python 依赖来源
 
@@ -93,12 +93,12 @@
 
 ## 当前 `.x` 文件位置
 
-- 旧运行目录：`/Users/rain/CTEAS/tutorial/engine/vendor/bin/*.x`
-- 源码目录自带副本：`/Users/rain/CTEAS/tutorial/engine/vendor/src/*/*.x`
+- 旧运行目录：`./engine/vendor/bin/*.x`
+- 源码目录自带副本：`./engine/vendor/src/*/*.x`
 - 本轮新增统一目录：
-  - `/Users/rain/CTEAS/tutorial/bin/linux-x86_64/`
-  - `/Users/rain/CTEAS/tutorial/bin/linux-arm64/`
-  - `/Users/rain/CTEAS/tutorial/bin/windows-x86_64/`
+  - `./bin/linux-x86_64/`
+  - `./bin/linux-arm64/`
+  - `./bin/windows-x86_64/`
 
 ## `.x` 对应功能推测
 
@@ -112,7 +112,7 @@
 
 ## 是否存在源码可重新编译
 
-存在，源码位于 `/Users/rain/CTEAS/tutorial/engine/vendor/src/`。
+存在，源码位于 `./engine/vendor/src/`。
 
 ## 当前路径是否写死
 

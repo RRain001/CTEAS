@@ -5,7 +5,7 @@
 - macOS
 - Docker Desktop
 - Clash 代理
-- 项目目录：`/Users/rain/CTEAS/tutorial`
+- 项目目录：`.`
 
 ## A. 用户本机设置
 
@@ -37,7 +37,6 @@ host.docker.internal:7897
 ## C. 诊断命令
 
 ```bash
-cd /Users/rain/CTEAS/tutorial
 PROXY_PORT=7897 bash scripts/docker_network_diagnose.sh
 ```
 
@@ -61,14 +60,12 @@ PROXY_PORT=7897 bash scripts/docker_network_diagnose.sh
 不启用代理：
 
 ```bash
-cd /Users/rain/CTEAS/tutorial
 ./scripts/test_linux_x86_64_runtime_in_docker.sh
 ```
 
 启用代理：
 
 ```bash
-cd /Users/rain/CTEAS/tutorial
 USE_DOCKER_PROXY=1 PROXY_PORT=7897 ./scripts/test_linux_x86_64_runtime_in_docker.sh
 ```
 
