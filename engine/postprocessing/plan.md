@@ -26,7 +26,7 @@ project/cases/<case>/runs/<timestamp>_post_<job>/
 
 ## 实现规则
 
-- 后处理脚本默认路径必须基于 `tutorial` 或显式传入的当前 case 路径，不再把脚本目录作为默认输出位置。
+- 后处理脚本默认路径必须基于仓库根目录或显式传入的当前 case 路径，不再把脚本目录作为默认输出位置。
 - GUI 调用空间图、动画、点位提取、日浓度曲线时显式传入：
   - `--conc-file <case>/run/puff/puff.con`
   - `--met-inp <case>/run/met/met.inp`

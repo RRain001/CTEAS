@@ -129,12 +129,38 @@ def parse_lcfiles_setting(ctgproc_path: pathlib.Path) -> bool:
 
 
 def ensure_lowercase_visible(path: pathlib.Path) -> pathlib.Path:
-    """Ensure lower-cased path is readable by creating a parent-dir symlink if needed."""
+    """Ensure a lower-cased view of a path is reachable on case-sensitive filesystems."""
+    path = path.resolve()
     lowered = pathlib.Path(str(path).lower())
     if lowered.exists():
         return lowered
-    if path.exists() and lowered.parent != path.parent and not lowered.parent.exists():
-        lowered.parent.symlink_to(path.parent)
+    if not path.exists() or lowered == path:
+        return path
+
+    try:
+        path.relative_to(TUTORIAL_ROOT)
+        return path
+    except ValueError:
+        pass
+
+    actual_parts = path.parts
+    lowered_parts = lowered.parts
+    actual_cursor = pathlib.Path(actual_parts[0])
+    lowered_cursor = pathlib.Path(lowered_parts[0])
+
+    # Create the first missing lower-case alias at each differing path segment.
+    for actual_part, lowered_part in zip(actual_parts[1:-1], lowered_parts[1:-1]):
+        actual_cursor /= actual_part
+        lowered_cursor /= lowered_part
+        if lowered_cursor.exists() or actual_part == lowered_part:
+            continue
+        if not lowered_cursor.parent.exists():
+            continue
+        try:
+            lowered_cursor.symlink_to(actual_cursor)
+        except OSError:
+            return path
+
     if lowered.exists():
         return lowered
     return path

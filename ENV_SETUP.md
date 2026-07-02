@@ -1,53 +1,62 @@
-# Environment Setup (CALPUFF tutorial)
+# Environment Setup
 
-## Why missing modules happens
+## Repo Root
 
-Your old environments at:
-
-- `/home/ai/code/.venv`
-- `/home/ai/code/.venv_isd`
-
-were incomplete (no `pip`, no `ensurepip`), so dependency installation was not reliable.
-
-## Standard workflow for this project
-
-From your tutorial directory (for example `/home/ai/tutorial`):
+In the current remote migration context, the canonical repository root is:
 
 ```bash
+/home/lhy/CTEAS
+```
+
+Commands below should be run from the repository root. If the repo is checked
+out elsewhere, use the same commands from that local root without hardcoding
+the path.
+
+## Preferred Setup
+
+`bootstrap_venv.sh` is the preferred environment setup entrypoint.
+
+Requirements:
+
+- Python `>= 3.11`
+- `uv` preferred when available
+- standard `python -m venv` + `pip` fallback when `uv` is not available
+
+```bash
+cd /home/lhy/CTEAS
 ./bootstrap_venv.sh
 ```
 
-Then run with the unified CLI:
+## Supported Overrides
+
+`bootstrap_venv.sh` supports these environment variables:
+
+- `PYTHON_BIN`: explicit Python executable for `venv` creation or version checks
+- `UV_PYTHON`: Python version or interpreter hint passed to `uv venv`
+- `PIP_INDEX`: overrides the default package index
+
+Examples:
 
 ```bash
-.venv/bin/python -m engine.orchestrator.cli run --case test --stage all
-# or
-./calpuff-cli run --case test --stage all
+PYTHON_BIN=python3.11 ./bootstrap_venv.sh
+UV_PYTHON=3.11 ./bootstrap_venv.sh
+PIP_INDEX=https://pypi.org/simple ./bootstrap_venv.sh
 ```
 
-Preprocess is now non-interactive and case-driven. Configure these fields in
-`project/cases/<case>/case.yaml` before running:
+## Behavior Notes
 
-- `preprocess.grid`
-- `preprocess.research_time`
-- `preprocess.pipeline`
-- `preprocess.upperair`
-- `preprocess.surface`
+- If an existing `.venv` uses Python `< 3.11`, the script stops with an error
+  instead of silently reusing it.
+- When `uv` is available, the script prefers `uv venv` / `uv pip`.
+- When `uv` is not available, the script falls back to `python -m venv`,
+  `ensurepip` if needed, and `pip install -r requirements.txt`.
 
-Local GUI (desktop):
+## Run Commands
 
 ```bash
+./calpuff-cli run --case test --stage all
 ./calpuff-cli desktopgui
 ```
 
-## Migration to another computer
-
-1. Copy the whole `tutorial` folder.
-2. On the new machine, install `python3` (and `uv` recommended).
-3. In the copied folder, run:
-
-```bash
-./bootstrap_venv.sh
-```
-
-Do not copy `.venv` across machines. Recreate it from `requirements.txt`.
+Do not copy `.venv` across machines. Recreate it from `requirements.txt` or by
+rerunning `./bootstrap_venv.sh` on the target machine.

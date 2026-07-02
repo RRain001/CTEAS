@@ -1,6 +1,6 @@
 # Path Inventory
 
-Scope: Python, YAML, shell, TOML, and INI files under the tutorial project.
+Scope: Python, YAML, shell, TOML, and INI files under the CTEAS project.
 
 Scan command used:
 

@@ -52,22 +52,8 @@ tmp/
 # Runtime native binaries are required locally but not tracked in normal Git history.
 bin/linux-x86_64/*.x
 
-# Project runtime outputs
-project/cases/*/run/
-project/cases/*/runs/
-project/cases/*/deliverables/
-project/cases/*/logs/
-project/cases/*/tmp/
-project/current
-project/cases/smoke5d_docker_test/
-
-# Large or downloaded meteorological raw data
-project/cases/*/met/**/raw/
-project/cases/*/met/**/isd_raw/
-project/cases/*/met/**/download/
-project/cases/*/met/**/downloads/
-project/cases/*/met/
-project/cases/*/geo/
+# Project data and runtime outputs
+project/
 
 # Common model outputs
 *.lst
@@ -85,15 +71,6 @@ project/cases/*/geo/
 
 # Local git history backups created during reset
 .git.backup_*/
-
-# Keep minimal smoke case metadata
-!project/cases/smoke5d/
-project/cases/smoke5d/*
-!project/cases/smoke5d/case.yaml
-!project/cases/smoke5d/grid/
-!project/cases/smoke5d/grid/center_location
-!project/cases/smoke5d/grid/grid.cmn
-!project/cases/smoke5d/grid/research_time
 
 # Native binary backup logs
 docs/refactor_logs/removed_native_binaries_backup/

@@ -2,7 +2,7 @@
 
 ## Current Git State
 
-- `tutorial/` 已经是 Git 仓库。
+- 当前 `CTEAS/` 仓库根目录已经是 Git 仓库。
 - 当前工作区不是干净状态，存在大量既有修改与未跟踪文件。
 - 本轮不会回退这些既有修改。
 
@@ -22,21 +22,13 @@
 - `plan.md`
 - `.gitignore`
 - `.gitattributes`
-- `project/current_case.yaml`
 
 ## Ignore In Git
 
 通过 `.gitignore` 忽略：
 
+- `project/` 整体
 - `.venv/`、`.venv-docker/`、`__pycache__/`
-- `project/current`
-- `project/cases/*/run/`
-- `project/cases/*/runs/`
-- `project/cases/*/deliverables/`
-- `project/cases/*/logs/`
-- `project/cases/smoke5d_docker_test/`
-- `project/cases/*/geo/`
-- `project/cases/*/met/`
 - 大型地形/土地利用数据目录 `calpuff_terrain_and_landuse_data/`
 - `docs/refactor_logs/removed_native_binaries_backup/`（历史备份目录，现已删除）
 - `bin/linux-x86_64/*.x`
@@ -79,26 +71,14 @@
 
 ## Case Data Decision
 
-`project/cases/smoke5d` 含有必要配置，也含有大量中间结果和气象文件。
+当前决定：
 
-当前建议：
-
-- 可以纳入：
-  - `project/cases/smoke5d/case.yaml`
-  - `project/cases/smoke5d/grid/`
-- 暂不纳入，需人工确认：
-  - `project/cases/smoke5d/geo/` 中哪些小型模板输入必须保留
-  - `project/cases/smoke5d/met/` 中哪些最小气象样例必须保留
-- 明确不纳入：
-  - `project/cases/*/run/`
-  - `project/cases/*/runs/`
-  - `project/cases/*/deliverables/`
-  - `project/cases/*/logs/`
+- `project/` 下内容整体不纳入 Git
+- case 配置、网格、下载数据、中间结果、交付物和当前案例指针均保留为本地工作区内容
+- 需要长期保留的测试或验收结论，转写到 `docs/` 中，而不是依赖提交 `project/` 目录
 
 ## Files Requiring Manual Confirmation
 
-- `project/cases/smoke5d/geo/` 下哪些 `.dat/.grd` 是最小测试必需输入。
-- `project/cases/smoke5d/met/` 下哪些 CSV/upperair 文件需要保留为最小 smoke case。
 - `bin/linux-x86_64/*.x` 是否需要 Git LFS。
 
 ## Git LFS Outlook

@@ -9,9 +9,10 @@ import sys
 from pathlib import Path
 from collections import defaultdict
 
-from engine.core.paths import current_project_path
+from engine.core.paths import current_project_path, engine_path
 
 MISSING_NUM = 9999
+SCRIPT_DIR = engine_path("preprocess", "smerge_surf_data")
 BASE_DIR = current_project_path("met", "surface")
 INPUT_DIR = BASE_DIR / "isd_raw"
 OUTPUT_DIR = BASE_DIR / "isd2smerge_and_fill"

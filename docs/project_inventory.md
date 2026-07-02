@@ -4,12 +4,12 @@
 
 - CLI 总入口：`./calpuff-cli`
 - 编排入口：`./engine/orchestrator/cli.py`
-- GUI 入口：`./engine/pyside_gui.py`
+- 桌面 GUI 入口：`./engine/pyside_gui.py`
 - GUI 主模块：
   - `./engine/gui/app.py`
   - `./engine/gui/workbench.py`
 - 已废弃入口：`./engine/gui/__main__.py`
-  - 当前只提示 Web GUI 已移除。
+  - 当前只提示旧 Web GUI / Streamlit GUI 入口已移除。
 
 ## 项目结构
 
@@ -119,9 +119,15 @@
 仍存在两类问题：
 
 - 代码里若干关键脚本直接写死 `engine/vendor/bin/*.x`
-- README 和历史日志中残留 `/home/ai/...`、旧 Linux 工作目录
+- 历史日志、重构快照或未收敛的旧文档中仍可能保留旧路径示例
 
 本轮已新增统一平台解析模块，逐步把 native 路径改为通过 `engine/core/platform_utils.py` 和 `engine/core/runner.py` 获取。
+
+当前活动用户文档正在收敛到：
+
+- 从仓库根目录执行命令
+- 当前远程迁移上下文以 `/home/lhy/CTEAS` 作为规范根目录示例
+- 仅保留 PySide6 桌面 GUI 作为受支持 GUI 入口
 
 ## 当前平台相关风险
 
