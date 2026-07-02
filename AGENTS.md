@@ -6,29 +6,32 @@ This project is CTEAS, a tritium environmental assessment software package.
 
 It contains:
 
-- Python GUI and business logic.
-- YAML-based project/configuration files.
-- Native compiled executables with `.x` suffix.
-- Fortran/C/C++ source files used to build some native executables.
-- Docker-based Linux native binary build workflow.
-- Platform-specific binary directories for Linux x86_64, Linux ARM64, and later Windows x86_64.
+- Python application code, including the retained PySide6 desktop GUI
+- YAML-based case and configuration files
+- Native compiled executables with `.x` suffix
+- Fortran/C/C++ source files for part of the native toolchain
+- Docker-based native binary rebuild workflow
+- Platform-specific binary directories under `bin/<platform>/`
 
-The project was originally developed on Linux x86_64. Existing `.x` files are platform-specific and must not be assumed to work on Linux ARM64 or Windows.
+The project was originally developed for Linux x86_64. Existing `.x` files are platform-specific and must not be assumed to work on Linux ARM64 or Windows.
 
-## Current development goal
+## Current project state
 
-The current goal is not to rewrite the whole software.
+The current goal is to keep the migrated project runnable and maintainable, not to rewrite it.
 
-The current goal is to:
+Current known state:
 
-1. Inventory the existing project.
-2. Identify all `.x` native binaries.
-3. Map `.x` binaries to their source files where possible.
-4. Rebuild Python virtual environment dependencies.
-5. Add Docker-based build scripts for Linux x86_64 and Linux ARM64 native binaries.
-6. Organize platform-specific binaries under `bin/<platform>/`.
-7. Decouple GUI code from hard-coded native executable paths.
-8. Keep the existing GUI behavior stable.
+1. Ubuntu / Linux x86_64 migration has been validated for a cold-start small case.
+2. The end-to-end path from terrain preprocessing to meteorology and puff modeling has been run successfully on Ubuntu.
+3. Runtime now expects platform-specific native binaries under `bin/<platform>/`.
+4. Docker is retained as a rebuild path for native binaries, but Docker is not required for normal runtime on the validated Ubuntu host.
+5. The supported GUI is the PySide6 desktop GUI. Legacy `webgui` and `streamlitgui` entrypoints are removed and should not be treated as supported.
+
+Reference docs:
+
+- `docs/ubuntu_migration_acceptance.md`
+- `docs/docker_build.md`
+- `docs/git_tracking_plan.md`
 
 ## Supported platforms
 
@@ -38,9 +41,48 @@ Primary target platforms:
 - `linux-arm64`
 - `windows-x86_64` later
 
+Current validation status:
+
+- `linux-x86_64`: runtime validated on Ubuntu
+- `linux-arm64`: build/rebuild work may proceed, but runtime acceptance is not yet established
+- `windows-x86_64`: future work
+
 Do not work on macOS packaging or macOS-specific logic unless explicitly requested.
 
 Do not work on Windows ARM64.
+
+## Environment and execution expectations
+
+- Preferred environment bootstrap entry is `./bootstrap_venv.sh`.
+- Minimum supported Python version is `3.11`.
+- `uv` is preferred when available, with fallback to standard `venv` / `pip`.
+- Existing `.venv` environments using Python `< 3.11` should be treated as invalid and rebuilt, not silently reused.
+- `PYTHON_BIN`, `UV_PYTHON`, and `PIP_INDEX` are supported environment overrides for setup.
+
+## Git tracking policy
+
+Track in Git:
+
+- `engine/`
+- `scripts/`
+- `docs/`
+- `docker/`
+- `calpuff-cli`
+- `requirements*.txt`
+- `pyproject.toml`
+- `AGENTS.md`
+- `plan.md`
+- `.gitignore`
+- `.gitattributes`
+
+Do not track in Git:
+
+- `project/` case workspace content
+- `.venv/` and other local virtual environments
+- large downloaded terrain / landuse datasets
+- native binaries such as `bin/linux-x86_64/*.x`
+
+If long-term test or migration evidence matters, record it in `docs/` rather than committing `project/` data.
 
 ## Platform-specific binary layout
 
@@ -56,3 +98,11 @@ bin/
 
   windows-x86_64/
     *.exe
+```
+
+## Working rules
+
+- Prefer keeping existing GUI and workflow behavior stable.
+- Do not assume a native binary can be regenerated unless its source and build path have been identified.
+- Do not assume local case data in `project/` is reproducible or suitable for Git tracking.
+- When updating migration or environment behavior, keep docs and scripts aligned in the same round when practical.
