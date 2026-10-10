@@ -57,6 +57,7 @@ def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--reference",required=True,type=Path)
     ap.add_argument("--cpp",required=True,type=Path)
+    ap.add_argument("--cpp-geo",type=Path,help="independently produced no-snow GEO.DAT v2.1")
     ap.add_argument("--report",required=True,type=Path)
     a=ap.parse_args()
     original=parse_geo(a.reference)
@@ -83,6 +84,17 @@ def main():
                        "rmse":math.sqrt(sum(e*e for e in abs_errors)/2500),
                        "predeclared_tolerance":tol,
                        "bad_cells":len(bad),"bad_first_20":bad[:20]}
+    written_metrics={}
+    if a.cpp_geo:
+        generated=parse_geo(a.cpp_geo)
+        for name,_,_ in FIELD_SPECS:
+            errors=[abs(x-y) for x,y in zip(original[name],generated[name])]
+            # Both files are already formatted at the same declared FORTRAN
+            # precision, so this is intentionally an exact displayed-value gate.
+            wrong=sum(e>0.0 for e in errors)
+            bad_total+=wrong
+            written_metrics[name]={"compared_cells":2500,"displayed_value_mismatch_count":wrong,
+                                   "max_abs_error":max(errors)}
     result={"status":"PASS_SCOPED" if bad_total==0 else "FAIL",
             "model":"Original MAKEGEO v3.2 L110401 no-snow 100m Hefei",
             "original_geo_sha256":sha(a.reference),
@@ -90,6 +102,8 @@ def main():
             "grid":"50x50 @ 100m UTM 50N WGS84",
             "float_field_count":7*2500,"category_field_count":2500,
             "failures":bad_total,"metrics":metrics,
+            "cpp_geo_sha256":sha(a.cpp_geo) if a.cpp_geo else None,
+            "writer_exact_formatted_value_gate":written_metrics,
             "limits":"Only original input LU.DAT + TERREL.DAT; integrated modern upstream not verified"}
     a.report.parent.mkdir(parents=True,exist_ok=True)
     a.report.write_text(json.dumps(result,indent=2)+"\n")
