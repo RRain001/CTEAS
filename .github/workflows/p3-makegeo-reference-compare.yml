@@ -1,0 +1,30 @@
+name: P3 MAKEGEO independent reference and C++20 comparison
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/**'
+      - '.github/workflows/p3-makegeo-reference-compare.yml'
+      - 'docs/reconstruction_cpp/**'
+jobs:
+  compare:
+    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Original and C++ compilers
+        run: sudo apt-get update && sudo apt-get install -y gfortran libgdal-dev
+      - name: Isolated original P1/P2 capture
+        run: python3 native_cpp/reference/capture_p1_p2.py --output /tmp/p3-compare
+      - name: Isolated original P3 MAKEGEO capture
+        run: python3 native_cpp/reference/capture_p3_makegeo.py --output /tmp/p3-compare
+      - name: Archive immutable original outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p3-makegeo-original-reference
+          path: /tmp/p3-compare
+          retention-days: 7
+          if-no-files-found: warn
