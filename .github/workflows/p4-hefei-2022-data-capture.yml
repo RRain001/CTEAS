@@ -1,0 +1,71 @@
+name: P4 Hefei 2022 public met capture
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/p4-hefei-2022-data-capture.yml'
+jobs:
+  download:
+    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Dependencies
+        run: python -m pip install --disable-pip-version-check PyYAML
+      - name: Stage isolated 5km 100m Hefei case
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p project/current/grid run-evidence
+          cat > project/current/grid/center_location <<'EOF'
+          latitude: 31.939774444
+          longitude: 117.141610855
+          EOF
+          cat > project/current/grid/grid.cmn <<'EOF'
+          ! DGRIDKM = 0.1 !
+          ! NX = 50 !
+          ! NY = 50 !
+          EOF
+          cat > project/current/grid/research_time <<'EOF'
+          BEGIN: 20220101-000000
+          END: 20220106-230000
+          EOF
+      - name: Download IGRA and generate 2022 FSL using copied P4 Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m native_cpp.modules.p4_read62.data_prep.prepare_inputs --year 2022 --pstop 500 --execute 2>&1 | tee run-evidence/p4-download.log
+          find project/current/met/upperair/2022/igra2fsl -maxdepth 1 -name '*.txt' -size +0c | grep -q .
+      - name: Record public-source provenance and checksums
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p run-evidence
+          python - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('project/current/met/upperair/2022')
+          files=sorted(p for p in root.rglob('*') if p.is_file()) if root.exists() else []
+          items=[{'path':str(p),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]
+          result={'stage':'P4','source':'NOAA IGRA2 data-por','source_ref':'RRain001/CTEAS main 66e30ffb1ff4638a97af8a060748ce30b7578350','year':2022,'pstop_hpa':500,'domain_km':[5,5],'model_grid_m':100,'files':items,'fsl_count':sum('/igra2fsl/' in p['path'] and p['path'].endswith('.txt') for p in items),'caveat':'copied download_igra.py writes study-center coordinates into station metadata; not verified observed station coordinates'}
+          pathlib.Path('run-evidence/p4-provenance.json').write_text(json.dumps(result,indent=2,ensure_ascii=False)+'\n')
+          print('P4_CAPTURE_SUMMARY',json.dumps({'file_count':len(items),'fsl_count':result['fsl_count'],'total_bytes':sum(p['bytes'] for p in items)}))
+          PY
+      - name: Upload isolated public-input evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p4-hefei-2022-inputs
+          path: |
+            run-evidence/
+            project/current/met/upperair/2022/upperair_station_used_list.txt
+            project/current/met/upperair/2022/*-data.txt
+            project/current/met/upperair/2022/igra2fsl/*.txt
+            project/current/met/upperair/2022/pstop_hpa.txt
+          if-no-files-found: warn
+          retention-days: 7
