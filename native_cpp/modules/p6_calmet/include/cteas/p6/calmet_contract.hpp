@@ -197,11 +197,10 @@ struct ForcingInventory {
 // missingness and valid finite numbers, independent of float sentinel values.
 class MaskedField3D final {
 public:
-    explicit MaskedField3D(const Geometry& g)
-        : geometry_(g),
-          elements_(static_cast<std::size_t>(g.nx) *
-                    static_cast<std::size_t>(g.ny) * g.layer_count()) {
+    explicit MaskedField3D(const Geometry& g) : geometry_(g) {
         g.validate_hefei_100m();
+        elements_.resize(static_cast<std::size_t>(g.nx) *
+                         static_cast<std::size_t>(g.ny) * g.layer_count());
     }
 
     void set(int i, int j, int k, Sample value) {
