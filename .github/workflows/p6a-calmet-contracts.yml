@@ -1,0 +1,23 @@
+name: P6A CALMET contract-only C++20 checks
+on:
+  pull_request:
+    paths:
+      - "native_cpp/modules/p6_calmet/**"
+      - ".github/workflows/p6a-calmet-contracts.yml"
+      - "docs/reconstruction_cpp/P6_CALMET_MINIMAL_MASTER_PLAN.md"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cpp-contracts:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure standalone strict C++20 tests
+        run: cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-p6a-contract-build -DCMAKE_BUILD_TYPE=Debug
+      - name: Compile
+        run: cmake --build /tmp/cteas-p6a-contract-build --parallel 2
+      - name: Unit checks only (no meteorology or physics)
+        run: ctest --test-dir /tmp/cteas-p6a-contract-build --output-on-failure
