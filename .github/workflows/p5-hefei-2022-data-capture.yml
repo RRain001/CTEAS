@@ -3,7 +3,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/p5-hefei-2022-data-capture.yml'
-      - 'native_cpp/modules/p5_smerge/data_prep/download_isd_by_grid.py'
+      - 'native_cpp/modules/p5_smerge/data_prep/**'
 jobs:
   download:
     if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
@@ -62,6 +62,13 @@ jobs:
           python -m native_cpp.modules.p5_smerge.data_prep.prepare_inputs \
             --expected-year 2022 --skip-download --execute 2>&1 | tee run-evidence/p5-process.log
           find project/current/met/surface/isd2smerge_ready -maxdepth 1 -name '*.csv' -size +0c | grep -q .
+      - name: Assert Scheme C wind preservation in actual 2022 observations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m native_cpp.modules.p5_smerge.data_prep.validate_scheme_c_capture \
+            --case-root project/current --expected-hours 144 \
+            --report run-evidence/p5-scheme-c-audit.json
       - name: Record public-source provenance and checksums
         if: always()
         shell: bash

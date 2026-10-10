@@ -38,3 +38,7 @@ These numbers are NOT one universal CALMET minimum or threshold. CALPUFF's WSCAL
 Python tests cover 0, 0.2, 1 m/s; stale wind source; 0-speed missing direction; no-leading-observation behavior; static assertions against vendored Fortran exact statements. Hosted real-case 2022 station capture and transformation must test that if the source contains 0 or below-0.5 winds, output preserves them.
 
 This is a changed scientific policy: output is intentionally different from historical P5-inserted 0.5 m/s records, and cannot be deemed byte-identical to the *old P5*; an original CALMET/SMERGE reference must be rerun on the *same new Scheme C* input to verify physical/numerical consistency. Full end-to-end CALMET/CALPUFF compatibility remains pending until this gate.
+
+## Reproducible real-case regression gate
+
+The hosted 2022 Hefei 144-hour capture now executes validate_scheme_c_capture.py after generating the ready GENERIC file. It asserts the full per-hour match against the independently archived wind-audit speed and source-forward-filled values, preservation of exact zero and fractional low-wind speed, station identity, and the distinction between diagnostic threshold and computation minima. The script exports run-evidence/p5-scheme-c-audit.json with counts and fails on any speed clamp or lost station hour. The original CALMET/SMERGE executables are not invoked as part of this regression.
