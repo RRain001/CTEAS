@@ -32,7 +32,7 @@ jobs:
           from pathlib import Path
           original = Path("engine/preprocess/smerge_surf_data")
           snapshot = Path("native_cpp/modules/p5_smerge/data_prep")
-          for name in ("download_isd_by_grid.py","interpolate.py","clean_merge_filled_by_research_time.py","convert_cleaned_to_smerge_ready.py","generate_smerge_input_sections.py"):
+          for name in ("interpolate.py","clean_merge_filled_by_research_time.py","convert_cleaned_to_smerge_ready.py","generate_smerge_input_sections.py"):
               assert (original/name).read_bytes() == (snapshot/name).read_bytes(), name
           assert (original/"README.md").read_bytes() == (snapshot/"upstream_README.md").read_bytes()
           before=(original/"isd_to_smerge_and_fill.py").read_text()
@@ -40,5 +40,10 @@ jobs:
           old='SCRIPT_DIR = engine_path("preprocess", "smerge_surf_data")'
           new='SCRIPT_DIR = Path(__file__).resolve().parent'
           assert before.count(old)==1 and after==before.replace(old,new)
-          print("P5_SOURCE_SNAPSHOT_SCOPED_ONE_LINE_PATCH=PASS")
+          downloaded=(snapshot/"download_isd_by_grid.py").read_text()
+          original_downloader=(original/"download_isd_by_grid.py").read_text()
+          assert 'https://noaa-global-hourly-pds.s3.amazonaws.com' in downloaded
+          assert 'NOAA Global Hourly CSV headers absent' in downloaded
+          assert 'https://www.ncei.noaa.gov/data/global-hourly/access' in original_downloader
+          print("P5_SOURCE_SNAPSHOT_CONTROLLED_NODD_PATCH=PASS")
           PY

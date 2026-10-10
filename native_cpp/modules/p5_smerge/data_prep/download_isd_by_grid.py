@@ -33,7 +33,7 @@ DEFAULT_GRID = CASE_ROOT / "grid" / "grid.cmn"
 DEFAULT_HISTORY = engine_path("resources", "isd", "isd-history.txt")
 DEFAULT_RESEARCH_TIME = CASE_ROOT / "grid" / "research_time"
 DEFAULT_OUT_DIR = CASE_ROOT / "met" / "surface" / "isd_raw"
-BASE_URL = "https://www.ncei.noaa.gov/data/global-hourly/access"
+BASE_URL = "https://noaa-global-hourly-pds.s3.amazonaws.com"
 
 
 @dataclass
@@ -248,6 +248,17 @@ def download_one(year: int, sid: str, out_dir: Path, timeout: int) -> tuple[bool
     try:
         with request.urlopen(url, timeout=timeout) as resp:
             data = resp.read()
+        # The former NCEI endpoint retired in July 2026 and can return
+        # 200-OK HTML. Reject anything other than the expected station CSV.
+        try:
+            header = next(csv.reader([data.split(b"\n", 1)[0].decode("utf-8-sig")]))
+        except (UnicodeDecodeError, csv.Error, StopIteration) as exc:
+            raise ValueError("NOAA Global Hourly response is not CSV") from exc
+        required = {"STATION", "DATE", "WND"}
+        if not required.issubset(header):
+            raise ValueError(f"NOAA Global Hourly CSV headers absent: {header[:8]!r}")
+        if len(data) < 256:
+            raise ValueError("NOAA Global Hourly CSV response suspiciously short")
         out_file.write_bytes(data)
         return True, str(out_file), False
     except error.HTTPError as e:

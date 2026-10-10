@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/p5-hefei-2022-data-capture.yml'
+      - 'native_cpp/modules/p5_smerge/data_prep/download_isd_by_grid.py'
 jobs:
   download:
     if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
