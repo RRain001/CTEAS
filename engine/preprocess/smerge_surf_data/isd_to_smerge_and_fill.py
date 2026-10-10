@@ -50,26 +50,33 @@ def parse_slp_mb(value):
     return v / 10.0
 
 
+VALID_ISD_WIND_QC = frozenset({"0", "1", "4", "5", "9"})
+
+
 def parse_wind(value):
+    """按字段独立解码 ISD WND(Atmos ISD_FORWARD_FILL_CALM_ARC_V1 语义)。
+
+    - 方向与速度各自判定可用性(5 段结构 + QC 码 + 取值范围),一方缺失不再牵连另一方;
+    - 速度码 0000 保留为 0.0 m/s(静风),不再改写为 0.1 m/s 北风;
+    - 方向码 999 / 速度码 9999 仅把本字段置为缺失。
+    """
     p = parse_compound(value)
-    if not p or len(p) < 4:
-        return None, None
-    try:
-        d = int(p[0])
-    except ValueError:
-        d = 999
-    try:
-        s10 = int(p[3])
-    except ValueError:
-        s10 = 9999
-    if s10 == 9999:
-        return None, None
-    ms = s10 / 10.0
-    if s10 == 0:
-        return 0.0, 0.1
-    if d == 999:
-        return None, None
-    return float(d), ms
+    parts = p if p else []
+    five = len(parts) == 5
+    d_code = parts[0] if five else None
+    d_qc = parts[1] if five else None
+    s_code = parts[3] if five else None
+    s_qc = parts[4] if five else None
+    d = int(d_code) if d_code and re.fullmatch(r"[0-9]{3}", d_code) else None
+    s10 = int(s_code) if s_code and re.fullmatch(r"[0-9]{4}", s_code) else None
+
+    direction = None
+    if d is not None and d != 999 and 0 <= d <= 360 and d_qc in VALID_ISD_WIND_QC:
+        direction = float(d)
+    speed = None
+    if s10 is not None and s10 != 9999 and 0 <= s10 <= 9000 and s_qc in VALID_ISD_WIND_QC:
+        speed = s10 / 10.0
+    return direction, speed
 
 
 def parse_precip_mm_1h(row):
