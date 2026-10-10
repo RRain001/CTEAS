@@ -24,8 +24,19 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/cteas-p4-reference reference-evidence
           SRC=engine/vendor/src/READ62_v5.661_L110225
-          gfortran -O0 -std=legacy -ffixed-line-length-none -fallow-argument-mismatch -fno-automatic -I"$SRC" \
-            -o /tmp/cteas-p4-reference/read62 "$SRC/READ62.FOR" 2>&1 | tee reference-evidence/fortran-build.log
+          mkdir -p /tmp/cteas-p4-refsource
+          cp -a "$SRC"/. /tmp/cteas-p4-refsource/
+          # Upstream Windows case-insensitive include files: Linux temp aliases only.
+          for file in /tmp/cteas-p4-refsource/*; do
+            base=$(basename "$file")
+            lower=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
+            if [ "$base" != "$lower" ] && [ ! -e "/tmp/cteas-p4-refsource/$lower" ]; then
+              ln -s "$base" "/tmp/cteas-p4-refsource/$lower"
+            fi
+          done
+          gfortran -O0 -std=legacy -ffixed-line-length-none -fallow-argument-mismatch -fno-automatic \
+            -I/tmp/cteas-p4-refsource -o /tmp/cteas-p4-reference/read62 \
+            /tmp/cteas-p4-refsource/READ62.FOR 2>&1 | tee reference-evidence/fortran-build.log
           sha256sum "$SRC/READ62.FOR" > reference-evidence/fortran-source.sha256
       - name: Prepare same isolated Hefei input
         shell: bash
