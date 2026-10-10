@@ -37,3 +37,7 @@ No tolerance was loosened after running the comparator. The formatted output has
 - Standalone writer equivalence for every original TERREL mode; current verified contract is cell-level numerical terrain, not full option coverage.
 
 Classification: **PASS_REFERENCE_SCOPED_P1_GEOTIFF_UTM50N_HEFEI_100M**, NOT `P1_FULL_PROGRAM_PASS`. Independent human/code audit remains required before PR merge.
+
+## Study-specific submission decision (2026-10-10)
+
+The user explicitly accepts **minimum reconstruction for the 5 km × 5 km Hefei 50 × 50 @ 100 m study**, not full original TERREL option coverage. All unsupported original routines and controls are itemized in `docs/reconstruction_cpp/P1_P2_MINIMAL_SCOPE_FEATURE_MATRIX.md` (P3 PR #5), with source reference to the untouched original Fortran. This PR is submitted for **independent review** of the scoped numerical result. Neither byte-identical standalone `TERREL.DAT` file writing nor end-to-end modern P1/P2→P3 integration or downstream CALMET consumption is claimed. No main merge is authorized by this scoped submission statement.
