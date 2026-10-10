@@ -20,6 +20,19 @@ jobs:
         run: python3 native_cpp/reference/capture_p1_p2.py --output /tmp/p3-compare
       - name: Isolated original P3 MAKEGEO capture
         run: python3 native_cpp/reference/capture_p3_makegeo.py --output /tmp/p3-compare
+      - name: Build independent C++20 MAKEGEO subset
+        run: |
+          cmake -S native_cpp/p3 -B /tmp/cteas-p3-build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build /tmp/cteas-p3-build -j2
+      - name: Compute modern P3 gridded geophysical parameters
+        run: |
+          /tmp/cteas-p3-build/cteas_p3_makegeo \
+            /tmp/p3-compare/p3/makegeo.inp \
+            /tmp/p3-compare/p2/lu.dat \
+            /tmp/p3-compare/p1/terrel.dat \
+            /tmp/p3-compare/p3_cpp_geophysical.csv
+      - name: Independently check 20000 original GEO.DAT numeric fields
+        run: python3 native_cpp/reference/compare_p3_makegeo.py --reference /tmp/p3-compare/p3/geo.dat --cpp /tmp/p3-compare/p3_cpp_geophysical.csv --report /tmp/p3-compare/p3_scoped_comparison.json
       - name: Archive immutable original outputs
         if: always()
         uses: actions/upload-artifact@v4
