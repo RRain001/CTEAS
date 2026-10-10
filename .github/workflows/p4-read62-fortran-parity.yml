@@ -96,6 +96,24 @@ jobs:
           cp reference_up.dat "$GITHUB_WORKSPACE/reference-evidence/reference_up.dat"
           cp reference_read62.lst "$GITHUB_WORKSPACE/reference-evidence/reference_read62.lst"
           cp read62.inp "$GITHUB_WORKSPACE/reference-evidence/reference_read62.inp"
+      - name: Compile and execute independent C++ P4
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p4_read62 -B /tmp/cteas-p4-cpp -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/cteas-p4-cpp -j2
+          ctest --test-dir /tmp/cteas-p4-cpp --output-on-failure
+          /tmp/cteas-p4-cpp/cteas_p4_read62 \
+            /tmp/cteas-p4-reference/58424.fsl reference-evidence/cpp_up.dat \
+            2022-01-01T00:00Z 2022-01-06T23:00Z 500 58424 2>&1 | tee reference-evidence/cpp-run.log
+      - name: Independently verify every original and C++ UP.DAT numerical field
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m native_cpp.modules.p4_read62.verify_updat_parity \
+            --reference reference-evidence/reference_up.dat \
+            --candidate reference-evidence/cpp_up.dat \
+            --report reference-evidence/numerical-parity.json
       - name: Capture available parity outputs
         if: always()
         uses: actions/upload-artifact@v4
