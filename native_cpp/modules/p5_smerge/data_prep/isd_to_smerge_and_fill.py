@@ -165,7 +165,7 @@ def derive_year_from_rows(rows):
 def convert_one_isd_csv(path, output_dir):
     grouped = defaultdict(list)
     station = None
-    expected = re.fullmatch(r"([0-9A-Za-z]{11})-(\\d{4})\\.csv", os.path.basename(path))
+    expected = re.fullmatch(r"([0-9A-Za-z]{11})-(\d{4})\.csv", os.path.basename(path))
     if expected is None:
         raise ValueError(f"invalid NOAA station filename: {path}")
     expected_sid, expected_year = expected.groups()
