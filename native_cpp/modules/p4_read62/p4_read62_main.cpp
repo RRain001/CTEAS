@@ -1,5 +1,6 @@
 #include "cteas/met_input/p4_updat.hpp"
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <string>
 #include <stdexcept>
@@ -29,6 +30,11 @@ int main(int argc,char** argv) {
         Options fsl;
         fsl.pstop_hpa=opt.pstop_hpa;
         const auto soundings=read_fsl(in,fsl);
+        if(!soundings.empty()) {
+            std::cout << "P4_CPP_EFFECTIVE_COORD " << std::fixed << std::setprecision(6)
+                << soundings.front().station_lat_deg << " "
+                << soundings.front().station_lon_deg << "\n";
+        }
         std::ofstream out(argv[2]);
         if(!out)throw std::runtime_error("cannot create UP.DAT");
         const auto stats=write_updat(out,soundings,opt);

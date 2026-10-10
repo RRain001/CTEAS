@@ -114,6 +114,18 @@ jobs:
             --reference reference-evidence/reference_up.dat \
             --candidate reference-evidence/cpp_up.dat \
             --report reference-evidence/numerical-parity.json
+      - name: Test coordinate suffix precision 3-6 decimals without moving legacy fields
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m native_cpp.modules.p4_read62.precision_probe \
+            --fsl /tmp/cteas-p4-reference/58424.fsl \
+            --fortran /tmp/cteas-p4-reference/read62 \
+            --template-inp /tmp/cteas-p4-reference/read62.inp \
+            --baseline-updat reference-evidence/reference_up.dat \
+            --cpp /tmp/cteas-p4-cpp/cteas_p4_read62 \
+            --outdir reference-evidence/coord-precision \
+            --lat 31.939774444 --lon 117.141610855
       - name: Capture available parity outputs
         if: always()
         uses: actions/upload-artifact@v4
