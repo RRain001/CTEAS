@@ -21,7 +21,7 @@ Reference: `native_cpp/reference/capture_p1_p2.py` and `capture_p3_makegeo.py` r
 - Parse and strictly validate original control `! X !` table of **all 38** input categories: roughness `z0`, albedo, Bowen ratio, soil heat flux coefficient, anthropogenic heat flux, LAI and output category map.
 - Parse and validate original `LU.DAT 2.1` 38 × 2500 fractions in south-to-north order and `TERREL.DAT 2.0` north-to-south elevations.
 - `COMP` algorithm: water classes `IWAT`, `CFRACT=0.5` threshold with +0.0001 original tolerance, select highest eligible input-category fraction, remap via control table `mapcat`.
-- `WT`: surface roughness `z0 = exp(sum(f_k * log(z0_k)) / sum(f_k))`; six other non-snow quantities by arithmetic weighted area average. For actual `GEO.DAT` outputs, the fields are: dominant category, elevation, z0, albedo, Bowen ratio, soil heat flux, anthropogenic heat flux and LAI.
+- `WT`: surface roughness `z0 = exp(sum(f_k * log(z0_k)) / sum(f_k))`; five other non-snow quantities by arithmetic weighted area average. For actual `GEO.DAT` outputs, the fields are: dominant category, elevation, z0, albedo, Bowen ratio, soil heat flux, anthropogenic heat flux and LAI.
 - Fail-closed on unexpected CRS/zone/grids/categories, incomplete input rows/headers, `LSNOW`, `LLU2`, `NSPLIT`, uncovered cells and missing terrain. No silently invented physics or water/land corrections.
 - Independently write a machine-readable numeric audit CSV and a `GEO.DAT v2.1` no-snow file with the original field order, category list, 10-values-per-record LU rows, north-to-south grids, `F7.2` and `F7.4` format widths; writer uses an identifying C++ provenance comment instead of imitating the original Fortran compiler/source, thus full file SHA differs legitimately.
 
