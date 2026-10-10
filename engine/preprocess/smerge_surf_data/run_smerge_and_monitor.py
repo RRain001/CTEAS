@@ -88,7 +88,7 @@ def parse_surface_station_metadata() -> dict[str, dict[str, str]]:
             if len(parts) < 5:
                 continue
             station_full_id, name, lat, lon, elev_m = parts[:5]
-            station_id = station_full_id[:5]
+            station_id = station_full_id[:6]
             meta.setdefault(
                 station_id,
                 {

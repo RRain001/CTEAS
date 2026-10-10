@@ -326,7 +326,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     workdir = "."
-    pattern = re.compile(r"^\d{5}0-99999-\d{4}\.csv$")
+    pattern = re.compile(r"^[0-9A-Za-z]{6}-[0-9A-Za-z]{5}-\d{4}\.csv$")
     candidates = []
     for x in os.listdir(workdir):
         _, ext = os.path.splitext(x)

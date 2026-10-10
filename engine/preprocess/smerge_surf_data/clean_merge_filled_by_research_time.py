@@ -15,7 +15,7 @@ INPUT_DIR = CASE_ROOT / "met" / "surface" / "isd2smerge_and_fill"
 OUTPUT_DIR = CASE_ROOT / "met" / "surface" / "isd2smerge_cleaned"
 RESEARCH_TIME_FILE = CASE_ROOT / "grid" / "research_time"
 
-FILLED_PATTERN = re.compile(r"^(\d{5})0-99999-(\d{4})_filled\.csv$")
+FILLED_PATTERN = re.compile(r"^([0-9A-Za-z]{6})-([0-9A-Za-z]{5})-(\d{4})_filled\.csv$")
 
 
 def parse_research_time(path: Path) -> tuple[datetime, datetime]:
@@ -77,8 +77,8 @@ def main() -> int:
         m = FILLED_PATTERN.match(p.name)
         if not m:
             continue
-        sid5 = m.group(1)
-        station_files.setdefault(sid5, []).append(p)
+        station_key = f"{m.group(1)}-{m.group(2)}"
+        station_files.setdefault(station_key, []).append(p)
 
     if not station_files:
         print(f"未找到匹配的已插值文件: {INPUT_DIR}")
@@ -86,7 +86,7 @@ def main() -> int:
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    for sid5, files in sorted(station_files.items()):
+    for station_key, files in sorted(station_files.items()):
         merged_parts = []
         header_lines = None
         columns = None
@@ -108,7 +108,7 @@ def main() -> int:
 
         clipped = merged[(merged["Datetime"] >= begin_dt) & (merged["Datetime"] <= end_dt)].copy()
         if clipped.empty:
-            print(f"[{sid5}] 裁剪到研究时段后为空, 跳过")
+            print(f"[{station_key}] 裁剪到研究时段后为空, 跳过")
             continue
 
         clipped["Year"] = clipped["Datetime"].dt.year.astype(int)
@@ -116,8 +116,7 @@ def main() -> int:
         clipped["Day"] = clipped["Datetime"].dt.day.astype(int)
         clipped["Hour"] = (clipped["Datetime"].dt.hour.astype(int) * 100).astype(int)
 
-        out_name = f"{sid5}0-99999.csv"
-        out_path = OUTPUT_DIR / out_name
+        out_path = OUTPUT_DIR / f"{station_key}.csv"
         save_csv(out_path, header_lines or [], columns or [], clipped)
 
     print(f"任务完成, 数据保存路径: {OUTPUT_DIR}")

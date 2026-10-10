@@ -2,15 +2,16 @@
 """Auto-generate and update smerge.inp from *_filled.csv station files.
 
 Behavior:
-1) Scan INPUT_DIR for files like xxxxx0-99999.csv
-2) Extract station id (5-digit) from filename
-3) Lookup XELEV from isd-history.txt:
-   - station code: first 5 digits of USAF code
-   - XELEV: ELEV(M) field
-   - round half up to integer meters
+1) Scan INPUT_DIR for files like `<USAF>-<WBAN>.csv` (e.g. 583210-99999.csv)
+2) Extract the 6-char USAF and 5-char WBAN from the filename
+3) Lookup XELEV from isd-history.txt by the exact 6-char USAF code
+   - XELEV: ELEV(M) field, round half up to integer meters
 4) If XELEV is not found, default to 10
 5) Write suggested sections to OUTPUT_TXT
 6) Directly update SMERGE_INP
+
+IFSTN(SMERGE/SURF.DAT 站号)取 USAF 前 5 位;同一案例内两个站映射到同一
+5 位站号时显式失败,不静默合并或丢站。
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ SMERGE_INP = OUTPUT_DIR / 'smerge.inp'
 ISD_HISTORY = engine_path("resources", "isd", "isd-history.txt")
 OUTPUT_TXT = OUTPUT_DIR / 'smerge_manual_sections.txt'
 
-FILLED_PATTERN = re.compile(r'^(\d{5})0-99999\.csv$')
+FILLED_PATTERN = re.compile(r'^([0-9A-Za-z]{6})-([0-9A-Za-z]{5})\.csv$')
 
 
 def _round_half_up_to_int(x: float) -> int:
@@ -71,17 +72,16 @@ def parse_history_elevations(path: Path) -> Dict[str, int]:
     return mapping
 
 
-def discover_filled_files(input_dir: Path) -> List[Tuple[str, Path]]:
-    """Find files like 583210-99999.csv and return (sid, path)."""
-    records: List[Tuple[str, Path]] = []
+def discover_filled_files(input_dir: Path) -> List[Tuple[str, str, Path]]:
+    """Find `<USAF>-<WBAN>.csv` files and return (usaf, wban, path)."""
+    records: List[Tuple[str, str, Path]] = []
     for p in sorted(input_dir.iterdir()):
         if not p.is_file():
             continue
         m = FILLED_PATTERN.match(p.name)
         if not m:
             continue
-        sid = m.group(1)
-        records.append((sid, p))
+        records.append((m.group(1), m.group(2), p))
     return records
 
 
@@ -89,33 +89,59 @@ def fmt_elev(value: int) -> str:
     return str(int(value))
 
 
+def resolve_ifstn(filled: List[Tuple[str, str, Path]]) -> Dict[str, str]:
+    """站点编号(IFSTN)= isd-history.txt 中的 6 位 USAF,原样使用。
+
+    SMERGE 以整数读取并写入 SURF.DAT(支持超过 5 位),CALMET 的 met.inp /
+    SURF.DAT 站号同样按整数处理(SURF.DAT 文本输出为 i8),因此不再截取前 5 位,
+    583210 与 583211 这类站点可以共存而不会撞号。
+    """
+    mapping: Dict[str, str] = {}
+    owner: Dict[str, str] = {}
+    for usaf, wban, _path in filled:
+        key = f"{usaf}-{wban}"
+        if not re.fullmatch(r"[0-9]{6}", usaf):
+            raise ValueError(
+                f"站点 {key} 的 USAF {usaf!r} 不是 6 位数字;SMERGE/SURF.DAT 需要整数站号,"
+                "请在案例中排除该站或改用可整除的站号约定。"
+            )
+        if usaf in owner and owner[usaf] != key:
+            raise ValueError(
+                f"站号冲突: 站点 {owner[usaf]} 与 {key} 的 USAF 相同({usaf});"
+                "SMERGE/SURF.DAT 无法区分。请在案例中只保留其中一个站。"
+            )
+        owner.setdefault(usaf, key)
+        mapping[key] = usaf
+    return mapping
+
+
 def build_station_blocks(
-    filled: List[Tuple[str, Path]],
+    filled: List[Tuple[str, str, Path]],
     elev_map: Dict[str, int],
 ) -> Tuple[List[str], List[str]]:
     """Build Group-0b station blocks and return (lines, missing_station_ids)."""
     lines: List[str] = []
     missing: List[str] = []
-    for sid, fpath in filled:
-        # IFSTN is 5 digits; the source USAF in isd-history is 6 chars.
-        # For filenames like 583210-99999-YYYY_filled.csv, IFSTN=58321 and USAF=583210.
-        usaf6 = f"{sid}0"
-        xelev = elev_map.get(usaf6)
+    ifstn_map = resolve_ifstn(filled)
+    for usaf, wban, fpath in filled:
+        key = f"{usaf}-{wban}"
+        ifstn = ifstn_map[key]
+        xelev = elev_map.get(usaf)
         if xelev is None:
-            missing.append(sid)
+            missing.append(key)
             xelev_str = '10'
         else:
             xelev_str = fmt_elev(xelev)
 
         lines.append(f'     !SFCMET = {os.path.relpath(fpath, start=OUTPUT_DIR)} !')
-        lines.append(f'     !IFSTN = {sid} !')
+        lines.append(f'     !IFSTN = {ifstn} !')
         lines.append(f'     !XELEV = {xelev_str} !')
         lines.append('     !ASTZ = UTC+0000 !   !END!')
         lines.append('')
     return lines, missing
 
 
-def build_sections(filled: List[Tuple[str, Path]], elev_map: Dict[str, int]) -> str:
+def build_sections(filled: List[Tuple[str, str, Path]], elev_map: Dict[str, int]) -> str:
     lines: List[str] = []
     lines.append('===== Suggested replacements for SMERGE.INP =====')
     lines.append('')
@@ -199,11 +225,11 @@ def detect_time_range_from_wdir(csv_path: Path) -> Tuple[datetime, datetime]:
     return min_dt, max_dt
 
 
-def detect_global_period(filled: List[Tuple[str, Path]]) -> Tuple[datetime, datetime]:
+def detect_global_period(filled: List[Tuple[str, str, Path]]) -> Tuple[datetime, datetime]:
     """Detect global start/end from all filled station files based on wind direction."""
     starts: List[datetime] = []
     ends: List[datetime] = []
-    for _sid, fpath in filled:
+    for _usaf, _wban, fpath in filled:
         st, ed = detect_time_range_from_wdir(fpath)
         starts.append(st)
         ends.append(ed)

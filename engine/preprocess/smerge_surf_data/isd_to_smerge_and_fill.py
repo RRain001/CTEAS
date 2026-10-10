@@ -226,7 +226,7 @@ def convert_one_isd_csv(path, output_dir):
     with open(out_path, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         w.writerow(["GENERIC", "Version", "'2.0'", "Manuallygenerated", "Timeasendinghour", ""])
-        w.writerow(["Station", "ID", "='", usaf[:5], "Temp", "Precip", "Pressure", "RH", "Wdir10m", "Wspeed10m", "Ccover", "Cheight"])
+        w.writerow(["Station", "ID", "='", usaf, "Temp", "Precip", "Pressure", "RH", "Wdir10m", "Wspeed10m", "Ccover", "Cheight"])
         w.writerow(["Month", "Day", "Year", "Hour", "DegC", "mm", "mb", "%", "deg", "ms-1", "tenths", "hundreds_of_feet"])
         for r in out_rows:
             w.writerow(r)

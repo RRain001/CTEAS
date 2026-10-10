@@ -95,7 +95,7 @@ def _render_surface_group(surface_rows: list[dict[str, str]], grid: Any) -> str:
         tz_hour = int(float(row.get("tz_hour", "0") or "0"))
         anem_m = float(row.get("anem_m", "10.0") or "10.0")
         data_lines.append(
-            f"! SS{idx:<2d} ='{name}'    {int(row['station_id']):5d}    {x_km:10.3f}    {y_km:10.3f}   {tz_hour:2d}   {anem_m:4.1f} !"
+            f"! SS{idx:<2d} ='{name}'    {int(row['station_id']):6d}    {x_km:10.3f}    {y_km:10.3f}   {tz_hour:2d}   {anem_m:4.1f} !"
         )
 
     section = f"""INPUT GROUP: 7 -- Surface meteorological station parameters
