@@ -18,5 +18,18 @@ int main() {
   bool rejected=false;
   try{(void)r.fraction(1,1,0);}catch(const std::domain_error&){rejected=true;}
   if(!rejected)throw std::runtime_error("missing cell was silently filled");
+  // Original CTGPROC GLOBE/LUGRID assigns this explicitly frozen source
+  // point to cell (38,49) in the 50x50 UTM50N Hefei domain.
+  // Using exact x/1000 instead of float32 XMULTO wrongly gives (37,49).
+  GenericLanduse edge;
+  edge.datum="ESR-S"; edge.categories={21,32};
+  edge.points={{21,117.1543426,31.9613914}};
+  const auto reference_cell=compute_generic_utm50n(
+      edge,{510884.6439571007,3531268.9269678035,100.,50,50});
+  const auto expected_index=static_cast<std::size_t>(48*50+37);
+  if(reference_cell.included!=1 ||
+     reference_cell.cell_samples.at(expected_index)!=1 ||
+     reference_cell.fraction(37,48,0)!=1.)
+    throw std::runtime_error("P2 legacy COORDLIB XMULTO boundary regression");
   std::cout<<"P2 scoped synthetic count/mask PASS\n";
 }
