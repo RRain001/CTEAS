@@ -44,4 +44,29 @@ Reference: `native_cpp/reference/capture_p1_p2.py` and `capture_p3_makegeo.py` r
 | Other geo projections, source LU resolutions and time-varying products | `READHD`, `WRTHEAD`, `COMP` | `PMAP`, `DATUM`, `IUTMZN`, `IFMTGEO` |
 | Terrain-off simulation option | `COMP` | `LTERR=F` — the study intentionally requires real DEM elevations |
 
-Classification: **PASS_REFERENCE_SCOPED_P3_HEFEI_NO_SNOW_100M** for current original-input numerical comparison and writer. **NOT yet end-to-end C++ P1/P2→P3 integration or original CALMET downstream read acceptance.** Mixed-category numerical gate is closed; keep PR Draft until independent review and downstream compatibility audit. No main merge.
+## Fortran routine and control-item traceability (reviewed for minimum scope)
+
+The table above records deliberately **unimplemented** optional features. Below are the original `makegeo.for` source anchors so future maintainers can restore one only when the scientific case changes. Line numbers apply to `MAKEGEO_V3.2_L110401/makegeo.for` at its pinned SHA; source and controls are never edited.
+
+| What the original does | Exact original code location | Exact input control / subsection | Minimal-rebuild decision |
+|---|---|---|---|
+| Parse/check input LU.DAT 2.1 and TERREL.DAT 2.0, source classes and georeference | `READHD` near L1433; `COMP` near L1994 | Group 0 `LUDAT`, `TERRDAT`; Group 2 `PMAP`, `IUTMZN`, `UTMHEM`, `DATUM`, `NX`, `NY`, `DGRIDKM` | **Implemented**: two original file formats, one exact CRS/grid |
+| Determine dominant category, water threshold and map input→output category | `COMP` near L2153–2276 | Group 3 `NOUTCAT`, `OUTCAT`, `IWAT1`, `IWAT2`; Group 4 `NUMWAT`, `IWAT`, `CFRACT`, `X` category map | **Implemented**; genuine water-threshold cases separately tested |
+| Weight six surface properties, with logarithmic weight only for z0 | `COMP` L2460–2481; `WT` L2703–2795 | Group 4b `X` (all 38 input category properties) | **Implemented**; real + 38-class synthetic field compare |
+| Write no-snow GEO.DAT 2.1 | `WRTHEAD` L3794–3888; `COMP` L2514–2556; `WRRDAT` L3327–3386; `WREDAT` L3388–3449 | Group 0 `GEODAT`; Group 1 `LSNOW=F`, `LTERR=T` | **Implemented**, but only the supported study mode; 20,000 formatted field values exact |
+| Dynamic daily snow mapping / time-varying GEO.DAT | `RDSNHD` L3978; `RDSN` L4091; `WTSW` L2799; `WTSWZ0` L2962; `WTSWALB` L3116; `FILLS` L4300; `FILLT` L4367; `ROLLBK` L4512 | `LSNOW`, `SNOWDAT`, `IFMTGEO`, `IDATEBEG`, `IDATEEND`, `MSRL`, `HSCL`, `MSAL`, `SDPMIN`; snow `XS`, `XF` input groups | **Omitted intentionally**: study control `LSNOW=F` |
+| Secondary land use supplement when LU has empty cells | `READHD` L1433 and `COMP` L2011–2035 | `LLU2`, `LU2DAT` | **Omitted intentionally**: case has full LU coverage |
+| Split-category area reallocation | `COMP` L2037–2054 | `NSPLIT`, Group 4f split instructions | **Omitted intentionally**: `NSPLIT=0` |
+| Missing fractional LU replacement and sparse-coverage QA | `COMP` L2056–2065 and L2153–2173 and L2323–2340 | `FLUMIN`, `IMISS`; `LU2DAT` only when `LLU2=T` | **Omitted fallback**, enforcing full coverage instead |
+| Surfer QA plot grids and extra output artefacts | `COMP` L2344–2460 and `OUT` L3451 | `LUGRD`, `TEGRD`, `IXQA`, `IYQA` | **Omitted intentionally**: no effect on CALMET physics |
+| Terrain-free GEO output | `COMP` L1964–1980, L2531–2535 | `LTERR=F` | **Not supported**: case requires terrain |
+
+### Submission and integration boundaries
+
+1. The study-specific **P3 numerical reconstruction is accepted for submission/review**: no-snow, single original LU/TERR input pair, 50×50 @ 100 m, 38 input→14 output category mapping, all eight field types and legacy text GEO.DAT numeric representation.
+2. `20,000/20,000` agreement means the **parsed, formatted science fields** coincide. It is **not** a claim of byte-identical complete files (the C++ provenance comment differs), cross-platform identity, or correctness of unselected original options.
+3. The present P3 run deliberately consumes **original Fortran** `LU.DAT` and `TERREL.DAT`. P1/P2 C++ standalone legacy writers, end-to-end C++ P1→P2→P3 and original CALMET ingestion remain follow-on integration checks. They do **not** undermine the measured P3 kernel parity, but must not be represented as already complete.
+4. `P3_SUBMISSION_STATUS = READY_FOR_INDEPENDENT_REVIEW`; `P3_SCIENCE_STATUS = PASS_REFERENCE_SCOPED`; `FULL_LEGACY_FEATURE_PARITY = NOT_TARGETED`; `CROSS_STAGE_MODERN_INTEGRATION = UNVERIFIED`. Submission here means code committed, pushed and opened for review. **It does not imply main-branch merge or final whole-chain validation.** Keep P4/P5 and shared baseline untouched.
+
+Classification: **PASS_REFERENCE_SCOPED_P3_HEFEI_NO_SNOW_100M**, **READY_FOR_INDEPENDENT_REVIEW**. Neither full P3 options nor end-to-end modern P1/P2→P3 integration / original CALMET downstream ingestion is claimed.
+
