@@ -255,15 +255,82 @@ void csv(const std::string& file,const std::vector<Cell>& cells) {
     }
     require(bool(out),"P3 CSV write failed");
 }
+void geo(const std::string& file,const std::vector<Cell>& cells,const Setup& cfg) {
+    std::ofstream out(file);
+    require(bool(out),"cannot create GEO.DAT");
+    // MAKEGEO 3.2 WRTHEAD no-snow v2.1 contract, in control-grid units.
+    out<<std::left<<std::setw(16)<<"GEO.DAT"
+       <<std::setw(16)<<"2.1"
+       <<std::setw(64)<<"Header structure with coordinate parameters"<<"\n"
+       <<"   2\n"
+       <<std::setw(80)<<"Produced by CTEAS MAKEGEO C++20 (P3 minimal reconstruction)"<<"\n"
+       <<std::setw(80)<<"GEO.DAT file"<<"\n"
+       <<std::setw(8)<<"UTM"<<"\n"
+       <<std::right<<std::setw(4)<<50<<std::left<<std::setw(4)<<"N"<<"\n"
+       <<std::setw(8)<<"WGS-84"<<std::setw(12)<<"02-21-2003"<<"\n"
+       <<std::right<<std::setw(8)<<50<<std::setw(8)<<50
+       <<std::fixed<<std::setprecision(3)
+       <<std::setw(12)<<floatopt(cfg,"XREFKM")
+       <<std::setw(12)<<floatopt(cfg,"YREFKM")
+       <<std::setw(12)<<0.1<<std::setw(12)<<0.1<<"\n"
+       <<"KM  M   \n";
+    out<<" 1          - LAND USE DATA - (1=new categories)\n";
+    out<<std::right<<" "<<std::setw(4)<<cfg.noutcat
+       <<std::setw(4)<<numopt(cfg,"IWAT1")
+       <<std::setw(4)<<numopt(cfg,"IWAT2")
+       <<" - NLU, IWAT1, IWAT2\n";
+    out<<" ";
+    for(int code:cfg.output_categories)out<<" "<<std::setw(3)<<code;
+    out<<"  - new LU categories\n";
+    for(int j=49;j>=0;j--) {
+        for(int i=0;i<50;i++) {
+            out<<"    "<<std::setw(3)<<cells[static_cast<std::size_t>(j*50+i)].dominant;
+            if(i<49)out<<",";
+            if((i+1)%10==0)out<<"\n";
+        }
+    }
+    const std::array<std::pair<std::string,int>,7> fields={{
+        {"TERRAIN heights - HTFAC (Conversion to meters)",-1},
+        {"gridded z0 field",0},{"gridded albedo field",1},
+        {"gridded Bowen ratio field",2},
+        {"gridded soil heat flux parameters",3},
+        {"gridded anthropogenic heat flux field",4},
+        {"gridded leaf area index field",5}
+    }};
+    for(const auto& field:fields) {
+        if(field.second<0)
+            out<<" 1.0000  - "<<std::left<<std::setw(70)<<field.first<<"\n";
+        else
+            out<<" 2    - "<<std::left<<std::setw(70)<<field.first<<"\n";
+        out<<std::right;
+        const int precision=(field.second==0)?4:2;
+        for(int j=49;j>=0;j--) {
+            for(int i=0;i<50;i++) {
+                const auto& c=cells[static_cast<std::size_t>(j*50+i)];
+                const float value=field.second<0 ? c.elev :
+                    c.params[static_cast<std::size_t>(field.second)];
+                require(std::isfinite(value),"nonfinite GEO.DAT field");
+                std::ostringstream token;
+                token<<std::fixed<<std::setprecision(precision)<<std::setw(7)<<value;
+                require(token.str().size()==7,"GEO.DAT F7 fixed field overflow");
+                out<<token.str();
+                if(i<49)out<<",";
+            }
+            out<<"\n";
+        }
+    }
+    require(bool(out),"GEO.DAT write incomplete");
+}
 } // namespace
 int main(int argc,char** argv) {
-    if(argc!=5) {std::cerr<<"usage: cteas_p3_makegeo MAKEGEO.INP LU.DAT TERREL.DAT OUTPUT.CSV\n";return 2;}
+    if(argc!=5&&argc!=6) {std::cerr<<"usage: cteas_p3_makegeo MAKEGEO.INP LU.DAT TERREL.DAT OUTPUT.CSV [GEO.DAT]\n";return 2;}
     try {
         auto c=parse_controls(argv[1]);
         auto cells=read_landuse(argv[2],c);
         read_terrain(argv[3],cells);
         compute(cells,c);
         csv(argv[4],cells);
+        if(argc==6)geo(argv[5],cells,c);
         std::cout<<"P3_SCOPED_CELLS="<<cells.size()<<" FIELDS=8\n";
         return 0;
     }catch(const std::exception& e) {
