@@ -25,6 +25,18 @@ int main(){
  assert(m.missing_hours_by_station[0]==1&&m.missing_hours_by_station[1]==2);
  assert(!m.hours[0].by_station[1]&&!m.hours[1].by_station[0]);
  assert(m.hours[2].by_station[0].has_value());
+ // Scheme C: the P5 C++ GENERIC reader must not clamp calm/low speeds.
+ std::istringstream calm_input(generic(58321,
+   "1,1,2022,0,10,0,1010,50,0,0,2,10\n"
+   "1,1,2022,100,10,0,1010,50,75,0.2,2,10\n"));
+ const auto scheme_c=read_generic(calm_input,58321);
+ assert(scheme_c.records.size()==2);
+ assert(scheme_c.records[0].wind_speed_mps.valid);
+ assert(scheme_c.records[0].wind_direction_deg.valid);
+ assert(scheme_c.records[0].wind_speed_mps.value==0.0);
+ assert(scheme_c.records[0].wind_direction_deg.value==0.0);
+ assert(std::abs(scheme_c.records[1].wind_speed_mps.value-0.2)<1e-12);
+ assert(scheme_c.records[1].wind_direction_deg.value==75.0);
  assert(fails(generic(58321,rows),58322));
  assert(fails(generic(58321,"1,1,2022,30,20,0,1010,60,180,2,4,10\n")));
  assert(fails(generic(58321,"1,1,2022,0,20,0,1010,60,180,2,4,10\n1,1,2022,0,20,0,1010,60,180,2,4,10\n")));
