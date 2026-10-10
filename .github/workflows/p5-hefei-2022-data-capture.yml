@@ -1,0 +1,87 @@
+name: P5 Hefei 2022 public met capture
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/p5-hefei-2022-data-capture.yml'
+jobs:
+  download:
+    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Dependencies
+        run: python -m pip install --disable-pip-version-check PyYAML numpy pandas
+      - name: Stage isolated model case and independent met station-search window
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p project/current/grid run-evidence
+          cat > project/current/grid/center_location <<'EOF'
+          latitude: 31.939774444
+          longitude: 117.141610855
+          EOF
+          cat > project/current/grid/grid.cmn <<'EOF'
+          ! DGRIDKM = 0.1 !
+          ! NX = 50 !
+          ! NY = 50 !
+          EOF
+          cat > project/current/grid/station_search_grid.cmn <<'EOF'
+          ! DGRIDKM = 0.1 !
+          ! NX = 2000 !
+          ! NY = 2000 !
+          EOF
+          cat > project/current/grid/research_time <<'EOF'
+          BEGIN: 20220101-000000
+          END: 20220106-230000
+          EOF
+      - name: Download at most three station-year NOAA ISD sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m native_cpp.modules.p5_smerge.data_prep.download_isd_by_grid \
+            --year 2022 --grid-file project/current/grid/station_search_grid.cmn \
+            --max-stations 3 --timeout 30 --retries 2 2>&1 | tee run-evidence/p5-download.log
+          find project/current/met/surface/isd_raw -maxdepth 1 -name '*-2022.csv' -size +0c | grep -q .
+      - name: Prepare GENERIC input with copied P5 processing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m native_cpp.modules.p5_smerge.data_prep.prepare_inputs \
+            --expected-year 2022 --skip-download --execute 2>&1 | tee run-evidence/p5-process.log
+          find project/current/met/surface/isd2smerge_ready -maxdepth 1 -name '*.csv' -size +0c | grep -q .
+      - name: Record public-source provenance and checksums
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p run-evidence
+          python - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('project/current/met/surface')
+          files=sorted(p for p in root.rglob('*') if p.is_file()) if root.exists() else []
+          items=[{'path':str(p),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]
+          ready=[p for p in items if '/isd2smerge_ready/' in p['path'] and p['path'].endswith('.csv')]
+          raw=[p for p in items if '/isd_raw/' in p['path'] and p['path'].endswith('-2022.csv')]
+          result={'stage':'P5','source':'NOAA NCEI Global Hourly 2022','source_ref':'RRain001/CTEAS main 66e30ffb1ff4638a97af8a060748ce30b7578350','model_domain_km':[5,5],'model_grid_m':100,'station_search_square_km':[200,200],'station_limit':3,'raw_station_files':len(raw),'generic_ready_files':len(ready),'files':items,'caveat':'search area applies only to surface meteorological station discovery, not model computation; derived/interpolated wind is not direct observation'}
+          pathlib.Path('run-evidence/p5-provenance.json').write_text(json.dumps(result,indent=2,ensure_ascii=False)+'\n')
+          print('P5_CAPTURE_SUMMARY',json.dumps({'file_count':len(items),'raw_count':len(raw),'ready_count':len(ready),'total_bytes':sum(p['bytes'] for p in items)}))
+          PY
+      - name: Upload isolated public-input evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p5-hefei-2022-inputs
+          path: |
+            run-evidence/
+            project/current/grid/station_search_grid.cmn
+            project/current/met/surface/isd_raw/*2022*
+            project/current/met/surface/isd2smerge_ready/*.csv
+            project/current/met/surface/isd2smerge_and_fill/*wind_audit*
+          if-no-files-found: warn
+          retention-days: 7
