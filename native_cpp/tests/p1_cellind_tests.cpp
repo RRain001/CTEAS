@@ -17,5 +17,17 @@ int main() {
   check(999,2000,-1,-1);
   check(1000,1999,-1,-1);
   check(1200,2150,-1,-1);
-  std::cout<<"P1 original CELLIND boundary subset PASS\n";
+  // NoData may not be silently dropped or converted to a fabricated zero.
+  const cteas::atmos::Shape2D shape(1,1);
+  TerrainRaster invalid{cteas::atmos::Array2D<std::int16_t>(shape),
+                        cteas::atmos::ValidityMask2D(shape),
+                        {117.0,0.001,0.0,32.0,0.0,-0.001},
+                        "unverified-source-wkt",-32768};
+  bool refused_nodata=false;
+  try { (void)grid_geotiff_terrain_utm50n(invalid,s); }
+  catch(const std::invalid_argument& e) {
+    refused_nodata=std::string(e.what()).find("unsupported NoData")!=std::string::npos;
+  }
+  if(!refused_nodata) throw std::runtime_error("P1 failed to reject source NoData");
+  std::cout<<"P1 original CELLIND boundary and explicit missing-source rejection PASS\n";
 }
