@@ -1,0 +1,47 @@
+# P3 MAKEGEO 3.2 L110401 — Hefei 100 m minimal C++20 reconstruction
+
+Date: 2026-10-10. Frozen common parent: `60b7b1d93866fff772926b6ac32dc0af7235552b`. This document pertains solely to [Draft PR #5](https://github.com/RRain001/CTEAS/pull/5), which also carries the committed P1/P2 minimum feature/Fortran-option matrix. P4/P5 remain isolated in independent oh-my-pi agent branches. Original vendor tree untouched.
+
+## Physics and I/O dependency
+
+Original sources:
+- `engine/vendor/src/MAKEGEO_V3.2_L110401/makegeo.for` SHA-256 `8c4fb11db36d4b976b54f470b7a06ce4e38ab09e934951b0e2c613bddc34e347`;
+- original `makegeo.inp` SHA-256 `14f46700f232f5721d87aa489fda458ad68813cc0f8645c2bbce475872d3a6b7`.
+- Input original `TERREL.DAT`: SHA-256 `d74a5a1045ea4cf25e120099196a3962ab012aaebdf37354ec8264fad0e27678`;
+- Input original `LU.DAT`: SHA-256 `75720a211126ffc1d5dbd931cb1dfcc4b4c54f0f4b19b0bceeb26487ba75c0ea`.
+
+Case: 50×50 @ 100 m UTM50N WGS84, no snowfall, all 2500 valid terrain and landuse cells, 38 input landuse classes mapped into 14 output categories.
+
+Reference: `native_cpp/reference/capture_p1_p2.py` and `capture_p3_makegeo.py` rebuild and run **untouched** original TERREL 7.0.0, CTGPROC 7.0.0 and MAKEGEO 3.2 in isolated GitHub-hosted runner directories. P3 output `GEO.DAT` v2.1 SHA-256 `d1b8c2a079fcf6dd2f4f353f6fb4b115d34066719c7d384dbcf58dae0089c998`, bytes 161274.
+
+## Scientific kernel
+
+`native_cpp/src/p3_makegeo_cli.cpp` is standalone C++20 with `native_cpp/p3/CMakeLists.txt`, no shared ABI changes.
+
+- Parse and strictly validate original control `! X !` table of **all 38** input categories: roughness `z0`, albedo, Bowen ratio, soil heat flux coefficient, anthropogenic heat flux, LAI and output category map.
+- Parse and validate original `LU.DAT 2.1` 38 × 2500 fractions in south-to-north order and `TERREL.DAT 2.0` north-to-south elevations.
+- `COMP` algorithm: water classes `IWAT`, `CFRACT=0.5` threshold with +0.0001 original tolerance, select highest eligible input-category fraction, remap via control table `mapcat`.
+- `WT`: surface roughness `z0 = exp(sum(f_k * log(z0_k)) / sum(f_k))`; six other non-snow quantities by arithmetic weighted area average. For actual `GEO.DAT` outputs, the fields are: dominant category, elevation, z0, albedo, Bowen ratio, soil heat flux, anthropogenic heat flux and LAI.
+- Fail-closed on unexpected CRS/zone/grids/categories, incomplete input rows/headers, `LSNOW`, `LLU2`, `NSPLIT`, uncovered cells and missing terrain. No silently invented physics or water/land corrections.
+- Independently write a machine-readable numeric audit CSV and a `GEO.DAT v2.1` no-snow file with the original field order, category list, 10-values-per-record LU rows, north-to-south grids, `F7.2` and `F7.4` format widths; writer uses an identifying C++ provenance comment instead of imitating the original Fortran compiler/source, thus full file SHA differs legitimately.
+
+## Audits and status
+
+- [Original P3 source reference capture](https://github.com/RRain001/CTEAS/actions/runs/38046610229) **PASS** (original MAKEGEO compiled/executed on P1+P2 original reference files).
+- [Initial independent P3 C++ science fields](https://github.com/RRain001/CTEAS/actions/runs/38046755786) **PASS**, original-vs-C++ 2,500 category fields + 17,500 float fields, **zero errors above predeclared per-field formatting tolerance**.
+- [C++ GEO.DAT output parser and exact displayed-value validation](https://github.com/RRain001/CTEAS/actions/runs/38046904440) **PASS**, 20,000/20,000 formatted displayed values exactly agree with original.
+- Independent mixed-category/water-threshold/area-weighting reference: `native_cpp/reference/prepare_p3_mixed.py` and same `compare_p3_makegeo.py`; **pending final CI** at this documentation snapshot. Distinct from true Hefei land-cover fractions.
+
+## Option/routine exclusions
+
+| Excluded from minimal scope | Original routines | Original control item |
+|---|---|---|
+| Daily dynamic snow cover and snow-age albedo/roughness | `RDSNHD`, `RDSN`, `WTSW`, `WTSWZ0`, `WTSWALB`, `FILLT`, `FILLS`, `ROLLBK` | `LSNOW`, `IFMTGEO`, `IDATEBEG`, `IDATEEND`, `MSRL`, `HSCL`, `MSAL`, `SDPMIN`, `XS`, `XF` |
+| Second low-resolution landuse for missing primary cells | `COMP`, `READHD` | `LLU2`, `LU2DAT` |
+| Splitting one category into several categories | `COMP` fractional redistribution block | `NSPLIT`, `CFRACT` is supported, split table only excluded |
+| Partial/void LU coverage handling and IMISS fallback | `COMP` | `FLUMIN`, `IMISS` — the study requires all cells valid; these options are enforced as guards, fallback not used |
+| Optional QA graphics, plot colors, Surfer specific spatial format | `COMP`, GRD output routines | `LUGRD`, `TEGRD`, `IXQA`, `IYQA` |
+| Other geo projections, source LU resolutions and time-varying products | `READHD`, `WRTHEAD`, `COMP` | `PMAP`, `DATUM`, `IUTMZN`, `IFMTGEO` |
+| Terrain-off simulation option | `COMP` | `LTERR=F` — the study intentionally requires real DEM elevations |
+
+Classification: **PASS_REFERENCE_SCOPED_P3_HEFEI_NO_SNOW_100M** for current original-input numerical comparison and writer. **NOT yet end-to-end C++ P1/P2→P3 integration or original CALMET downstream read acceptance.** Keep PR Draft until mixed-category tests and independent review complete. No main merge.
