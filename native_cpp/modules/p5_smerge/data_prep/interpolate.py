@@ -84,16 +84,12 @@ class WindPreparationError(ValueError):
 
 
 def fill_wind_forward_calm(df, dir_col, spd_col, strict=False):
-    """Atmos ISD_FORWARD_FILL_CALM_ARC_V1:逐字段前向保持 + 静风最短弧。
+    """Scheme C: preserve measured/forward-held wind for GENERIC and CALMET.
 
-    与旧实现(u/v 时间插值 + 全年均值兜底)的差异:
-    - 逐字段只沿用上一个可用原始值(整点缺报也沿用),每个填充值记录来源时刻;
-    - 静风按填充后速度 < 0.5 m/s 判定,报文类型码不参与;
-    - 静风段风向 = 两端非静风填充风向的最短弧,m/(L+1) 分配,精确 180° 顺时针;
-    - 主表速度取计算口径:静风小时写 0.5 m/s(SMERGE/CALMET 输入),非静风写实际
-      填充速度;审计文件保留 0.0 的 filled/statistics 值;
-    - 前置缺失 / 贴区间边界静风段:strict=True 抛 WindPreparationError(Atmos 语义),
-      否则保留前向保持值并在审计中标出。
+    Legacy below-0.5 low-wind tagging is audit-only. Numerical minima,
+    extrapolation and true calm handling are delegated to original CALMET.
+    An exact 0 m/s wind receives canonical WD=0 in GENERIC because direction
+    is physically undefined; raw wind direction remains in source and audit.
     """
     index = df.index
     direction = pd.to_numeric(df[dir_col], errors="coerce").replace(9999, np.nan)
@@ -109,56 +105,48 @@ def fill_wind_forward_calm(df, dir_col, spd_col, strict=False):
     dir_src = dir_src.ffill()
     spd_src = spd_src.ffill()
 
-    leading = []
-    for field, filled in (("wind_direction", direction_filled), ("wind_speed", speed_filled)):
-        count = int(filled.isna().sum())
-        if not count:
-            continue
-        if not bool(filled.iloc[:count].isna().all()):
-            raise ValueError("前向保持后仍存在区间内部缺失")
-        leading.append({
-            "field": field,
-            "start_utc": index[0],
-            "end_utc_inclusive": index[count - 1],
-            "hours": count,
-        })
+    exact_zero = speed_filled.eq(0.0).fillna(False)
+    direction_generic = direction_filled.mask(exact_zero, 0.0)
+    speed_generic = speed_filled.copy()
 
-    calm_mask = (speed_filled < CALM_LIMIT_M_S).fillna(False).to_numpy()
-    runs = _missing_runs(calm_mask)
-    statistic_direction = direction_filled.copy()
-    method = pd.Series("FILLED_NONCALM_FIELD", index=index, dtype="object")
-    segment = pd.Series(pd.NA, index=index, dtype="Int64")
-    unbracketed = []
-    for identifier, (left, right) in enumerate(runs, start=1):
-        hours = right - left + 1
-        if left == 0 or right == len(calm_mask) - 1:
-            method.iloc[left:right + 1] = "CALM_UNBRACKETED_KEEP_FILLED_DIRECTION"
-            segment.iloc[left:right + 1] = identifier
-            unbracketed.append({
+    leading = []
+    for field, values in (("wind_direction", direction_generic),
+                          ("wind_speed", speed_generic)):
+        missing = values.isna().to_numpy()
+        count = 0
+        for flag in missing:
+            if not flag:
+                break
+            count += 1
+        if count:
+            leading.append({
+                "field": field,
+                "start_utc": index[0],
+                "end_utc_inclusive": index[count - 1],
+                "hours": count,
+            })
+        if count < len(missing) and missing[count:].any():
+            raise ValueError("interior missing after forward fill")
+
+    # 0.5 m/s is ONLY a historical P5 diagnostic category, not a clamp.
+    low_wind = speed_filled.lt(CALM_LIMIT_M_S).fillna(False)
+    segments = _missing_runs(low_wind.to_numpy())
+    boundary_segments = []
+    for left, right in segments:
+        if left == 0 or right == len(index) - 1:
+            boundary_segments.append({
                 "start_utc": index[left],
                 "end_utc_inclusive": index[right],
-                "hours": hours,
+                "hours": right - left + 1,
                 "missing_before_noncalm": left == 0,
-                "missing_after_noncalm": right == len(calm_mask) - 1,
+                "missing_after_noncalm": right == len(index) - 1,
             })
-            continue
-        theta0 = float(direction_filled.iloc[left - 1]) % 360.0
-        theta1 = float(direction_filled.iloc[right + 1]) % 360.0
-        difference = (theta1 - theta0) % 360.0
-        delta = difference - 360.0 if difference > 180.0 else difference
-        for position, hour in enumerate(range(left, right + 1), start=1):
-            statistic_direction.iloc[hour] = (theta0 + position / (hours + 1) * delta) % 360.0
-            method.iloc[hour] = "ALL_CALM_SHORTEST_ARC_CLOCKWISE_EXACT_180"
-            segment.iloc[hour] = identifier
 
-    # 计算口径速度:静风小时统一 0.5 m/s(供 SMERGE/CALMET),其余为实际填充速度。
-    speed_calculation = speed_filled.mask(pd.Series(calm_mask, index=index), CALM_LIMIT_M_S)
+    if strict and leading:
+        raise WindPreparationError("LEADING_MISSING_NO_PREDECESSOR", leading)
 
-    if strict and (leading or unbracketed):
-        if leading:
-            raise WindPreparationError("LEADING_MISSING_NO_PREDECESSOR", leading)
-        raise WindPreparationError("CALM_SEGMENT_MISSING_NONCALM_ENDPOINT", unbracketed)
-
+    method = pd.Series("OBSERVED_OR_PREVIOUS_HOUR", index=index, dtype="object")
+    method.loc[exact_zero] = "ZERO_SPEED_DIRECTION_CANONICAL_0_FOR_GENERIC"
     audit = pd.DataFrame({
         "wind_direction_raw_deg": direction,
         "wind_speed_raw_m_s": speed,
@@ -168,32 +156,38 @@ def fill_wind_forward_calm(df, dir_col, spd_col, strict=False):
         "wind_speed_filled_m_s": speed_filled,
         "wind_speed_was_filled": speed.isna() & speed_filled.notna(),
         "wind_speed_fill_source_utc": spd_src,
-        "is_calm": pd.Series(calm_mask, index=index),
-        "wind_direction_statistics_deg": statistic_direction,
+        "is_calm": low_wind,
+        "is_exact_zero_speed": exact_zero,
+        "wind_direction_statistics_deg": direction_filled,
         "wind_speed_statistics_m_s": speed_filled,
-        "wind_speed_calculation_m_s": speed_calculation,
+        "wind_direction_generic_deg": direction_generic,
+        "wind_speed_generic_m_s": speed_generic,
+        "wind_speed_calculation_m_s": speed_generic,
         "direction_statistics_method": method,
-        "calm_segment_id": segment,
     }, index=index)
+
     summary = {
+        "wind_policy": "P5_C_SOURCE_WIND_V1",
         "calm_limit_m_s": CALM_LIMIT_M_S,
+        "calm_limit_usage": "LOW_SPEED_DIAGNOSTIC_ONLY",
         "hour_count": int(len(index)),
-        "calm_hours": int(calm_mask.sum()),
+        "calm_hours": int(low_wind.sum()),
+        "exact_zero_hours": int(exact_zero.sum()),
         "direction_forward_filled_hours": int((direction.isna() & direction_filled.notna()).sum()),
         "speed_forward_filled_hours": int((speed.isna() & speed_filled.notna()).sum()),
-        "calm_segments": len(runs),
+        "calm_segments": len(segments),
         "leading_missing": leading,
-        "boundary_calm_segments": unbracketed,
+        "boundary_calm_segments": boundary_segments,
         "statistics_speed_field": "wind_speed_filled_m_s",
-        "calculation_speed_field": "wind_speed_calculation_m_s",
-        "main_table_speed_field": "wind_speed_calculation_m_s (静风写 0.5 m/s 供 SMERGE/CALMET)",
+        "calculation_speed_field": "wind_speed_generic_m_s (NO P5 MINIMUM)",
+        "main_table_speed_field": "wind_speed_generic_m_s (zero and low wind retained)",
+        "main_table_direction_field": "wind_direction_generic_deg (zero only canonicalized)",
+        "calmet_calm_handling": "DEFERRED_TO_ORIGINAL_CALMET_SOLVER",
     }
 
-    # 主表:方向取统计口径(静风段最短弧);速度取计算口径——静风小时统一写 0.5 m/s,
-    # 非静风小时写实际填充速度;缺失仍写 9999 哨兵。审计文件保留 filled/statistics 值。
     out = df.copy()
-    out[spd_col] = speed_calculation.round(3).fillna(9999)
-    out[dir_col] = statistic_direction.round(0).fillna(9999).astype(int)
+    out[spd_col] = speed_generic.round(3).fillna(9999)
+    out[dir_col] = direction_generic.round(0).fillna(9999).astype(int)
     return out, audit, summary
 
 
@@ -249,7 +243,7 @@ def process_one_station(file_path, strict=False):
         if col and col in df.columns:
             df[col] = fill_continuous_by_gap_rule(df[col])
 
-    # 风场：逐字段前向保持 + 静风最短弧（Atmos ISD_FORWARD_FILL_CALM_ARC_V1）
+    # 风场：方案 C，保留真实/前向填充的低风速；静风数值处理交由 CALMET
     audit = summary = None
     if wdir_col and wspd_col and wdir_col in df.columns and wspd_col in df.columns:
         df, audit, summary = fill_wind_forward_calm(df, wdir_col, wspd_col, strict=strict)
@@ -294,9 +288,9 @@ def save_station_csv(file_path, header_lines, df_out):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="ISD 风场逐字段前向保持 + 静风最短弧补值")
+    parser = argparse.ArgumentParser(description="P5 Scheme C: preserve observed wind, defer calm numerics to CALMET")
     parser.add_argument("--strict", action="store_true",
-                        help="前置缺失/贴边界静风段按 Atmos 语义报错退出(默认保留并在审计中标出)")
+                        help="缺少前置观测时要求失败；静风风向不执行弧插值")
     args = parser.parse_args()
 
     workdir = "."
@@ -318,7 +312,7 @@ if __name__ == "__main__":
         try:
             headers, df_result, audit, summary = process_one_station(input_file, strict=args.strict)
         except WindPreparationError as error:
-            print(f"[{input_file}] {error.code}: 前置缺失/贴边界静风段,未生成派生结果")
+            print(f"[{input_file}] {error.code}: 缺乏前置观测，未生成派生结果")
             for item in error.station_less_ranges:
                 print(f"    {item}")
             raise SystemExit(1)

@@ -156,14 +156,53 @@ class P5MissingPolicyTests(unittest.TestCase):
         self.assertTrue(pd.isna(filled.iloc[1]))
         self.assertEqual(filled.iloc[3],22.0)
 
-    def test_calm_untouched_current_algorithm(self):
-        ts=pd.date_range("2022-01-01",periods=3,freq="h")
-        df=pd.DataFrame({"deg":[350.0,120.0,10.0],"ms-1":[1.0,0.0,1.0]},index=ts)
+    def test_scheme_c_keeps_zero_and_low_speed(self):
+        ts=pd.date_range("2022-01-01",periods=5,freq="h")
+        df=pd.DataFrame({"deg":[350,120,30,10,9999],
+                         "ms-1":[1.0,0.0,0.2,1.0,9999.0]},index=ts)
         out,audit,summary=interp.fill_wind_forward_calm(df,"deg","ms-1")
-        self.assertEqual(out["ms-1"].iloc[1],0.5)
-        self.assertEqual(out["deg"].iloc[1],0)
-        self.assertTrue(bool(audit["is_calm"].iloc[1]))
-        self.assertEqual(summary["calm_limit_m_s"],0.5)
+        self.assertEqual(list(out["ms-1"]),[1.0,0.0,0.2,1.0,1.0])
+        self.assertEqual(list(out["deg"]),[350,0,30,10,10])
+        self.assertEqual(audit["wind_direction_raw_deg"].iloc[1],120)
+        self.assertEqual(audit["wind_direction_filled_deg"].iloc[1],120)
+        self.assertEqual(audit["wind_speed_generic_m_s"].iloc[1],0)
+        self.assertTrue(bool(audit["is_calm"].iloc[2]))
+        self.assertFalse(bool(audit["is_exact_zero_speed"].iloc[2]))
+        self.assertEqual(summary["calm_limit_usage"],"LOW_SPEED_DIAGNOSTIC_ONLY")
+
+    def test_undefined_direction_for_exact_zero_is_canonical(self):
+        ts=pd.date_range("2022-01-01",periods=4,freq="h")
+        df=pd.DataFrame({"deg":[9999,9999,90,9999],
+                         "ms-1":[0.0,0.0,1.0,0.0]},index=ts)
+        out,audit,summary=interp.fill_wind_forward_calm(df,"deg","ms-1",strict=True)
+        self.assertEqual(list(out["deg"]),[0,0,90,0])
+        self.assertEqual(list(out["ms-1"]),[0.0,0.0,1.0,0.0])
+        self.assertTrue(pd.isna(audit["wind_direction_raw_deg"].iloc[0]))
+        self.assertEqual(summary["exact_zero_hours"],3)
+
+    def test_leading_missing_nonzero_cannot_invent_direction(self):
+        ts=pd.date_range("2022-01-01",periods=3,freq="h")
+        df=pd.DataFrame({"deg":[9999,100,100],
+                         "ms-1":[0.2,0.2,1.0]},index=ts)
+        out,_,_=interp.fill_wind_forward_calm(df,"deg","ms-1")
+        self.assertEqual(out["deg"].iloc[0],9999)
+        self.assertEqual(out["ms-1"].iloc[0],0.2)
+        with self.assertRaisesRegex(interp.WindPreparationError,"LEADING_MISSING"):
+            interp.fill_wind_forward_calm(df,"deg","ms-1",strict=True)
+
+    def test_original_smerge_calmet_calm_source_contract(self):
+        root=Path(__file__).resolve().parents[5]
+        sm=(root/"engine/vendor/src/SMERGE_v5.7.0_L121203/SMERGE.FOR").read_text(errors="replace")
+        cal=(root/"engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for").read_text(errors="replace")
+        inp=(root/"engine/templates/met.inp").read_text(errors="replace")
+        self.assertIn("elseif (jdat.eq.8) then",sm)
+        self.assertIn("xws(index) = xcws",sm)
+        self.assertIn("if(xws(n).eq.0.0)ncalms(n)=ncalms(n)+1",sm)
+        self.assertIn("ws=max(ws,0.5)",cal)
+        self.assertIn("data vk/0.4/,xcrit/0.05/,wsmin/0.001/",cal)
+        self.assertIn("if (ws10(l) .lt. 0.0001) then",cal)
+        self.assertIn("IF (ICALM.EQ.0) THEN",cal)
+        self.assertIn("! ICALM  =  0  !",inp)
 
 
 if __name__=="__main__":
