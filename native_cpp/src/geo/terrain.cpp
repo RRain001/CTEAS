@@ -57,6 +57,10 @@ TerrainRaster read_srtm_geotiff(const std::filesystem::path& path) {
   const OGRSpatialReference* srs = ds->GetSpatialRef();
   if (!srs || srs->IsEmpty() || !srs->IsGeographic())
     throw std::runtime_error("P1: elevation crop must have geographic CRS");
+  OGRSpatialReference expected_wgs84;
+  if (expected_wgs84.SetWellKnownGeogCS("WGS84") != OGRERR_NONE ||
+      !srs->IsSameGeogCS(&expected_wgs84))
+    throw std::runtime_error("P1: source GeoTIFF CRS must be WGS84 geographic");
   const int nx = ds->GetRasterXSize(), ny = ds->GetRasterYSize();
   const cteas::atmos::Shape2D shape(nx, ny);
   TerrainRaster result{cteas::atmos::Array2D<std::int16_t>(shape),

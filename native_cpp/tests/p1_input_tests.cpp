@@ -14,14 +14,14 @@ template<class F> void must_throw(F f) {
   bool caught=false; try { f(); } catch(const std::exception&) { caught=true; }
   if(!caught) throw std::runtime_error("expected P1 input rejection");
 }
-void fixture(const fs::path& path, bool set_nodata) {
+void fixture(const fs::path& path, bool set_nodata, int epsg=4326) {
   GDALAllRegister();
   auto* driver=GetGDALDriverManager()->GetDriverByName("GTiff");
   auto* ds=driver->Create(path.string().c_str(),2,2,1,GDT_Int16,nullptr);
   if(!ds) throw std::runtime_error("fixture creation failed");
   double tr[6]={117.,0.001,0.,32.,0.,-0.001};
   if(ds->SetGeoTransform(tr)!=CE_None) throw std::runtime_error("fixture transform failed");
-  OGRSpatialReference srs; srs.importFromEPSG(4326);
+  OGRSpatialReference srs; if(srs.importFromEPSG(epsg)!=OGRERR_NONE) throw std::runtime_error("fixture EPSG failed");
   if(ds->SetSpatialRef(&srs)!=CE_None) throw std::runtime_error("fixture CRS failed");
   auto* band=ds->GetRasterBand(1);
   if(set_nodata && band->SetNoDataValue(-32768.)!=CE_None) throw std::runtime_error("fixture nodata failed");
@@ -43,6 +43,8 @@ int main() {
       throw std::runtime_error("P1 fixture mismatch");
     fixture(dir/"no_nodata.tif",false);
     must_throw([&]{ (void)geo::read_srtm_geotiff(dir/"no_nodata.tif"); });
+    fixture(dir/"wrong_crs.tif",true,4267);
+    must_throw([&]{ (void)geo::read_srtm_geotiff(dir/"wrong_crs.tif"); });
     {std::ofstream f(dir/"tile.bbox"); f<<"# comment\n117.1 31.8 117.2 32.0\n";}
     if(std::abs(geo::read_bbox(dir/"tile.bbox").east_deg-117.2)>1e-12) throw std::runtime_error("P1 bbox mismatch");
     {std::ofstream f(dir/"tile.bbox"); f<<"0 100 -1 101\n";}
