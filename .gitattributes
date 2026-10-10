@@ -17,3 +17,7 @@
 *.con binary
 *.grd binary
 *.bin binary
+
+# 栅格数据（站点裁剪件等）：按二进制处理，避免行尾/编码转换
+*.tif binary
+*.img binary

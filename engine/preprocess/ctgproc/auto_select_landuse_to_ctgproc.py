@@ -173,6 +173,61 @@ def resolve_landuse_file(landuse_file_arg: str) -> pathlib.Path:
     return p
 
 
+def read_generic_landuse_header(path: pathlib.Path) -> tuple[str, str] | None:
+    """Read projection and datum from a ``GENERIC.LANDUSE 1.0`` header.
+
+    Field order mirrors the reads in the GENERIC branch of ctgproc.for:
+    dataset/version/modifier (2a16,a64) -> number of comment lines -> comments ->
+    projection (a8) -> datum (a8) + date (a12) -> coordinate units (a4).
+
+    Returns (projection, datum) or None when the file is not a GENERIC.LANDUSE file.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return None
+    if not lines or not lines[0].upper().startswith("GENERIC.LANDUSE"):
+        return None
+
+    idx = 1
+    try:
+        ncomment = int(lines[idx].split()[0])
+    except (IndexError, ValueError):
+        raise ValueError(f"无法解析 GENERIC 文件头的注释行数: {path}")
+    idx += 1 + ncomment
+    if idx + 1 >= len(lines):
+        raise ValueError(f"GENERIC 文件头不完整: {path}")
+
+    projection = lines[idx][:8].strip().upper()
+    datum = lines[idx + 1][:8].strip().upper()
+    if not projection or not datum:
+        raise ValueError(f"无法解析 GENERIC 文件头的投影/datum: {path}")
+    if projection != "LL":
+        raise ValueError(f"GENERIC 文件投影必须为 LL，实际为 {projection}: {path}")
+    return projection, datum
+
+
+def sync_dnzgen(lines: list[str], datum: str) -> tuple[int, str, str] | None:
+    """Set ``DNZGEN`` in Subgroup (0c) to the datum of a GENERIC landuse file.
+
+    ctgproc.x resolves the coordinates of GENERIC point files with the DNZGEN
+    datum-region string (see ``call GLOBE(...,dnzgen,...)`` in the GENERIC branch
+    of ctgproc.for), not with the datum written in the file header, so both must
+    agree or the points are placed with the wrong datum.
+    """
+    pat = re.compile(r"(!\s*DNZGEN\s*=\s*)([^!]*?)(\s*!)")
+    for i, line in enumerate(lines):
+        m = pat.search(line)
+        if not m:
+            continue
+        old_value = m.group(2).strip()
+        if old_value.upper() == datum.upper():
+            return None
+        lines[i] = line[: m.start()] + f"{m.group(1)}{datum}{m.group(3)}" + line[m.end() :]
+        return (i + 1, "DNZGEN", old_value, datum)
+    raise ValueError("Could not locate DNZGEN in ctgproc.inp")
+
+
 def relative_to_case_dir(target: pathlib.Path, base_dir: pathlib.Path) -> str:
     try:
         rel_to_root = target.relative_to(TUTORIAL_ROOT)
@@ -196,11 +251,17 @@ def update_ctgproc(
     landuse_file: pathlib.Path,
     lulc_type: str,
     dry_run: bool,
+    generic_datum: str | None = None,
 ) -> tuple[list[tuple[int, str, str, str]], int]:
     ctgproc_path = ctgproc_path.resolve()
     lines = ctgproc_path.read_text(encoding="utf-8", errors="ignore").splitlines(keepends=True)
 
     sync_changes = sync_ctg_projection_grid(lines, grid_to_ctg_values(grid))
+
+    if generic_datum:
+        dnzgen_change = sync_dnzgen(lines, generic_datum)
+        if dnzgen_change:
+            sync_changes.append(dnzgen_change)
 
     ndbf_pat = re.compile(r"(!\s*NDBF\s*=\s*)([^!]*?)(\s*!)")
     ndbf_done = False
@@ -279,7 +340,7 @@ def main() -> int:
     parser.add_argument(
         "--lulc-type",
         default="GLAZAS",
-        help="LULC type keyword for Subgroup (0b), e.g., GLAZAS",
+        help="LULC type keyword for Subgroup (0b), e.g., GLAZAS (.img) or GEN (GENERIC.LANDUSE point file)",
     )
     parser.add_argument(
         "--force-lowercase-path",
@@ -305,14 +366,29 @@ def main() -> int:
     landuse_file = resolve_landuse_file(args.landuse_file)
     if lcfiles_lower or args.force_lowercase_path:
         landuse_file = ensure_lowercase_visible(landuse_file)
+
+    generic_header = read_generic_landuse_header(landuse_file)
+    lulc_type = args.lulc_type.upper()
+    if generic_header is not None and lulc_type != "GEN":
+        raise SystemExit(
+            f"{landuse_file} 是 GENERIC.LANDUSE 点文件, 请加 --lulc-type GEN (当前为 {lulc_type})"
+        )
+    if generic_header is None and lulc_type == "GEN":
+        raise SystemExit(
+            f"--lulc-type GEN 需要 GENERIC.LANDUSE 1.0 格式文件, 但 {landuse_file} 不是"
+        )
+    generic_datum = generic_header[1] if generic_header else None
     print(f"已选择的土地利用文件: {landuse_file}")
+    if generic_datum:
+        print(f"GENERIC 点文件输入 datum: {generic_datum} (将同步到 DNZGEN)")
 
     sync_changes, _ = update_ctgproc(
         ctgproc_path,
         grid,
         landuse_file,
-        args.lulc_type,
+        lulc_type,
         dry_run=args.dry_run,
+        generic_datum=generic_datum,
     )
     print("已同步 CTGPROC 投影/网格参数:")
     for line_no, key, old, new in sync_changes:

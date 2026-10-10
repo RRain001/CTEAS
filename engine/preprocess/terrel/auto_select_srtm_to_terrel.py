@@ -185,20 +185,46 @@ def utm_to_wgs84_lonlat(easting_m: float, northing_m: float, zone: int, northern
     return math.degrees(lon), math.degrees(lat)
 
 
+def read_bbox_sidecar(tif_path: pathlib.Path) -> "BBox | None":
+    """Read the ``<name>.bbox`` companion file of a cropped tile.
+
+    Cropped tiles cover only a small part of the 5x5 degree nominal sheet, so the
+    nominal CIGAR bounds cannot be used to decide whether a file covers a domain.
+    Returns None when the companion file is missing or unparsable.
+    """
+    sidecar = tif_path.with_suffix(".bbox")
+    if not sidecar.is_file():
+        return None
+    for line in sidecar.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        try:
+            lon_min, lat_min, lon_max, lat_max = (float(v) for v in parts[:4])
+        except ValueError:
+            continue
+        return BBox(lon_min=lon_min, lat_min=lat_min, lon_max=lon_max, lat_max=lat_max)
+    return None
+
+
 def pick_tiles(srtm_dir: pathlib.Path, domain: BBox) -> list[pathlib.Path]:
-    picked: list[tuple[int, int, pathlib.Path]] = []
-    pat = re.compile(r"^srtm_(\d{2})_(\d{2})\.tif$", re.IGNORECASE)
-    for p in sorted(srtm_dir.glob("srtm_??_??.tif")):
+    picked: list[tuple[int, int, str, pathlib.Path]] = []
+    pat = re.compile(r"^srtm_(\d{2})_(\d{2})", re.IGNORECASE)
+    for p in sorted(srtm_dir.glob("srtm_*.tif")):
         m = pat.match(p.name)
         if not m:
             continue
         x_idx = int(m.group(1))
         y_idx = int(m.group(2))
-        if cgiar_tile_bbox(x_idx, y_idx).intersects(domain):
-            picked.append((x_idx, y_idx, p))
+        coverage = read_bbox_sidecar(p) or cgiar_tile_bbox(x_idx, y_idx)
+        if coverage.intersects(domain):
+            picked.append((x_idx, y_idx, p.name.lower(), p))
 
-    picked.sort(key=lambda t: (t[0], t[1]))
-    return [p for _, _, p in picked]
+    picked.sort(key=lambda t: (t[0], t[1], t[2]))
+    return [p for _, _, _, p in picked]
 
 
 def grid_to_terrel_values(grid: GridDef) -> dict[str, str]:

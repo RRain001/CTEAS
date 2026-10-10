@@ -79,3 +79,21 @@ python3 -m engine.preprocess.ctgproc.auto_select_landuse_to_ctgproc --no-run-ctg
 python3 -m engine.preprocess.ctgproc.auto_select_landuse_to_ctgproc \
   --landuse-file /path/to/your_landuse.img
 ```
+
+## 使用站点裁剪数据（GENERIC 点文件）
+
+`calpuff_terrain_and_landuse_data_crop/<站点>/` 下的土地利用裁剪件是
+`GENERIC.LANDUSE 1.0` 点文件（原因见 `docs/terrain_landuse_crop.md`），
+必须用 `--lulc-type GEN`：
+
+```bash
+python3 -m engine.preprocess.ctgproc.auto_select_landuse_to_ctgproc \
+  --landuse-file calpuff_terrain_and_landuse_data_crop/hefei_5km/eurasia_asia_landuse/eausgs2_0la_hefei_5km.generic.txt \
+  --lulc-type GEN
+```
+
+- 脚本会校验文件类型：GENERIC 文件不加 `--lulc-type GEN`（或反过来）会直接报错退出。
+- 脚本会读取 GENERIC 文件头的 datum，并同步 `ctgproc.inp` 的 `DNZGEN`
+  （ctgproc 的 GENERIC 分支用 `DNZGEN` 解释点坐标，而不是文件头里的 datum）。
+- `GEN` 分支不使用 `MESHGLAZ`：采样密度由点文件的点距决定
+  （当前 hefei_5km 裁剪件为 50 m）。

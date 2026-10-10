@@ -106,4 +106,18 @@ python3 -m engine.preprocess.terrel.auto_select_srtm_to_terrel --igrid 2
 
 - 当前脚本按 UTM 投影处理（`IMAP=UTM`）。
 - `srtm_XX_YY.tif` 文件名需符合 CGIAR 命名规则。
-- `terrel.x` 执行目录为 `terrel.inp` 所在目录。  
+- `terrel.x` 执行目录为 `terrel.inp` 所在目录。
+
+## 使用站点裁剪数据
+
+`calpuff_terrain_and_landuse_data_crop/<站点>/china_srtm/` 下的裁剪件命名形如
+`srtm_60_06_<站点>.tif`，并附带 `<name>.bbox` 旁文件记录真实覆盖范围。
+挑选脚本对存在旁文件的 tif 按**旁文件范围**判断是否覆盖研究域，
+对没有旁文件的全量分幅仍按 5°×5° 名义范围判断，因此两种目录都能直接用：
+
+```bash
+python3 -m engine.preprocess.terrel.auto_select_srtm_to_terrel \
+  --srtm-dir calpuff_terrain_and_landuse_data_crop/hefei_5km/china_srtm
+```
+
+说明见 `docs/terrain_landuse_crop.md`。  

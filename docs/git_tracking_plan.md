@@ -15,6 +15,7 @@
 - `docs/`
 - `docker/`
 - `calpuff-cli`
+- `calpuff_terrain_and_landuse_data_crop/`（站点裁剪数据，约 1.5 MB/站点，见 `docs/terrain_landuse_crop.md`）
 - `requirements.txt`
 - `requirements-docker-runtime.txt`
 - `pyproject.toml`
