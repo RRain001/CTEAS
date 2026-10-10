@@ -13,7 +13,8 @@ int main(int argc,char** argv) {
        source,{x0,y0,100.0,50,50});
     std::ofstream out(argv[4]);
     if(!out) throw std::runtime_error("P1 cannot write CSV");
-    out<<"i,j,hits,elevation_m\n"<<std::fixed<<std::setprecision(1);
+    // Preserve enough decimal digits to audit the pre-F8.1 Fortran mean.
+    out<<"i,j,hits,elevation_m\n"<<std::fixed<<std::setprecision(9);
     for(std::size_t j=0;j<50;++j)for(std::size_t i=0;i<50;++i) {
       const auto k=j*50+i;
       out<<i+1<<","<<j+1<<","<<r.point_count[k]<<","<<r.elevation_m[k]<<"\n";
