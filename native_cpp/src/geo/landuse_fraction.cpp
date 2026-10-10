@@ -58,8 +58,13 @@ P2Fractions compute_generic_utm50n(const GenericLanduse& input,P2Grid grid) {
     if(!std::isfinite(x)||!std::isfinite(y)||
        !transformer->Transform(1,&x,&y))
       throw std::runtime_error("P2 coordinate conversion failure");
-    const float dx=static_cast<float>(x/1000.)-x0;
-    const float dy=static_cast<float>(y/1000.)-y0;
+    // COORDLIB::COORDS uses implicit REAL*4 XMULTO = 0.001 and
+    // evaluates CRDIO * DBLE(XMULTO) before GLOBE writes REAL*4 km.
+    // Exactly dividing by 1000 misallocates boundary-point classes in
+    // the heterogeneous 100 m reference, despite equal total hit count.
+    const double legacy_m_to_km=static_cast<double>(0.001f);
+    const float dx=static_cast<float>(x*legacy_m_to_km)-x0;
+    const float dy=static_cast<float>(y*legacy_m_to_km)-y0;
     const int i=static_cast<int>(dx/step)+(dx>=0?1:0);
     const int j=static_cast<int>(dy/step)+(dy>=0?1:0);
     if(i<1||j<1||static_cast<std::size_t>(i)>grid.nx||
