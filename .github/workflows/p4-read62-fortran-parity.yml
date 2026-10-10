@@ -34,7 +34,7 @@ jobs:
               ln -s "$base" "/tmp/cteas-p4-refsource/$lower"
             fi
           done
-          gfortran -O0 -std=legacy -ffixed-line-length-none -fallow-argument-mismatch -fno-automatic \
+          gfortran -O0 -std=legacy -ffixed-line-length-72 -fallow-argument-mismatch -fno-automatic \
             -I/tmp/cteas-p4-refsource -o /tmp/cteas-p4-reference/read62 \
             /tmp/cteas-p4-refsource/READ62.FOR 2>&1 | tee reference-evidence/fortran-build.log
           sha256sum "$SRC/READ62.FOR" > reference-evidence/fortran-source.sha256
