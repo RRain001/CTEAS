@@ -70,8 +70,8 @@ def main() -> int:
             raise SystemExit(f"cannot reuse data without station manifest: {source}")
         selected = {s["sid"] for s in json.loads(source.read_text())["stations"]}
         actual = {p.name.split("-")[0] for p in root.glob(f"*-{args.expected_year}.csv")}
-        if selected != actual:
-            raise SystemExit(f"stale or unexpected NOAA raw files: {actual - selected}, missing: {selected - actual}")
+        if not selected.issubset(actual):
+            raise SystemExit(f"missing selected NOAA raw files: {selected - actual}")
     for cmd in steps:
         print(" ".join(cmd), flush=True)
         if args.execute:

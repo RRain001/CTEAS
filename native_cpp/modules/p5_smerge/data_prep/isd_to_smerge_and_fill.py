@@ -334,6 +334,29 @@ def main():
         print(f"未找到符合命名规则的输入文件([11位站号]-年份.csv): {input_dir}")
         return 1
 
+    # Unselected raw CSVs can remain as rejected fallback candidates. Never
+    # pass those into SMERGE, and never process leftovers from earlier cases.
+    from json import loads
+    selected_names = set()
+    for mf in INPUT_DIR.glob("station_selection_*.json"):
+        data = loads(mf.read_text(encoding="utf-8"))
+        year = int(data["year"])
+        for row in data["stations"]:
+            selected_names.add(f"{row['sid']}-{year}.csv")
+    if not selected_names:
+        raise RuntimeError("missing P5 source-selection manifest")
+    missing = selected_names - set(inputs)
+    if missing:
+        raise RuntimeError(f"selected station raw CSV files missing: {sorted(missing)}")
+    inputs = sorted(selected_names)
+    allowed_filled = {
+        x[:-4].replace(x[:11], x[:6] + "-" + x[6:11], 1) + "_filled.csv"
+        for x in inputs
+    }
+    unselected_filled = {x for x in os.listdir(output_dir) if x.endswith("_filled.csv")} - allowed_filled
+    if unselected_filled:
+        raise RuntimeError(f"stale unselected filled station inputs: {sorted(unselected_filled)}")
+
     produced = []
     for name in sorted(inputs):
         m = re.fullmatch(r"([0-9A-Za-z]{6})([0-9A-Za-z]{5})-(\d{4})\.csv", name)
