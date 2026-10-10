@@ -45,6 +45,13 @@ TerrainGridResult grid_geotiff_terrain_utm50n(
   const auto nx=source.raw_elevation_m.nx(), ny=source.raw_elevation_m.ny();
   if(nx==0||ny==0)
     throw std::invalid_argument("P1 empty terrain image");
+  // The current subset has no source-NoData policy equivalent to legacy
+  // LOADTIFF's special elevation replacement/void-filling switches.
+  // Refuse to generate apparently complete science output if any are present.
+  for(std::size_t j=0;j<ny;++j)
+    for(std::size_t i=0;i<nx;++i)
+      if(source.valid.is_missing(i,j))
+        throw std::invalid_argument("P1 GeoTIFF source contains unsupported NoData; no filling or dropping permitted");
   const auto& t=source.geo_transform;
   if(t[2]!=0.0 || t[4]!=0.0 || t[1]<=0.0 || t[5]>=0.0)
     throw std::invalid_argument("P1 subset only supports north-up geographic GeoTIFF");
@@ -55,9 +62,12 @@ TerrainGridResult grid_geotiff_terrain_utm50n(
   const float ddx=static_cast<float>(t[1]);
   const float ddy=static_cast<float>(t[5]);
   OGRSpatialReference srs,utm;
+  OGRSpatialReference wgs84;
   if(srs.importFromWkt(source.crs_wkt.c_str())!=OGRERR_NONE||
-     utm.importFromEPSG(32650)!=OGRERR_NONE || !srs.IsGeographic())
-    throw std::runtime_error("P1 invalid geographic/UTM projection");
+     utm.importFromEPSG(32650)!=OGRERR_NONE ||
+     wgs84.SetWellKnownGeogCS("WGS84")!=OGRERR_NONE ||
+     !srs.IsGeographic() || !srs.IsSameGeogCS(&wgs84))
+    throw std::runtime_error("P1 subset requires WGS84 geographic GeoTIFF to UTM50N");
   srs.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
   utm.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
   const auto cleanup=[](OGRCoordinateTransformation* p){if(p)OCTDestroyCoordinateTransformation(p);};
@@ -71,7 +81,6 @@ TerrainGridResult grid_geotiff_terrain_utm50n(
   std::vector<float> sum(cells,0.0f);
   // Raster row 0 is north; model row 0 is south.
   for(std::size_t j=0;j<ny;++j) for(std::size_t i=0;i<nx;++i) {
-    if(source.valid.is_missing(i,j)) {++out.rejected_missing;continue;}
     const float lon=xorg+static_cast<float>(i)*ddx;
     const float lat=yorg+static_cast<float>(j)*ddy;
     double x=lon,y=lat;
