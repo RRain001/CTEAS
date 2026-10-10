@@ -38,6 +38,23 @@ jobs:
             "$X" "$Y" /tmp/p2-compare-reference/p2_cpp_fractions.csv
       - name: Compare 2500 x 38 fields and independent original count
         run: python3 native_cpp/reference/compare_p2_gen.py --reference /tmp/p2-compare-reference --cpp /tmp/p2-compare-reference/p2_cpp_fractions.csv --report /tmp/p2-compare-reference/p2_numeric_comparison.json
+      - name: Generate separately isolated, multi-category original GEN reference
+        run: python3 native_cpp/reference/prepare_p2_heterogeneous.py --capture-dir /tmp/p2-compare-reference --output /tmp/p2-compare-reference/heterogeneous
+      - name: Calculate synthetic multi-category C++ fractions from identical points
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r X Y < <(python3 - <<'PY'
+          import json
+          m=json.load(open('/tmp/p2-compare-reference/manifest.json'))
+          print(m['grid']['x0_km'],m['grid']['y0_km'])
+          PY
+          )
+          /tmp/cteas-p2-build/cteas_p2_gen_fraction \
+            /tmp/p2-compare-reference/heterogeneous/data/generic_landuse.txt \
+            "$X" "$Y" /tmp/p2-compare-reference/heterogeneous/p2_cpp_fractions.csv
+      - name: Independently compare 95000 synthetic fractions and all point counts
+        run: python3 native_cpp/reference/compare_p2_gen.py --reference /tmp/p2-compare-reference/heterogeneous --cpp /tmp/p2-compare-reference/heterogeneous/p2_cpp_fractions.csv --report /tmp/p2-compare-reference/heterogeneous/p2_comparison.json
       - name: Preserve evidence even on numerical failure
         if: always()
         uses: actions/upload-artifact@v4
