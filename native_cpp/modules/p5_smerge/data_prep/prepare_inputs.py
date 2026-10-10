@@ -32,10 +32,16 @@ def main() -> int:
                         help="Opt in to updating project/current/run/smerge/smerge.inp")
     parser.add_argument("--expected-year", type=int, default=2022,
                         help="Fail closed if case research_time does not match this year")
+    parser.add_argument("--stack-lat", type=float, help="stack latitude")
+    parser.add_argument("--stack-lon", type=float, help="stack longitude")
     parser.add_argument("--execute", action="store_true",
                         help="Opt in to writing project/current outputs; default prints plan only")
     args = parser.parse_args()
     steps = commands(args.skip_download, args.write_legacy_control)
+    if not args.skip_download and (args.stack_lat is not None or args.stack_lon is not None):
+        if args.stack_lat is None or args.stack_lon is None:
+            parser.error("both stack coordinates required")
+        steps[0].extend(["--stack-lat", str(args.stack_lat), "--stack-lon", str(args.stack_lon)])
     if args.execute:
         from engine.core.paths import current_project_path, engine_path
         root = current_project_path()
@@ -55,6 +61,17 @@ def main() -> int:
         end = re.search(r"END\s*:\s*(\d{8})-\d{6}", times)
         if not begin or not end or int(begin.group(1)[:4]) != args.expected_year or int(end.group(1)[:4]) != args.expected_year:
             raise SystemExit("P5 research_time mismatch: expected entire case in " + str(args.expected_year))
+    if args.execute and args.skip_download:
+        import json
+        from engine.core.paths import current_project_path
+        root = current_project_path() / "met" / "surface" / "isd_raw"
+        source = root / f"station_selection_{args.expected_year}.json"
+        if not source.is_file():
+            raise SystemExit(f"cannot reuse data without station manifest: {source}")
+        selected = {s["sid"] for s in json.loads(source.read_text())["stations"]}
+        actual = {p.name.split("-")[0] for p in root.glob(f"*-{args.expected_year}.csv")}
+        if selected != actual:
+            raise SystemExit(f"stale or unexpected NOAA raw files: {actual - selected}, missing: {selected - actual}")
     for cmd in steps:
         print(" ".join(cmd), flush=True)
         if args.execute:

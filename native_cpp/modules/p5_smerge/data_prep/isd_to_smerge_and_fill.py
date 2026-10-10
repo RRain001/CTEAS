@@ -165,9 +165,18 @@ def derive_year_from_rows(rows):
 def convert_one_isd_csv(path, output_dir):
     grouped = defaultdict(list)
     station = None
-    with open(path, "r", encoding="utf-8", newline="") as f:
+    expected = re.fullmatch(r"([0-9A-Za-z]{11})-(\\d{4})\\.csv", os.path.basename(path))
+    if expected is None:
+        raise ValueError(f"invalid NOAA station filename: {path}")
+    expected_sid, expected_year = expected.groups()
+    required = {"STATION", "DATE", "WND", "TMP", "DEW", "SLP"}
+    with open(path, "r", encoding="utf-8-sig", newline="") as f:
         r = csv.DictReader(f)
+        if not r.fieldnames or not required.issubset(r.fieldnames):
+            raise ValueError(f"NOAA required field names missing: {r.fieldnames}")
         for row in r:
+            if (row.get("STATION") or "").strip() != expected_sid:
+                raise ValueError(f"NOAA source STATION does not match file name: {path}")
             if station is None:
                 station = row.get("STATION", "")
             ds = row.get("DATE", "")
@@ -219,6 +228,17 @@ def convert_one_isd_csv(path, output_dir):
 
     usaf, wban = station_id_parts(station)
     year = derive_year_from_rows(out_rows)
+    if year != expected_year:
+        raise ValueError(f"NOAA year disagrees with filename: {path}")
+    from json import loads
+    selection_path = INPUT_DIR / f"station_selection_{year}.json"
+    if not selection_path.is_file():
+        raise ValueError(f"required P5 source-selection manifest absent: {selection_path}")
+    selected = loads(selection_path.read_text(encoding="utf-8"))["stations"]
+    ids = [str(row["ifstn"]) for row in selected if row["sid"] == station]
+    if len(ids) != 1 or not ids[0].isdecimal():
+        raise ValueError(f"NOAA identity {station} has no unique numeric SMERGE alias")
+    ifstn = ids[0]
     out_name = f"{usaf}-{wban}-{year}.csv"
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, out_name)
@@ -226,7 +246,7 @@ def convert_one_isd_csv(path, output_dir):
     with open(out_path, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         w.writerow(["GENERIC", "Version", "'2.0'", "Manuallygenerated", "Timeasendinghour", ""])
-        w.writerow(["Station", "ID", "='", usaf, "Temp", "Precip", "Pressure", "RH", "Wdir10m", "Wspeed10m", "Ccover", "Cheight"])
+        w.writerow(["Station", "ID", "='", ifstn, "Temp", "Precip", "Pressure", "RH", "Wdir10m", "Wspeed10m", "Ccover", "Cheight"])
         w.writerow(["Month", "Day", "Year", "Hour", "DegC", "mm", "mb", "%", "deg", "ms-1", "tenths", "hundreds_of_feet"])
         for r in out_rows:
             w.writerow(r)

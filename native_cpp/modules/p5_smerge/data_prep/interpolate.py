@@ -55,39 +55,13 @@ def _missing_runs(mask):
 
 
 def fill_continuous_by_gap_rule(series):
+    """Previous valid hourly value, no maximum gap; no look-ahead or annual means.
+
+    A missing sequence at the beginning remains missing (9999 on output).
+    The precipitation and cloud treatment is intentionally unchanged.
     """
-    连续变量补值规则：
-    <=2小时: 线性插值
-    3-6小时: 时间插值
-    >6小时: 年平均值
-    """
-    s = pd.to_numeric(series, errors="coerce").copy()
-    # 统一缺测码
-    s = s.replace(9999, np.nan)
-
-    linear_interp = s.interpolate(method="linear", limit_area="inside")
-    time_interp = s.interpolate(method="time", limit_area="inside")
-    annual_mean = s.mean(skipna=True)
-
-    filled = s.copy()
-    miss_mask = filled.isna().to_numpy()
-    runs = _missing_runs(miss_mask)
-
-    for st, ed in runs:
-        gap_len = ed - st + 1
-        idx_slice = filled.index[st : ed + 1]
-        if gap_len <= 2:
-            filled.loc[idx_slice] = linear_interp.loc[idx_slice]
-        elif gap_len <= 6:
-            filled.loc[idx_slice] = time_interp.loc[idx_slice]
-        else:
-            filled.loc[idx_slice] = annual_mean
-
-    # 边界等仍未补上的，统一用年平均兜底
-    if not np.isnan(annual_mean):
-        filled = filled.fillna(annual_mean)
-
-    return filled
+    s = pd.to_numeric(series, errors="coerce").replace(9999, np.nan)
+    return s.ffill()
 
 
 CALM_LIMIT_M_S = 0.5
