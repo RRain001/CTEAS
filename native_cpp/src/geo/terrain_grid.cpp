@@ -77,9 +77,15 @@ TerrainGridResult grid_geotiff_terrain_utm50n(
     double x=lon,y=lat;
     if(!transformation->Transform(1,&x,&y))
       throw std::runtime_error("P1 coordinate transform failed");
-    // Fortran GLOBE outputs REAL*4 km, then LOADTIFF multiplies by 1000.
-    const float projected_x=static_cast<float>(x/1000.0)*1000.0f;
-    const float projected_y=static_cast<float>(y/1000.0)*1000.0f;
+    // COORDLIB/COORDS declares XMULTO implicitly as default REAL*4
+    // and stores XMULTO=0.001 before evaluating CRDIO*DBLE(XMULTO).
+    // The float32 value is 0.0010000000474974513, NOT exact 1/1000.
+    // GLOBE writes the result to REAL*4 km, and LOADTIFF multiplies by
+    // REAL*4 1000.0 before its SAVEELEV/CELLIND steps. This factor is
+    // required for the 10 near-cell-boundary Hefei discrepancies.
+    const double legacy_metres_to_km=static_cast<double>(0.001f);
+    const float projected_x=static_cast<float>(x*legacy_metres_to_km)*1000.0f;
+    const float projected_y=static_cast<float>(y*legacy_metres_to_km)*1000.0f;
     const auto cell=cell_index_terrel(projected_x,projected_y,spec);
     if(!cell) {++out.rejected_outside;continue;}
     const auto offset=cell->second*spec.nx+cell->first;
