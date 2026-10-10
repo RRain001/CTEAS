@@ -28,7 +28,7 @@ Pipeline: NOAA NCEI Global Hourly CSV -> converted GENERIC -> *copied* interpola
 Dependencies: existing engine.core.paths, engine/resources/isd/isd-history.txt and non-Git project/current case directory; pandas and numpy for interpolation; external NOAA network to download. Actual 2022 station files are **not** tracked. Data paths remain project/current/met/surface/{isd_raw,isd2smerge_and_fill,isd2smerge_cleaned,isd2smerge_ready}. Default runner is dry-run to prevent overwriting existing case outputs unintentionally.
 
 Important scientific audit items:
-- Original interpolate.py uses wind forward-fill and a 0.5 m/s computation speed for selected calm hours, and other field imputation. These are **derived** and not direct observations. Keep *_wind_audit* evidence and original raw CSV hashes; compare derived vs raw separately.
+- Historical original CTEAS (not changed) clamped calm wind speed below 0.5 m/s to 0.5 in the SMERGE input. The P5 scoped copy now uses approved Scheme C and preserves 0/low speeds; see CALM_POLICY_C_VENDOR_AUDIT.md.
 - Quality checks and precipitation conversion are not yet proven equivalent to Fortran SMERGE. The copied inputs are a preprocessing reproducibility path, not validation of a C++ SURF.DAT writer.
 - Real 2022 data and original Fortran SURF.DAT output have not been captured on GitHub, so P5 status remains BLOCKED_FORTRAN_REFERENCE.
 
@@ -45,7 +45,7 @@ User-approved policy implemented ONLY in this P5 copy:
 - Rank external stations by great-circle distance from the stack; download in increasing order; compute the **original unique observation hours for the entire calendar year** from the CSV DATE field (not filled/predicted hours). Require >=80% of 8,760 hours (>=7,008 in common years) or >=80% of 8,784 in leap years (>=7,028). Select exactly ONE nearest passing station. Rejected candidates can be downloaded for audit but are explicitly excluded from the processed manifest.
 - For a virtual station, the *effective* lat/lon in surf_station_list_YEAR.txt is the stack lat/lon. Original source lat/lon, source ID, unmodified source elevation, relocation flag, coverage, and numeric IFSTN are persisted in station_selection_YEAR.json. Station elevation method is unchanged.
 - Legacy six-digit numeric USAF station IDs are preserved if unique. Alphanumeric USAF and distinct WBAN records sharing one USAF receive deterministic seven-digit integer aliases, with collision detection that fails closed. The original 11-character NOAA identity is always preserved in filenames and provenance; scripts that generate SMERGE control blocks and final station metadata use the same alias.
-- Temperature (DegC), humidity (%), and pressure (mb): after hourly indexing, each gap uses the preceding valid hour with **no duration cap**. Before the first valid hour, data remains missing (9999), rather than fabricating a future observation. Wind direction/speed already use fieldwise unbounded forward fill; **calm handling is unchanged**.
+- Temperature (DegC), humidity (%), and pressure (mb): after hourly indexing, each gap uses the preceding valid hour with **no duration cap**. Before the first valid hour, data remains missing (9999), rather than fabricating a future observation. Wind direction/speed also use unbounded forward fill; calm follows the user-approved **Scheme C** in the scoped copy.
 - Precipitation (AA1-AA4/one-hour only) and cloud-cover missing-data pathways remain unchanged at the user's request. Neither is silently included in the new previous-hour filler.
 - Selection and raw station filenames are enforced; rejected, out-of-case or stale station intermediates are not allowed to feed downstream SMERGE implicitly. Published final SURF.DAT numerical equivalence is NOT demonstrated.
 
@@ -65,14 +65,10 @@ Above is a dry-run. Add --execute for network/file writes.
 
 The copied downloader verifies full semantic header names STATION, DATE, WND, TMP, DEW, SLP and that every STATION cell agrees with the filename. Parsing uses csv.DictReader keyed by **column name**, never ordinal column position. WND is a five-part direction/QC/type/speed/QC compound; TMP and SLP likewise have independent compound decoding. Independent regression tests reorder the source columns, prove 25 C does not become wind, and verify missing headers fail closed. GF1, CIG and AA1-AA4 are optional input variables: absent/invalid observations retain legacy missing treatment. This is a schema guard, not a claim that all NOAA records are scientifically complete.
 
-## Unchanged calm-wind algorithm — decision pending
+## User-approved Scheme C — 2026-10-10
 
-The separate fill_wind_forward_calm() remains exactly as in upstream.
-1. Decode wind direction and speed independently using original ISD WND quality flags.
-2. Missing wind direction and speed are each ffill() independently, unlimited duration; leading missing hours remain missing.
-3. Define calm where *filled* speed < 0.5 m/s. If a calm run is bracketed by two non-calm hours, replace its direction with the shortest circular arc between the bracket directions, spaced uniformly; a precisely 180-degree gap uses clockwise.
-4. If a calm run is at the start/end, keep its forward-held direction and log CALM_UNBRACKETED_KEEP_FILLED_DIRECTION.
-5. Keep 0.0 and other subthreshold filled speed in detailed wind-audit statistics, but set **calculation speed = 0.5 m/s** for calm hours in the main GENERIC/SMERGE path.
-6. Wind-audit *_wind_audit.csv and *_wind_audit.json retain raw, predecessor timestamp, filled speed, calm flag, and calculation speed.
+Primary SMERGE GENERIC wind speeds preserve valid source or preceding-hour-held values without a P5 numerical floor (including 0.0 and speeds below 0.5 m/s). Wind direction is not fabricated by shortest-arc interpolation. The sole encoding exception: direction at *exact zero speed* becomes 0 degrees in GENERIC, since calm direction is undefined; original NOAA direction and independently held direction are retained in the wind audit.
 
-No decision has been made to change this step; discuss with user before edits. Alternatives: (A) preserve observed 0.0 in primary input and handle calm in downstream CALMET explicitly; (B) continue numeric 0.5 guard but maintain transparent calm provenance; (C) separate source speed/calm flag from *internal solver minimum* without overwriting archived input. Each needs comparative reference testing and explicit CALMET interface semantics.
+The previous 0.5 m/s category survives as an audit-only low-wind flag, distinct from original CALMET's computational 0.0001, 0.001, stable 0.5 m/s, and ICALM=0 controls. The CTEAS original SMERGE and CALMET are unchanged and perform their own solver-specific calm handling. The legacy wind-audit column wind_speed_calculation_m_s is now equal to the unclamped GENERIC wind speed; new explicit wind_speed_generic_m_s and summary.wind_policy=P5_C_SOURCE_WIND_V1 avoid ambiguity.
+
+Review the detailed source-provenance and constraints in CALM_POLICY_C_VENDOR_AUDIT.md. No Fortran numerical parity is claimed until comparing reference runs using *identical new inputs*.
