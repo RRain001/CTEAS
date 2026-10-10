@@ -157,6 +157,18 @@ jobs:
             --reference reference-evidence/reference_full_year_up.dat \
             --candidate reference-evidence/cpp_full_year_up.dat \
             --report reference-evidence/numerical-full-year-parity.json
+      - name: End-to-end C++ P4 publishing into case met/upperair/final
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m native_cpp.modules.p4_read62.data_prep.run_cpp_pipeline \
+            --cpp-bin /tmp/cteas-p4-cpp/cteas_p4_read62 \
+            --year 2022 --pstop 500 --skip-inputs --merge-final --execute \
+            | tee reference-evidence/cpp-final-pipeline.log
+          cp project/current/met/upperair/final/up_58424.dat reference-evidence/merged_final_up_58424.dat
+          cp project/current/met/upperair/final/stations.csv reference-evidence/final_stations.csv
+          cp project/current/met/upperair/final/p4_cpp_execution_manifest.json reference-evidence/
+          test -s reference-evidence/merged_final_up_58424.dat
       - name: Capture available parity outputs
         if: always()
         uses: actions/upload-artifact@v4
