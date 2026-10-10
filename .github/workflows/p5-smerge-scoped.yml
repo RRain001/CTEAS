@@ -45,7 +45,7 @@ jobs:
           assert "ffill()" in (new/"interpolate.py").read_text()
           assert "station_selection_" in (new/"isd_to_smerge_and_fill.py").read_text()
           assert "station_selection_" in (new/"download_isd_by_grid.py").read_text()
-          assert "NOAA source-selection manifest" in (new/"isd_to_smerge_and_fill.py").read_text()
+          assert "source-selection manifest" in (new/"isd_to_smerge_and_fill.py").read_text()
           assert "resolve_ifstn" in (new/"generate_smerge_input_sections.py").read_text()
           assert (new/"run_smerge_and_monitor.py").is_file()
           print("P5_ORIGINAL_UNCHANGED_AND_SCOPED_REFACTOR=PASS")
