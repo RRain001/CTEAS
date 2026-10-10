@@ -90,29 +90,30 @@ def fmt_elev(value: int) -> str:
 
 
 def resolve_ifstn(filled: List[Tuple[str, str, Path]]) -> Dict[str, str]:
-    """站点编号(IFSTN)= isd-history.txt 中的 6 位 USAF,原样使用。
-
-    SMERGE 以整数读取并写入 SURF.DAT(支持超过 5 位),CALMET 的 met.inp /
-    SURF.DAT 站号同样按整数处理(SURF.DAT 文本输出为 i8),因此不再截取前 5 位,
-    583210 与 583211 这类站点可以共存而不会撞号。
-    """
-    mapping: Dict[str, str] = {}
-    owner: Dict[str, str] = {}
+    """Exact original NOAA ID -> numeric alias from yearly source manifest."""
+    import json
+    source_dir = CASE_ROOT / "met" / "surface" / "isd_raw"
+    mappings = {}
+    for file in sorted(source_dir.glob("station_selection_*.json")):
+        for station in json.loads(file.read_text(encoding="utf-8"))["stations"]:
+            sid = station["sid"]
+            key = f"{sid[:6]}-{sid[6:]}"
+            alias = str(station["ifstn"])
+            if key in mappings and mappings[key] != alias:
+                raise ValueError(f"ambiguous IFSTN across years for {key}")
+            mappings[key] = alias
+    owner = {}
+    result = {}
     for usaf, wban, _path in filled:
         key = f"{usaf}-{wban}"
-        if not re.fullmatch(r"[0-9]{6}", usaf):
-            raise ValueError(
-                f"站点 {key} 的 USAF {usaf!r} 不是 6 位数字;SMERGE/SURF.DAT 需要整数站号,"
-                "请在案例中排除该站或改用可整除的站号约定。"
-            )
-        if usaf in owner and owner[usaf] != key:
-            raise ValueError(
-                f"站号冲突: 站点 {owner[usaf]} 与 {key} 的 USAF 相同({usaf});"
-                "SMERGE/SURF.DAT 无法区分。请在案例中只保留其中一个站。"
-            )
-        owner.setdefault(usaf, key)
-        mapping[key] = usaf
-    return mapping
+        if key not in mappings:
+            raise ValueError(f"station {key} missing from P5 selection manifest")
+        alias = mappings[key]
+        if alias in owner and owner[alias] != key:
+            raise ValueError(f"SMERGE IFSTN collision {alias}: {owner[alias]}, {key}")
+        owner[alias] = key
+        result[key] = alias
+    return result
 
 
 def build_station_blocks(
