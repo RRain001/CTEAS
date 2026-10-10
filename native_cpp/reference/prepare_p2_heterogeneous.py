@@ -22,7 +22,7 @@ def main()->int:
     if lines[0].strip()!="GENERIC.LANDUSE 1.0" or lines[1].strip()!="1":
         raise RuntimeError("GEN source header not expected format")
     ncomment=int(lines[1].strip())
-    classes_index=2+ncomment+4
+    classes_index=2+ncomment+3
     number=int(lines[classes_index])
     categories=[int(n) for n in lines[classes_index+1].split()]
     if number!=38 or len(categories)!=number or len(set(categories))!=number:
