@@ -100,7 +100,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p4_read62 -B /tmp/cteas-p4-cpp -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p4_read62 -B /tmp/cteas-p4-cpp -DCMAKE_BUILD_TYPE=Debug
           cmake --build /tmp/cteas-p4-cpp -j2
           ctest --test-dir /tmp/cteas-p4-cpp --output-on-failure
           /tmp/cteas-p4-cpp/cteas_p4_read62 \
