@@ -77,13 +77,21 @@ def main():
     count_diffs=[(i%50+1,i//50+1,old,new) for i,(old,new) in enumerate(zip(orig_hits,hits)) if old!=new]
     missing=[(i%50+1,i//50+1) for i,(o,n) in enumerate(zip(orig_hits,hits)) if (o==0)!=(n==0)]
     errors=[abs(x-y) for x,y in zip(expected,elev)]
+    # TERREL.SAV holds the pre-format REAL*4 accumulated elevation sums.
+    # Independently compare unrounded means, not only formatted TERREL.DAT.
+    original_means=[sum_m/float(hits_m) if hits_m else -999.0
+                    for sum_m,hits_m in zip(sums,orig_hits)]
+    raw_errors=[abs(x-y) for x,y in zip(original_means,elev)]
+    raw_tolerance=0.00001
+    raw_failures=[(i%50+1,i//50+1,original_means[i],elev[i])
+                  for i,e in enumerate(raw_errors) if e>raw_tolerance]
     # Original TERREL.DAT has f8.1, so 0.05 m represents fixed readout resolution.
     # Declared before running C++ comparison. Internal integer hits MUST match exactly.
     tolerance=0.0500001
     failures=[(i%50+1,i//50+1,expected[i],elev[i],hits[i],orig_hits[i])
               for i,e in enumerate(errors) if e>tolerance]
     report={
-      "status":"PASS_SCOPED" if not count_diffs and not missing and not failures else "FAIL",
+      "status":"PASS_SCOPED" if not count_diffs and not missing and not failures and not raw_failures else "FAIL",
       "reference_terrel_dat_sha256":hashlib.sha256((a.reference_dir/"p1/terrel.dat").read_bytes()).hexdigest(),
       "reference_terrel_sav_sha256":hashlib.sha256((a.reference_dir/"p1/terrel.sav").read_bytes()).hexdigest(),
       "grid":{"nx":50,"ny":50,"dx_m":100,"row_order":"C++ south-to-north, original data reversed"},
@@ -99,6 +107,11 @@ def main():
       "height_tolerance_m_from_fortran_f8_1":tolerance,
       "height_bad_cells":len(failures),
       "height_bad_first_40":failures[:40],
+      "original_unrounded_real4_mean_tolerance_m":raw_tolerance,
+      "unrounded_mean_max_error_m":max(raw_errors),
+      "unrounded_mean_mae_m":sum(raw_errors)/len(raw_errors),
+      "unrounded_mean_bad_cells":len(raw_failures),
+      "unrounded_mean_bad_first_40":raw_failures[:40],
       "limitations":["No multi-CRS, void fill, peak or ocean processing compared",
                      "Raw float32 sums in original save need separate strict bitwise audit"]
     }
