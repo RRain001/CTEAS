@@ -1,0 +1,28 @@
+name: P1 P2 original reference capture
+on:
+  push:
+    branches:
+      - codex/cpp20-p1-p2-foundation-20261010
+    paths:
+      - 'native_cpp/reference/**'
+      - '.github/workflows/fortran-reference-p1-p2.yml'
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install gfortran
+        run: sudo apt-get update && sudo apt-get install -y gfortran
+      - name: Generate and run original P1/P2 in isolated path
+        run: python3 native_cpp/reference/capture_p1_p2.py --output /tmp/cteas-reference-p1-p2
+      - name: Archive evidence on success or failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-p2-original-reference
+          path: /tmp/cteas-reference-p1-p2
+          if-no-files-found: warn
+          retention-days: 7
