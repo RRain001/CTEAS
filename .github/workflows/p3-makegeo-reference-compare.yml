@@ -30,9 +30,10 @@ jobs:
             /tmp/p3-compare/p3/makegeo.inp \
             /tmp/p3-compare/p2/lu.dat \
             /tmp/p3-compare/p1/terrel.dat \
-            /tmp/p3-compare/p3_cpp_geophysical.csv
-      - name: Independently check 20000 original GEO.DAT numeric fields
-        run: python3 native_cpp/reference/compare_p3_makegeo.py --reference /tmp/p3-compare/p3/geo.dat --cpp /tmp/p3-compare/p3_cpp_geophysical.csv --report /tmp/p3-compare/p3_scoped_comparison.json
+            /tmp/p3-compare/p3_cpp_geophysical.csv \
+            /tmp/p3-compare/p3_cpp_geo.dat
+      - name: Independently check numeric fields and exact printed GEO.DAT
+        run: python3 native_cpp/reference/compare_p3_makegeo.py --reference /tmp/p3-compare/p3/geo.dat --cpp /tmp/p3-compare/p3_cpp_geophysical.csv --cpp-geo /tmp/p3-compare/p3_cpp_geo.dat --report /tmp/p3-compare/p3_scoped_comparison.json
       - name: Archive immutable original outputs
         if: always()
         uses: actions/upload-artifact@v4
