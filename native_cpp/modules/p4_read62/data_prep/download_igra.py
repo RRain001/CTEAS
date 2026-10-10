@@ -1,4 +1,5 @@
 import argparse
+import json
 import csv
 import math
 import re
@@ -158,81 +159,150 @@ def download_igra_data(station_id: str, out_dir: Path):
     return txt_path, False, None
 
 
+def candidate_groups(stations, center_lat, center_lon, dgrid_km, nx, ny, year):
+    """Split by the actual model domain; sort exterior candidates by chimney distance."""
+    half_x, half_y = dgrid_km * nx / 2.0, dgrid_km * ny / 2.0
+    inside, outside, seen = [], [], set()
+    for s in filter_by_year(stations, year):
+        if s["id"] in seen:
+            continue
+        seen.add(s["id"])
+        dx, dy = signed_offsets_km(center_lat, center_lon, s["lat"], s["lon"])
+        row = dict(s)
+        row["dist_km"] = haversine_km(center_lat, center_lon, s["lat"], s["lon"])
+        (inside if abs(dx) <= half_x and abs(dy) <= half_y else outside).append(row)
+    inside.sort(key=lambda s: (s["dist_km"], s["id"]))
+    outside.sort(key=lambda s: (s["dist_km"], s["id"]))
+    return inside, outside
+
+
+def coverage_passes(valid_original_slots: int, expected_slots: int) -> bool:
+    """Strict >80%; exact 80% is rejected."""
+    return expected_slots > 0 and valid_original_slots * 5 > expected_slots * 4
+
+
 def main():
-    parser = argparse.ArgumentParser(description='步骤1a: 选站并下载IGRA原始文本')
-    parser.add_argument('--year', type=int, help='研究年份，例如 2023')
-    parser.add_argument('--station-id', type=str, help='手动指定站号；不传则按范围选站')
-    parser.add_argument('--auto-select-all', action='store_true', help='自动选择候选列表全部站点')
-    parser.add_argument('--yes', action='store_true', help='兼容参数，保留但不再触发交互')
+    parser = argparse.ArgumentParser(description="P4 IGRA yearly >80% original 00/12 UTC sounding QA and station selection")
+    parser.add_argument("--year", type=int, required=True)
+    parser.add_argument("--pstop", type=float, default=500.0)
+    parser.add_argument("--station-id", type=str, help="Explicit station (still subject to >80% gate)")
+    parser.add_argument("--auto-select-all", action="store_true",
+                        help="Legacy argument; in-domain qualifying stations are always all selected")
+    parser.add_argument("--yes", action="store_true")
     args = parser.parse_args()
+    if not 1900 <= args.year <= 2100 or not 0 < args.pstop <= 1500:
+        parser.error("invalid year or pstop")
 
-    DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    from native_cpp.modules.p4_read62.data_prep.parse_igra_to_csv import observed_year_coverage
 
-    center_path = current_project_path("grid", "center_location")
-    grid_path = current_project_path("grid", "grid.cmn")
-    station_list_path = engine_path("resources", "igra", "igra2-station-list.txt")
-
-    center_lat, center_lon = parse_center(center_path)
-    dgrid_km, nx, ny = parse_grid(grid_path)
-    stations = load_station_list(station_list_path)
-
-    year = args.year
-    if year is None:
-        raise SystemExit('year is required; pass --year YYYY')
-
-    force_single_nearest = False
+    center_lat, center_lon = parse_center(current_project_path("grid", "center_location"))
+    dgrid_km, nx, ny = parse_grid(current_project_path("grid", "grid.cmn"))
+    all_stations = load_station_list(engine_path("resources", "igra", "igra2-station-list.txt"))
+    in_domain, out_domain = candidate_groups(all_stations, center_lat, center_lon,
+                                              dgrid_km, nx, ny, args.year)
     if args.station_id:
-        chosen = [s for s in stations if s['id'] == args.station_id]
-        if not chosen:
-            print(f'指定站号不在站点表中: {args.station_id}')
-            return 1
-        chosen_list = chosen
-    else:
-        in_domain, rows = choose_station(stations, center_lat, center_lon, dgrid_km, nx, ny)
-        rows = filter_by_year(rows, year)
-        if not rows:
-            print('范围候选无该年份可用站点, 改为全站最近3个可用站点')
-            rows = filter_by_year(stations, year)
-            rows = sorted([{**s, 'dist_km': haversine_km(center_lat, center_lon, s['lat'], s['lon'])} for s in rows], key=lambda x: x['dist_km'])[:3]
-            force_single_nearest = True
-        print_station_list('候选站点: ', rows)
-        if force_single_nearest:
-            print("范围内无可用高空站点: 自动选择最近站点")
-            chosen_list = [choose_one_from_list(rows)]
-        elif args.auto_select_all:
-            chosen_list = rows[:]
-            print(f'自动选择全部候选站点, 共 {len(chosen_list)} 个')
+        matches = [s for s in filter_by_year(all_stations, args.year) if s["id"] == args.station_id]
+        if not matches:
+            raise SystemExit(f"Requested station not available in {args.year}: {args.station_id}")
+        station = matches[0]
+        dx, dy = signed_offsets_km(center_lat, center_lon, station["lat"], station["lon"])
+        row = {**station, "dist_km": haversine_km(center_lat, center_lon,
+                                                  station["lat"], station["lon"])}
+        if abs(dx) <= dgrid_km * nx / 2 and abs(dy) <= dgrid_km * ny / 2:
+            in_domain, out_domain = [row], []
         else:
-            raise SystemExit('Non-interactive mode requires --station-id or --auto-select-all')
+            in_domain, out_domain = [], [row]
 
-    year_dir = DATA_ROOT / str(year)
+    year_dir = DATA_ROOT / str(args.year)
     year_dir.mkdir(parents=True, exist_ok=True)
+    selected_file = year_dir / "upperair_station_used_list.txt"
+    audit_file = year_dir / "p4_station_selection_audit.json"
+    audit = {
+        "year": args.year, "pstop_hpa": args.pstop,
+        "coverage_rule": "strictly >80% valid original 00/12 UTC, before cloning",
+        "chimney_assumption": "center_location is chimney in the configured case",
+        "chimney_lat": center_lat, "chimney_lon": center_lon,
+        "in_domain_candidates": len(in_domain),
+        "outside_candidates": len(out_domain),
+        "checked": [], "selected": [],
+    }
+    selected = []
 
-    selected_file = year_dir / 'upperair_station_used_list.txt'
-    failed_file = year_dir / f'download_failed_stations_{year}.csv'
-    failed_rows = []
-    with selected_file.open('w', encoding='utf-8', newline='') as sf:
-        w = csv.writer(sf)
-        w.writerow(['id', 'name', 'lat', 'lon', 'elev_m', 'year', 'raw_txt'])
-        for s in chosen_list:
-            lat_to_write = round(center_lat, 4)
-            lon_to_write = round(center_lon, 4)
-            txt, skipped, fail_info = download_igra_data(s['id'], year_dir)
-            if txt is not None:
-                w.writerow([s['id'], s['name'], lat_to_write, lon_to_write, s['elev_m'], year, str(txt)])
-            else:
-                failed_rows.append([s['id'], s['name'], fail_info['url'], fail_info['save_path'], fail_info['error']])
+    def assess(station, category):
+        raw, reused, error = download_igra_data(station["id"], year_dir)
+        record = {
+            "station_id": station["id"], "category": category,
+            "distance_km": station["dist_km"],
+            "source_lat": station["lat"], "source_lon": station["lon"],
+            "raw_file_reused": reused,
+        }
+        if raw is None:
+            record["status"], record["reason"] = "DOWNLOAD_FAILED", str(error)
+            audit["checked"].append(record)
+            return None
+        try:
+            qc = observed_year_coverage(raw, station["id"], args.year,
+                                        station["elev_m"], args.pstop)
+            record.update(qc)
+            if not coverage_passes(qc["valid_original_slots"], qc["expected_slots"]):
+                record["status"] = "REJECTED_COVERAGE_NOT_GT80"
+                audit["checked"].append(record)
+                return None
+        except Exception as exc:
+            record["status"] = "REJECTED_PARSE_OR_QA"
+            record["reason"] = f"{type(exc).__name__}: {exc}"
+            audit["checked"].append(record)
+            return None
+        record["status"] = "ACCEPTED"
+        audit["checked"].append(record)
+        return station, raw, record
 
-    print(f'已下载站点清单: {selected_file}')
-    if failed_rows:
-        with failed_file.open('w', encoding='utf-8', newline='') as ff:
-            fw = csv.writer(ff)
-            fw.writerow(['id', 'name', 'manual_url', 'save_path', 'error'])
-            fw.writerows(failed_rows)
-        print(f'失败站点清单已写入: {failed_file}')
-    print(f'数据保存路径: {year_dir}/')
+    # Case 1: retain ALL qualifying in-domain stations with original positions.
+    for station in in_domain:
+        check = assess(station, "IN_DOMAIN")
+        if check is not None:
+            selected.append((*check, "OBSERVED"))
+
+    # Case 2: none qualified inside; select exactly ONE eligible outside proxy.
+    if not selected:
+        for station in out_domain:
+            check = assess(station, "OUTSIDE")
+            if check is not None:
+                selected = [(*check, "VIRTUAL_RELOCATED")]
+                break
+
+    with selected_file.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["id", "name", "lat", "lon", "elev_m", "year", "raw_txt",
+                         "source_lat", "source_lon", "site_type",
+                         "valid_original_slots", "expected_slots", "raw_coverage", "distance_km"])
+        for station, raw, info, kind in selected:
+            proxy = kind == "VIRTUAL_RELOCATED"
+            effective_lat = center_lat if proxy else station["lat"]
+            effective_lon = center_lon if proxy else station["lon"]
+            writer.writerow([station["id"], station["name"], effective_lat, effective_lon,
+                             station["elev_m"], args.year, str(raw),
+                             station["lat"], station["lon"], kind,
+                             info["valid_original_slots"], info["expected_slots"],
+                             f'{info["coverage"]:.8f}', f'{station["dist_km"]:.6f}'])
+            audit["selected"].append({
+                "id": station["id"], "site_type": kind,
+                "source_lat": station["lat"], "source_lon": station["lon"],
+                "effective_lat": effective_lat, "effective_lon": effective_lon,
+                "source_elev_m": station["elev_m"],
+                "valid_original_slots": info["valid_original_slots"],
+                "coverage": info["coverage"],
+            })
+    audit_file.write_text(json.dumps(audit, ensure_ascii=False, indent=2) + "\n",
+                          encoding="utf-8")
+    print("P4_YEARLY_SELECTION " + json.dumps(
+        {"year": args.year, "selected": audit["selected"], "checked": len(audit["checked"])},
+        ensure_ascii=False))
+    if not selected:
+        print(f"P4_NO_STATION_GT80 year={args.year}; see {audit_file}")
+        return 2
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     raise SystemExit(main())

@@ -76,6 +76,16 @@ def _interp(a, b, frac):
     return a + frac * (b - a)
 
 
+def _interp_wind_direction(a, b, frac):
+    """Shortest circular arc. Exact 180-degree tie is clockwise, as in P5."""
+    if a is None or b is None:
+        return None
+    delta = (float(b) - float(a)) % 360.0
+    if delta > 180.0:
+        delta -= 360.0
+    return (float(a) + frac * delta) % 360.0
+
+
 def _ensure_target_pressure_level(cleaned, target_p):
     if not cleaned:
         return cleaned
@@ -98,7 +108,7 @@ def _ensure_target_pressure_level(cleaned, target_p):
             continue
         t = _interp(_parse_float(a.get('temp')), _parse_float(b.get('temp')), frac)
         d = _interp(_parse_float(a.get('dew')), _parse_float(b.get('dew')), frac)
-        wd = _interp(_parse_float(a.get('wdir')), _parse_float(b.get('wdir')), frac)
+        wd = _interp_wind_direction(_parse_float(a.get('wdir')), _parse_float(b.get('wdir')), frac)
         ws = _interp(_parse_float(a.get('wspd')), _parse_float(b.get('wspd')), frac)
         new_layer = {
             'pressure': f'{target_p:.1f}',

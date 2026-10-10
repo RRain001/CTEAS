@@ -99,6 +99,16 @@ def _interp(a: Optional[float], b: Optional[float], frac: float) -> Optional[flo
     return a + frac * (b - a)
 
 
+def _interp_wind_direction(a, b, frac):
+    """Shortest circular arc. Exact 180-degree tie is clockwise, as in P5."""
+    if a is None or b is None:
+        return None
+    delta = (float(b) - float(a)) % 360.0
+    if delta > 180.0:
+        delta -= 360.0
+    return (float(a) + frac * delta) % 360.0
+
+
 def _ensure_target_pressure_level(levels, target_p: float):
     if not levels:
         return levels
@@ -122,7 +132,7 @@ def _ensure_target_pressure_level(levels, target_p: float):
             'geopotential height_m': _interp(a.get('geopotential height_m'), b.get('geopotential height_m'), frac),
             'temperature_C': _interp(a.get('temperature_C'), b.get('temperature_C'), frac),
             'dew point temperature_C': _interp(a.get('dew point temperature_C'), b.get('dew point temperature_C'), frac),
-            'wind direction_degree': _interp(a.get('wind direction_degree'), b.get('wind direction_degree'), frac),
+            'wind direction_degree': _interp_wind_direction(a.get('wind direction_degree'), b.get('wind direction_degree'), frac),
             'wind speed_m/s': _interp(a.get('wind speed_m/s'), b.get('wind speed_m/s'), frac),
         }
         out = levels[:]
@@ -383,6 +393,28 @@ def convert_igra_to_csv(igra_path: Path, out_dir: Path, station_filter: str, yea
             )
     flush()
     return stats
+
+
+def observed_year_coverage(igra_path: Path, station_id: str, year: int, elevation_m: float, pstop_hpa: float):
+    """Coverage of cleaned ORIGINAL 00/12 UTC profiles, excluding cloned time slots."""
+    import calendar
+    import tempfile
+
+    expected = (366 if calendar.isleap(year) else 365) * 2
+    with tempfile.TemporaryDirectory(prefix="cteas-p4-year-qc-") as work:
+        stats = convert_igra_to_csv(igra_path, Path(work), station_id[-5:],
+                                    year, elevation_m, pstop_hpa)
+        original = set()
+        for item in Path(work).glob(f"{station_id[-5:]}_*.csv"):
+            stamp = item.stem.split("_", 1)[-1]
+            if len(stamp) == 10 and stamp[:4] == str(year) and stamp[-2:] in ("00", "12"):
+                original.add(stamp)
+        count = len(original)
+        return dict(year=year, valid_original_slots=count, expected_slots=expected,
+                    coverage=count / expected, eligible=count * 5 > expected * 4,
+                    soundings_cleaned=stats["soundings_written"],
+                    soundings_dropped=stats["soundings_dropped_after_cleaning"]
+                    + stats["soundings_dropped_bottom_wind_missing"])
 
 
 def main():

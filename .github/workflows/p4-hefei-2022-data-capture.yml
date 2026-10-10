@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/p4-hefei-2022-data-capture.yml'
+      - 'native_cpp/modules/p4_read62/data_prep/**'
 jobs:
   download:
     if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
@@ -42,6 +43,18 @@ jobs:
           set -euo pipefail
           python -m native_cpp.modules.p4_read62.data_prep.prepare_inputs --year 2022 --pstop 500 --execute 2>&1 | tee run-evidence/p4-download.log
           find project/current/met/upperair/2022/igra2fsl -maxdepth 1 -name '*.txt' -size +0c | grep -q .
+          python - <<'PY'
+          import csv,pathlib
+          path=pathlib.Path("project/current/met/upperair/2022/upperair_station_used_list.txt")
+          rows=list(csv.DictReader(path.open()))
+          assert len(rows)==1, rows
+          row=rows[0]
+          assert row["site_type"]=="VIRTUAL_RELOCATED", row
+          assert float(row["raw_coverage"])>0.80, row
+          assert row["id"]=="CHM00058424", row
+          assert row["source_lat"]!=row["lat"],row
+          print("P4_HEFEI_ONE_PROXY_GT80=PASS",row["id"],row["raw_coverage"])
+          PY
       - name: Record public-source provenance and checksums
         if: always()
         shell: bash
@@ -52,7 +65,7 @@ jobs:
           root=pathlib.Path('project/current/met/upperair/2022')
           files=sorted(p for p in root.rglob('*') if p.is_file()) if root.exists() else []
           items=[{'path':str(p),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]
-          result={'stage':'P4','source':'NOAA IGRA2 data-por','source_ref':'RRain001/CTEAS main 66e30ffb1ff4638a97af8a060748ce30b7578350','year':2022,'pstop_hpa':500,'domain_km':[5,5],'model_grid_m':100,'files':items,'fsl_count':sum('/igra2fsl/' in p['path'] and p['path'].endswith('.txt') for p in items),'caveat':'copied download_igra.py writes study-center coordinates into station metadata; not verified observed station coordinates'}
+          result={'stage':'P4','source':'NOAA IGRA2 data-por','source_ref':'RRain001/CTEAS main 66e30ffb1ff4638a97af8a060748ce30b7578350','year':2022,'pstop_hpa':500,'domain_km':[5,5],'model_grid_m':100,'files':items,'fsl_count':sum('/igra2fsl/' in p['path'] and p['path'].endswith('.txt') for p in items),'caveat':'P4 annual >80% cleaned ORIGINAL sounding gate; one external proxy moved horizontally only, original coords tracked; FSL remains fixed-width 2 decimals'}
           pathlib.Path('run-evidence/p4-provenance.json').write_text(json.dumps(result,indent=2,ensure_ascii=False)+'\n')
           print('P4_CAPTURE_SUMMARY',json.dumps({'file_count':len(items),'fsl_count':result['fsl_count'],'total_bytes':sum(p['bytes'] for p in items)}))
           PY
@@ -64,6 +77,7 @@ jobs:
           path: |
             run-evidence/
             project/current/met/upperair/2022/upperair_station_used_list.txt
+            project/current/met/upperair/2022/p4_station_selection_audit.json
             project/current/met/upperair/2022/*-data.txt
             project/current/met/upperair/2022/igra2fsl/*.txt
             project/current/met/upperair/2022/pstop_hpa.txt
