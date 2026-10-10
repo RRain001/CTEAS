@@ -17,6 +17,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gfortran
       - name: Generate and run original P1/P2 in isolated path
         run: python3 native_cpp/reference/capture_p1_p2.py --output /tmp/cteas-reference-p1-p2
+      - name: Independently parse exact original field content
+        run: python3 native_cpp/reference/analyze_p1_p2.py --reference-dir /tmp/cteas-reference-p1-p2 --summary /tmp/cteas-reference-p1-p2/original_decoded_summary.json
       - name: Archive evidence on success or failure
         if: always()
         uses: actions/upload-artifact@v4
