@@ -1,0 +1,95 @@
+name: P4 READ62 original Fortran reference / UP.DAT parity
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p4_read62/**'
+      - 'native_cpp/include/cteas/met_input/p4_read62.hpp'
+      - '.github/workflows/p4-read62-fortran-parity.yml'
+jobs:
+  original-fortran:
+    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fortran compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gfortran
+      - name: Build original READ62 unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cteas-p4-reference reference-evidence
+          SRC=engine/vendor/src/READ62_v5.661_L110225
+          gfortran -O0 -std=legacy -ffixed-line-length-none -fallow-argument-mismatch -fno-automatic -I"$SRC" \
+            -o /tmp/cteas-p4-reference/read62 "$SRC/READ62.FOR" 2>&1 | tee reference-evidence/fortran-build.log
+          sha256sum "$SRC/READ62.FOR" > reference-evidence/fortran-source.sha256
+      - name: Prepare same isolated Hefei input
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p project/current/grid
+          cat > project/current/grid/center_location <<'EOF'
+          latitude: 31.939774444
+          longitude: 117.141610855
+          EOF
+          cat > project/current/grid/grid.cmn <<'EOF'
+          ! DGRIDKM = 0.1 !
+          ! NX = 50 !
+          ! NY = 50 !
+          EOF
+          cat > project/current/grid/research_time <<'EOF'
+          BEGIN: 20220101-000000
+          END: 20220106-230000
+          EOF
+          python3 -m native_cpp.modules.p4_read62.data_prep.prepare_inputs \
+            --year 2022 --pstop 500 --execute 2>&1 | tee reference-evidence/prepare.log
+          cp project/current/met/upperair/2022/igra2fsl/58424.txt /tmp/cteas-p4-reference/58424.fsl
+          cp project/current/met/upperair/2022/upperair_station_used_list.txt reference-evidence/
+          cp project/current/met/upperair/2022/p4_station_selection_audit.json reference-evidence/
+          sha256sum /tmp/cteas-p4-reference/58424.fsl > reference-evidence/fsl.sha256
+      - name: Stage original READ62.INP with isolated output paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,re
+          inp=pathlib.Path("engine/vendor/src/READ62_v5.661_L110225/read62.inp").read_text()
+          replacements={
+              "INDAT":"58424.fsl",
+              "UPDAT":"reference_up.dat",
+              "RUNLST":"reference_read62.lst",
+              "IBYR":"2022","IBMO":"1","IBDY":"1","IBHR":"0","IBSEC":"0",
+              "IEYR":"2022","IEMO":"1","IEDY":"6","IEHR":"23","IESEC":"0",
+              "PSTOP":"500.0","IFMT":"1","JDAT":"2"
+          }
+          for k,v in replacements.items():
+              inp,n=re.subn(r'(!\s*'+k+r'\s*=\s*)[^!]*!',lambda m:m.group(1)+v+" !",inp,count=1)
+              if n!=1: raise RuntimeError("READ62.INP missing "+k)
+          out=pathlib.Path("/tmp/cteas-p4-reference/read62.inp")
+          out.write_text(inp)
+          print(out)
+          PY
+      - name: Execute original Fortran READ62
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/cteas-p4-reference
+          ./read62 read62.inp 2>&1 | tee "$GITHUB_WORKSPACE/reference-evidence/fortran-run.log"
+          ls -lah
+          test -s reference_up.dat
+          sha256sum reference_up.dat >> "$GITHUB_WORKSPACE/reference-evidence/fortran-source.sha256"
+          cp reference_up.dat "$GITHUB_WORKSPACE/reference-evidence/reference_up.dat"
+          cp reference_read62.lst "$GITHUB_WORKSPACE/reference-evidence/reference_read62.lst"
+          cp read62.inp "$GITHUB_WORKSPACE/reference-evidence/reference_read62.inp"
+      - name: Capture available parity outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p4-original-fortran-updat-2022-jan1-6
+          path: reference-evidence/
+          retention-days: 7
+          if-no-files-found: warn
