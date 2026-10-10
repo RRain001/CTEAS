@@ -1,11 +1,11 @@
 # P6 CALMET 6.5.0 — 合肥 100 m 科研最小重构总计划
-Date: 2026-10-10. Status: **P6A_SOURCE_AND_CONTRACT_DESIGN_IN_PROGRESS / P6_ORIGINAL_NUMERIC_REFERENCE_BLOCKED**.
+Date: 2026-10-10. Status: **P6A_PASS_SOFTWARE_CONTRACTS / P6_ORIGINAL_NUMERIC_REFERENCE_BLOCKED**.
 Authority: user-chosen research-specific **minimal reconstruction**; no claim of full CALMET feature parity.
 Repository: `RRain001/CTEAS`; immutable foundation `60b7b1d93866fff772926b6ac32dc0af7235552b`; implementation branch `codex/cteas-p6-calmet-hefei-100m`. Do not edit any existing P1–P5 branch, source or the original `engine/vendor/src`.
 
 ## 0. Current evidence, critical distinction
 
-- Original P6: `engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for`, Git blob `437f43bb7f0e51a1919e56664663e1a046986ed0`, ~1.46 MB; `calmet.inp`, `cpl.txt`, relevant common-block `*.met`. The compiler's routine inventory in `cpl.txt` and original control text are initial anchors. **This is an inventory, not a completed line-by-line physical-code audit.**
+- Original P6: `engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for`, Git blob `437f43bb7f0e51a1919e56664663e1a046986ed0`, ~1.46 MB; `calmet.inp` Git blob `8f0a6b6d2150c56d0e3724f3972aed67f7a00fcc` (control file SHA256 `159161afd6db598a73614acc9525179ff9c842df80402403f06c4a5611f30da7`); `cpl.txt` Git blob `c0d9fa57734bfcf7cf108bd7505e7f76cf79412c`, relevant `*.met` common blocks. The compiler's routine inventory and original control text are initial anchors. **This is an inventory, not a completed line-by-line physical-code audit.**
 - The committed `calmet.inp` is a **legacy example**: 2000 dates, `NX=NY=100`, `DGRIDKM=1`, generic `SS1`/`US1` placeholders and a 2023 path. **It is not a real 2022 Hefei 50×50 100 m runnable control file.** Never use the sample to certify the study.
 - P3 [PR #5](https://github.com/RRain001/CTEAS/pull/5): real and synthetic scoped `GEO.DAT 2.1` eight fields, 20,000/20,000 printed field matches against original Fortran. Its legacy output writer is independent; no P1/P2 modern standalone full pipeline yet.
 - P4 [PR #6](https://github.com/RRain001/CTEAS/pull/6): current FSL/READ62 scoped input/parser, **UP.DAT writer and original Fortran 2022 equivalence not certified**.
@@ -77,4 +77,11 @@ Important: a software PASS, synthetic field or C++ writer's successful self-read
 
 Allowed now: `docs/reconstruction_cpp/P6_CALMET_MINIMAL_MASTER_PLAN.md`, isolated `native_cpp/modules/p6_calmet/` contracts/tests, P6-only CI/PR. No P6 Fortran physics port before source-specific routine audit, actual forcing and original baseline; no code editing in `engine/vendor/src`, P4/P5, P1/P2/P3 PRs or shared foundation.
 
-**Current scientific status (2026-10-10): P6_SOURCE_MAP_IN_PROGRESS, P6A_CONTRACTS_CAN_BE_SOFTWARE_TESTED, P6_REFERENCE_BLOCKED_METEO_INPUTS, P6_WIND_PHYSICS_NOT_STARTED, P6_CALPUFF_READY=FALSE.**
+### P6A implementation and evidence (2026-10-10)
+
+- `native_cpp/modules/p6_calmet/include/cteas/p6/calmet_contract.hpp`: strict selected-case geometry and coordinate ordering, 9 layers/10 faces, missing/valid distinction, UTC nominal clock labels, selected observed diagnostic mode and forcing readiness guard. These are **data contracts, not the CALMET solver**.
+- `native_cpp/modules/p6_calmet/tests/p6_contract_tests.cpp` + isolated `CMakeLists.txt`, strict `-Werror`; 50×50×9 index bounds, 144 nominal labels, valid calm vs missing data, invalid time/CRS/mode, absent P4/P5/precip source tests.
+- `native_cpp/modules/p6_calmet/reference/inspect_calmet_control.py`: read-only actual bundled legacy control audit, with negative test `--expect-not-ready`. Confirmed its 2000 year, 100×100 1km etc are **not** valid 2022/50×50/0.1km study settings. It does not change original vendor controls.
+- [GitHub-hosted P6A CI](https://github.com/RRain001/CTEAS/actions/runs/38048807603): **PASS** C++20 contract tests and correct failure classification of vendor example control. Branch PR [#8](https://github.com/RRain001/CTEAS/pull/8) remains **Draft** pending full source audit, validated P4/P5 and user-approved station controls. No original Fortran P6 reference run.
+
+**Current scientific status (2026-10-10): P6A_PASS_SOFTWARE_CONTRACTS, P6_SOURCE_MAP_INVENTORIED_NOT_FULLY_AUDITED, P6_REFERENCE_BLOCKED_METEO_INPUTS, P6_WIND_PHYSICS_NOT_STARTED, P6_CALPUFF_READY=FALSE.**
