@@ -81,6 +81,7 @@ inline void write_updat_header(std::ostream& out,const UpdatOptions& opt) {
     comment.resize(80,' ');
     out<<comment<<"\n";
     out<<"NONE    \nUTC+0000\n";
+    out<<" ";
     for(int i : {opt.begin.year,doy(opt.begin),opt.begin.hour,0,
                  opt.end.year,doy(opt.end),opt.end.hour,0})
         out<<fixed_int(i,5);
@@ -123,7 +124,7 @@ inline UpdatStats write_updat(std::ostream& out,const std::vector<Sounding>& sou
                 ||!lv->wind_direction_deg.valid||!lv->wind_speed_mps.valid;
         };
         auto warn=[&](const char* message){
-            out<<" ->->->"<<message<<"\n";
+            out<<"  ->->->"<<message<<"\n";
             ++stats.warnings;
         };
         if(missing(valid.front()))warn("Data at bottom of sounding is missing");

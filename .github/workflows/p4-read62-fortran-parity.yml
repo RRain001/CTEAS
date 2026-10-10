@@ -114,6 +114,8 @@ jobs:
             --reference reference-evidence/reference_up.dat \
             --candidate reference-evidence/cpp_up.dat \
             --report reference-evidence/numerical-parity.json
+          cmp reference-evidence/reference_up.dat reference-evidence/cpp_up.dat
+          echo P4_UPDAT_BYTES_IDENTICAL_6D=PASS
       - name: Test coordinate suffix precision 3-6 decimals without moving legacy fields
         shell: bash
         run: |
@@ -157,6 +159,8 @@ jobs:
             --reference reference-evidence/reference_full_year_up.dat \
             --candidate reference-evidence/cpp_full_year_up.dat \
             --report reference-evidence/numerical-full-year-parity.json
+          cmp reference-evidence/reference_full_year_up.dat reference-evidence/cpp_full_year_up.dat
+          echo P4_UPDAT_BYTES_IDENTICAL_2022=PASS
       - name: End-to-end C++ P4 publishing into case met/upperair/final
         shell: bash
         run: |
