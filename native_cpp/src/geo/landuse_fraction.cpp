@@ -50,7 +50,11 @@ P2Fractions compute_generic_utm50n(const GenericLanduse& input,P2Grid grid) {
   for(const auto& sample:input.points) {
     const auto found=codes.find(sample.usgs92_category);
     if(found==codes.end())throw std::invalid_argument("P2 unknown input class");
-    double x=sample.longitude_deg,y=sample.latitude_deg;
+    // CTGPROC COMP reads relon/rnlat into implicit Fortran REAL*4 first.
+    // Preserve that quantization BEFORE any datum/projection conversion.
+    // Without it two near-boundary samples are counted incorrectly in Hefei.
+    double x=static_cast<double>(static_cast<float>(sample.longitude_deg));
+    double y=static_cast<double>(static_cast<float>(sample.latitude_deg));
     if(!std::isfinite(x)||!std::isfinite(y)||
        !transformer->Transform(1,&x,&y))
       throw std::runtime_error("P2 coordinate conversion failure");
