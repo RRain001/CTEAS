@@ -1,13 +1,12 @@
 name: P1 P2 original reference capture
 on:
-  push:
-    branches:
-      - codex/cpp20-p1-p2-foundation-20261010
+  pull_request:
     paths:
       - 'native_cpp/reference/**'
       - '.github/workflows/fortran-reference-p1-p2.yml'
 jobs:
   capture:
+    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
