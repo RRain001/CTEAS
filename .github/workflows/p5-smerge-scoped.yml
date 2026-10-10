@@ -1,0 +1,23 @@
+name: P5 SMERGE scoped C++20
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/include/cteas/met_input/**'
+      - 'native_cpp/tests/**'
+      - 'native_cpp/modules/p5_smerge/**'
+      - '.github/workflows/p5-smerge-scoped.yml'
+jobs:
+  unit:
+    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S native_cpp/modules/p5_smerge -B /tmp/cteas-p5-build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build /tmp/cteas-p5-build -j2
+      - name: Test
+        run: ctest --test-dir /tmp/cteas-p5-build --output-on-failure
