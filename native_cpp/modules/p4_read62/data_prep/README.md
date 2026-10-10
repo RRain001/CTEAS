@@ -38,15 +38,15 @@ P4 for the frozen JDAT=2/IFMT=1/PSTOP=500 case now passes original Fortran/C++ f
 
 ## End-to-end P4 C++ run
 
-From the repository root with a configured \`project/current\` case:
+From the repository root with a configured `project/current` case:
 
-\`\`\`bash
+```bash
 cmake -S native_cpp/modules/p4_read62 -B /tmp/cteas-p4-build -DCMAKE_BUILD_TYPE=Debug
 cmake --build /tmp/cteas-p4-build -j2
 python3 -m native_cpp.modules.p4_read62.data_prep.run_cpp_pipeline \
   --cpp-bin /tmp/cteas-p4-build/cteas_p4_read62 --pstop 500 --merge-final --execute
-\`\`\`
+```
 
-\`run_cpp_pipeline\` is dry-run by default; \`--skip-inputs\` reuses prepared IGRA/FSL files. Per-station/year outputs are in \`met/upperair/YYYY/fsl_data/up_WMO_YYYY.dat\`; final CALMET input and station coordinates are in \`met/upperair/final/up_WMO.dat\` and \`stations.csv\`. The full case execution manifest retains station source and effective coordinates and coverage.
+`run_cpp_pipeline` is dry-run by default; `--skip-inputs` reuses prepared IGRA/FSL files. Per-station/year outputs are in `met/upperair/YYYY/fsl_data/up_WMO_YYYY.dat`; final CALMET input and station coordinates are in `met/upperair/final/up_WMO.dat` and `stations.csv`. The full case execution manifest retains station source and effective coordinates and coverage.
 
-The scoped C++ writer is currently qualified only for the actual case controls: READ62 \`JDAT=2, IFMT=1\`, default F drop/repair switches and \`PSTOP=500\`. Other upstream READ62 options are intentionally not replicated.
+The scoped C++ writer is currently qualified only for the actual case controls: READ62 `JDAT=2, IFMT=1`, default F drop/repair switches and `PSTOP=500`. Other upstream READ62 options are intentionally not replicated.
