@@ -9,6 +9,8 @@ if(MSVC)
   target_compile_options(cteas_p4_tests PRIVATE /W4 /WX)
 else()
   target_compile_options(cteas_p4_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  # Preserve assert-based C++ contract tests in Release (CMake defines NDEBUG).
+  target_compile_options(cteas_p4_tests PRIVATE -UNDEBUG)
 endif()
 enable_testing()
 add_test(NAME p4_fsl_input_contracts COMMAND cteas_p4_tests)
