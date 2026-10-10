@@ -12,6 +12,14 @@ Repository: `RRain001/CTEAS`; immutable foundation `60b7b1d93866fff772926b6ac32d
 - P5 [PR #7](https://github.com/RRain001/CTEAS/pull/7): current GENERIC/SMERGE scoped input/parser, **SURF.DAT writer and original Fortran 2022 equivalence not certified**.
 - No user-approved complete site meteorology (surface+upper-air+precip) at P6. **No 2022 CALMET original full-run results or numerical comparison exist.** Synthetic checks are software, never real-case or physics equivalence.
 
+## 0.1 Newly supplied historical *complete* P1–P7 case (2026-10-10)
+
+The user newly pushed the old successful-through-P7 case under `project/cases/smoke5d_coldstart_20260701` in `main` `2908293f061af93e754bc9fe1f00d857d1d6a0d8`. Its control-file audit is committed in **[`P6_HISTORICAL_SMOKE5D_INP_AUDIT.md`](P6_HISTORICAL_SMOKE5D_INP_AUDIT.md)**. This is the preferred *historical configuration* reference for P6, more operationally specific than the bundled vendor example, but **never** a numerically trusted meteorology baseline: the user explicitly states the old processing was erroneous.
+
+Critical distinctions: old study **2023 Jan 1–5**, centered **117.0°E/32.0°N**, **50 km × 50 km @ 1 km**, compared with target **2022 Jan 1–6**, stack-centered **5 km × 5 km @ 0.1 km**. Both have 50×50 and identical nine vertical layers, so a dimension-only validator would miss serious wrong-domain reuse.
+
+Historical P6 `run/met/met.inp` enables diagnostic wind, slope flow and Froude effects; original `NOOBS=0, IPROG=0, IRTYPE=1, IFRADJ=1, ISLOPE=1, IEXTRP=-4, IFORMO=1, IFORMS=2`. This validates that these **switches were operationally used** in the old workflow, not that their physics have been reconstructed. Old P5 `119` records includes 41 missing cloud values and **zero valid precipitation-code values**, old P6 `NPSTA=0`, and old P7 `MWET=0`. None of this can be transplanted into a scientific wet-deposition scenario. Check the 119-record vs 120-label *time-boundary convention* before interpreting a discrepancy. P6 P4/P5 source compatibility and new precipitation remain gated.
+
 ## 1. Frozen study geometry, subject to Fortran-control verification
 
 - Hefei stack center: 31.939774444 N, 117.141610855 E. Entire model domain **5,000 m × 5,000 m** centered on stack, **not 5 km radius**. Cartesian `50×50` at `0.100 km`, grid origin SW *cell corner*, i-fastest / j increasing northwards; UTM zone 50 N, WGS84. Use the P1/P2/P3 independently verified case origin rather than recomputing/rounding stack coordinates.
