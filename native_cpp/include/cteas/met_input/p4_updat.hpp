@@ -116,6 +116,38 @@ inline UpdatStats write_updat(std::ostream& out,const std::vector<Sounding>& sou
             out<<" ->->->Top of sounding is below the "<<fixed_num(opt.pstop_hpa,6,1)<<"-mb level\n";
             ++stats.warnings;
         }
+        // Fortran JDAT=2 quality notes follow the 6201 header and precede
+        // level data. Repair switches are F for the frozen parity contract.
+        const auto missing=[](const Level* lv){
+            return !lv->height_m.valid||!lv->temperature_c.valid
+                ||!lv->wind_direction_deg.valid||!lv->wind_speed_mps.valid;
+        };
+        auto warn=[&](const char* message){
+            out<<" ->->->"<<message<<"\n";
+            ++stats.warnings;
+        };
+        if(missing(valid.front()))warn("Data at bottom of sounding is missing");
+        if(missing(valid[istop-1]))warn("Data at top of sounding is missing");
+        if(valid.front()->height_m.valid
+           && static_cast<int>(valid.front()->height_m.value)>sounding.station_elevation_m)
+            warn("First level in sounding is above surface");
+        bool elevation_decreases=false, elevation_missing=false;
+        bool temperature_out_of_range=false;
+        for(std::size_t i=0;i<istop;++i){
+            const auto& level=*valid[i];
+            if(!level.height_m.valid)elevation_missing=true;
+            if(level.temperature_c.valid){
+                const float temp_k=static_cast<float>(
+                    static_cast<float>(level.temperature_c.value)+273.2f);
+                if(temp_k<175.0f||temp_k>322.0f)temperature_out_of_range=true;
+            }
+            if(i>0&&level.height_m.valid&&valid[i-1]->height_m.valid
+               &&level.height_m.value<=valid[i-1]->height_m.value)
+                elevation_decreases=true;
+        }
+        if(elevation_decreases)warn("Elevation is decreasing with height");
+        if(elevation_missing)warn("Elevation missing");
+        if(temperature_out_of_range)warn("Invalid temperature (< TMIN or > TMAX)");
         for(std::size_t i=0;i<istop;++i){
             out<<level_slash(*valid[i]);
             if(i%4==3||i+1==istop)out<<"\n";
