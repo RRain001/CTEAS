@@ -88,10 +88,24 @@ def main():
     if compiler["returncode"]:raise RuntimeError("gfortran not available")
     common=["-std=legacy","-fno-automatic","-fno-align-commons","-fallow-argument-mismatch","-O0"]
     builds=[]
+    # Linux is case-sensitive while vendor Fortran INCLUDE names may differ
+    # from their tracked filename case. Symlink aliases are read-only and
+    # created in fresh output space; originals under vendor/src are unchanged.
+    alias_roots={}
+    for stage,source_dir in (("terrel",s1),("ctgproc",s2)):
+        alias=out/("include_alias_"+stage)
+        alias.mkdir()
+        for source_file in source_dir.iterdir():
+            if source_file.is_file():
+                name=source_file.name.lower()
+                target=alias/name
+                if not target.exists():
+                    target.symlink_to(source_file)
+        alias_roots[stage]=alias
     for name,folder,source,extra in (("terrel",s1,"terrel.for","-ffixed-line-length-none"),
                                      ("ctgproc",s2,"ctgproc.for","-ffixed-line-length-72")):
         binary=binaries/(name+".x")
-        result=command(["gfortran",*common,extra,"-I"+str(folder),str(folder/source),"-o",str(binary)],
+        result=command(["gfortran",*common,extra,"-I"+str(alias_roots[name]),"-I"+str(folder),str(folder/source),"-o",str(binary)],
                        out,out/(name+"_compile"),120)
         builds.append(result)
         if result["returncode"] or not binary.is_file():
