@@ -203,7 +203,7 @@ def _hard_validate_layers(layers, station_elevation_m, min_pressure_hpa):
     return cleaned, clamped, bottom_wind_filled, 0, pressure_clamped_count
 
 
-def convert_csv_profiles_to_fsl(csv_dir: Path, output_path: Path, station_id: str, latitude: str, longitude: str, elevation: str, target_year: str, min_pressure_hpa: float):
+def convert_csv_profiles_to_fsl(csv_dir: Path, output_path: Path, station_id: str, latitude: str, longitude: str, elevation: str, target_year: str, min_pressure_hpa: float, exact_lat: float | None = None, exact_lon: float | None = None, coord_digits: int = 6):
     month_cap = {
         '01': 'JAN', '02': 'FEB', '03': 'MAR', '04': 'APR',
         '05': 'MAY', '06': 'JUN', '07': 'JUL', '08': 'AUG',
@@ -266,6 +266,14 @@ def convert_csv_profiles_to_fsl(csv_dir: Path, output_path: Path, station_id: st
 
             head1 = f"    254{hour_out.rjust(7)}{day_num.rjust(7)}{month_cap[month].rjust(9)}{year.rjust(8)}"
             head2 = f"      1  99999{station_id.rjust(7)}{latitude.rjust(8)}{longitude.rjust(7)}{elevation.rjust(6)}  32767"
+            # Legacy READ62.FOR reads only the fixed F7.2/F6.2 coordinate
+            # fields. A trailing optional extension keeps 3-6 decimal digits
+            # accessible to C++20 without shifting even one legacy column.
+            if exact_lat is not None and exact_lon is not None:
+                if not 3 <= coord_digits <= 6:
+                    raise ValueError("FSL P4EXACT precision must be in [3,6]")
+                head2 += (f" P4EXACT_LAT={exact_lat:.{coord_digits}f}"
+                          f" P4EXACT_LON={exact_lon:.{coord_digits}f}")
             head3 = f"      2    100    100    194{total_layers:7d}  32767      3"
             head4 = '      3          9999                32767     ms'
 
@@ -354,6 +362,7 @@ def main():
                 elevation=str(elev),
                 target_year=str(year),
                 min_pressure_hpa=min_pressure_hpa,
+                exact_lat=lat, exact_lon=lon, coord_digits=6,
             )
             summary.append((stn_id, output_path, stats))
 

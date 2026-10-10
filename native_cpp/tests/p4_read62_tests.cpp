@@ -29,6 +29,15 @@ int main(){
  }
  {Options o;o.drop_missing_direction=true;std::istringstream in(profile(0,1));assert(read_fsl(in,o)[0].levels.size()==1);}
  {std::istringstream in(profile(0,1)+profile(0,2));auto s=read_fsl(in);assert(s[1].diagnostics[0]=="TIME_GAP_OVER_12H");}
+ {std::string f=profile(0,1);
+  auto b=f.find('\n');auto b2=f.find('\n',b+1);
+  f.insert(b2," P4EXACT_LAT=31.939774 P4EXACT_LON=117.141611");
+  std::istringstream input(f);
+  auto s=read_fsl(input);
+  assert(s.size()==1);
+  assert(std::abs(s[0].station_lat_deg-31.939774)<1e-9);
+  assert(std::abs(s[0].station_lon_deg-117.141611)<1e-9);
+ }
  assert(fails(profile(25,1)));assert(fails(profile(0,1,"zz")));assert(fails(profile(0,1).substr(0,30)));
  {Options o;o.pstop_hpa=0;assert(fails(profile(0,1),o));}
 }

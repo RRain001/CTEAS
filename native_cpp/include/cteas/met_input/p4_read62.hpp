@@ -94,6 +94,24 @@ inline std::vector<Sounding> read_fsl(std::istream& in,const Options& opt={}){
   if((lat_h!="N"&&lat_h!="S")||(lon_h!="E"&&lon_h!="W"))throw ParseError("invalid hemisphere");
   s.station_lat_deg=real(field(b,21,7,"latitude"),"latitude")*(lat_h=="S"?-1:1);
   s.station_lon_deg=real(field(b,29,6,"longitude"),"longitude")*(lon_h=="W"?-1:1);
+  // Backwards-compatible 3-6-decimal coordinate suffix. Original Fortran
+  // ignores everything after the old header2 fixed fields. Keep the exact
+  // coordinates only if they round consistently to the legacy F7.2/F6.2.
+  const auto exact_pos=b.find("P4EXACT_LAT=");
+  if(exact_pos!=std::string::npos){
+   std::istringstream ext(b.substr(exact_pos));
+   std::string lat_tok,lon_tok;
+   if(!(ext>>lat_tok>>lon_tok) || lat_tok.rfind("P4EXACT_LAT=",0)!=0
+      || lon_tok.rfind("P4EXACT_LON=",0)!=0)
+    throw ParseError("malformed P4EXACT FSL extension");
+   const double exact_lat=real(lat_tok.substr(12),"P4EXACT latitude");
+   const double exact_lon=real(lon_tok.substr(12),"P4EXACT longitude");
+   if(std::abs(exact_lat-s.station_lat_deg)>0.011
+      ||std::abs(exact_lon-s.station_lon_deg)>0.011)
+    throw ParseError("P4EXACT coordinates disagree with legacy fixed fields");
+   s.station_lat_deg=exact_lat;
+   s.station_lon_deg=exact_lon;
+  }
   if(std::abs(s.station_lat_deg)>90.0||std::abs(s.station_lon_deg)>180.0)throw ParseError("invalid coordinates");
   s.station_elevation_m=integer(field(b,36,6,"elevation"),"elevation");
   const int lines=integer(field(c,28,7,"NLINES"),"NLINES");
