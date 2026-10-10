@@ -294,10 +294,28 @@ def main() -> int:
     total_ok = 0
     total_fail = 0
     for year in years:
-        selected = [
+        in_scope = [
             s for s in stations
             if inside_bbox(s, min_lon, max_lon, min_lat, max_lat) and in_year_range(s.begin, s.end, year)
         ]
+        # SMERGE/SURF.DAT/CALMET 的站点编号是整数(平台站号取 isd-history 的 6 位 USAF),
+        # 因此 USAF 含字母的站点无法进入后续流程,在此显式排除并记录,避免整套预处理后失败。
+        selected, excluded = [], []
+        for s in in_scope:
+            usaf, wban = s.sid[:6], s.sid[6:]
+            if re.fullmatch(r"[0-9]{6}", usaf):
+                selected.append(s)
+            else:
+                excluded.append(s)
+        if excluded:
+            print(f"\n==== 跳过 {len(excluded)} 个站点(USAF 非 6 位数字,SMERGE/CALMET 需要整数站号) ====")
+            for s in excluded[:20]:
+                print(f"  {s.sid}  {s.name}  USAF={s.sid[:6]!r}")
+            with (target_dir / f"excluded_stations_{year}.txt").open("w", encoding="utf-8") as ef:
+                ef.write("sid,usaf,wban,name,lat,lon,elev,reason\n")
+                for s in excluded:
+                    ef.write(f"{s.sid},{s.sid[:6]},{s.sid[6:]},{s.name},{s.lat},{s.lon},{s.elev},"
+                             "USAF_NOT_NUMERIC\n")
         selected = sorted(selected, key=lambda s: s.sid)
         if args.max_stations > 0:
             selected = selected[: args.max_stations]

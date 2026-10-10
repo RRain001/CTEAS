@@ -348,8 +348,10 @@ def main():
 
     for p in produced:
         filled = p.replace(".csv", "_filled.csv")
-        if os.path.exists(filled):
-            normalize_filled_csv(filled)
+        if not os.path.exists(filled):
+            print(f"[警告] 未生成插值结果,保留中间文件以便排查: {os.path.basename(p)}")
+            continue
+        normalize_filled_csv(filled)
         # Remove intermediate generic CSV; keep only *_filled.csv output.
         if os.path.exists(p):
             os.remove(p)

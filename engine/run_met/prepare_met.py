@@ -82,8 +82,19 @@ def _replace_section(text: str, start_marker: str, end_marker: str, replacement:
 
 
 def _station_coords_km(row: dict[str, str], grid: Any) -> tuple[float, float]:
-    lon = float(row["lon"])
-    lat = float(row["lat"])
+    station_id = str(row.get("station_id", "?")).strip() or "?"
+    if not str(row.get("lon", "")).strip() or not str(row.get("lat", "")).strip():
+        raise ValueError(
+            f"站点 {station_id} 缺少经纬度(lat/lon);stations.csv 元数据不完整。"
+            "请确认下载步骤已生成 met/surface/isd_raw/surf_station_list_*.txt,且其中包含该站。"
+        )
+    try:
+        lon = float(row["lon"])
+        lat = float(row["lat"])
+    except ValueError as error:
+        raise ValueError(
+            f"站点 {station_id} 的经纬度不是数值: lon={row['lon']!r}, lat={row['lat']!r}"
+        ) from error
     return lon_lat_to_utm_km(lon, lat, grid.iutmzn, grid.lsohem == "N")
 
 

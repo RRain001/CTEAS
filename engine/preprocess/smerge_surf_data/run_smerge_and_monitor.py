@@ -133,7 +133,13 @@ def publish_final_surface_outputs(inp_text: str, surfdat: Path) -> tuple[Path, P
         writer.writeheader()
         for rec in station_records:
             station_id = rec["ifstn"]
-            meta = station_meta.get(station_id, {})
+            meta = station_meta.get(station_id) or {}
+            if not str(meta.get("lat", "")).strip() or not str(meta.get("lon", "")).strip():
+                raise RuntimeError(
+                    f"站点 {station_id} 缺少经纬度元数据: 未在 "
+                    f"{CASE_ROOT / 'met' / 'surface' / 'isd_raw'}/surf_station_list_*.txt 中找到该站。"
+                    "请确认下载步骤(含站点清单)已执行,且清单与当前案例的站点选择一致。"
+                )
             source_path = resolve_inp_path(WORK_DIR, rec.get("sfcmet"), WORK_DIR / rec.get("sfcmet", ""))
             try:
                 source_rel = str(source_path.relative_to(CASE_ROOT))
