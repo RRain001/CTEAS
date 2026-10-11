@@ -24,6 +24,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 import compare_original_slope as slope_module
+import compare_original_fradj as fradj_module
 import compare_original_diagno_d9a_fradj as chain_fradj
 
 NX = NY = 50
