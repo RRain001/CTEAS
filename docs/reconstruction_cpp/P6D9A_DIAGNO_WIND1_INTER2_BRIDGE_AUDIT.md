@@ -19,6 +19,16 @@ This is the first **single-call C++ bridge** of the selected 50×50×9 diagnosti
 
 10. Original **TERSET terrain envelope in-chain** (real-case path: `i3dctw=iwfcod` at L5082 and the deck sets `IWFCOD=1`, so `if(i3dctw.eq.1)call terset(htopo,hmax,terrad)` at DIAGI L5228 executes): literal call L5228 against the unchanged `TERSET` L31805–L31903, building `HMAX`/`HMIN`/`DISTHMAX`/`DISTHMIN` from the caller's terrain and `TERRAD` inside the bridge. Enabled only through `terset_envelope` plus `terrad_km`; the four planes may be supplied by the caller **or** computed in-chain, never both, and the in-chain result is bit-identical to the caller-supplied envelope (asserted by CTest). This removes four caller-supplied planes from the real-deck `IFRADJ=1`+`ISLOPE=1` route.
 
+## Real-case wind-field producer (partial, delivered)
+
+`native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp` (`cteas_p6_realcase_wind_field`) reads a CALMET case tree **read-only** (`run/met/met.inp`, `geo/**/geo.dat`, `met/surface/final/surf.dat`, `met/upperair/final/up_<id>.dat`) and writes, for the 143 case hours, chain-internal fields plus `metadata.json`:
+
+- `wind1_u_<YYYY-MM-DD_HH>.f32`, `wind1_v_<...>.f32` — the original WIND1 step-one UG/VG grid, 50x50x9 float32, k-major/j-major/i-fastest, m/s, missing sentinel `9999.0`: neutral `SIMILT` surface profile at the 10 m anemometer, hourly upper profile from the original PREPDI path (`calmet_vertav` + `calmet_prepdi_hour` over 731 real soundings), `IEXTRP=-4`, deck `BIAS`, `ICALM=0`;
+- `terset_hmax.f32`, `terset_hmin.f32`, `terset_disthmax.f32`, `terset_disthmin.f32` — the in-chain original TERSET envelope (2500 cells each, m). With the deck's `TERRAD=15 km` over a 5 km domain every cell searches the whole grid, so the envelope is the domain-wide extremum pair by construction;
+- `metadata.json` — dims, layout, dtype, layer geometry from the deck `ZFACE`, per-file units, sentinel, hour-label convention, surface wind speed range, the list of **stages applied in-chain**, the list of **stages not applied with their exact blocking inputs**, control values read, per-input FNV-1a fingerprints, station ids and sounding count.
+
+Verified on the frozen case (`hefei5km_2022_reference_case_20261011`): 143/143 hour labels, 292 output files, 22,500 values per array, ranges u in [-0.71, 2.98] m/s and v in [0.88, 4.25] m/s, no sentinel cells, envelope relief 34.5 m. `metadata.json` states this is a **partial** product: the DIAGNO stages after the first guess are not applied, so consumers must treat the arrays as the step-one field the original `DIAGNO` starts from.
+
 ## Stage status (roadmap vocabulary)
 
 | stage | status | evidence |
@@ -31,7 +41,8 @@ This is the first **single-call C++ bridge** of the selected 50×50×9 diagnosti
 | O'Brien + MINIM tail (L6153–L6180) | `IMPLEMENTED_SCOPED`, `PASS_REFERENCE`, **non-case path** | `IOBR=0` in the frozen deck |
 | SURFVAR → `TEMP2D` (L5609–L5610, `ISURFT<0`) | `BLOCKED` | needs `TPROG` (3-D prognostic temperature), `IRH2D` (2-D relative humidity) and `IPCODE2D` (2-D precipitation code); those are P6E/P6C products and the `native_cpp/modules/p6_calmet/p6e/**` subtree is not present on this branch (`git ls-tree` empty), so no read-only reuse is possible from here |
 | HEATFX / ELUSTR → `QH` (L5676–L5715, `ISFCMET=0`) | `BLOCKED` | needs `SINAPC` (solar angle), `NEARS` (nearest-station map), `TSFNSP`/`TEMP2D`, `CCGRID`+`MCLOUD`, `IPSIFCN`, `Z0`, `RHO`, `USTAR`/`EL`; the observation-preprocessing and surface-energy products belong to the P6A/P6C/P6E tracks (same absent `p6e/**` subtree) |
-| real Hefei 2022 U/V/W (1h/6h/143h) | `NOT_PASS` | needs the two `BLOCKED` providers plus a real-case run; `P6D_FULL_2022_UVW=NOT_PASS` |
+| real Hefei 2022 U/V/W (1h/6h/143h) | `PARTIAL` | 143-hour step-one U/V grid plus TERSET envelope delivered by `cteas_p6_realcase_wind_field` with provenance metadata; DIAGNO-era fields still need the two `BLOCKED` providers and the INTER2 observation-weight mapping, so `P6D_FULL_2022_UVW` stays `NOT_PASS` |
+| real-case INTER2 blend + SMOOTH/DIVCEL/W tail | `BLOCKED` | the bridge models INTER2 observation weighting as a 22500-cell `observation_weight` array while the original reads per-station `UDAT`/`VDAT` plus `WO`; the real-case mapping is not established, so no blend is emitted rather than guessed |
 
 ## Hard limits and open dependencies
 
