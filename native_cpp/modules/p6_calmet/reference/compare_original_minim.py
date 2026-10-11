@@ -26,6 +26,7 @@ DRIVER="""      program minreference
       real w(mxnx,mxny,mxnzp1),div(mxnx,mxny,mxnz)
       real ub(mxny,2,mxnz),vb(mxnx,2,mxnz)
       real divlim
+      integer s
       character*256 infile,outfile,boundfile
       call get_command_argument(1,infile)
       call get_command_argument(2,outfile)
