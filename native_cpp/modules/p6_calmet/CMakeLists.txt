@@ -264,6 +264,17 @@ else()
 endif()
 add_test(NAME p6d9a_obrien_minim_iobr1_tail_contract COMMAND cteas_p6_obrien_minim_tests)
 
+# P6D9A selected origin IFRADJ=1 upstream route: original FRADJ L5643-L5644
+# on the step-one winds, before the L5748 boundary snapshot and INTER2.
+add_executable(cteas_p6_fradj_route_tests tests/p6_diagno_fradj_route_tests.cpp)
+target_link_libraries(cteas_p6_fradj_route_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_fradj_route_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_fradj_route_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6d9a_fradj_upstream_route_contract COMMAND cteas_p6_fradj_route_tests)
+
 # P6D9A composed trace for chained unmodified original Fortran comparisons.
 add_executable(cteas_p6_d9a_source_trace src/diagno_d9a_trace_main.cpp)
 target_link_libraries(cteas_p6_d9a_source_trace PRIVATE cteas_p6a_contracts)

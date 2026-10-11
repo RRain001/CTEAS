@@ -11,7 +11,8 @@
 using namespace cteas::calmet::p6;
 int main(int argc,char** argv){
  try{
-    if(argc!=6)throw std::invalid_argument("d9a INPUT WIND1_OUT INTER2_OUT FINAL_OUT BOUND_OUT");
+    if(argc!=7)throw std::invalid_argument(
+        "d9a INPUT WIND1_OUT INTER2_OUT FINAL_OUT BOUND_OUT PREPARED_OUT");
     std::ifstream f(argv[1]);
     if(!f)throw std::runtime_error("D9A source fixture missing");
     DiagnoD9SelectedInput in;
@@ -84,20 +85,37 @@ int main(int argc,char** argv){
     if(obrien!=0&&obrien!=1)
         throw std::runtime_error("D9A IOBR flag must be 0 or 1");
     in.obrien_adjustment=obrien==1;
+    int froude=0;
+    if(!(f>>froude>>in.froude.isurft>>in.froude.tinf_k>>in.froude.critfn))
+        throw std::runtime_error("D9A IFRADJ controls missing");
+    if(froude!=0&&froude!=1)
+        throw std::runtime_error("D9A IFRADJ flag must be 0 or 1");
+    in.froude_adjustment=froude==1;
+    for(auto* plane:{&in.froude.terrain_m,&in.froude.maximum_terrain_m,
+                     &in.froude.lapse_rate_k_per_m,
+                     &in.froude.surface_temperature_k}){
+        plane->resize(2500);
+        for(float& value:*plane)
+            if(!(f>>value))throw std::runtime_error("D9A FRADJ 50x50 field missing");
+    }
     std::string extra;
     if(f>>extra)throw std::runtime_error("D9A input trailing data");
     auto out=integrate_diagno_d9_selected(in);
     std::ofstream fg(argv[2]),blend(argv[3]),fin(argv[4]),bound(argv[5]);
-    if(!fg||!blend||!fin||!bound)
+    std::ofstream prepared(argv[6]);
+    if(!fg||!blend||!fin||!bound||!prepared)
         throw std::runtime_error("D9A output file unavailable");
     fg<<std::scientific<<std::setprecision(13);
     blend<<std::setprecision(12)<<"i,j,k,u,v\n";
     fin<<std::setprecision(12)<<"i,j,k,u,v,div,w_below,w_above\n";
+    prepared<<std::setprecision(12)<<"i,j,k,u_mps,v_mps\n";
     bound<<std::setprecision(12);
     for(int k=0;k<9;k++)for(int j=0;j<50;j++)for(int i=0;i<50;i++){
         const auto n=std::size_t(k)*2500+std::size_t(j)*50+std::size_t(i);
         fg<<i+1<<" "<<j+1<<" "<<k+1<<" "
           <<out.raw_first_guess.ug_mps[n]<<" "<<out.raw_first_guess.vg_mps[n]<<'\n';
+        prepared<<i+1<<","<<j+1<<","<<k+1<<","
+                <<out.prepared_ug[n]<<","<<out.prepared_vg[n]<<'\n';
         blend<<i+1<<","<<j+1<<","<<k+1<<","
              <<out.blended_u[n]<<","<<out.blended_v[n]<<'\n';
         fin<<i+1<<","<<j+1<<","<<k+1<<","

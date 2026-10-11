@@ -2,9 +2,9 @@
 // P6D9A selected original CALMET 6.5.0 DIAGNO bridging contract.
 //
 // Source call order: WIND1 [L5590], WINDBC [L5599], then optional kinetic,
-// Froude, radiative/heat, slope corrections and final WINDBC [L5748];
-// INTER2 U/V [L6055-6061]; SMOOTH+DIVCEL+W [L6119-6148]; optional IOBR=1
-// O'Brien W adjustment [L6153-6159] and MINIM [L6180].
+// Froude [L5643-5644], radiative/heat, slope corrections and final WINDBC
+// [L5748]; INTER2 U/V [L6055-6061]; SMOOTH+DIVCEL+W [L6119-6148]; optional
+// IOBR=1 O'Brien W adjustment [L6153-6159] and MINIM [L6180].
 //
 // D9A deliberately DOES NOT simulate the intervening heat/terrain physics.
 // It requires the caller to explicitly designate a synthetic-identity
@@ -14,6 +14,7 @@
 #include "cteas/p6/inter2_selected.hpp"
 #include "cteas/p6/diagno_segment.hpp"
 #include "cteas/p6/diagno_obrien_minim.hpp"
+#include "cteas/p6/froude_adjust.hpp"
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -27,6 +28,16 @@ enum class DiagnoD9UpstreamMode {
     SyntheticIdentityForSourceAudit=1,
     ExternallyCompletedUpstreamPhysics=2
 };
+struct DiagnoD9FroudeBoundary {
+    // Original FRADJ inputs beyond the step-one winds: gridded terrain,
+    // terrain envelope HMAX, lapse rate GAMMA, 2-D surface temperature and
+    // the ISURFT selector. All 2500-element fields are k-less 50x50 planes.
+    int isurft=-1;
+    float tinf_k=0.f;
+    float critfn=0.f;
+    std::vector<float> terrain_m,maximum_terrain_m;
+    std::vector<float> lapse_rate_k_per_m,surface_temperature_k;
+};
 struct DiagnoD9SelectedInput {
     Wind1SelectedStationHour stations;
     Wind1FirstGuessSelectedControls first_guess;
@@ -38,6 +49,10 @@ struct DiagnoD9SelectedInput {
     // the caller's terrain/heat/slope-corrected UG/VG. Size 50*50*9.
     std::vector<float> corrected_first_guess_u_mps,corrected_first_guess_v_mps;
     bool lake_breeze=false;
+    // Original IFRADJ=1 stage L5643-L5644, applied to the step-one UG/VG
+    // before the L5748 WINDBC snapshot and the L6055/L6059 INTER2 calls.
+    bool froude_adjustment=false;
+    DiagnoD9FroudeBoundary froude;
     // Original IOBR=1 tail: O'Brien W adjustment L6153-L6159 then MINIM
     // L6180. CELLZB(1) is the original lowest face height, NITER and DIVLIM
     // are the original namelist MINIM controls.
@@ -82,6 +97,25 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
     }else if(!request.corrected_first_guess_u_mps.empty()||
              !request.corrected_first_guess_v_mps.empty()) {
         throw std::invalid_argument("D9 synthetic identity cannot silently apply corrections");
+    }
+    if(request.froude_adjustment) {
+        if(request.upstream_mode!=DiagnoD9UpstreamMode::SyntheticIdentityForSourceAudit)
+            throw std::invalid_argument("D9 Froude stage cannot re-adjust an external corrected field");
+        const auto& f=request.froude;
+        if(f.terrain_m.size()!=22500||f.maximum_terrain_m.size()!=22500||
+           f.lapse_rate_k_per_m.size()!=22500||
+           f.surface_temperature_k.size()!=22500)
+            throw std::invalid_argument("D9 missing original FRADJ 50x50 fields");
+        std::vector<float> zface(10);
+        zface[0]=request.cellzb_origin_m;
+        for(std::size_t k=0;k<9;++k)zface[k+1]=zface[k]+
+            request.layer_thickness_m[k];
+        WindUV step_one{std::move(u),std::move(v)};
+        auto adjusted=froude_adjust(
+            50,50,9,100.f,100.f,f.terrain_m,f.maximum_terrain_m,
+            f.lapse_rate_k_per_m,f.surface_temperature_k,
+            f.isurft,f.tinf_k,f.critfn,zface,std::move(step_one));
+        u=std::move(adjusted.u);v=std::move(adjusted.v);
     }
 
     // Original DIAGNO refreshes step-one WINDBC after terrain and slope
