@@ -135,8 +135,11 @@ struct PlumeRiseState {
     int rise_method = 1;                  // MRISE (1 = Briggs, 2 = numerical)
     int shear_flag = 0;                   // MSHEAR
     double x_m = 0.0;                     // X
-    double final_rise_m = 0.0;            // ZFINAL(IPNUM)
-    double full_final_rise_m = 0.0;       // ZFRISE (rise without streamline depression)
+    // ZFINAL(IPNUM) is the stored plume HEIGHT (HT0 + rise - STIPDW) that the
+    // vendor returns directly for the no-rise/cavity method; ZFRISE is the final
+    // RISE without streamline depression and only feeds RISEFAC.
+    double final_rise_m = 0.0;            // ZFINAL(IPNUM), a height
+    double full_final_rise_m = 0.0;       // ZFRISE, a rise
     double stack_height_m = 0.0;          // HT0(IPNUM)
     double diameter_m = 0.0;              // DIAM0(IPNUM)
     double exit_velocity_ms = 0.0;        // EXITW0(IPNUM)

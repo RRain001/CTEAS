@@ -363,7 +363,8 @@ int deck_rise_mode(const std::string& met_path, const std::string& control_path,
         state.rise_method = 1;
         state.shear_flag = 0;
         state.x_m = distance;
-        state.final_rise_m = rise_final;
+        // ZFINAL is the stored plume height (only read by the method-0 path).
+        state.final_rise_m = stack_height_m - tip_downwash + rise_final;
         state.full_final_rise_m = rise_final;
         state.stack_height_m = stack_height_m;
         state.diameter_m = stack_diameter_m;
