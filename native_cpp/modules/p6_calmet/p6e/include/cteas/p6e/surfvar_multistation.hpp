@@ -93,13 +93,17 @@ inline SurfvarMultistationResult surfvar_multistation(const SurfvarMultistationI
                 if(s.temp_k<9998.99f)tlist.push_back({dist,st});
                 if(s.rh_pct<9999)rhlist.push_back({dist,st});
             }
-            // The original selection swaps only strictly-greater
-            // distances, preserving source order for ties.
-            auto ordered=[](const ObsFieldDistance& a,const ObsFieldDistance& b){
-                return a.distance<b.distance;
+            // Reproduce original CALMET SURFVAR pairwise selection-sort.
+            // Swaps can indirectly reorder equal-distance stations.
+            // std::stable_sort changes which station reaches NUMTS.
+            auto original_sort=[](std::vector<ObsFieldDistance>& values){
+                for(std::size_t ii=0;ii<values.size();++ii)
+                    for(std::size_t jj=ii+1;jj<values.size();++jj)
+                        if(values[ii].distance>values[jj].distance)
+                            std::swap(values[ii],values[jj]);
             };
-            std::stable_sort(tlist.begin(),tlist.end(),ordered);
-            std::stable_sort(rhlist.begin(),rhlist.end(),ordered);
+            original_sort(tlist);
+            original_sort(rhlist);
             const auto k=j*x.nx+i;
             r.temp2d_k[k]=interpolate_surfvar_field(x,tlist,false);
             const float interp_rh=interpolate_surfvar_field(x,rhlist,true);
