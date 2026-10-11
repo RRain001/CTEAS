@@ -959,6 +959,27 @@ on any drift. Vendor source
   case-insensitive-filesystem failure of
   `cteas_p7_original_case_stage_contract` (PASS on Linux).
 
+### Gate evidence (Linux, lhy-desktop, g++-12 + gfortran-11)
+
+`LOCAL_GATE_P7=PASS sha=55cd7c9e2 ok=21 blocked=0 failed=0` with the authoritative
+local gate (`python3 scripts/local_gate.py --track p7 --repo /home/lhy/gate/driver`):
+`100% tests passed, 0 tests failed out of 23`, including the three new P7M CTest
+entries. The same case matrices against the compiled unmodified vendor units with
+`GNU Fortran (Ubuntu 11.4.0) 11.4.0`:
+
+```
+MUNU  CASES=46 MAX_REL=1.825e-13   BI    CASES=36 MAX_REL=9.433e-07
+BJI   CASES=12 MAX_REL=2.057e-13   BJIL  CASES=24 MAX_REL=3.008e-13
+SIGMA CASES=96 MAX_REL=3.073e-13   IREG  CASES=12 MAX_REL=0.000e+00
+CTREC CASES=12 MAX_REL=1.655e-13   PUFFC CASES=12 MAX_REL=8.851e-08
+LOWER CASES=12 MAX_REL=1.422e-13   CTSG  CASES=11 MAX_REL=1.247e-07
+TOTAL 273 CASES, MISMATCHES=0
+```
+
+The only difference from macOS (gfortran 16.2.0) is the SIGMA matrix, which
+tightens from `1.1e-07` to `3.1e-13`; every other matrix is unchanged to the
+reported digits.
+
 ### Real receptor-grid run (physical chain only)
 
 `cteas_p7m_probe --real-grid MET.DAT puff.inp 0 2.63e13 513.3846439571
