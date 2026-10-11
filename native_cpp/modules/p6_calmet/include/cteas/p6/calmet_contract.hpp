@@ -176,6 +176,10 @@ struct ForcingInventory {
     bool geo_dat_p3_verified = false;
     bool surf_dat_p5_fortran_verified = false;
     bool upper_dat_p4_fortran_verified = false;
+    // NPSTA=0 is an explicit original CALMET observation-mode choice:
+    // the diagnostic+micrometeorology run can be valid with no rainfall
+    // grid. This DOES NOT satisfy CALPUFF wet-deposition scientific needs.
+    bool precipitation_mode_explicitly_confirmed = false;
     bool precipitation_input_verified = false;
     int n_surface_stations = 0;
     int n_upper_stations = 0;
@@ -183,13 +187,23 @@ struct ForcingInventory {
 
     [[nodiscard]] bool can_attempt_full_reference_run() const noexcept {
         return geo_dat_p3_verified && surf_dat_p5_fortran_verified &&
-               upper_dat_p4_fortran_verified && precipitation_input_verified &&
+               upper_dat_p4_fortran_verified &&
                n_surface_stations > 0 && n_upper_stations > 0 &&
-               n_precip_stations > 0;
+               precipitation_mode_explicitly_confirmed &&
+               n_precip_stations >= 0 &&
+               (n_precip_stations == 0 || precipitation_input_verified);
+    }
+    [[nodiscard]] bool can_claim_wet_deposition_forcing() const noexcept {
+        return can_attempt_full_reference_run() &&
+               n_precip_stations > 0 && precipitation_input_verified;
     }
     void require_full_reference_ready() const {
         require(can_attempt_full_reference_run(),
-                "P6 original full scientific reference is blocked by missing validated forcing");
+                "P6 original diagnostic reference blocked by station or explicit precip-mode contract");
+    }
+    void require_wet_deposition_forcing() const {
+        require(can_claim_wet_deposition_forcing(),
+                "P6 NPSTA=0 can run but does not provide verified precipitation for wet deposition");
     }
 };
 
