@@ -121,6 +121,11 @@ inline SimiltProfileOutput original_similt_profile(const SimiltProfileInput& in)
     const float cutoff=std::max(in.mixing_height_m+0.001f,
                                 in.minimum_mixing_height_m);
     SimiltProfileOutput out;
+    // The original SIMILT loop writes US(K-1,NS) for K=2.. and therefore never
+    // touches index 1: the caller's value there is the observed anemometer wind
+    // (already at ZMID(1) in the real path). Keep that contract explicit.
+    out.u_mps[0]=in.anemometer_u_mps;
+    out.v_mps[0]=in.anemometer_v_mps;
     for(std::size_t k=2;k<=9;++k){
         // L30319: "above mixing height, exit" - the levels above keep their
         // prior content instead of a surface extrapolation.
