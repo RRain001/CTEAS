@@ -14,6 +14,7 @@ jobs:
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v4
       - name: Fetch official source, validate gzip and identify same station/year
         shell: bash
         run: |
