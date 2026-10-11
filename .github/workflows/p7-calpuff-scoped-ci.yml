@@ -328,6 +328,7 @@ jobs:
           name: p7-historical-2023-reference
           path: |
             ${{ runner.temp }}/p7-${{ github.run_id }}-${{ github.run_attempt }}/historical-2023/historical-2023-reference.json
+            ${{ runner.temp }}/p7-${{ github.run_id }}-${{ github.run_attempt }}/historical-2023/2022-ledger-refusal.json
             ${{ runner.temp }}/p7-${{ github.run_id }}-${{ github.run_attempt }}/historical-2023/original-2023-runtime.log
             ${{ runner.temp }}/p7-${{ github.run_id }}-${{ github.run_attempt }}/historical-2023/case/run/puff/puff.con
           retention-days: 7
