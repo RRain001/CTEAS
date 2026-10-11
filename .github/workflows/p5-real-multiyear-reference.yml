@@ -21,26 +21,31 @@ jobs:
       - uses: actions/checkout@v4
       - name: Select self-hosted C++20 and Fortran tools
         uses: ./.github/actions/cteas-linux-toolchain
+      - name: Reset self-hosted scratch directories
+        shell: bash
+        run: |
+          rm -rf ${{ runner.temp }}/p5-real-cpp ${{ runner.temp }}/p5-real-fortran-include \
+                 ${{ runner.temp }}/p5-real-original-smerge
       - name: Install tools and build both INDEPENDENT original Fortran and native C++
         shell: bash
         run: |
           set -euo pipefail
           python3 -m pip install -q --disable-pip-version-check numpy pandas PyYAML
           gfortran --version | head -1
-          mkdir -p real-multiyear-evidence /tmp/p5-real-fortran-include
+          mkdir -p real-multiyear-evidence ${{ runner.temp }}/p5-real-fortran-include
           src=engine/vendor/src/SMERGE_v5.7.0_L121203
           for item in "$src"/*; do
             name=$(basename "$item" | tr '[:upper:]' '[:lower:]')
-            if [ ! -e "/tmp/p5-real-fortran-include/$name" ]; then
-              ln -s "$GITHUB_WORKSPACE/$item" "/tmp/p5-real-fortran-include/$name"
+            if [ ! -e "${{ runner.temp }}/p5-real-fortran-include/$name" ]; then
+              ln -s "$GITHUB_WORKSPACE/$item" "${{ runner.temp }}/p5-real-fortran-include/$name"
             fi
           done
           gfortran -O0 -std=legacy -fno-automatic -fno-align-commons \
             -fallow-argument-mismatch -ffixed-line-length-none \
-            -I/tmp/p5-real-fortran-include "$src/SMERGE.FOR" -o /tmp/p5-real-original-smerge
-          cmake -S native_cpp/modules/p5_smerge -B /tmp/p5-real-cpp -DCMAKE_BUILD_TYPE=Debug
-          cmake --build /tmp/p5-real-cpp -j2
-          ctest --test-dir /tmp/p5-real-cpp --output-on-failure
+            -I${{ runner.temp }}/p5-real-fortran-include "$src/SMERGE.FOR" -o ${{ runner.temp }}/p5-real-original-smerge
+          cmake -S native_cpp/modules/p5_smerge -B ${{ runner.temp }}/p5-real-cpp -DCMAKE_BUILD_TYPE=Debug
+          cmake --build ${{ runner.temp }}/p5-real-cpp -j2
+          ctest --test-dir ${{ runner.temp }}/p5-real-cpp --output-on-failure
           sha256sum "$src/SMERGE.FOR" > real-multiyear-evidence/original-fortran-source.sha256
           git rev-parse HEAD > real-multiyear-evidence/head.sha
       - name: Download four REAL NOAA ISD and four ISD-Lite sources and decide primary EACH year
@@ -73,7 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           cd project/current/run/smerge
-          /tmp/p5-real-original-smerge smerge.inp 2>&1 | tee "$GITHUB_WORKSPACE/real-multiyear-evidence/original-smg-runtime.log"
+          ${{ runner.temp }}/p5-real-original-smerge smerge.inp 2>&1 | tee "$GITHUB_WORKSPACE/real-multiyear-evidence/original-smg-runtime.log"
           test -s surf.dat
           sha256sum surf.dat > "$GITHUB_WORKSPACE/real-multiyear-evidence/original-SURF.sha256"
           cp smerge.lst "$GITHUB_WORKSPACE/real-multiyear-evidence/original-smg.lst"
@@ -105,7 +110,7 @@ jobs:
           (working/"native_real_2022_2023.inp").write_text(text)
           print("P5_REAL_NO_NATIVE_EOF_ADAPTER=PASS",n[0])
           PY
-          /tmp/p5-real-cpp/cteas_p5_smerge \
+          ${{ runner.temp }}/p5-real-cpp/cteas_p5_smerge \
             project/current/run/smerge/native_real_2022_2023.inp \
             2>&1 | tee real-multiyear-evidence/native-smg-runtime.log
           python3 -m native_cpp.modules.p5_smerge.data_prep.tests.real_multiyear_reference parity \

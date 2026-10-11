@@ -25,6 +25,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Select self-hosted C++20 and Fortran tools
         uses: ./.github/actions/cteas-linux-toolchain
+      - name: Reset self-hosted scratch directories
+        shell: bash
+        run: |
+          rm -rf ${{ runner.temp }}/cteas-cpp-build ${{ runner.temp }}/terrain.txt ${{ runner.temp }}/landuse.txt
       - name: Install GDAL headers
         run: |
           if ! pkg-config --exists gdal; then
@@ -32,19 +36,19 @@ jobs:
             sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
           fi
       - name: Configure
-        run: cmake -S native_cpp -B /tmp/cteas-cpp-build -DCMAKE_BUILD_TYPE=Debug
+        run: cmake -S native_cpp -B ${{ runner.temp }}/cteas-cpp-build -DCMAKE_BUILD_TYPE=Debug
       - name: Build
-        run: cmake --build /tmp/cteas-cpp-build -j2
+        run: cmake --build ${{ runner.temp }}/cteas-cpp-build -j2
       - name: Unit tests
-        run: ctest --test-dir /tmp/cteas-cpp-build --output-on-failure
+        run: ctest --test-dir ${{ runner.temp }}/cteas-cpp-build --output-on-failure
       - name: Read immutable cropped source inputs
         shell: bash
         run: |
           set -euo pipefail
-          /tmp/cteas-cpp-build/cteas_geo_inspect terrain calpuff_terrain_and_landuse_data_crop/hefei_5km/china_srtm/srtm_60_06_hefei_5km.tif | tee /tmp/terrain.txt
-          /tmp/cteas-cpp-build/cteas_geo_inspect landuse calpuff_terrain_and_landuse_data_crop/hefei_5km/eurasia_asia_landuse/eausgs2_0la_hefei_5km.generic.txt | tee /tmp/landuse.txt
-          grep -q 'width=90 height=77' /tmp/terrain.txt
-          grep -q 'datum=ESR-S categories=38 points=57600' /tmp/landuse.txt
+          ${{ runner.temp }}/cteas-cpp-build/cteas_geo_inspect terrain calpuff_terrain_and_landuse_data_crop/hefei_5km/china_srtm/srtm_60_06_hefei_5km.tif | tee ${{ runner.temp }}/terrain.txt
+          ${{ runner.temp }}/cteas-cpp-build/cteas_geo_inspect landuse calpuff_terrain_and_landuse_data_crop/hefei_5km/eurasia_asia_landuse/eausgs2_0la_hefei_5km.generic.txt | tee ${{ runner.temp }}/landuse.txt
+          grep -q 'width=90 height=77' ${{ runner.temp }}/terrain.txt
+          grep -q 'datum=ESR-S categories=38 points=57600' ${{ runner.temp }}/landuse.txt
       - name: Independently verify crop SHA-256
         shell: bash
         run: |

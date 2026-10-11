@@ -19,6 +19,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Select self-hosted C++20 and Fortran tools
         uses: ./.github/actions/cteas-linux-toolchain
+      - name: Reset self-hosted scratch directories
+        shell: bash
+        run: |
+          rm -rf ${{ runner.temp }}/cteas-p3-build ${{ runner.temp }}/p3-compare
       - name: Original and C++ compilers
         run: |
           if ! pkg-config --exists gdal; then
@@ -27,45 +31,45 @@ jobs:
           fi
           gfortran --version | head -1
       - name: Isolated original P1/P2 capture
-        run: python3 native_cpp/reference/capture_p1_p2.py --output /tmp/p3-compare
+        run: python3 native_cpp/reference/capture_p1_p2.py --output ${{ runner.temp }}/p3-compare
       - name: Isolated original P3 MAKEGEO capture
-        run: python3 native_cpp/reference/capture_p3_makegeo.py --output /tmp/p3-compare
+        run: python3 native_cpp/reference/capture_p3_makegeo.py --output ${{ runner.temp }}/p3-compare
       - name: Build independent C++20 MAKEGEO subset
         run: |
-          cmake -S native_cpp/p3 -B /tmp/cteas-p3-build -DCMAKE_BUILD_TYPE=Debug
-          cmake --build /tmp/cteas-p3-build -j2
+          cmake -S native_cpp/p3 -B ${{ runner.temp }}/cteas-p3-build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build ${{ runner.temp }}/cteas-p3-build -j2
       - name: Compute modern P3 gridded geophysical parameters
         run: |
-          /tmp/cteas-p3-build/cteas_p3_makegeo \
-            /tmp/p3-compare/p3/makegeo.inp \
-            /tmp/p3-compare/p2/lu.dat \
-            /tmp/p3-compare/p1/terrel.dat \
-            /tmp/p3-compare/p3_cpp_geophysical.csv \
-            /tmp/p3-compare/p3_cpp_geo.dat
+          ${{ runner.temp }}/cteas-p3-build/cteas_p3_makegeo \
+            ${{ runner.temp }}/p3-compare/p3/makegeo.inp \
+            ${{ runner.temp }}/p3-compare/p2/lu.dat \
+            ${{ runner.temp }}/p3-compare/p1/terrel.dat \
+            ${{ runner.temp }}/p3-compare/p3_cpp_geophysical.csv \
+            ${{ runner.temp }}/p3-compare/p3_cpp_geo.dat
       - name: Independently check numeric fields and exact printed GEO.DAT
-        run: python3 native_cpp/reference/compare_p3_makegeo.py --reference /tmp/p3-compare/p3/geo.dat --cpp /tmp/p3-compare/p3_cpp_geophysical.csv --cpp-geo /tmp/p3-compare/p3_cpp_geo.dat --report /tmp/p3-compare/p3_scoped_comparison.json
+        run: python3 native_cpp/reference/compare_p3_makegeo.py --reference ${{ runner.temp }}/p3-compare/p3/geo.dat --cpp ${{ runner.temp }}/p3-compare/p3_cpp_geophysical.csv --cpp-geo ${{ runner.temp }}/p3-compare/p3_cpp_geo.dat --report ${{ runner.temp }}/p3-compare/p3_scoped_comparison.json
       - name: Independently generate and run original mixed-category MAKEGEO
-        run: python3 native_cpp/reference/prepare_p3_mixed.py --reference-dir /tmp/p3-compare
+        run: python3 native_cpp/reference/prepare_p3_mixed.py --reference-dir ${{ runner.temp }}/p3-compare
       - name: Compute synthetic 38-category P3 C++ geophysics and GEO.DAT
         run: |
-          /tmp/cteas-p3-build/cteas_p3_makegeo \
-            /tmp/p3-compare/p3-mixed/run/makegeo.inp \
-            /tmp/p3-compare/p3-mixed/lu.dat \
-            /tmp/p3-compare/p1/terrel.dat \
-            /tmp/p3-compare/p3-mixed/p3_cpp_geophysical.csv \
-            /tmp/p3-compare/p3-mixed/p3_cpp_geo.dat
+          ${{ runner.temp }}/cteas-p3-build/cteas_p3_makegeo \
+            ${{ runner.temp }}/p3-compare/p3-mixed/run/makegeo.inp \
+            ${{ runner.temp }}/p3-compare/p3-mixed/lu.dat \
+            ${{ runner.temp }}/p3-compare/p1/terrel.dat \
+            ${{ runner.temp }}/p3-compare/p3-mixed/p3_cpp_geophysical.csv \
+            ${{ runner.temp }}/p3-compare/p3-mixed/p3_cpp_geo.dat
       - name: Compare synthetic mixed fraction/water/weighting against original
         run: |
           python3 native_cpp/reference/compare_p3_makegeo.py \
-            --reference /tmp/p3-compare/p3-mixed/run/geo.dat \
-            --cpp /tmp/p3-compare/p3-mixed/p3_cpp_geophysical.csv \
-            --cpp-geo /tmp/p3-compare/p3-mixed/p3_cpp_geo.dat \
-            --report /tmp/p3-compare/p3-mixed/p3_comparison.json
+            --reference ${{ runner.temp }}/p3-compare/p3-mixed/run/geo.dat \
+            --cpp ${{ runner.temp }}/p3-compare/p3-mixed/p3_cpp_geophysical.csv \
+            --cpp-geo ${{ runner.temp }}/p3-compare/p3-mixed/p3_cpp_geo.dat \
+            --report ${{ runner.temp }}/p3-compare/p3-mixed/p3_comparison.json
       - name: Archive immutable original outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: p3-makegeo-original-reference
-          path: /tmp/p3-compare
+          path: ${{ runner.temp }}/p3-compare
           retention-days: 7
           if-no-files-found: warn
