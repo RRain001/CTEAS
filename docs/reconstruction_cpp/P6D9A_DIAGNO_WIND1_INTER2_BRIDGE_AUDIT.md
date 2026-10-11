@@ -42,6 +42,35 @@ The two real-case verdicts are not yet inside `scripts/local_gate.py`'s `p6d` st
 
 Both comparators compile the unchanged original routines with gfortran and are fail-closed, so they belong in the gate rather than only in local evidence.
 
+### Round 13: the stability-dependent SIMILT (PSIUD) port closes levels 2-5 and level 7
+
+Ported source-scoped, with the vendor lines and hashes recorded by the comparator: `SIMILT` L30097-L30370 (`sha256` of the extracted block in `p6d-similt-profile-parity.json`) and `PSIUD` L35629-L35674. The kernel now covers the neutral, stable and unstable branches, the Monin-Obukhov clamp at `5*z0`, the Table-2 turning-angle interpolation, the mixing-height cutoff (`zface(k) <= amax1(zi+0.001, zimini)`, "above mixing height, exit") and both hemispheres; `IPSIFCN=1` (PSIUC/COARE) and overwater stations fail closed. The original's write pattern is `US(K-1,NS)` for `K=2..NZP1`, i.e. level 1 receives the profile at `ZMID(1)` - reproducing that exactly was what made the `tall_anemometer` scene agree.
+
+Two inputs drive it, both from the P6E E29 export and both labelled uncertified: `--el` (`<prefix>.el.f32`, the Monin-Obukhov length; hour 1 = -49.5 m) and `--zi` (`<prefix>.zi.f32`, the cutoff; hour 1 = 231 m, floored at the deck's `ZIMIN = 50 m`). `ZI` is the right cutoff input because DIAGI passes `zii=zi(is,js)` (L6876/L6894); `ZICONV` is only the convective height and is zero for 89 of the 143 hours.
+
+Evidence (`compare_original_similt_profile.py`, 15 scenes, 162 components, compiled original + PSIUD, tolerance 2e-4 m/s): **`PASS_SIMILT_PROFILE_ORIGINAL`, max abs error 1.907e-06 m/s, zero mismatches** - covering the neutral WIND1 route, unstable/stable profiles, both clamps, the cutoff at the second face and at the minimum only, and both hemispheres.
+
+End-to-end effect (AUX, product through P6F vs the frozen `met.dat`, worst over 143 hours):
+
+| field | round 12 | round 13 |
+|---|---|---|
+| `U-LEV 2` | 2.47476 | **0.0315449** |
+| `V-LEV 2` | 2.6212 | **0.0325136** |
+| `U-LEV 3` | 3.22231 | **0.0330477** |
+| `V-LEV 3` | 2.87008 | **0.0362592** |
+| `U-LEV 4` | 4.12656 | **0.0419641** |
+| `V-LEV 4` | 2.7318 | **0.0397687** |
+| `U-LEV 5` | 4.8366 | **0.0491858** |
+| `V-LEV 5` | 3.93422 | **0.0400119** |
+| `U-LEV 6` | 2.71215 | 1.8483 |
+| `V-LEV 6` | 3.03253 | 0.327975 |
+| `U-LEV 7` | 2.54216 | **1.82837e-05 PASS** |
+| `V-LEV 7` | 3.90401 | **1.21593e-05 PASS** |
+| `U-LEV 8/9`, `V-LEV 8/9` | PASS | PASS |
+| `WFACE 1..9` | FAIL | FAIL (0.158 plateau unchanged) |
+
+At hour 1 every level now sits within ~2.1e-04 m/s of the reference (level 2: 0.037302 -> 0.000205, level 4: 0.088716 -> 0.000215). Remaining: level 1 (0.00156724, the station-centred structure term), level 6 (1.8483, one deep-mixing episode), and every `WFACE`, which the round-12 analysis showed is the divergence integration of the same missing structure - the stability-dependent profile did not remove it, so the structure must come from the 2-D `temp2d`/flux dependence that `STHEOR` adds on top of `SIMILT`, not from the profile shape alone. The `A-B` deltas (`USTAR` 5.7228e-05, `EL`, `WSTAR`) are unchanged because they follow the level-1 wind and the P6E chain state, both untouched this round.
+
 ### Round 12: the AUX per-level table, and one root cause behind the low levels and every W face
 
 Full AUX verdicts (product through P6F written into `CALMET.DAT 2.1` vs the frozen `met.dat`, 357,500 cells per level, tolerance `1e-4 + 1e-5*|ref|`), from `p6g_report.json` of the run recorded in round 11:
