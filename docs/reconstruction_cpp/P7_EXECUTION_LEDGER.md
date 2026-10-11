@@ -17,7 +17,9 @@ must be verified by an actual job. Jobs for P6 are not changed.
 - P7A: Source blob SHA1/sha256 audit, routine and active-control inventory:
   IMPLEMENTED_FOR_CI, no runner-success claim. Original unchanged Fortran build,
   real Hefei 2022 CALPUFF run and frozen CONC.DAT are PENDING.
-- P7B: First scoped native C++20 control-file reader: IMPLEMENTED_FOR_CI,
+- P7B: First scoped native C++20 control-file reader and strict sequential
+  unformatted Fortran record framing reader (4/8-byte markers, endian choice,
+  trailer/size/truncation checks and synthetic fixtures): IMPLEMENTED_FOR_CI,
   NOT CLAIMED PASS until CTest. Active !KEY=value! vs inactive *KEY=value*
   syntax, repeated lists (ZFACE, CSPEC), exact numeric checks and fail-closed
   selected dry reference option validation. Original CALMET.DAT binary reader,

@@ -5,18 +5,11 @@ on:
       - 'native_cpp/modules/p7_calpuff/**'
       - '.github/workflows/p7-calpuff-scoped-ci.yml'
       - 'docs/reconstruction_cpp/P7_*'
-  push:
-    branches:
-      - 'codex/cteas-p7-calpuff-20261011'
-    paths:
-      - 'native_cpp/modules/p7_calpuff/**'
-      - '.github/workflows/p7-calpuff-scoped-ci.yml'
-      - 'docs/reconstruction_cpp/P7_*'
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: p7-scoped-${{ github.ref }}
+  group: p7-scoped-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 jobs:
   p7-scoped:
