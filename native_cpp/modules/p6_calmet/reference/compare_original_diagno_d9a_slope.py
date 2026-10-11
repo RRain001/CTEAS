@@ -60,6 +60,7 @@ DRIVER_HEAD = """      program d9aupstream
       dx=100.0
       dy=100.0
       iwr=0
+      nzp1=nz+1
       ifradj=1
       islope=1
       open(10,file=trim(fin),status='old')
