@@ -24,4 +24,8 @@ jobs:
           sha256sum "$SRC"
           echo '==== CALMET 6.5 original COMP source lines 4118-4412 ===='
           sed -n '4118,4412p' "$SRC" | nl -ba -v 4118
-          echo '==== end original COMP (no vendor source modifications) ===='
+          echo '==== original PREPDI per-layer +/- JORDER branch 13965-13992 ===='
+          sed -n '13965,13992p' "$SRC" | nl -ba -v 13965
+          echo '==== original MAXSEP and CGAMMA definition anchors ===='
+          grep -inE 'maxsep|subroutine cgamma' "$SRC" | head -60
+          echo '==== end source audit (no vendor source modifications) ===='
