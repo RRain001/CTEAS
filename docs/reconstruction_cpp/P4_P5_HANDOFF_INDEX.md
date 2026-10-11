@@ -5,6 +5,7 @@
 - **[P4 READ62 详细清单（P4 独立分支）](https://github.com/RRain001/CTEAS/blob/codex/cteas-p4-read62-reference/docs/reconstruction_cpp/P4_READ62_IMPLEMENTATION_STATUS.md)**：原版 Python/Fortran 模块映射、已实现功能、未支持控制项、原版数值等价证据。
 - **[P5 SMERGE 详细清单（P5 独立分支）](P5_SMERGE_IMPLEMENTATION_STATUS.md)**：原始地面气象数据下载和筛选、主站/次站处理、GENERIC 输入接口、**原生 C++20 SURF.DAT 写出器及字节等价证据**、原版 CALMET 验证和非目标格式差距。
 - [P5 气象资料和静风政策](../../native_cpp/modules/p5_smerge/data_prep/ISD_LITE_HYBRID_WIND_POLICY.md)。
+- [**P5 真实两站、连续两年（2022–2023）原生/原版独立字节等价验收报告**](P5_REAL_MULTISTATION_MULTIYEAR_REFERENCE_2026-10-11.md)。
 - [原始主计划](PROGRAM_MASTER_PLAN.md)只记录 P1–P7 的长期任务边界；不要将早期日期和状态当作最新阶段资格。
 
 ## 实现等级与验收
@@ -12,7 +13,7 @@
 | 阶段 | 已经通过的独立验收 | 不可错误宣称 |
 | --- | --- | --- |
 | P4 | 限定 `JDAT=2, IFMT=1, PSTOP=500` 的 C++20 `UP.DAT` 全年与原版 READ62 **212,885 个数值字段和文件字节等价**；逐年 IGRA 站点选择/ FSL/最终 CALMET 输入连通 | 不能说完全复制 READ62 的所有 `JDAT/IFMT`、替代探空、缺测层剔除、顶底层修正及各种控制组合 |
-| P5 | 独立 C++20 `JDAT=8 GENERIC` 输入、**IOFORM=2 格式化 SURF.DAT 写出**，合肥六日真实输入 **13,841/13,841 字节与原版完全相同**；原版 CALMET 已实际读取原生输出 PASS | 不可声称 IOFORM=1、IOPACK=1、LPREV=T 或其他 JDAT 已实现；不等于诊断风场物理独立验证 |
+| P5 | 独立 C++20 `JDAT=8 GENERIC` 输入、**IOFORM=2 格式化 SURF.DAT 写出**，合肥六日 **13,841字节**与原版一致，且**真实合肥＋霍山两站2022–2023连续两年2,663,153字节逐字节完全一致**；六日原版 CALMET已实际读取原生输出 PASS | 不可声称 IOFORM=1、IOPACK=1、LPREV=T 或其他 JDAT 已实现；不等于诊断风场物理独立验证 |
 | P4+P5 → 原 CALMET | 2022年合肥六日、100 m、50×50 原版 CALMET 兼容性 smoke PASS | 不等于 C++ P6 的诊断风场、原版 CALMET 的完整气象物理精度验证 |
 
 ## 责任边界：原代码 → 当前实现
@@ -43,5 +44,6 @@
 - [P5 真实 NOAA 地面数据捕获](https://github.com/RRain001/CTEAS/actions/runs/38108309205)
 - [P5 C++/Python 单元及规范检查](https://github.com/RRain001/CTEAS/actions/runs/38109473510)（新增任意长度间隔测试）
 - [P4+P5 经原版 SMERGE/CALMET 运行](https://github.com/RRain001/CTEAS/actions/runs/38108309198)
+- [P5 2022—2023真实两站、17,519个小时段、逐字节等价](https://github.com/RRain001/CTEAS/actions/runs/38111753787)；两站不属于同一5km物理研究域，仅验证软件数据链与数值格式。
 
-**下一阶段工作归属：** P4 其他控制项需建立独立参考；P5 实际使用的原生 C++ `SURF.DAT` writer 已按原版字节等价验收，下一步优先完成真实多站跨年、更广覆盖率/气象条件的比对。未支持的原版二进制打包/LPREV/其他 JDAT 控制项须单独实现与验收。
+**下一阶段工作归属：** P4 其他控制项需建立独立参考；P5 实际使用的原生 C++ `SURF.DAT` writer 已按原版字节等价验收，真实两站两年全年文件等价已完成；下一步优先真实同5km区域多站、自然年度主站变更及更广覆盖率/气象条件的比对。未支持的原版二进制打包/LPREV/其他 JDAT 控制项须单独实现与验收。
