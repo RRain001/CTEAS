@@ -32,7 +32,10 @@ int main(int argc,char** argv){
     if(std::sqrt(su*su+sv*sv)<0.0001f){
         for(auto& w:s.surface_neutral_profile)w=LayerWind{0.f,0.f};
     }else{
-        const SimiltProfileInput surface{lat,height,rough,su,sv,-4,0};
+        // WIND1's SIMILT call is neutral and uncapped (calmet.for L36171:
+        // ZMO=ZML=10000.), so the trace uses that same selected route.
+        const SimiltProfileInput surface{lat,height,rough,su,sv,
+            10000.f,10000.f,10000.f,0,{0.f,20.f,40.f,80.f,160.f,320.f,640.f,1200.f,2000.f,3000.f}};
         const auto neutral=original_similt_profile(surface);
         for(std::size_t k=0;k<9;k++)
             s.surface_neutral_profile[k]={neutral.u_mps[k],neutral.v_mps[k]};

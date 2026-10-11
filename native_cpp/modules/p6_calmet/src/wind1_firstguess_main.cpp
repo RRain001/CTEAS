@@ -30,8 +30,11 @@ int main(int argc,char** argv){
     if(first_speed<0.0001f){
         for(auto& w:station.surface_neutral_profile)w=LayerWind{0.f,0.f};
     }else {
+        // WIND1's own SIMILT call: neutral and uncapped (L36171 ZMO=ZML=10000.).
         const SimiltProfileInput input{
-            latitude,zanem,rough,observed_u,observed_v,-4,0
+            latitude,zanem,rough,observed_u,observed_v,
+            10000.f,10000.f,10000.f,0,
+            {0.f,20.f,40.f,80.f,160.f,320.f,640.f,1200.f,2000.f,3000.f}
         };
         const auto extrapolated=original_similt_profile(input);
         for(std::size_t k=0;k<9;k++){
