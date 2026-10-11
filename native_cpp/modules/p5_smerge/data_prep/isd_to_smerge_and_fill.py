@@ -388,11 +388,17 @@ def main():
     # pass those into SMERGE, and never process leftovers from earlier cases.
     from json import loads
     selected_names = set()
+    selected_roles = {}
     for mf in INPUT_DIR.glob("station_selection_*.json"):
         data = loads(mf.read_text(encoding="utf-8"))
         year = int(data["year"])
         for row in data["stations"]:
-            selected_names.add(f"{row['sid']}-{year}.csv")
+            source_name = f"{row['sid']}-{year}.csv"
+            selected_names.add(source_name)
+            role = row.get("wind_treatment")
+            if role not in ("COMPLETE_FILL_AND_CALM_REPLACE", "RAW_SPARSE_STANDARDIZE_ONLY"):
+                raise RuntimeError(f"source selection role unknown for {source_name}: {role}")
+            selected_roles[source_name] = role
     if not selected_names:
         raise RuntimeError("missing P5 source-selection manifest")
     missing = selected_names - set(inputs)
@@ -414,21 +420,28 @@ def main():
             continue
         usaf, wban, year = m.group(1), m.group(2), m.group(3)
         final_filled = os.path.join(output_dir, f"{usaf}-{wban}-{year}_filled.csv")
-        # Previously cached Scheme-C files are scientifically incompatible.
-        # Rebuild unless BOTH v2 stages and policy-tagged evidence exist.
-        stage_one = final_filled.replace("_filled.csv", "_cleaned.csv")
-        stage_two = final_filled.replace("_filled.csv", "_calm_interpolated.csv")
+        # Role-specific caches are not interchangeable: primary filled annual
+        # vectors and sparse-secondary originals have different science.
+        role = selected_roles[name]
         policy_file = final_filled.replace(".csv", "_wind_audit.json")
+        expected_policy = ("P5_ISD_LITE_WIND_V2_WHOLE_VECTOR_HOLD_CALM_REPLACE"
+                           if role == "COMPLETE_FILL_AND_CALM_REPLACE"
+                           else "P5_SPARSE_STANDARDIZE_ONLY_V1")
         policy_ok = False
         if os.path.isfile(policy_file):
             try:
-                with open(policy_file, encoding="utf-8") as audit_meta:
-                    policy_ok = (__import__("json").load(audit_meta).get("policy") ==
-                                 "P5_ISD_LITE_WIND_V2_WHOLE_VECTOR_HOLD_CALM_REPLACE")
+                with open(policy_file, encoding="utf-8") as fd:
+                    policy_ok = (__import__("json").load(fd).get("policy") == expected_policy)
             except (OSError, ValueError):
                 policy_ok = False
+        required_files = [final_filled]
+        if role == "COMPLETE_FILL_AND_CALM_REPLACE":
+            required_files += [
+                final_filled.replace("_filled.csv", "_cleaned.csv"),
+                final_filled.replace("_filled.csv", "_calm_interpolated.csv"),
+            ]
         if (policy_ok and all(os.path.isfile(x) and os.path.getsize(x) > 0
-                              for x in (final_filled, stage_one, stage_two))):
+                              for x in required_files)):
             continue
 
         result = convert_one_isd_csv(os.path.join(input_dir, name), output_dir)
@@ -444,7 +457,7 @@ def main():
         ]
         if existing_filled:
             print(f"找到 {len(inputs)} 个站点文件, 开始逐站独立处理...")
-            print(f"数据插值完成, 覆盖全年所有时刻, 数据保存路径: {output_dir}")
+            print(f"各站点按独立角色处理完成（次站不补小时、不插值），保存路径: {output_dir}")
             return 0
         return 1
 
@@ -459,12 +472,19 @@ def main():
             print(f"[警告] 未生成插值结果,保留中间文件以便排查: {os.path.basename(p)}")
             continue
         normalize_filled_csv(filled)
-        for suffix in ("_cleaned.csv", "_calm_interpolated.csv"):
-            stage = filled.replace("_filled.csv", suffix)
-            if not os.path.isfile(stage):
-                raise RuntimeError(f"mandatory P5 wind processing stage absent: {stage}")
-            normalize_filled_csv(stage)
-        # Remove transient raw-union GENERIC, retain cleaned, calm-interpolated and final.
+        source_match = re.fullmatch(r"([0-9A-Za-z]{6})-([0-9A-Za-z]{5})-(\d{4})\.csv", os.path.basename(p))
+        if not source_match:
+            raise RuntimeError(f"unexpected converted station basename {p}")
+        sid, year = source_match.group(1) + source_match.group(2), source_match.group(3)
+        role = selected_roles[f"{sid}-{year}.csv"]
+        if role == "COMPLETE_FILL_AND_CALM_REPLACE":
+            for suffix in ("_cleaned.csv", "_calm_interpolated.csv"):
+                stage = filled.replace("_filled.csv", suffix)
+                if not os.path.isfile(stage):
+                    raise RuntimeError(f"mandatory P5 primary wind processing stage absent: {stage}")
+                normalize_filled_csv(stage)
+        # Sparse-secondary has ONLY *_filled.csv, with original-hour gaps.
+        # Remove transient raw-union GENERIC after role-specific processing.
         if os.path.exists(p):
             os.remove(p)
 
