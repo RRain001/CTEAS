@@ -312,8 +312,9 @@ def process_one_station(file_path, strict=False):
 
     # 按原始第三行列顺序输出
     out_cols = [c for c in columns if c in df.columns]
-    df_out = df[out_cols].copy()
-    df_cleaned = cleaned_for_export[out_cols].copy()
+    # Preserve GENERIC's 9999 missing sentinel even for leading nonwind gaps.
+    df_out = df[out_cols].copy().fillna(9999)
+    df_cleaned = cleaned_for_export[out_cols].copy().fillna(9999)
 
     # 整数列格式化
     for int_col in ["Year", "Month", "Day", "Hour"]:
