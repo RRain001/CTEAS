@@ -144,6 +144,9 @@ inline Merge merge_utc_hourly(const std::vector<Station>& stations,const Window&
   const year_month_day d{floor<days>(time)};
   const auto h=duration_cast<hours>(time-floor<days>(time)).count();
   HourlyRecord record{{int(d.year()),int(unsigned(d.month())),int(unsigned(d.day())),int(h)},{}};
+  // Allocate exactly one slot per station. Besides deterministic layout,
+  // this avoids expensive vector relocations of optional SurfaceRecord.
+  record.by_station.reserve(stations.size());
   for(std::size_t i=0;i<stations.size();++i){
    const auto it=lookup[i].find(time);
    if(it==lookup[i].end()){record.by_station.push_back(std::nullopt);++out.missing_hours_by_station[i];}
