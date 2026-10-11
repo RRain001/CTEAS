@@ -21,6 +21,7 @@
 //        gates. Layout or unit mismatches fail closed.
 #include "cteas/p6e/calmet_dat21.hpp"
 #include "cteas/p6e/mixht_observed_mc.hpp"
+#include "cteas/p6e/surfvar_multistation.hpp"
 #include "cteas/p6e/temp3d_observed_land.hpp"
 
 #include <algorithm>
@@ -31,6 +32,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -250,6 +252,146 @@ void emit_synthetic(const std::string& path,std::size_t hours,int nx,int ny,int 
         }
     }
     write_calmet_dat21(path,header,statics,hourly);
+}
+
+// -------------------------------------------------------------- real case
+// Real 2022 case options resolved from run/met/met.lst:
+//   IMIXH=1 THRESHL=0 IZICRLX=1 ISURFT=-1 IUPT=-1 ITPROG=0 NOOBS=0 NOWSTA=0
+//   IWFCOD=1 LCALGRD=T NSSTA=1 NUSTA=1 NPSTA=0 IAVET=1 IFRADJ=1 IAVEZI=1
+//   IRAD=1 NUMTS=5 TRADKM=500 ICOARE=10 IRHPROG=0 NZ=9 DGRID=100
+// Only the surface fields that the original computes WITHOUT the diagnostic
+// wind field can be produced here: SURFVAR's temperature and relative
+// humidity interpolation. `temp2d(i,j)=ztemp(i,j,1)` and TEMP3D make layer 1
+// of T-LEV equal to that same temperature field. Everything else is written
+// as the original missing sentinel so it is reported as "not produced"
+// instead of being filled with invented values.
+struct BridgeObservation {
+    double air_temperature_k=9999.;
+    double humidity_pct=9999.;
+};
+std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
+    std::ifstream file(path);
+    if(!file)throw std::invalid_argument("cannot open bridge CSV "+path);
+    std::string line;
+    if(!std::getline(file,line))throw std::invalid_argument("empty bridge CSV");
+    std::vector<std::string> header;
+    {
+        std::string token;
+        std::istringstream stream(line);
+        while(std::getline(stream,token,','))header.push_back(token);
+    }
+    const auto column=[&](const char* name) {
+        for(std::size_t k=0;k<header.size();++k)
+            if(header[k]==name)return k;
+        throw std::invalid_argument(std::string("bridge CSV lacks column ")+name);
+    };
+    const auto temperature=column("air_temperature_k");
+    const auto humidity=column("humidity_pct");
+    std::vector<BridgeObservation> observations;
+    while(std::getline(file,line)) {
+        if(line.empty())continue;
+        std::vector<std::string> fields;
+        std::string token;
+        std::istringstream stream(line);
+        while(std::getline(stream,token,','))fields.push_back(token);
+        if(fields.size()<=std::max(temperature,humidity))
+            throw std::invalid_argument("bridge CSV short row");
+        BridgeObservation observation;
+        observation.air_temperature_k=std::stod(fields[temperature]);
+        observation.humidity_pct=std::stod(fields[humidity]);
+        observations.push_back(observation);
+    }
+    if(observations.empty())throw std::invalid_argument("bridge CSV has no hours");
+    return observations;
+}
+
+void emit_realcase(const std::string& reference_path,const std::string& observations_path,
+                   const std::string& out_path,const std::string& report_path) {
+    const auto reference=read_calmet_dat21(reference_path);
+    const auto observations=read_bridge_csv(observations_path);
+    const auto& h=reference.header;
+    if(observations.size()!=reference.intervals)
+        throw std::invalid_argument("observation hours do not match the reference intervals");
+    if(h.nssta<1||reference.statics.surface_x_m.empty())
+        throw std::invalid_argument("reference carries no surface station coordinate");
+    const auto cells=static_cast<std::size_t>(h.nx)*static_cast<std::size_t>(h.ny);
+    // TRADKM=500 from met.lst; the kernel works in grid units.
+    SurfvarMultistationInput surf;
+    surf.nx=static_cast<std::size_t>(h.nx);
+    surf.ny=static_cast<std::size_t>(h.ny);
+    surf.dgrid_m=h.dgrid_m;
+    surf.trad_grid=500000.f/h.dgrid_m;
+    surf.irad=1;
+    surf.numts=5;
+    surf.stations.resize(1U);
+    surf.stations[0].x_m=reference.statics.surface_x_m[0]*1000.f;
+    surf.stations[0].y_m=reference.statics.surface_y_m[0]*1000.f;
+    CalmetDat21Header candidate_header=h;
+    candidate_header.comments={"P6E partial CALMET.DAT 2.1 candidate for the real 2022 case",
+        "Geometry, station coordinates and time labels are copied run inputs",
+        "Only TEMPK, IRH and T-LEV1 are produced; every other field is 9999. missing"};
+    candidate_header.run_hours=static_cast<int>(reference.intervals);
+    const auto labels=calmet21_hourly_labels(h.nz,h.irtype,h.lcalgrd,h.npsta);
+    std::vector<CalmetDat21Field> hourly;
+    std::size_t produced_temperature=0U,missing_humidity=0U;
+    for(std::size_t hour=0;hour<reference.intervals;++hour) {
+        const auto& observation=observations[hour];
+        surf.stations[0].temp_k=static_cast<float>(observation.air_temperature_k);
+        surf.stations[0].rh_pct=observation.humidity_pct>=9999.0
+            ?9999:static_cast<int>(observation.humidity_pct);
+        if(surf.stations[0].rh_pct==9999)++missing_humidity; else ++produced_temperature;
+        const auto surface=surfvar_multistation(surf);
+        const auto& reference_first=
+            reference.hourly[hour*reference.fields_per_hour];
+        for(const std::string& label:labels) {
+            CalmetDat21Field field;
+            field.label=label;
+            field.begin=reference_first.begin;
+            field.end=reference_first.end;
+            field.integer=label=="IPGT"||label=="IRH";
+            const bool surface_temperature=label=="TEMPK";
+            const bool layer_one=label=="T-LEV  1"; // OUTHR pads the level index
+            if(field.integer) {
+                field.integer_values.assign(cells,calmet21_missing_int);
+                if(label=="IRH")
+                    for(std::size_t k=0;k<cells;++k)
+                        field.integer_values[k]=surface.rh2d_pct[k];
+            } else {
+                field.real_values.assign(cells,calmet21_missing);
+                if(surface_temperature||layer_one)
+                    for(std::size_t k=0;k<cells;++k)
+                        field.real_values[k]=surface.temp2d_k[k];
+            }
+            hourly.push_back(std::move(field));
+        }
+    }
+    write_calmet_dat21(out_path,candidate_header,reference.statics,hourly);
+    std::string report="{\n";
+    report+="  \"candidate\": "+json_string(out_path)+",\n";
+    report+="  \"reference\": "+json_string(reference_path)+",\n";
+    report+="  \"observations\": "+json_string(observations_path)+",\n";
+    report+="  \"intervals\": "+std::to_string(reference.intervals)+",\n";
+    report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\"],\n";
+    report+="  \"produced_real_hours\": "+std::to_string(produced_temperature)+",\n";
+    report+="  \"hours_with_missing_station_humidity\": "+std::to_string(missing_humidity)+",\n";
+    report+="  \"missing_sentinel_fields\": [";
+    {
+        bool first=true;
+        for(const auto& label:labels) {
+            if(label=="TEMPK"||label=="IRH"||label=="T-LEV  1")continue;
+            report+=(first?"":", ")+json_string(label);
+            first=false;
+        }
+    }
+    report+="],\n";
+    report+="  \"status\": \"PARTIAL_REAL_INPUT_CANDIDATE\",\n";
+    report+="  \"status_detail\": \"only wind-independent surface fields are produced; all other fields are the original 9999. missing sentinel\"\n}\n";
+    std::cout<<report;
+    if(!report_path.empty()) {
+        std::ofstream file(report_path,std::ios::trunc);
+        if(!file)throw std::invalid_argument("cannot write "+report_path);
+        file<<report;
+    }
 }
 
 // ------------------------------------------------------------------ check
@@ -535,7 +677,7 @@ int number_argument(int argc,char** argv,const std::string& flag,int fallback) {
 int main(int argc,char** argv) {
     try {
         if(argc<2) {
-            std::cerr<<"usage: p6e_calmet_dat21 <emit-synthetic|check|compare> ...\n";
+            std::cerr<<"usage: p6e_calmet_dat21 <emit-synthetic|emit-realcase|check|compare> ...\n";
             return 2;
         }
         const std::string mode=argv[1];
@@ -547,6 +689,17 @@ int main(int argc,char** argv) {
                            number_argument(argc,argv,"--nx",50),
                            number_argument(argc,argv,"--ny",50),
                            number_argument(argc,argv,"--nz",9));
+            return 0;
+        }
+        if(mode=="emit-realcase") {
+            const auto reference_file=argument(argc,argv,"--reference");
+            const auto observations=argument(argc,argv,"--observations");
+            const auto out=argument(argc,argv,"--out");
+            if(reference_file.empty()||observations.empty()||out.empty())
+                throw std::invalid_argument(
+                    "emit-realcase needs --reference, --observations and --out");
+            emit_realcase(reference_file,observations,out,
+                          argument(argc,argv,"--report"));
             return 0;
         }
         if(mode=="check") {
