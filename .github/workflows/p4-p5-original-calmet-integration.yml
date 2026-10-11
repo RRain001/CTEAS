@@ -146,7 +146,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p5_smerge -B /tmp/cteas-p5-native-build -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p5_smerge -B /tmp/cteas-p5-native-build -DCMAKE_BUILD_TYPE=Debug
           cmake --build /tmp/cteas-p5-native-build -j2
           ctest --test-dir /tmp/cteas-p5-native-build --output-on-failure
           cp project/current/run/smerge/surf.dat integration-evidence/reference-original-surf.dat
