@@ -1863,6 +1863,52 @@ on real inputs, and the release scheduler (P7O), plume rise (P7N), step
 bookkeeping and `/CSIGMA/` (P7P), the sigma update (P7Q) and CTSG (P7M, off this
 deck) all carry original-source parity.
 
+## 2026-10-12 P7V the advection units: ZFIND, ADVWND, ADVECT, PUFFDZ ported
+
+Round status: the advection chain located by P7U is now ported and closed against
+the unmodified vendor source. Four units, each extracted whole (span and SHA-256
+pinned by `reference/p7v_source_anchor.py`, which fails the gate on drift) and
+compiled with a hand-written driver (`reference/p7v_oracle_driver.f`):
+
+- `ZFIND` (calpuff.for L18381-18419): the layer containing a height.
+- `ADVWND` (L2438-2538): the depth-weighted average wind between ZBOT and ZTOP,
+  including the vendor's clamp of both depths to ZFACE(1)/ZFACE(NZP1) and the
+  single-layer copy.
+- `ADVECT` (L2540-2765): the dispatch. METFM=1 (the locked deck's path) copies the
+  cell's U/V profile and calls ADVWND. METFM 2/3 (POWLAW) and 4/5 (XTPRF) are
+  **refused**: those routines are not reconstructed, so the port fails closed
+  instead of approximating them.
+- `PUFFDZ` (L2882-3005): the Gaussian branch (HTMET +/- SIGMAZ, slugs averaging
+  SIGZB and SIGZE), the three lid caps (DPBL, then ZIOLD, then ZIMAX, applied only
+  when that level is above HTMET and ICODE is not 3/13 and ISTAB <= 4), the
+  uniformly-mixed branches ICODE 2/12 and 4/14, the two-layer ICODE 6/16 revision
+  `ZBOT = ZIOLD*(1-2*QM/QU)`, and the vendor's "Bottom EXCEEDS Top" halt as a
+  refusal.
+
+Parity (unmodified vendor source, macOS gfortran 16.2.0):
+- `P7V_ZFIND_ORACLE_PARITY=PASS CASES=14 MISMATCHES=0 MAX_REL=0.000e+00`
+- `P7V_ADVWND_ORACLE_PARITY=PASS CASES=10 MISMATCHES=0 MAX_REL=2.898e-13`
+- `P7V_ADVECT_ORACLE_PARITY=PASS CASES=8 MISMATCHES=0 MAX_REL=2.898e-13`
+- `P7V_PUFFDZ_ORACLE_PARITY=PASS CASES=17 MISMATCHES=0 MAX_REL=7.250e-14`
+- `P7V_ADVECTION_CONTRACT=PASS CHECKS=43 FAILURES=0` (hand-computed vendor
+  semantics plus every refusal: METFM 2-5, an invalid ICODE, ISTAB outside 1-6,
+  mismatched mass arrays, a revised ZBOT above ZTOP, a short profile, a NaN height).
+
+Physical-chain run on the locked case (real CALMET cell winds and mixing height at
+the source cell; SIGMA-Z is an explicit input because the sigma model is P7Q's
+output; **this is not a puff.con comparison**):
+`HOUR=0 NX=50 NY=50 NZ=9 DX_M=100 CELL_I=25 CELL_J=25 ZI_M=230.951 ISTAB=4
+RELEASE_H_M=70.8 SIGMA_Z_M=89.152 ZTOP_M=159.952 ZBOT_M=0.000 UADV_MS=-0.651
+VADV_MS=1.358 SPEED_MS=1.506` - PUFFDZ clamps ZBOT to the ground (70.8-89.152 < 0)
+and caps ZTOP at 159.952 m (below the 230.951 m mixing height), and ADVECT averages
+the real U/V profile over that span.
+
+Still open on this path: the inline COMP step integration (the substep cadence
+NSAM/TSAMP and the end-of-step position update - pinned by P7U at L10465-10473 and
+L10494-10519, with the eight-row instrumentation request in the ledger) and
+SETPUF's /CURRENT/ publication tail. GETCELL remains the last unported lookup; the
+port takes the domain explicitly. Incomparability causes are unchanged: the inline
+step integration, and the CTEAS-only CONC.DAT header.
 ### DGM 第三轮：原版 CALPUFF 步进/平流内部状态导出（2026-10-12）
 
 详见 [DGM_P7_PUFF_STEP_DUMP_20261012.md](DGM_P7_PUFF_STEP_DUMP_20261012.md)。按 P7U 的 8 行插桩请求逐条实现：**只写**插桩（`subroutine comp` 内 8 个点 + 文件末尾 9 个子程序，vendor `calpuff.for` sha256 `da40372c…` 未变），同一编译器同一组 flag（含 `-ffixed-line-length-72`）编译两份二进制，用冻结输入各跑完 **143 小时**：**插桩前后 `puff.con` SHA256 同为 `0d51bdb6…`，且等于冻结参考**（未插桩那份不产生任何 dump，否则 fail-closed）。
