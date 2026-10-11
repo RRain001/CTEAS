@@ -1,0 +1,36 @@
+name: CTEAS self-hosted Linux CI smoke
+on:
+  pull_request:
+    paths:
+      - '.github/actions/cteas-linux-toolchain/**'
+      - '.github/workflows/cteas-selfhosted-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  self-hosted-p6-cmake-ctest:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    steps:
+      - name: GitHub HTTPS network preflight for self-hosted checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -4 -I -L --connect-timeout 10 --max-time 20 --retry 2 --retry-delay 2 https://github.com/ >/dev/null
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cteas-linux-toolchain
+      - name: Compile original Fortran smoke, C++20 chrono and P6 CTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '      program hello\n      print *, 123\n      end\n' > "$RUNNER_TEMP/cteas-smoke.for"
+          gfortran "$RUNNER_TEMP/cteas-smoke.for" -o "$RUNNER_TEMP/cteas-fortran-smoke"
+          "$RUNNER_TEMP/cteas-fortran-smoke" | grep -q 123
+          build="$RUNNER_TEMP/cteas-self-hosted-smoke-$GITHUB_RUN_ID"
+          cmake -S native_cpp/modules/p6_calmet -B "$build" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$build" --parallel 2
+          ctest --test-dir "$build" --output-on-failure

@@ -1,21 +1,29 @@
 name: P6D CALMET original SLOPE parity (isolated)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
-      - 'native_cpp/modules/p6_calmet/**'
-      - '.github/workflows/p6d-slope-original-parity.yml'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/*slope*'
+      - 'native_cpp/modules/p6_calmet/src/slope_flow_main.cpp'
+      - 'native_cpp/modules/p6_calmet/tests/p6_slope_flow_tests.cpp'
+      - 'native_cpp/modules/p6_calmet/reference/compare_original_slope.py'
+      - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   p6d-original-slope:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Install reference Fortran compiler
-        run: sudo apt-get update && sudo apt-get install -y gfortran
+        run: gfortran --version | head -1
       - name: Configure strict standalone C++20
         run: cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-p6d -DCMAKE_BUILD_TYPE=Debug
       - name: Build

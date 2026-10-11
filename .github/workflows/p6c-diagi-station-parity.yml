@@ -1,24 +1,31 @@
 name: P6C CALMET station geometry Fortran source parity
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
-      - ".github/workflows/p6c-diagi-station-parity.yml"
-      - "native_cpp/modules/p6_calmet/**"
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/*station*'
+      - 'native_cpp/modules/p6_calmet/src/station_geometry_main.cpp'
+      - 'native_cpp/modules/p6_calmet/tests/p6_station_geometry_tests.cpp'
+      - 'native_cpp/modules/p6_calmet/reference/compare_original_diagi_station.py'
+      - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   original-diagi-station-source-parity:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Compile dependencies
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gfortran
+          gfortran --version | head -1
       - name: Build all isolated P6 C++20 tests with Werror
         run: |
           set -euo pipefail

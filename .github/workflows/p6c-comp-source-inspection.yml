@@ -1,20 +1,25 @@
 name: P6C original COMP source-state audit (read-only)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
-      - '.github/workflows/p6c-comp-source-inspection.yml'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/comp_buffered_timeline.hpp'
       - 'native_cpp/modules/p6_calmet/reference/check_joint_observation_2022.py'
+      - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
   workflow_dispatch:
 jobs:
   comp-source-audit:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-22.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Record immutable original COMP Fortran AA-BB scheduler and constraints
         shell: bash
         run: |

@@ -1,21 +1,31 @@
 name: P6D original CALMET MINIM DIVCEL WINDBC parity
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
-      - 'native_cpp/modules/p6_calmet/**'
-      - '.github/workflows/p6d-minim-original-parity.yml'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/*minim*'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/*divcel*'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/*wind*'
+      - 'native_cpp/modules/p6_calmet/src/minim_main.cpp'
+      - 'native_cpp/modules/p6_calmet/tests/p6_minim_tests.cpp'
+      - 'native_cpp/modules/p6_calmet/reference/compare_original_minim.py'
+      - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   source-minim:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Install original Fortran toolchain
-        run: sudo apt-get update && sudo apt-get install -y gfortran
+        run: gfortran --version | head -1
       - name: Build strict C++20 and test regressions
         run: |
           cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-p6d-minim -DCMAKE_BUILD_TYPE=Debug
