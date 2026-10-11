@@ -48,30 +48,7 @@ jobs:
           else
             echo "rest=no" >> "$GITHUB_OUTPUT"
           fi
-          if ! grep -Eq '^(git|rest)=yes      - name: Select self-hosted C++20 and Fortran tools
-        uses: ./.github/actions/cteas-linux-toolchain
-      - name: Install original Fortran toolchain
-        run: gfortran --version | head -1
-      - name: Build strict C++20 and run all P6 CTests
-        run: |
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-p6d-smooth -DCMAKE_BUILD_TYPE=Debug
-          cmake --build /tmp/cteas-p6d-smooth --parallel 2
-          ctest --test-dir /tmp/cteas-p6d-smooth --output-on-failure
-      - name: Original CALMET unmodified SMOOTH Fortran against C++
-        run: |
-          python3 native_cpp/modules/p6_calmet/reference/compare_original_smooth.py \
-            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
-            --cpp /tmp/cteas-p6d-smooth/cteas_p6_smooth \
-            --out /tmp/p6d-smooth-reference
-      - name: Preserve independent comparison JSON
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: original-calmet-smooth-parity
-          path: /tmp/p6d-smooth-reference/p6d-smooth-parity.json
-          if-no-files-found: warn
-          retention-days: 14
- "$GITHUB_OUTPUT"; then
+          if ! grep -Eq '^(git|rest)=yes$' "$GITHUB_OUTPUT"; then
             echo "::error::Both Git and REST source transports unavailable"; exit 1
           fi
       - name: Checkout P6D source if github.com is reachable
