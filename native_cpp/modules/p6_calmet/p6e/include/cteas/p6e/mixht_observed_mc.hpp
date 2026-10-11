@@ -1,0 +1,110 @@
+#pragma once
+// Selected CALMET 6.5.0 MIXHT, exact original IMIXH=1 Maul-Carson
+// land branch, with AA/BB older-sounding choice JUSTA and IUPT override.
+// Source CALMET v6.5.0 L10411-10682. BG (IMIXH=2), water physics,
+// complete COMP AA/BB buffer lifetime and averaged heights are NOT here.
+#include "cteas/p6e/mixdt.hpp"
+#include "cteas/p6e/mixhmc.hpp"
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <limits>
+#include <stdexcept>
+#include <vector>
+namespace cteas::p6e {
+struct MixhtObservedMcInput {
+    std::size_t nx=0,ny=0;
+    int water_first=50,water_last=60,iupt=-1;
+    int izicrlx=0,timestep_s=3600;
+    float constn=2400.f,zimin=20.f,zimax=2500.f;
+    float threshl=0.02f,dptmin=0.001f,dzzi=200.f;
+    float onedte=4140.f,twodte=1080.f,tzicrlx=800.f;
+    // first index AA (0) vs BB (1), second index station.
+    std::array<std::vector<MixdtSounding>,2> sounding;
+    std::vector<int> justa,nearu,landuse;
+    std::vector<float> qh,ustar,el,rho,cmech,fcori;
+    std::vector<float> initial_zi,initial_ziconv,initial_dptt;
+};
+struct MixhtObservedMcResult {
+    std::vector<float> zi,ziconv,dptt;
+};
+inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
+    if(!a.nx||!a.ny||a.nx>std::numeric_limits<std::size_t>::max()/a.ny||
+       a.water_first>a.water_last || a.sounding[0].empty() ||
+       a.sounding[0].size()!=a.sounding[1].size() ||
+       a.sounding[0].size()!=a.justa.size() ||
+       (a.iupt!= -1 && (a.iupt<1||
+        static_cast<std::size_t>(a.iupt)>a.justa.size())) ||
+       !std::isfinite(a.zimin)||a.zimin<0.f||
+       !std::isfinite(a.zimax)||a.zimax<a.zimin||
+       !std::isfinite(a.constn)||a.constn<=0.f||
+       !std::isfinite(a.threshl)||a.threshl<0.f||
+       !std::isfinite(a.dptmin)||a.dptmin<=0.f||
+       !std::isfinite(a.dzzi)||a.dzzi<=0.f)
+        throw std::invalid_argument("MIXHT MC invalid controls or AA/BB extents");
+    const auto n=a.nx*a.ny;
+    if(a.nearu.size()!=n||a.landuse.size()!=n||
+       a.qh.size()!=n||a.ustar.size()!=n||a.el.size()!=n||
+       a.rho.size()!=n||a.cmech.size()!=n||a.fcori.size()!=n||
+       a.initial_zi.size()!=n||a.initial_ziconv.size()!=n||
+       a.initial_dptt.size()!=n)
+        throw std::invalid_argument("MIXHT MC invalid grid extent");
+    MixhtObservedMcResult r{a.initial_zi,a.initial_ziconv,a.initial_dptt};
+    constexpr float cp=996.f,g=9.81f;
+    // Original Fortran loops i first, then j. Each cell is independent.
+    for(std::size_t i=0;i<a.nx;++i)for(std::size_t j=0;j<a.ny;++j){
+        const auto k=j*a.nx+i;
+        if(a.landuse[k]>=a.water_first&&a.landuse[k]<=a.water_last)
+            continue; // water sentinel remains unchanged
+        if(!std::isfinite(a.qh[k])||!std::isfinite(a.ustar[k])||
+           a.ustar[k]<=0.f||!std::isfinite(a.el[k])||
+           !std::isfinite(a.fcori[k])||a.fcori[k]<=0.f||
+           !std::isfinite(a.rho[k])||a.rho[k]<=0.f||
+           !std::isfinite(a.cmech[k])||a.cmech[k]<=0.f)
+            throw std::invalid_argument("MIXHT MC nonphysical land input");
+        if(a.qh[k]<0.f) {
+            if(a.el[k]<=0.f)throw std::invalid_argument("MIXHT MC stable EL<=0");
+            const float zi1=a.constn*std::pow(a.ustar[k],1.5f);
+            const float zi2=0.4f*std::sqrt(a.ustar[k]*a.el[k]/a.fcori[k]);
+            r.zi[k]=std::max(a.zimin,std::min({zi1,zi2,a.zimax}));
+            r.ziconv[k]=0.f;
+            r.dptt[k]=0.f;
+            continue;
+        }
+        const int nearest=a.nearu[k];
+        if(nearest<1||static_cast<std::size_t>(nearest)>a.justa.size())
+            throw std::invalid_argument("MIXHT MC invalid upper-air station");
+        const int st=(a.iupt>0?a.iupt:nearest)-1;
+        const std::size_t sk=static_cast<std::size_t>(st);
+        // Fortran JUSTA>0: AA older; otherwise BB older.
+        const auto buffer=a.justa[sk]>0?0U:1U;
+        const float htold=r.ziconv[k];
+        const auto sounding=mixdt(a.sounding[buffer][sk],
+                                  htold,a.dzzi,a.dptmin);
+        MixhmcInput m;
+        m.wt_mks=a.qh[k]/(a.rho[k]*cp);
+        m.gamma_kperm=sounding.dtheta_k_per_m;
+        m.threshold_wm2perm=a.threshl;
+        m.zimax_m=a.zimax;m.htold_m=htold;
+        m.dptt_k=r.dptt[k];
+        m.tht_k=sounding.tht_k;m.thtp_k=sounding.thtp_k;
+        m.izicrlx=a.izicrlx;m.timestep_s=a.timestep_s;
+        m.tzicrlx_s=a.tzicrlx;
+        m.dptmin_kperm=a.dptmin;
+        m.twodte_s=a.twodte;m.onedte_s=a.onedte;
+        const auto conv=mixhmc_lapse2(m);
+        r.ziconv[k]=std::min(a.zimax,conv.ziconv_m);
+        r.dptt[k]=conv.dptt_k;
+        const float tave=(sounding.thtp_k+sounding.tht_k)/2.f;
+        if(!(tave>0.f))throw std::invalid_argument("MIXHT MC nonphysical mean temperature");
+        const float bvf=std::pow(g*sounding.dtheta_k_per_m/tave,0.25f);
+        const float hmech=a.cmech[k]*a.ustar[k]/bvf;
+        r.zi[k]=std::min(a.zimax,std::max({a.zimin,hmech,r.ziconv[k]}));
+        if(!std::isfinite(r.zi[k])||!std::isfinite(r.ziconv[k])||
+           !std::isfinite(r.dptt[k]))
+            throw std::invalid_argument("MIXHT MC produced nonfinite height");
+    }
+    return r;
+}
+} // namespace cteas::p6e

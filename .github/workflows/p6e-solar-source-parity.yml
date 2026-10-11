@@ -229,6 +229,12 @@ jobs:
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
             --cpp build/p6e/p6e_mixdt_reference \
             --out build/p6e/mixdt-original-parity.json
+      - name: Original MIXHT and MIXDT and MIXHMC coupled AA BB source parity
+        run: |
+          python3 native_cpp/modules/p6_calmet/p6e/reference/compare_original_mixht_observed_mc.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --cpp build/p6e/p6e_mixht_observed_mc_reference \
+            --out build/p6e/mixht-observed-mc-original-parity.json
       - name: Save scientific gate evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -247,4 +253,5 @@ jobs:
             build/p6e/surfvar-multistation-original-parity.json
             build/p6e/mixhmc-original-parity.json
             build/p6e/mixdt-original-parity.json
+            build/p6e/mixht-observed-mc-original-parity.json
           if-no-files-found: warn

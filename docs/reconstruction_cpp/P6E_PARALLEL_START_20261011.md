@@ -281,3 +281,26 @@ sounding state from full `MIXHT` to feed E12 then E11, compute
 mechanical/convective max heights and preserve water/negative QH;
 finally `TEMP3D` and selected real 2022 1/6/143h COMP parity.
 `P6E_FULL=NOT_PASS`. Rain `IPCODE` is missing 143/143.
+
+## E13 full MIXHT chosen Maul-Carson AA/BB branch (verification pending)
+
+Added standalone grid-based selected CALMET `MIXHT` 6.5.0
+`IMIXH=1` original path, composing E12 `MIXDT` and E11
+`MIXHMC`: chosen `IUPT` override, `NEARU`, `JUSTA` older
+AA/BB sounding selection, air-density sensible buoyancy,
+convective and mechanical mixing-height competition, original
+`ZIMIN/ZIMAX` bounds, stable branch `DPTT=0` reset, and
+unchanged water fields.
+
+Independent source-locked comparison compiles **unmodified**
+original `MIXHT + MIXDT + MIXHMC` Fortran subroutines, original
+ZIPARM/UPMET/GEN includes and fail-stop unreachable BG/MM5/OUT
+routines. Frozen 28 synthetic cases ×20 cells ×3 original fields =
+**1,680 numeric checks**, 0.07 m height and 0.004 K jump
+absolute thresholds plus 8e-5 relative tolerance. Both AA and
+BB, source-choosing IUPT, water and stable cells are covered.
+
+**E13 NOT PASS** until successful source numerical CI. Even once
+selected path passes, it does not validate `IMIXH=2`
+Batchvarova-Gryning, `COMP` vertical integration, 2022 true
+soundings/1h→6h→143h or `TEMP3D`.
