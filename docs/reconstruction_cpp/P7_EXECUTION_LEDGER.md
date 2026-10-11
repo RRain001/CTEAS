@@ -72,3 +72,17 @@ This is a decoded field I/O contract, not a scientific demonstration of
 CALMET/CALPUFF numerical equivalence. Full raw real-2022 comparison and
 original CALPUFF reference runs remain PENDING. Original 2022 precipitation
 is missing; wet deposition cannot be validated.
+
+## P7A/P7B independent reference tool preparation
+
+- reference/build_original_calpuff.py: compile original UNMODIFIED
+  modules.for + calpuff.for with gfortran in a job-private directory and
+  persist source/compiler SHA provenance. This is NOT a successful build
+  until actually run, and does not execute the 2022 original reference.
+- reference/original_decode_calmet_hourly.py: copied P6 original-readout
+  oracle unchanged from repository branch codex/cteas-p6-calmet-hefei-100m;
+  copy sourced from the P6 implementation as a separate reference harness.
+- reference/compare_frozen_met21.py: opt-in compare selected 2022 original
+  MET.DAT structure and timestamps against new C++ CALMET21 reader. Does NOT
+  certify wind physics or CALPUFF original full-case concentration parity.
+- No baseline data is fabricated or read from the historical 2023 case.

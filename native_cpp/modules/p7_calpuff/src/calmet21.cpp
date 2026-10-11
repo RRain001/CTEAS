@@ -1,6 +1,7 @@
 #include "cteas/puff/calmet21.hpp"
 #include "cteas/puff/fortran_records.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <chrono>
 #include <cmath>
