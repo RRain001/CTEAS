@@ -404,7 +404,9 @@ int main(int argc,char** argv){
             observed.irhprog=0;observed.nowsta=0;
             observed.land_only=true;observed.average_temperature=true;  // IAVET=1
             observed.iall=0;                                            // DIAGNO L5610
-            observed.u_ms=first.ug_mps;observed.v_ms=first.vg_mps;
+            // AVETMP consumes the surface-level diagnostic wind field.
+            observed.u_ms.assign(first.ug_mps.begin(),first.ug_mps.begin()+2500);
+            observed.v_ms.assign(first.vg_mps.begin(),first.vg_mps.begin()+2500);
             observed.dgrid_m=grid_m;observed.mnmdav=1;observed.hafang_deg=30.f;
             if(!(std::isfinite(observed.station_temp_k)&&
                  observed.station_temp_k>0.f))
