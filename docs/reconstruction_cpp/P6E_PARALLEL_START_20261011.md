@@ -2119,3 +2119,58 @@ two 08:00 hours, |dEL| <= 10,733.6 m (3.2e-2 rel), |dQH| <= 8.11e-5 W/m2;
 WSTAR 39 cells (47 over the absolute limit), hours 9 (45) and 6 (2), |dw*| <=
 2.0588e-4 m/s; everything else (ZI, T-LEV 1..9, post-AVEMIX ZICONV field,
 TEMPK, RHO, IPGT, USTAR, QSW, IRH) inside tolerance.
+
+## E41 the port target is exact: CALMET's own `GLOBE1`/`GLOBE` -> COORDLIB `PJ07Z0`
+
+Located the conversion that produces the geometry the original feeds to
+`SOLAR` (the one component E40 left unaligned):
+
+- `calmet.for` **L9575-9603** (sha256 of the block `c9e2b0d9...`): after
+  `call GLOBE1(cmapi,iutmi,tmsone,xlat1,xlat2,rnlat0,relon0,feast,fnorth,
+  cmapo='LL',...)` each grid cell is converted with
+  `call GLOBE(io6,cactionll,datum,vectill,datum,vectoll,xkm,ykm,xelon,xnlat,
+  izone,c4hem)` where
+  `xkm = xmap0 + (float(i)-0.5)*dgrid*0.001` and
+  `ykm = ymap0 + (float(j)-0.5)*dgrid*0.001` - i.e. **cell centres in km**,
+  and the result is stored in `xlat/xlon` (REAL*4) which `SOLAR` then uses as
+  `radlat = 0.0174533*xlat(i,j)` and `solha = 15*(gmt-em) + xlon(i,j)`.
+- `GLOBE` -> `UTM2LL` -> `GTPZ0` -> **`PJ07Z0`** (GCTP 2.0.2) with the datum
+  "WGS-84" unchanged on input and output (identity datum shift). For UTM zone
+  50 / UTMHEM=N that means `LAT0 = 0` (so `ML0 = MLFNZ0(...) = 0`),
+  `LON0 = 117 deg`, `X0 = 500000 m`, `Y0 = 0`, and the WGS-84 ellipsoid
+  `A = 6378137.0`, `B = 6356752.314140` from COORDLIB's `AXIS`/`BXIS` tables.
+
+**Verbatim source segments to port (with line numbers and segment sha256, for
+the "unmodified-source comparison" the track requires):**
+
+| segment | lines | sha256 (first 32) |
+|---|---|---|
+| `coordlib.for` (whole, v1.98/1.99 GCTP 2.0.2) | - | `abe1d9a69ed7a4b8fa98bf1092cd668f` |
+| `PJ07Z0` | 5851-5925 | `1750d1dcfcddcb303b05cfbb959a0240` |
+| `PHI4Z0` | 3681-3731 | `f3d4a281a1dfea3cce21fda32c8ae63f` |
+| `MLFNZ0` | 3374-3385 | `bffa51859a4b5af7ef72ebe2c8a4a6eb` |
+| `ASINZ0` | 2686-2700 | `c92a5a79d1257829273dcfd5101b5dea` |
+| `ADJLZ0` | 2658-2670 | `c84185b7b1c65709aedb97efad01b699` |
+| `calmet.for` (whole) | - | `430381b4fb87f15127e20b13cc3e99be8a…` |
+
+`PJ07Z0`'s inverse is short and fully specified: with `es` the squared
+eccentricity from A/B, `E0..E3` the standard GCTP meridional-arc coefficients
+(`E0 = 1 - es/4 - 3es^2/64 - 5es^3/256`, `E1 = 3(es + es^2/4 + 15es^3/128)/8`,
+`E2 = 15(es^2 + 3es^3/4)/256`, `E3 = 35es^3/3072`),
+`X = easting - X0`, `Y = northing - Y0`, `AL = ML0 + Y/A`,
+`B = AL^2 + (X/A)^2`, then `PHI4Z0(es,E0..E3,AL,B,C,phi)` (Newton, tolerance
+1e-10, <= 15 iterations) and `lon = ADJLZ0(ASINZ0(X*C/A)/SIN(phi) + LON0)`.
+
+**Status: specified, not landed.** The port plus its unmodified-source
+comparison harness is the next increment; the acceptance test is already in
+place and checkable: `dump-field --field QSW` must show **`dQSW == 0` at
+hours 6, 9 and 33**, after which `EL` (630 cells) and `WSTAR` (39 cells)
+should fall to zero. Timeboxed deliberately rather than landing a
+half-verified numeric port.
+
+**Residual bounds at this commit (tolerances unchanged):** EL 630 cells in the
+two 08:00 hours (2022-01-01/02), |dEL| <= 10,733.6 m (3.2e-2 relative),
+|dQH| <= 8.11e-5 W/m2 = `k x ULP(QSW) x` the cell's HEATFX factor; WSTAR 39
+cells (hour 9: 45 over the absolute-only limit, hour 6: 2), |dw*| <=
+2.0588e-4 m/s; ZI, T-LEV 1..9, post-AVEMIX ZICONV, TEMPK, RHO, IPGT, USTAR,
+QSW and IRH all inside tolerance.
