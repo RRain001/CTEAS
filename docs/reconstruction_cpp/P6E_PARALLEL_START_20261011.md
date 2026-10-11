@@ -2055,3 +2055,67 @@ hour 9) to name the term; the quantization step 1.158e-5 W/m2 identifies it.
 **E39 verification:** adding the two exports leaves the physics untouched -
 total exceedances 669 (ZI 0, `T-LEV 5-7` 0, EL 630, WSTAR 39), same maxima as
 E38.
+
+## E40 the quantized term is the last bits of the solar geometry (QSW), not HEATFX
+
+New reusable tool step: `p6e_calmet_dat21 dump-field --file <CALMET.DAT 2.1>
+--field QSW --out <f32>` extracts any field as raw float32, hour-major, i
+fastest - the same layout as the `--state-prefix` exports - so a field of the
+frozen reference can be diffed per cell and per hour against the chain's own.
+
+### Measurement (my QSW export vs the reference QSW field)
+
+| hour | cells with dQSW != 0 | max abs dQSW | max rel dQSW | dQSW steps |
+|---|---|---|---|---|
+| 9 | 472 | 1.83e-4 W/m2 | 1.73e-6 | exact multiples of 1.5259e-5 and 6.1035e-5 |
+| 33 | 473 | 1.83e-4 W/m2 | 1.69e-6 | same |
+| 6 | 310 | 1.83e-4 W/m2 | 3.69e-7 | 5 x 1.5259e-5 dominant |
+| 10 | **0** | 0 | 0 | - |
+
+`1.5259e-5 = 2^-16` is exactly `ULP(REAL*4)` for `QSW` in [64,128) and
+`6.1035e-5 = 4 x` that, i.e. **my solar-elevation / short-wave chain differs
+from the original in the last two or three REAL*4 bits** (QSW ~ 106 W/m2 at
+the sunrise hours).
+
+### The QH difference is that QSW difference passed through HEATFX
+
+Per cell in hour 9 (my `QH` export vs dump kpt=1):
+
+| cell | dQSW | dQH | dQH/dQSW | QSW(ref) | QH(ref) |
+|---|---|---|---|---|---|
+| 3 | +6.1035e-5 | +1.1578e-5 | 0.190 | 106.4935 | 0.198788 |
+| 19 | +6.1035e-5 | +1.1593e-5 | 0.190 | 106.2888 | 0.132711 |
+| 26 | +3.0518e-5 | +1.1586e-5 | 0.380 | 106.1993 | 0.103841 |
+| 28 | -6.1035e-5 | -2.3164e-5 | 0.380 | 106.1737 | 0.095596 |
+| 29 | +1.5259e-5 | +1.1578e-5 | 0.759 | 106.1609 | 0.091461 |
+
+So the mysterious `1.158e-5 W/m2` step reported in E39 is **not** a HEATFX
+quantisation: it is `k x ULP(QSW) x` the cell's own HEATFX sensitivity
+(0.19-0.76, exactly the daytime `dQH/dQSW` factor). `QH`, `USTAR`, `EL`,
+`WSTAR` all inherit the same last-bits difference; at the sunrise hours the
+flux is ~0.1-0.2 W/m2 so a 1.2e-5 W/m2 absolute difference becomes 1e-4-3e-2
+relative, which `EL` (1/QH) and `WSTAR` (wt^(1/3)) amplify to the only
+remaining gate failures.
+
+### Source anchor and next experiment
+
+The suspect is exactly one non-source-locked component of this chain: the
+grid lat/lon used by `include/cteas/p6e/surface_solar.hpp` comes from this
+track's own inverse UTM, while the original converts through COORDLIB
+(version 1.98/1.99, GCTP 2.0.2) - `COORDS` -> `PJ07Z0` inverse
+(`coordlib.for` L5895-5920, using `PHI4Z0` L3681 and the meridional-arc
+series `MLFNZ0` L3374 with the `ENFNZ0` coefficients), with the WGS-84
+ellipsoid and zone 50/UTMHEM=N. Everything downstream (SOLAR, HEATFX,
+ELUSTR, GAMMA) is already source-locked and byte-verified.
+
+**Next minimal experiment (checkable target):** port `PJ07Z0`'s inverse with
+its helpers and the WGS-84/zone-50 initialisation, replace the geometry in
+`surface_solar.hpp`, then require `dQSW == 0` in hours 6/9/33 via
+`dump-field` and re-run the full-field judgement - `EL` and `WSTAR` should
+both fall to zero with them.
+
+**Residual bounds at this commit (tolerances unchanged):** EL 630 cells in the
+two 08:00 hours, |dEL| <= 10,733.6 m (3.2e-2 rel), |dQH| <= 8.11e-5 W/m2;
+WSTAR 39 cells (47 over the absolute limit), hours 9 (45) and 6 (2), |dw*| <=
+2.0588e-4 m/s; everything else (ZI, T-LEV 1..9, post-AVEMIX ZICONV field,
+TEMPK, RHO, IPGT, USTAR, QSW, IRH) inside tolerance.
