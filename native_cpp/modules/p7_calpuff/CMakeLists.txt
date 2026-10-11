@@ -413,3 +413,34 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7p_probe --deck-step "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
             0 513.3846439571 3533.7689269678 70.8)
 endif()
+
+# P7Q: SETPUF's sigma update (begin/mid/end sigmas and virtuals, the final
+# adjustments and the stores) for the non-PRIME branch.
+add_library(cteas_p7_sigma_update STATIC src/sigma_update.cpp)
+target_include_directories(cteas_p7_sigma_update PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_sigma_update PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_sigma_update PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7q_tests tests/p7q_tests.cpp)
+target_link_libraries(cteas_p7q_tests PRIVATE cteas_p7_sigma_update)
+if(MSVC)
+  target_compile_options(cteas_p7q_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7q_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7q_sigma_update_contract COMMAND cteas_p7q_tests)
+
+add_executable(cteas_p7q_probe src/sigma_update_probe.cpp)
+target_link_libraries(cteas_p7q_probe PRIVATE cteas_p7_sigma_update cteas_p7_calmet21
+  cteas_p7_control cteas_p7_dispersion)
+add_test(NAME cteas_p7q_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7q_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7q_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7q_locked_case_sigma
+    COMMAND cteas_p7q_probe --deck-sigma "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
+            0 513.3846439571 3533.7689269678 70.8 1.0 1.0 100.0)
+endif()
