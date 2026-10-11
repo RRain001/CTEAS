@@ -42,6 +42,14 @@ The two real-case verdicts are not yet inside `scripts/local_gate.py`'s `p6d` st
 
 Both comparators compile the unchanged original routines with gfortran and are fail-closed, so they belong in the gate rather than only in local evidence.
 
+### FRADJ behind an explicit switch, and why it is a no-op for this domain
+
+`FRADJ` (L5643-L5644) is now wired behind `--gamma <dir>`: when given, the producer reads a per-hour gridded `GAMMA` (`gamma_<label>.f32`, 2500 float32) and runs the unchanged Froude kernel before SLOPE, emitting `fradj_corrected_u/v_*.f32`; `metadata.json` then reports `FRADJ: APPLIED_WITH_CALLER_GAMMA` with the `gamma_source` path, and the tail note distinguishes "SLOPE+FRADJ compensated" from "the supplied GAMMA accuracy is not verified here". With the switch off it stays `PENDING_GAMMA`.
+
+Quantified consequence for this case: **the switch is numerically a no-op, because the original FRADJ cannot fire on this domain.** HMAX is the domain-wide 59.5 m (`TERRAD=15 km` over a 5 km domain), so the largest `OBSHGT` at level 1 is `59.5 - 25 - 0 - 10 = 24.5 m` and `FROUDE = 3.0/((9.8*0.016/276.65)^0.5 * 24.5) = 5.14` against `CRITFN = 1.0` (126 m of `OBSHGT` would be required at 3 m/s); higher levels have smaller `OBSHGT`. Measured directly: enabling the switch with `GAMMA = 0.006 K/m` changes the corrected fields by **0.0 m/s**. So the pending GAMMA has no numerical effect on the delivered arrays, and the remaining dependency is one of *completeness*, not of product accuracy.
+
+For the automatic path (no caller GAMMA), the dependency chain is now fully located: `gamma(i,j)` for `IPROG=0` is filled by PREPDI's CGAMMA (L3340-L3395); the `cgamma2` call sites (L5493, L5515) are inside the `iprog=5/15/14` prognostic branches and therefore do not run for this deck. Feeding CGAMMA needs a `CompBufferedHour` (bounded by the soundings, which this producer already has via `calmet_prepdi_2022_hours`) plus the E29 `ZICONV` array; P6E marks that array *interface ready, accuracy pending* (`ZI` 62% mismatch vs the frozen reference).
+
 ### IEXTRP = -4 / RMIN2 = -1.0 real-path semantics
 
 The deck sets `IEXTRP = -4` (met.inp L528) and `RMIN2 = -1.0` (L559), and both were previously unmodelled on the C++ side.
