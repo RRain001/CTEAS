@@ -282,6 +282,8 @@ def main() -> int:
         raise Failure("frozen met.dat SHA-256 mismatch: " + met_sha)
     puff_inp = case / "run/puff/puff.inp"
     puff_sha = sha256_of(puff_inp) if puff_inp.is_file() else None
+    if puff_sha is not None and puff_sha != FROZEN_PUFF_INP_SHA256:
+        raise Failure("frozen puff.inp SHA-256 mismatch: " + puff_sha)
 
     # ---- 1. P6D wind producer --------------------------------------------
     p6d_fields = work / "p6d"
