@@ -282,6 +282,7 @@ struct BridgeObservation {
     double pressure_mb=9999.;
     int ceiling_hundreds_ft=9999;
     int justa=1;
+    int past_seconds=0,to_go_seconds=0;
     MixdtSounding aa,bb;
     std::vector<float> aa_face,bb_face;
 };
@@ -307,6 +308,8 @@ std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
     const auto pressure=column("pressure_mb");
     const auto ceiling=column("ceiling_hundreds_ft");
     const auto justa=column("justa");
+    const auto past_s=column("past_s");
+    const auto to_go_s=column("to_go_s");
     const auto aa_profile=column("aa_profile");
     const auto bb_profile=column("bb_profile");
     const auto aa_face=column("aa_face_t");
@@ -358,6 +361,8 @@ std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
         observation.pressure_mb=std::stod(fields[pressure]);
         observation.ceiling_hundreds_ft=std::stoi(fields[ceiling]);
         observation.justa=std::stoi(fields[justa]);
+        observation.past_seconds=std::stoi(fields[past_s]);
+        observation.to_go_seconds=std::stoi(fields[to_go_s]);
         unpack_profile(fields[aa_profile],observation.aa);
         unpack_profile(fields[bb_profile],observation.bb);
         unpack_faces(fields[aa_face],observation.aa_face);
@@ -547,7 +552,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         for(std::size_t k=0;k<cells;++k)
             density[k]=0.3484321f*station_pressure_mb/surface.temp2d_k[k];
         std::vector<float> ustar,el,heat_flux,heatfx_shortwave_field;
-        std::vector<float> zi_height,ziconv,wstar_field;
+        std::vector<float> zi_height,ziconv,wstar_field,three_d_temperature;
         if(geo&&wind) {
             // HEATFX L7999-8122 with the case's gridded land-use properties.
             HeatFluxInput hx;
@@ -697,6 +702,27 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             sw.initial_wstar_ms.assign(cells,0.f);
             sw.landuse=reference.statics.ilandu;
             wstar_field=wstarr(sw);
+            // TEMP3D L31159-31709 with the explicit AA/BB times so every hour
+            // of the real case is bracketed (12Z -> next-day-00Z included).
+            Temp3dObservedInput t3;
+            t3.nx=static_cast<std::size_t>(h.nx);
+            t3.ny=static_cast<std::size_t>(h.ny);
+            t3.nz=static_cast<std::size_t>(h.nz);
+            t3.dgrid_m=h.dgrid_m;
+            t3.irad=1;
+            t3.current_hour_utc=6;                 // unused with explicit times
+            t3.face_z_m=reference.statics.zface_m;
+            t3.station_x_m=reference.statics.upper_x_m;
+            t3.station_y_m=reference.statics.upper_y_m;
+            t3.justa={observation.justa};
+            t3.aa_face_temp_k=observation.aa_face;
+            t3.bb_face_temp_k=observation.bb_face;
+            t3.surface_temp_k=surface.temp2d_k;
+            t3.convective_zi_m=ziconv;
+            t3.past_seconds={observation.past_seconds};
+            t3.to_go_seconds={observation.to_go_seconds};
+            const auto columns3d=temp3d_observed_land(t3);
+            three_d_temperature=columns3d;
         }
         std::vector<float> shortwave(cells,0.f);
         if(heatfx_shortwave_field.empty())
@@ -734,6 +760,13 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                 if(label=="EL"&&!el.empty())
                     for(std::size_t k=0;k<cells;++k)
                         field.real_values[k]=el[k];
+                if(label.rfind("T-LEV",0)==0&&!three_d_temperature.empty()) {
+                    const auto level=static_cast<std::size_t>(
+                        std::stoi(label.substr(5U)));
+                    if(level>=1U&&level<=static_cast<std::size_t>(h.nz))
+                        for(std::size_t k=0;k<cells;++k)
+                            field.real_values[k]=three_d_temperature[(level-1U)*cells+k];
+                }
                 if(label=="ZI"&&!zi_height.empty())
                     for(std::size_t k=0;k<cells;++k)
                         field.real_values[k]=zi_height[k];
@@ -802,7 +835,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     report+="  \"intervals\": "+std::to_string(reference.intervals)+",\n";
     report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\",\"QSW\",\"RHO\"";
     if(wind)report+=",\"IPGT\"";
-    if(geo&&wind)report+=",\"USTAR\",\"EL\",\"ZI\",\"WSTAR\"";
+    if(geo&&wind)report+=",\"USTAR\",\"EL\",\"ZI\",\"WSTAR\",\"T-LEV1..NZ\"";
     report+="],\n";
     report+="  \"wind_source\": "+json_string(wind_path)+",\n";
     report+="  \"avetmp_mnmdav\": "+std::to_string(mnmdav)+
@@ -820,6 +853,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                label=="RHO")continue;
             if(label=="IPGT"&&wind)continue;
             if((label=="USTAR"||label=="EL"||label=="ZI"||label=="WSTAR")&&geo&&wind)continue;
+            if(label.rfind("T-LEV",0)==0&&geo&&wind)continue;
             report+=(first?"":", ")+json_string(label);
             first=false;
         }
