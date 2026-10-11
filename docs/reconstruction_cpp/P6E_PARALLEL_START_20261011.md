@@ -698,3 +698,42 @@ Measured on the dedicated host (GCC 12.3.0), **20/20 CTest**:
 `IAVEZI` averaging, no P6D wind coupling and no actual 2022 hourly COMP
 field comparison. `P6E_FULL` remains **NOT PASS**; 2022 precipitation
 `IPCODE` is still missing 143/143, so wet forcing stays unqualified.
+
+## 2026-10-11 E20/E21 CI acceptance (lhy-desktop-2)
+
+Both increments were accepted by the dedicated runner
+(`runner_name=lhy-desktop-2`, GCC 12.3.0) with numbers identical to the
+local dedicated-host reproduction:
+
+- **E20** — commit `204124a`, `p6e-solar-original` **SUCCESS**
+  ([run 38132150521 / job 114448526293](https://github.com/RRain001/CTEAS/actions/runs/38132150521/job/114448526293)):
+  **19/19 CTest**, all original-Fortran comparison steps PASS, E13 harness at
+  48 cases / 2,880 scalars with `max_abs_error_IMIXH1_MC =
+  [4.690036803367548e-9, 4.690036803367548e-9, 4.630074101896753e-12]`
+  (bit-identical to the pre-E20 accepted run) and
+  `max_abs_error_IMIXH2_BG = [3.464e-3 m, 8.942e-3 m, 4.640e-13 K]`.
+- **E21** — commit `c3da0cd`, `p6e-solar-original` **SUCCESS**
+  ([run 38133191395 / job 114451591561](https://github.com/RRain001/CTEAS/actions/runs/38133191395/job/114451591561)):
+  **20/20 CTest** including the new `p6e_realcase_option_profile_contract`,
+  E13 harness at 60 cases / 3,600 scalars with 0 mismatches,
+  `realcase_option_profile.max_abs_error_ZI_ZICONV_DPTT =
+  [4.690036803367548e-9 m, 4.690036803367548e-9 m,
+  4.890254867717658e-13 K]`, `relaxation_branch_cells = 0` and
+  `original_source_izicrlx_0_vs_1_identical = true`.
+
+Duplicate push-triggered jobs on the same commits show `cancelled` solely
+because the workflow `concurrency` group with `cancel-in-progress` keeps the
+newest run; those are superseding, not failures.
+
+### P6E gate state after E21
+
+`P6E_E1_TO_E14_E19_E20_E21_SELECTED_ORIGINAL_SOURCE_PATHS=PASS`;
+`P6E_E15_TO_E18_INTEGRATION=PASS`;
+`P6E_REALCASE_OPTION_TUPLE_SEMANTICS=PASS` (IMIXH=1, THRESHL=0, IZICRLX=1,
+ISURFT=-1, IUPT=-1; 2-D paths and output contract exercised at 50x50/NZ=9);
+`P6E_BG_IMIXH2=NON_CRITICAL_SIDE_BRANCH_PASS`;
+**`P6E_FULL=NOT_PASS`**. Still open: P6D diagnostic-wind coupling, actual
+2022 P4/P5 `SURF.DAT`/`UP.DAT` 1 h/6 h/143 h original field comparison,
+over-water `OCD`/`WATER` callers, `ILAPSE=1` `MIXDT2`, `MIXHTST`,
+`IAVEZI`; 2022 precipitation `IPCODE` missing 143/143, so wet forcing and
+P7 wet deposition remain unqualified.
