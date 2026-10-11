@@ -592,6 +592,11 @@ else()
   target_compile_options(cteas_p7_step_integration PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+add_test(NAME cteas_p7g_conc_structure
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7g_structure_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7e_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+
 add_executable(cteas_p7x_tests tests/p7x_tests.cpp)
 target_link_libraries(cteas_p7x_tests PRIVATE cteas_p7_step_integration)
 if(MSVC)

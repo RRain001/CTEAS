@@ -176,6 +176,28 @@ int main() {
     located = grid_cell(cell);
     check(located.i == 1 && located.j == 1, "a position before the origin is nudged inside");
 
+    // SETPUF's /CURRENT/ coordinate publication (metres) and the stored position.
+    CurrentCoordinateInputs current;
+    current.x_begin_cells = 25.0;
+    current.y_begin_cells = 25.0;
+    current.z_begin_m = 136.404;
+    current.x_end_cells = 24.6138;
+    current.y_end_cells = 25.9038;
+    current.grid_spacing_m = 100.0;
+    current.step_s = 66.666666;
+    const auto published = current_coordinates(current);
+    check_close(published.x_begin_m, 2500.0, 1.0e-3, "xb1 = XPB*DGRID");
+    check_close(published.y_begin_m, 2500.0, 1.0e-3, "yb1 = YPB*DGRID");
+    check_close(published.x_end_m, 2461.38, 1.0e-2, "xe1 = XNEW*DGRID");
+    check_close(published.y_end_m, 2590.38, 1.0e-2, "ye1 = YNEW*DGRID");
+    check_close(published.z_end_m, 136.404, 1.0e-3, "ze1 without settling keeps the height");
+    current.settling_velocity_ms = 0.01;
+    const auto settled = current_coordinates(current);
+    check_close(settled.z_end_m, 136.404 - 0.01 * 66.666666, 1.0e-3, "ze1 drops with settling");
+    check_close(settled.stored_z_m, settled.z_end_m, 1.0e-9, "ZPB stores the settled height");
+    current.settling_velocity_ms = 100.0;
+    check_close(current_coordinates(current).z_end_m, 0.0, 1.0e-9, "ze1 is floored at the ground");
+
     // Fail-closed refusals.
     SamplingCadenceInputs bad = cadence;
     bad.source_type = 2;
@@ -201,6 +223,13 @@ int main() {
     bad_advance = advance;
     bad_advance.step_s = std::nan("");
     check_refuses([&] { (void)advance_puff(bad_advance); }, "refuses a NaN step");
+    CurrentCoordinateInputs bad_current = current;
+    bad_current.step_s = 0.0;
+    check_refuses([&] { (void)current_coordinates(bad_current); },
+                  "refuses a zero step in the /CURRENT/ publication");
+    bad_current = current;
+    bad_current.settling_velocity_ms = -1.0;
+    check_refuses([&] { (void)current_coordinates(bad_current); }, "refuses a negative settling");
     CellLookupInputs bad_cell = cell;
     bad_cell.domains = 2;
     check_refuses([&] { (void)grid_cell(bad_cell); }, "GETCELL refuses nested domains");

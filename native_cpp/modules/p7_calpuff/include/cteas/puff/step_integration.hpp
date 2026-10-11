@@ -100,4 +100,34 @@ struct CellLookup {
 
 [[nodiscard]] CellLookup grid_cell(const CellLookupInputs& inputs);
 
+// SETPUF's /CURRENT/ coordinate publication (L48673-48723): the step's begin and
+// end coordinates in metres, the begin/mid/end heights, and the updated stored
+// position. The sigma and virtual-potential-temperature publication that SETPUF
+// also performs needs SIGTY/SIGTZ, HEFTRAN, CTADJ2 and WALLTRAP, which are not
+// reconstructed here, so only the coordinate part is ported.
+struct CurrentCoordinateInputs {
+    double x_begin_cells = 0.0;        // XPB
+    double y_begin_cells = 0.0;        // YPB
+    double z_begin_m = 0.0;            // ZPB
+    double x_end_cells = 0.0;          // XNEW
+    double y_end_cells = 0.0;          // YNEW
+    double grid_spacing_m = 0.0;       // the outermost met grid spacing
+    double settling_velocity_ms = 0.0; // VSETL (zero for a gas with no settling)
+    double step_s = 0.0;               // TSAMP
+};
+
+struct CurrentCoordinates {
+    double x_begin_m = 0.0;            // XB1
+    double y_begin_m = 0.0;            // YB1
+    double z_begin_m = 0.0;            // ZB1
+    double x_end_m = 0.0;              // XE1
+    double y_end_m = 0.0;              // YE1
+    double z_end_m = 0.0;              // ZE1 (after gravitational settling)
+    double stored_x_cells = 0.0;       // XPB after the step
+    double stored_y_cells = 0.0;       // YPB after the step
+    double stored_z_m = 0.0;           // ZPB after the step
+};
+
+[[nodiscard]] CurrentCoordinates current_coordinates(const CurrentCoordinateInputs& inputs);
+
 } // namespace cteas::puff

@@ -2053,3 +2053,57 @@ non-comparable pieces are SETPUF's `/CURRENT/` publication (L48198-48757, so
 `zpb_out`/`ze1` and the `xb1..sze1` block are not compared), the end-to-end driver
 that runs the reconstructed step loop over the case, and the CTEAS-only `CONC.DAT`
 header subset.
+
+## 2026-10-12 P7G CONC.DAT structure comparison; SETPUF's /CURRENT/ coordinates closed
+
+### SETPUF's /CURRENT/ coordinate publication (L48673-48723)
+The coordinate part of SETPUF's tail is ported and compared against the vendor's own
+`/CURRENT/` in/out blocks in the dump: `XB1/YB1 = XPB/YPB*DGRID`, `XB1..XE1` in
+metres, `ZB1 = ZPB`, `ZE1` after gravitational settling (floored at the ground), and
+the stored position update (`XPB=XNEW`, `YPB=YNEW`, `ZPB=ZE1`).
+
+- `P7W_DGM_STEP_CURRENT_XB1_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=0` (and YB1,
+  ZB1, XE1, YE1, ZE1 identically bit-exact)
+- `P7X_STEP_INTEGRATION_CONTRACT=PASS CHECKS=59 FAILURES=0`
+
+SETPUF's sigma and virtual-potential-temperature publication (SIGTY/SIGTZ, HEFTRAN,
+CTADJ2, WALLTRAP, the quadrature and buoyancy-enhancement terms, the rise table) is
+**not** ported, so `syb1/sym1/sye1`, `szb1/szm1/sze1` and `sigyb/sigzb` remain the
+comparison gap on that path; the dump carries their in/out values as material.
+
+### CONC.DAT structure comparison against the frozen puff.con
+`cteas_p7e_probe --structure-compare FROZEN OUT NX NY` writes a file with this
+module's own framing for every period the frozen artifact carries, then reports both
+inventories. `P7G_CONC_STRUCTURE=PASS PERIODS=143 GRID=143 SPECIES_FIELDS=143
+FIELD_BYTES=10015 NX=50 NY=50 FROZEN_RECORDS=3655 DATA_RECORDS=429
+HEADER_RECORDS=3226 WRITTEN_RECORDS=431 FROZEN_BYTES=1896056 WRITTEN_BYTES=1444845`
+(`tests/p7g_structure_tests.py`, gate-run, fail-closed on any change to the frozen
+artifact's size, record count or period span).
+
+So the structure is comparable and measured: the 143 period records, 143 grid
+descriptors and 143 `H-3` species fields (10,015 bytes = 8+7+4*50*50) are reproduced
+one for one, with the same first/last period (`2022001`..`2022006`). The difference is
+the frozen file's 3,226 header records - the embedded control file plus the WROUT1
+tables (model run info, source and receptor group tables, chemistry labels) - which
+this reconstruction does not write yet.
+
+### Whole-case driver: precise gap
+The driver that runs the reconstructed step loop over the case and produces a
+value-comparable CONC.DAT is **not** built. Every unit it needs on this deck's path
+is now closed against the vendor (release P7O, rise P7N, step bookkeeping P7P, sigma
+update P7Q, advection P7V, rise wind P7W, step integration/GETCELL//CURRENT/
+coordinates P7X, sampling P7E, deposition P7F, terrain P7R/P7S/P7T, coupling P7H), so
+the remaining prerequisite is the assembly plus three named pieces that the modules
+themselves refuse today:
+
+1. SETPUF's sigma/virtual-temperature bookkeeping (L48400-48670): SIGTY/SIGTZ, HEFTRAN,
+   CTADJ2 and WALLTRAP calls, the begin/mid/end sigmas, the quadrature and
+   buoyancy-enhancement terms, and the rise table.
+2. The output stage's averaging machinery (AVET and the receptor-specific averaging),
+   which the P7E module refuses explicitly.
+3. The WROUT1 header records (the 3,226 records above).
+
+Until those land, the honest statement is: **structure comparable and measured (data
+records one for one, header tables missing); values comparable per substep for the
+step chain (P7W/P7X, 0 mismatches on 1,275 real substeps) but not yet for the
+concentration field.**
