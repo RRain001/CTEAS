@@ -406,3 +406,15 @@ and stages the spans plus the hand-written driver
 The workflow runs the parity test with `--require` (a Fortran compiler is
 mandatory there) and audits the real deck with
 `cteas_p7d_sigma_probe --audit`, asserting `MDISP=3` is the selected option.
+
+### CI evidence for the P7D increment
+
+Dedicated runner `lhy-desktop-3`, [run 38134496962](https://github.com/RRain001/CTEAS/actions/runs/38134496962)
+at commit [4449c84](https://github.com/RRain001/CTEAS/commit/4449c84): `p7-scoped`
+SUCCESS, `100% tests passed, 0 tests failed out of 11`. The required P7D steps printed
+`P7D_SIGMA_FORTRAN_ORACLE_PARITY=PASS CASES=612 COLUMNS=7 TOLERANCE_REL=1e-05 MAX_REL=0.000e+00`
+with `GNU Fortran (Ubuntu 11.4.0) 11.4.0` (bit-exact against the compiled unmodified
+vendor routines, versus 2.596e-07 on macOS with gfortran 16.2.0) and
+`P7D_DISPERSION_OPTION_AUDIT=PASS MDISP=3 SELECTED_OPTION_IS_REAL_CASE_PATH=true
+MDISP2_EFFECTIVE=false MTURBVW_EFFECTIVE=false MTAULY_EFFECTIVE=false` for the real
+2023 deck. `MDRY=1` dry deposition is the next physical path and is not implemented.

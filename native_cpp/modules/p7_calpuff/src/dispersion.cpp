@@ -117,12 +117,18 @@ R xvz(const DispersionTables& tables, R sigma_z0_m, int stability) {
     R c = tables.urban_z_coefficient[stability - 1];
     R d = tables.urban_z_inverse_length[stability - 1];
     if (stability <= 2) {
+        // Vendor `go to (180,180,190,200,200,200), kst` with the class A/B
+        // coefficients overridden before the dispatch.
         c = 1.0e6F;
         d = 1.0e9F;
     }
-    if (stability == 3) d = 0.0F;
-    if (stability == 3) return sigma_z0_m / c * kKmPerMetre;
+    if (stability == 3) {
+        // Class C takes the linear branch; the vendor's D = 0 for class C is
+        // never used there.
+        return sigma_z0_m / c * kKmPerMetre;
+    }
     if (stability >= 4) {
+        // Closed form for classes D, E and F.
         return sigma_z0_m * (d * sigma_z0_m + std::sqrt((d * sigma_z0_m) * (d * sigma_z0_m) +
                                                         4.0F * c * c)) /
                (2.0F * c * c) * kKmPerMetre;
