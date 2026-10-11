@@ -19,6 +19,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git fetch --no-tags origin main
+          git restore --source=FETCH_HEAD -- project/cases/smoke5d_coldstart_20260701/case.yaml
           git fetch --no-tags origin codex/cteas-p4-read62-reference
           git restore --source=FETCH_HEAD -- native_cpp/modules/p4_read62
           git fetch --no-tags origin codex/cteas-p3-makegeo-100m
