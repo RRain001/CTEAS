@@ -1829,3 +1829,87 @@ Gryning wiring) makes the comparison **40x worse** (total exceedances
 **Bounds unchanged, tolerances untouched:** `ZI` <= 51.06 m / 4.9 % relative
 (1.26 % of cells), `WSTAR` <= 0.0263 m/s / 1.9 % (1.4 %), `T-LEV 5-7` <=
 2.51669 K (713 cells), `EL` 630 cells.
+
+## E37 per-term trace: the first divergent term is the DPTT memory, and a field-wide refresh is falsified
+
+`emit-realcase --mixht-trace <csv>` (new) records, for every hour and the
+cell carrying the surface station, exactly what the composed `MIXHT` call
+acted on: `branch`, `htold`, `wt`, `gamma_mixdt`, `gamma_used`, `dptt_in`
+(the value handed to the growth), `dpttp1`, `ziconv`, `zi`, `dptt_out`,
+`tht/thtp/tave/bvf/hmech` and the candidate `TEMPK`. `MixhtObservedMcTrace`
++ `MixhmcResult::branch/dpttp1_k` carry the same information for programmatic
+use, and `mixht_observed_mc_tests` pins the branch labels (0 water skip,
+1 stable land, 2 no-growth return, 3 relaxation, 4 convective growth,
+5 MIXHBG) and the captured term.
+
+### The two implementations agree; only the input sequence differs
+
+Evaluating the source growth formula with **this chain's** traced inputs
+reproduces this chain's traced `ZICONV` in every hour (e.g. hour 6:
+formula 985.619 vs traced 985.618), and evaluating it with the
+**reference's own** kpt=1/kpt=2 values reproduces the reference's kpt=3
+output exactly (hour 6: 1222.601 both ways). So `MIXHMC` is right on both
+sides and the whole residual lives in the per-hour inputs.
+
+| hour | `htold` mine/ref | `wt` mine/ref | `gamma` mine/ref | `dptt_in` mine/ref | `ZICONV` mine/ref |
+|---|---|---|---|---|---|
+| 1 | 0 / 0 | .021483 / .021483 | .014595 / .014595 | **0 / 0.581920** | 150.266 / 150.266 |
+| 2 | 150.337 / 150.337 | .060467 / .060467 | .007859 / .007859 | **.581920 / .716390** | 344.230 / 333.853 |
+| 3 | 344.254 / 342.090 | .089191 / .089191 | .005724 / .005810 | .716390 / .748119 | 531.420 / 523.769 |
+| 4 | 531.466 / 529.820 | .107089 / .107089 | .002337 / .002337 | .742538 / .519919 | 791.777 / 873.889 |
+| 5 | 791.709 / 810.339 | .111047 / .111047 | .005026 / .004201 | .519936 / .709780 | 958.180 / 944.658 |
+| 6 | 958.103 / 955.123 | .101487 / .101487 | .001685 / .001644 | **.776384 / .424532** | 985.618 / 1222.601 |
+| 7 | 985.374 / 1036.436 | .078027 / .078027 | .002056 / .002731 | .429740 / .479693 | 1136.930 / 1148.634 |
+| 8 | 1136.910 / 1139.428 | .043603 / .043603 | .002262 / .002223 | .416289 / .323577 | 1161.010 / 1208.089 |
+
+`wt` is identical to the reference's in every hour (the `QH`/`RHO` chain is
+exact), and `htold` tracks it closely; **the first term that diverges is
+`dptt_in`** - at hour 1 (`0` vs `0.581920`) latently (with `htold = 0` it
+cannot affect `ZICONV`, which is bit-identical at 150.266) and at hour 2
+effectively (`.581920` vs `.716390`).
+
+### What the original does: the reference's `DPTT` is its own current-hour `DPTTP1`
+
+In the internal-state dump the reference's `DPTT` entering `MIXHT` equals the
+value it leaves **in 135 of 142 hours** (e.g. hours 2, 3, 4, 5, 6, 7 exactly),
+and that value is exactly the fixed point `sqrt(gamma*TWODTE*wt)` of the hour
+it is entering - e.g. hour 7: `0.479693` = `sqrt(gamma_7*1080*wt_7)` with
+`gamma_7` = 0.002731, hour 6: `0.424532` = `sqrt(gamma_6*1080*wt_6)` with
+`gamma_6` = 0.001644. It is **not** the previous hour's output (hour 6 enters
+with `0.424532` while hour 5 left `0.709780`). The source has exactly one
+pre-`MIXHT` writer of that common: COMP calls `WATER`/`WATERP` at L4616/4619
+immediately before `MIXHT` at L4692, both call `MIXHMC` with the `/tjump/`
+`DPTT` array as the actual argument, and the v6.5.0 note (4) documents that
+"values of dptt" are passed to `WATER`/`WATERP`/`WATER2`/`WATER2P` through
+that internal common for the `MIXHMC` call.
+
+**Experiment (switch `--dptt-refresh`, default off):** handing the growth the
+current hour's own `DPTTP1` reproduces the reference exactly where the
+carried value does not - hour 2 becomes 333.853 (reference 333.853, carried
+344.230) and hour 6 becomes 1216.110 (reference 1222.601, carried 985.618).
+
+**But applying that refresh field-wide is FALSIFIED:** with
+`--dptt-refresh 1` the frozen full-field gate goes from **10,711 to 366,919
+exceedances** (ZI 4,488 -> 104,055; WSTAR 4,880 -> 118,191; `T-LEV 5-7`
+713 -> 116,929), while the station-cell error is essentially unchanged
+(sum |dZICONV| over the 143 hours: 2,457.4 carried vs 2,662.5 refreshed). The
+refresh is therefore, at most, a local (station/water-pass) effect; the
+default stays `0` (carried memory), which is what all published bounds below
+are measured with.
+
+### Remaining residual, and the next minimal experiment
+
+With the refresh installed the divergence is dominated by the lapse rate:
+this chain's `MIXDT` `gamma` differs from the reference-implied lapse by more
+than 10 % in 7 of the 54 comparable hours (hour 5: 1.196x, hour 7: 0.753x,
+hour 33: 0.857x, hour 54: 1.204x, hour 56: 0.749x), and the carried memory
+had been masking part of that error. Next: extend the (already proven
+non-invasive) DGM dump to `DPTT` at kpt=2 for **several** cells - one water
+cell and two land cells far from the station - which decides whether the
+pre-`MIXHT` refresh is per-cell (source-invisible) or station-local, and
+therefore whether the remaining work is the refresh or the lapse bracket.
+
+**Bounds unchanged, tolerances untouched** (all measured with the committed
+default): `ZI` <= 51.06 m / 4.9 % relative (1.26 % of cells, 42 hours),
+`WSTAR` <= 0.0263 m/s / 1.9 % (1.4 %, 48 hours), `T-LEV 5` 18 / `T-LEV 6` 137
+/ `T-LEV 7` 558 cells (max |dT| 2.51669 K), `EL` 630 cells; total 10,711.
