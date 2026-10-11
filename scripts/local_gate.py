@@ -246,6 +246,11 @@ def main() -> int:
     # previous run's staged inputs (steps are required to fail closed on overwrite).
     out = GATE_ROOT / "evidence" / args.track / gated_sha[:12]
     out.mkdir(parents=True, exist_ok=True)
+    # Per-run worktree as well: two concurrent gate runs of the same track used to
+    # share one path, and either run's cleanup removed the other's checkout
+    # mid-flight (FileNotFoundError on the step scripts).
+    wt = GATE_ROOT / "worktrees" / f"{args.track}-{gated_sha[:12]}"
+    build = wt / "build" / args.track
 
     if wt.exists():
         sh(["git", "-C", str(repo), "worktree", "remove", "--force", str(wt)], repo, env)
