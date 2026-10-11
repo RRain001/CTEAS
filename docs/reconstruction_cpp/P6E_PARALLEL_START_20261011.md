@@ -93,3 +93,19 @@ Remaining: source-backed ELUSTR (u* and L), MIXHT / WSTARR
 (convective and mechanical mixing heights and w*), TEMP3D, real
 2022 multistation/surface and original 143h coupled 3D verification.
 No P6D branch, vendor source, shared P6 CMake, or default main edited.
+
+## E5 stable ELUSTR path — source parity running
+
+Added independent C++20 QH<0 land ELUSTR stable friction velocity
+(u*), Monin–Obukhov length (L), and calculated nighttime sensible
+heat flux. Original CALMET full ELUSTR verbatim source lines
+6333–6578 are compiled for the reference; PSIUD/PSIUC isolated stub
+functions stop the run if the daytime branch is accidentally executed.
+Frozen independent 30-case x 20-gridpoint x 3-field = 1800 scalar
+comparison spans calm/weak/strong winds, clouds, roughness, temperature,
+land/water masks and the stable limiting-iteration path.
+
+This is **only** the QH<0 nighttime stable branch. The QH>=0
+daytime unstable pathway uses PSIUD/PSIUC and needs separate original
+source-backed numerical testing. No claim of full ELUSTR, MIXHT or P6E
+acceptance until coupled 2022 source comparison.
