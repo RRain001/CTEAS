@@ -318,16 +318,15 @@ int main() {
                 "artifact hash equals direct hash");
 
         write_text(concentration, "synthetic concentration placeholder");
-        const auto with_output = evaluate(met, control);
+        const auto with_output =
+            evaluate(met, control, {}, accepted.artifacts.front().sha256, accepted.artifacts[1].sha256);
         require(with_output.status == "ACCEPTED_CANONICAL_2022_ORIGINAL_OUTPUT_PRESENT",
                 "discovered concentration artifact status: " + with_output.status);
-        require(with_output.artifacts.size() == 3, "discovered concentration artifact");
+        require(with_output.exit_code == 0 && with_output.artifacts.size() == 3,
+                "pinned canonical case with original output accepted");
+        require_all_refusals_pass(with_output);
         fs::remove(concentration);
 
-        const auto pinned = evaluate(met, control, {}, accepted.artifacts.front().sha256,
-                                     accepted.artifacts[1].sha256);
-        require(pinned.exit_code == 0, "matching pins accepted");
-        require_all_refusals_pass(pinned);
         const auto bad_pin = evaluate(small, control, {}, std::string(64, '0'), {});
         require(bad_pin.exit_code == 4 && failed_check(bad_pin, "original_met_dat_sha256_pin"),
                 "wrong MET pin refused");
