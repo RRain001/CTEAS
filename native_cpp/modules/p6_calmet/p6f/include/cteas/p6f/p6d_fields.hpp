@@ -47,9 +47,13 @@ struct P6dFieldsMetadata {
     bool label_is_interval_end = true;  // metadata.hour_label
     std::string layout;                 // raw string as read from the file
     std::string dtype;                  // raw string as read from the file
+    // `hourly_labels` is an array of labels in the published schema and a bare
+    // count in the real product; both spellings are read.
     std::vector<std::string> hourly_labels;
+    int hourly_label_count = 0;
     std::string product;
     std::string status;
+    bool partial = false;
 };
 
 // Strict, fail-closed reader of <dir>/metadata.json.

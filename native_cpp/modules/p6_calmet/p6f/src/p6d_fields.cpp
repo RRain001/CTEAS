@@ -359,15 +359,26 @@ P6dFieldsMetadata read_p6d_fields_metadata(const std::string& metadata_path) {
         metadata.label_is_interval_end = folded == "end";
     }
     if(const JsonValue* labels = root.find("hourly_labels")) {
-        require(labels->kind == JsonValue::Kind::array,
-                "metadata.hourly_labels must be an array");
-        for(const JsonValue& value : labels->array)
-            metadata.hourly_labels.push_back(as_string(value, "hourly_labels"));
+        if(labels->kind == JsonValue::Kind::array) {
+            for(const JsonValue& value : labels->array)
+                metadata.hourly_labels.push_back(
+                    as_string(value, "hourly_labels"));
+        } else {
+            metadata.hourly_label_count =
+                as_int(*labels, "hourly_labels (count)");
+            require(metadata.hourly_label_count >= 1,
+                    "metadata.hourly_labels count must be positive");
+        }
     }
     if(const JsonValue* product = root.find("product"))
         metadata.product = as_string(*product, "product");
     if(const JsonValue* status = root.find("status"))
         metadata.status = as_string(*status, "status");
+    if(const JsonValue* partial = root.find("partial")) {
+        require(partial->kind == JsonValue::Kind::boolean,
+                "metadata.partial must be a boolean");
+        metadata.partial = partial->boolean;
+    }
     return metadata;
 }
 
@@ -454,6 +465,12 @@ Calmet21File build_calmet_from_p6d(const std::string& directory,
             "the P6D grid does not match --statics-from");
     require(metadata.zface_m == statics_from.statics.zface_m,
             "the P6D levels.zface_m does not match the ZFACE of --statics-from");
+    if(metadata.hourly_label_count > 0)
+        require(labels.size() <=
+                    static_cast<std::size_t>(metadata.hourly_label_count),
+                "metadata.hourly_labels declares " +
+                    std::to_string(metadata.hourly_label_count) +
+                    " hours but more were selected");
     // A subset of the produced hours (--hours) is allowed; every selected label
     // must still be one the metadata declares.
     for(const std::string& label : labels)

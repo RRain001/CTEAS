@@ -653,10 +653,18 @@ int command_write_from_p6d(const std::string& fields, const std::string& variant
     std::vector<std::string> labels =
         cteas::p6f::read_p6d_produced_hours(fields + "/produced_hours.txt");
     const std::size_t available = labels.size();
+    const cteas::p6f::P6dFieldsMetadata declared =
+        cteas::p6f::read_p6d_fields_metadata(fields + "/metadata.json");
+    if(declared.hourly_label_count > 0)
+        require_argument(static_cast<std::size_t>(declared.hourly_label_count) ==
+                             available,
+                         "metadata.hourly_labels declares " +
+                             std::to_string(declared.hourly_label_count) +
+                             " hours but produced_hours.txt lists " +
+                             std::to_string(available));
     if(hours > 0 && static_cast<std::size_t>(hours) < labels.size())
         labels.resize(static_cast<std::size_t>(hours));
-    const cteas::p6f::P6dFieldsMetadata metadata =
-        cteas::p6f::read_p6d_fields_metadata(fields + "/metadata.json");
+    const cteas::p6f::P6dFieldsMetadata metadata = declared;
     const cteas::p6f::Calmet21File file = cteas::p6f::build_calmet_from_p6d(
         fields, variant, w_field, labels, statics, met.get(), irtype);
     const std::vector<std::uint8_t> bytes =
@@ -678,6 +686,9 @@ int command_write_from_p6d(const std::string& fields, const std::string& variant
     text += "  \"grid\": [" + std::to_string(metadata.nx) + "," +
             std::to_string(metadata.ny) + "," + std::to_string(metadata.nz) +
             "],\n";
+    text += "  \"product\": " + json_string(metadata.product) + ",\n";
+    text += "  \"product_status\": " + json_string(metadata.status) + ",\n";
+    text += "  \"product_partial\": " + json_bool(metadata.partial) + ",\n";
     text += "  \"grid_layout\": " + json_string(metadata.layout) + ",\n";
     text += "  \"grid_dtype\": " + json_string(metadata.dtype) + ",\n";
     text += "  \"missing_sentinel\": " +
