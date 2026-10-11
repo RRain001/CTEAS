@@ -45,6 +45,15 @@ struct TerrainFactors {
     double total = 1.0;   // TU = 1/(TH*TL)
 };
 
+// ROTATE equivalent (calpuff.for L25522-25549): rotate (x, y) through `angle`
+// radians, the coordinate transform CTREC/CTPAR use.
+struct RotatedPoint {
+    double x = 0.0;
+    double y = 0.0;
+};
+
+[[nodiscard]] RotatedPoint rotate_xy(double x, double y, double angle_rad);
+
 [[nodiscard]] TerrainFactors terrain_factors(double x_m, double begin_m, double end_m,
                                              double spacing_m,
                                              const std::vector<double>& top_factors,

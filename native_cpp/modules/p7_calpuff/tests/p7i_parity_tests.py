@@ -32,6 +32,11 @@ QATR_QUOTES = (
     "elseif(delt2 .GE. delt1)then",
     "if(jj .GT. 16000) lstop=1",
 )
+ROTATE_QUOTES = (
+    "s=SIN(ang)",
+    "xp=x*c+y*s",
+    "yp=-x*s+y*c",
+)
 TFAC_QUOTES = (
     "if(x.GT.xbegin .AND. x.LT.xend) then",
     "nposm1=INT((x-xbegin)/xspace)",
@@ -138,6 +143,7 @@ def main() -> int:
           f"UNITS={','.join(sorted(manifest['units']))}")
     quotes = check_quotes(spans["qatr"], QATR_QUOTES, "QATR")
     quotes += check_quotes(spans["tfac"], TFAC_QUOTES, "TFAC")
+    quotes += check_quotes(spans["rotate"], ROTATE_QUOTES, "ROTATE")
     print(f"P7I_QUOTED_SOURCE_STATEMENTS=PASS COUNT={quotes}")
 
     compiler = find_gfortran(args.gfortran)
@@ -232,6 +238,35 @@ def main() -> int:
                     worst_case = key
         print(f"P7I_TFAC_ORACLE_PARITY=PASS CASES={len(tfac_rows)} TOLERANCE_REL={TOLERANCE_RELATIVE:.0e} "
               f"MAX_REL={worst:.3e} WORST_CASE={worst_case}")
+        # ROTATE matrix.
+        rotate_rows = [(x, y, angle)
+                       for x in (0.0, 1.0, -2.5)
+                       for y in (0.0, 3.0, -1.5)
+                       for angle in (0.0, 0.5, 1.5707963, -2.0, 3.1415926)]
+        case_lines = "\n".join(f"{index + 1} {x!r} {y!r} {angle!r}"
+                               for index, (x, y, angle) in enumerate(rotate_rows)) + "\n"
+        probe_run = subprocess.run([str(args.probe), "--rotate-matrix"], input=case_lines,
+                                   capture_output=True, text=True)
+        if probe_run.returncode != 0:
+            fail(f"probe ROTATE matrix failed: {probe_run.stderr.strip()}")
+        oracle_run = subprocess.run([str(binary)], input="3\n" + case_lines, capture_output=True,
+                                    text=True, cwd=stage)
+        if oracle_run.returncode != 0:
+            fail(f"vendor oracle ROTATE run failed: {oracle_run.stderr.strip()[-400:]}")
+        probe_rows = parse_rows(probe_run.stdout)
+        oracle_rows = parse_rows(oracle_run.stdout)
+        worst = 0.0
+        worst_case = 0
+        for key in sorted(oracle_rows):
+            for column, (want, got) in enumerate(zip(oracle_rows[key], probe_rows[key])):
+                if abs(want - got) > max(TOLERANCE_RELATIVE * abs(want), TOLERANCE_ABSOLUTE):
+                    fail(f"ROTATE case {key} column {column}: oracle={want!r} probe={got!r}")
+                relative = abs(want - got) / max(abs(want), 1.0e-30)
+                if relative > worst:
+                    worst = relative
+                    worst_case = key
+        print(f"P7I_ROTATE_ORACLE_PARITY=PASS CASES={len(rotate_rows)} "
+              f"TOLERANCE_REL={TOLERANCE_RELATIVE:.0e} MAX_REL={worst:.3e} WORST_CASE={worst_case}")
         print(f"P7I_FORTRAN_COMPILER={version.stdout.splitlines()[0].strip()}")
     print("P7I_CTSG_SUPPORT_PARITY_IS_NOT_A_CONCENTRATION_TEST=true")
     return 0

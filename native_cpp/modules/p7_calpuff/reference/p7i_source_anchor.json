@@ -20,6 +20,12 @@
       "last_line": 25813,
       "lines": 49,
       "sha256": "fe35527fd872f3ab42fdbaf0beeb083d66c287f764a539c5adc2cb4fd6e2863a"
+    },
+    "rotate": {
+      "first_line": 25522,
+      "last_line": 25549,
+      "lines": 28,
+      "sha256": "ce0f8fc51d2cbec5ea9cd85c86d321ec2db1c303caf418149437f373b82b6406"
     }
   },
   "vendor_include_sha256": {

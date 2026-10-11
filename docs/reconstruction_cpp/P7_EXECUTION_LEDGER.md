@@ -774,3 +774,34 @@ DATA would otherwise provide.
 
 Incomparability causes remain two: the CTSG kernel above, and the still
 unfaithful puff model plus the CTEAS-only CONC.DAT header.
+
+## 2026-10-11 P7J CTSG kernel round: ROTATE closed, kernel still open
+
+This round closed one more CTSG-closure block and re-verified the earlier ones;
+the core kernel itself is **not** done and is listed precisely below.
+
+| block | status |
+|---|---|
+| `ROTATE` (L25522-25549, used by CTREC/CTPAR) | **implemented + parity**: `P7I_ROTATE_ORACLE_PARITY=PASS CASES=45 MAX_REL=5.059e-07` |
+| `QATR` (L25406-25520) | implemented + parity (80 cases, `MAX_REL=2.980e-07`, status flags match) |
+| `TFAC` (L25765-25813) | implemented + parity (14 cases, `MAX_REL=1.366e-07`) |
+| `MUNU` | **not done**: the vertical distribution index; the vendor name is not a plain `function munu`/`subroutine munu` under the anchor patterns used so far, so the span must be located by its call sites (`CTREC` L22841-22921 calls it) before it can be extracted and ported |
+| `CTREC` (L22841-22921) | **not done**: needs `MUNU` plus the receptor/puff geometry state it rotates |
+| `CTSG` (L22923-23112) | **not done**: calls `ctpar`/`ctrec`/`lower`/`puffc`/`upper`; the real-case branch selection (`MCTADJ=2`, `NHILL=0`, `MSLUG=0`, `MSHEAR=0`, `MPDF=0`) resolves to the lower-segment kernel, but the routine itself, its slug/puff dispatch and the `PUFfC` path are not ported |
+| `CTPAR` | **not done**: puff geometry/parameter preparation for CTSG |
+| `LOWER` (L24657-24863) | **not done**: needs `BI`/`BJIL` (the reflection-series helpers), `MUNU` and the `/CTPASS/` state (`Hd`, `zi`, `ppcoef`, plume/slug geometry) |
+| `UPPER` (L25815-26001) | **not done**: needs `BI`/`BJI`, `FLOPUFF` and `QATR` (the integrator is now available) |
+| `BI`/`BJIL`/`BJI` | **not done**: the reflection-series helper functions; their spans must be located by call sites before extraction |
+| `FLOPUFF` | **not done**: the flow-splitting routine that provides `Hd` |
+
+Consequence: the `F1` chain is still `VCBAR` (P7H) for the *vertical coupling*,
+but the concentration kernel that consumes it (`CTSG`/`LOWER`) does not exist
+yet, so no receptor concentration can be produced for a real puff and the
+incomparability list stays at two causes (the CTSG kernel above; the
+still-prototype puff model plus the CTEAS-only CONC.DAT header).
+
+Honest status of this round: the acceptance target "CTSG plus CTREC/MUNU with
+original-source parity" was **not reached**; only the support blocks (`ROTATE`,
+re-verified `QATR`/`TFAC`) carry parity evidence. The next round should start by
+locating `MUNU`, `BI`, `BJIL`, `BJI`, `FLOPUFF`, `CTPAR` and `PUFfC` spans by
+their call sites, then port `CTSG` with the lower-segment branch.

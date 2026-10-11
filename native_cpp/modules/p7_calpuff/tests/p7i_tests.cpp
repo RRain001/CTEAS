@@ -147,6 +147,22 @@ int matrix_mode(const std::string& which) {
         std::cerr << "P7I_QATR_MATRIX=PASS CASES=" << cases << "\n";
         return 0;
     }
+    if (which == "--rotate-matrix") {
+        std::size_t cases = 0;
+        while (true) {
+            int icase = 0;
+            double x = 0.0, y = 0.0, angle = 0.0;
+            if (!(std::cin >> icase >> x >> y >> angle)) {
+                if (std::cin.eof()) break;
+                throw std::invalid_argument("malformed ROTATE case line");
+            }
+            const auto result = cteas::puff::rotate_xy(x, y, angle);
+            std::cout << icase << ' ' << result.x << ' ' << result.y << '\n';
+            ++cases;
+        }
+        std::cerr << "P7I_ROTATE_MATRIX=PASS CASES=" << cases << "\n";
+        return 0;
+    }
     if (which == "--tfac-matrix") {
         std::size_t cases = 0;
         while (true) {
@@ -175,16 +191,33 @@ int matrix_mode(const std::string& which) {
     throw std::invalid_argument("unknown matrix mode " + which);
 }
 
+void test_rotate() {
+    const auto quarter = cteas::puff::rotate_xy(1.0, 0.0, 3.14159265358979 / 2.0);
+    require_close(quarter.x, 0.0, 1.0e-6, "rotated x at 90 degrees");
+    require_close(quarter.y, -1.0, 1.0e-6, "rotated y at 90 degrees");
+    const auto identity = cteas::puff::rotate_xy(2.0, -3.0, 0.0);
+    require_close(identity.x, 2.0, 1.0e-9, "identity x");
+    require_close(identity.y, -3.0, 1.0e-9, "identity y");
+    // Rotation preserves the radius.
+    const auto rotated = cteas::puff::rotate_xy(1.5, 2.5, 0.7);
+    require_close(std::sqrt(rotated.x * rotated.x + rotated.y * rotated.y),
+                  std::sqrt(1.5 * 1.5 + 2.5 * 2.5), 1.0e-6, "rotation preserves radius");
+    require_throw([] { (void)cteas::puff::rotate_xy(1.0, 1.0, std::nan("")); }, "NaN angle");
+    std::cout << "P7I_ROTATE_CONTRACT=PASS\n";
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     try {
         if (argc == 2 && (std::string(argv[1]) == "--qatr-matrix" ||
-                          std::string(argv[1]) == "--tfac-matrix")) {
+                          std::string(argv[1]) == "--tfac-matrix" ||
+                          std::string(argv[1]) == "--rotate-matrix")) {
             return matrix_mode(argv[1]);
         }
         test_qatr();
         test_tfac();
+        test_rotate();
         std::cout << "P7I_CTSG_SUPPORT_CONTRACT=PASS\n"
                      "P7I_IS_NOT_A_CONCENTRATION_PARITY_TEST=true\n";
         return 0;

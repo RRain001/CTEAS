@@ -15,6 +15,7 @@ UNITS = {
     "block_data": r"^      BLOCK DATA\s*$",
     "qatr": r"^      subroutine qatr\b",
     "tfac": r"^      subroutine tfac\b",
+    "rotate": r"^      subroutine rotate\b",
 }
 END_RE = re.compile(r"^      end(?![a-zA-Z])\s*(\S.*)?$", re.IGNORECASE)
 END_KEYWORDS = {

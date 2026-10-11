@@ -116,6 +116,20 @@ QuadratureResult integrate_romberg(double lower, double upper, double eps, int d
     return result;
 }
 
+RotatedPoint rotate_xy(double x, double y, double angle_rad) {
+    require_finite(x, "x");
+    require_finite(y, "y");
+    require_finite(angle_rad, "rotation angle");
+    // ROTATE (calpuff.for L25522-25549), REAL*4.
+    const R angle = static_cast<R>(angle_rad);
+    const R sine = std::sin(angle);
+    const R cosine = std::cos(angle);
+    RotatedPoint result;
+    result.x = static_cast<double>(static_cast<R>(x) * cosine + static_cast<R>(y) * sine);
+    result.y = static_cast<double>(-static_cast<R>(x) * sine + static_cast<R>(y) * cosine);
+    return result;
+}
+
 TerrainFactors terrain_factors(double x_m, double begin_m, double end_m, double spacing_m,
                                const std::vector<double>& top_factors,
                                const std::vector<double>& lateral_factors) {

@@ -24,6 +24,7 @@ c
       integer icodg, i, npts
       real aux1(200)
       real xx, xbeginin, xendin, xspacein
+      real xr, yr, ang, xp, yp
       common/icodeg/icodg
       external fctsel
 c
@@ -35,6 +36,14 @@ c     not part of the extracted subset, so the ones TFAC needs are set here.
 c
       read(*,*,iostat=ios) mode
       if(ios.ne.0) stop 'P7I oracle: missing mode'
+c
+      if(mode.eq.3)then
+ 40      read(*,*,iostat=ios) icase,xr,yr,ang
+         if(ios.ne.0) goto 999
+         call rotate(xr,yr,ang,xp,yp)
+         write(*,'(i8,2(1x,es20.12))') icase,xp,yp
+         goto 40
+      endif
 c
       if(mode.eq.1)then
  10      read(*,*,iostat=ios) icase,icode,xl,xu,eps,ndim
