@@ -206,6 +206,27 @@ else()
   target_compile_options(cteas_p7h_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME cteas_p7h_vertical_coupling_contract COMMAND cteas_p7h_tests)
+
+# P7I: CTSG support blocks (QATR integrator, TFAC terrain factors).
+add_library(cteas_p7_ctsg STATIC src/ctsg.cpp)
+target_include_directories(cteas_p7_ctsg PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_ctsg PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_ctsg PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7i_tests tests/p7i_tests.cpp)
+target_link_libraries(cteas_p7i_tests PRIVATE cteas_p7_ctsg)
+if(MSVC)
+  target_compile_options(cteas_p7i_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7i_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7i_ctsg_support_contract COMMAND cteas_p7i_tests)
+add_test(NAME cteas_p7i_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7i_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7i_tests>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 add_test(NAME cteas_p7h_source_parity
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7h_parity_tests.py"
           --probe "$<TARGET_FILE:cteas_p7e_probe>"
@@ -233,6 +254,27 @@ else()
   target_compile_options(cteas_p7h_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME cteas_p7h_vertical_coupling_contract COMMAND cteas_p7h_tests)
+
+# P7I: CTSG support blocks (QATR integrator, TFAC terrain factors).
+add_library(cteas_p7_ctsg STATIC src/ctsg.cpp)
+target_include_directories(cteas_p7_ctsg PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_ctsg PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_ctsg PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7i_tests tests/p7i_tests.cpp)
+target_link_libraries(cteas_p7i_tests PRIVATE cteas_p7_ctsg)
+if(MSVC)
+  target_compile_options(cteas_p7i_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7i_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7i_ctsg_support_contract COMMAND cteas_p7i_tests)
+add_test(NAME cteas_p7i_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7i_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7i_tests>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 add_test(NAME cteas_p7h_source_parity
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7h_parity_tests.py"
           --probe "$<TARGET_FILE:cteas_p7e_probe>"

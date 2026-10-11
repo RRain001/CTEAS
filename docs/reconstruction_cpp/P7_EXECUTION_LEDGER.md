@@ -749,3 +749,28 @@ verbatim in the anchored text. Vendor source
    split/merge, plume rise, `SIGMA()`/`HEFTRAN` restart, terrain interaction)
    and the CONC.DAT writer emits only the CTEAS header subset, so the frozen
    `puff.con` values still cannot be reproduced or compared.
+
+## 2026-10-11 P7I CTSG blocks: QATR and TFAC closed; the rest scoped
+
+Status of the CTSG dependency closure, with the locked deck's own values as the
+evidence for what is and is not the real-case path
+(`MSLUG=0`, `MSHEAR=0`, `MPDF=0`, `NHILL=0`, `NINT=9`, `AVET=PGTIME=60`,
+`MCTADJ=2`, `MTILT=0`):
+
+| block | status |
+|---|---|
+| `QATR` Romberg integrator (L25406-25520) | **implemented and parity-checked** (`P7I_QATR_ORACLE_PARITY=PASS CASES=80 MAX_REL=2.980e-07`, status flags match) |
+| `TFAC` terrain distortion interpolation (L25765-25813) | **implemented and parity-checked** (`P7I_TFAC_ORACLE_PARITY=PASS CASES=14 MAX_REL=1.366e-07`) |
+| `FCTZ`/`FCTY` + `CTSGDAT` hill arrays | not the real-case path: `NHILL=0`, so no hill/terrain-following factors exist for this deck; the routines are neither ported nor needed |
+| slug sampling `SLUGINT`/`SLUGAVE`/`SLUGSNP` | not the real-case path: `MSLUG=0`; `ERFDIF` is already ported and parity-checked in P7E |
+| wind shear / PDF options | not the real-case path: `MSHEAR=0`, `MPDF=0` |
+| `AVET` receptor averaging | not effective for this case: `AVET=PGTIME=60`, so the averaging factor is exactly 1 (already recorded in the P7D section) |
+| `CTSG`/`CTREC`/`CTPAR`/`MUNU`/`LOWER`/`UPPER` + `BI`/`BJIL`/`FLOPUFF` | still missing: the remaining real-case kernel. `CTSG` L22923-23112 calls `ctpar`/`ctrec`/`lower`/`puffc`/`upper`; `CTREC` L22841-22921 calls `munu`/`rotate`; `LOWER` L24657-24863 calls `bi`/`bjil`/`munu`; `UPPER` L25815-26001 calls `bi`/`bji`/`flopuff`/`qatr`. With `NHILL=0` and a puff inside the mixed layer the reachable kernel is the lower-segment one, but it still needs the `/CTPASS/` state (`Hd`, `zi`, `ppcoef`, the plume/slug geometry), the `BI`/`BJIL` reflection helpers and the `MUNU` vertical distribution index |
+
+`reference/p7i_source_anchor.py` pins `BLOCK DATA` (L1999-2424), `QATR` and
+`TFAC` spans plus every vendor `*.puf` include, and 12 quoted statements are
+asserted verbatim; the oracle sets the `/CONST/` values that the vendor BLOCK
+DATA would otherwise provide.
+
+Incomparability causes remain two: the CTSG kernel above, and the still
+unfaithful puff model plus the CTEAS-only CONC.DAT header.
