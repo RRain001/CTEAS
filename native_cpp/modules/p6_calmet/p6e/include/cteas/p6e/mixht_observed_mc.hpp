@@ -170,6 +170,7 @@ inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
                 if(buoy>0.f)m.dptt_k=std::sqrt(std::max(gclamp*a.twodte*buoy,0.f));
             }
             m.tht_k=sounding.tht_k;m.thtp_k=sounding.thtp_k;
+            if(tr)a.trace->dptt_in=m.dptt_k;
             m.izicrlx=a.izicrlx;m.timestep_s=a.timestep_s;
             m.tzicrlx_s=a.tzicrlx;
             m.dptmin_kperm=a.dptmin;

@@ -1242,7 +1242,7 @@ int main(int argc,char** argv) {
                               argument(argc,argv,"--fcoriol","1.0e-4"))),
                           std::stoi(argument(argc,argv,"--skip-avemix","0"))!=0,
                           std::stoi(argument(argc,argv,"--imixh","1")),
-                          std::stoi(argument(argc,argv,"--dptt-refresh","1")),
+                          std::stoi(argument(argc,argv,"--dptt-refresh","0")),
                           argument(argc,argv,"--mixht-trace"));
             return 0;
         }
