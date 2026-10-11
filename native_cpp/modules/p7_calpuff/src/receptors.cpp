@@ -186,7 +186,7 @@ SamplingIntegrals puff_sampling_integrals(double x_old_km, double y_old_km, doub
                                           double y_new_km, double x_receptor_km,
                                           double y_receptor_km, double sigma_y_at_receptor_m,
                                           double closest_approach_squared_km2) {
-    for (const auto [value, name] :
+    for (const auto& [value, name] :
          {std::pair<double, const char*>{x_old_km, "x_old"}, {y_old_km, "y_old"},
           {x_new_km, "x_new"}, {y_new_km, "y_new"}, {x_receptor_km, "x_receptor"},
           {y_receptor_km, "y_receptor"}, {sigma_y_at_receptor_m, "sigma_y at receptor"},
