@@ -8,11 +8,13 @@
 #include <algorithm>
 #include <cstdint>
 #include <cctype>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <ostream>
 #include <iostream>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -285,7 +287,15 @@ int main() {
         test_sha256();
         test_gregorian();
 
-        const fs::path root = fs::temp_directory_path() / "p7-case-ledger-contract";
+        // The dedicated runner host is shared by three runner installations and
+        // can execute two P7 jobs at once (for example a re-run of an older
+        // commit next to a new commit), so the fixture directory must be unique
+        // per process instead of a fixed /tmp path.
+        std::random_device random;
+        const fs::path root =
+            fs::temp_directory_path() /
+            ("p7-case-ledger-contract-" + std::to_string(random()) + "-" +
+             std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count()));
         fs::remove_all(root);
         fs::create_directories(root);
         const fs::path met = root / "met.dat";
