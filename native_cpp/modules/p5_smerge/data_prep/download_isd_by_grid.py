@@ -360,6 +360,11 @@ def main() -> int:
 
         accepted: list[Station] = []
         decisions = []
+        from .isd_lite_wind import (download_lite_one, lite_time_coverage,
+                                    filename as lite_filename, source_url as lite_source_url,
+                                    sha256_file)
+        lite_dir = args.out_dir / "isd_lite"
+        accepted_lite: dict[str, dict] = {}
         for st in ordered:
             success = False
             detail = ""
@@ -371,26 +376,56 @@ def main() -> int:
                 good, msg = validate_time_completeness(
                     args.out_dir / f"{st.sid}-{year}.csv", year, st.sid)
             else:
-                good, msg = False, f"download failed: {detail}"
+                good, msg = False, f"full ISD download failed: {detail}"
+            lite_ok, lite_msg = False, "ISD-Lite not attempted"
+            if success and (good or mode == "OBSERVED"):
+                for attempt in range(args.retries):
+                    lite_ok, lite_msg, _ = download_lite_one(
+                        year, st.sid, lite_dir, args.timeout)
+                    if lite_ok:
+                        break
+                if lite_ok:
+                    lite_file = lite_dir / lite_filename(st.sid, year)
+                    try:
+                        lite_count, expected = lite_time_coverage(lite_file, year, st.sid)
+                        lite_eligible = lite_count >= math.ceil(expected * 0.8 - 1e-10)
+                        lite_msg = (f"original_ISD_Lite_hours={lite_count}/{expected}; "
+                                    f"coverage={lite_count / expected:.4%}; "
+                                    f">=80%={'PASS' if lite_eligible else 'FAIL'}")
+                        lite_ok = lite_eligible if mode == "VIRTUAL_RELOCATED" else True
+                    except (ValueError, OSError, EOFError) as exc:
+                        lite_ok, lite_msg = False, f"invalid ISD-Lite source: {exc}"
+                if lite_ok:
+                    accepted_lite[st.sid] = {
+                        "url": lite_source_url(st.sid, year),
+                        "filename": lite_filename(st.sid, year),
+                        "sha256": sha256_file(lite_dir / lite_filename(st.sid, year)),
+                        "coverage": lite_msg,
+                    }
             distance = haversine_km(stack[0], stack[1], st.lat, st.lon) if stack else None
+            selected = success and lite_ok and (good or mode == "OBSERVED")
             decisions.append({
                 "sid": st.sid, "distance_to_stack_km": distance,
                 "download_success": success, "raw_annual_coverage": msg,
-                "selected": success and (good or mode == "OBSERVED"),
+                "isd_lite_wind_download_success": lite_ok,
+                "isd_lite_wind_original_hour_coverage": lite_msg,
+                "selected": selected,
             })
-            print(f"candidate year={year} sid={st.sid} mode={mode} {msg}", flush=True)
-            if success and (good or mode == "OBSERVED"):
+            print(f"candidate year={year} sid={st.sid} mode={mode} "
+                  f"full_ISD={msg} wind_ISD_Lite={lite_msg}", flush=True)
+            if selected:
                 accepted.append(st)
                 if mode == "VIRTUAL_RELOCATED":
                     break
             elif mode == "OBSERVED":
-                # Every in-domain station must download: no silent omissions.
-                print(f"ERROR in-domain station {st.sid}: {msg}")
+                # All eligible in-domain stations must provide BOTH sources.
+                print(f"ERROR in-domain station {st.sid}: raw={msg}, lite={lite_msg}")
+
         report = args.out_dir / f"download_report_{year}.json"
         report.write_text(json.dumps({
             "year": year, "mode": mode, "research_bbox": bbox,
             "stack_latlon": stack, "candidates": decisions,
-            "source_coverage_rule": "annual original unique observation hours >= 80% for fallback"
+            "source_coverage_rule": "external fallback requires >=80% original unique hours in BOTH full ISD and ISD-Lite wind source; in-domain stations require both files"
         }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         if not accepted or (mode == "OBSERVED" and len(accepted) != len(in_domain)):
             raise SystemExit(f"P5 source selection failed for {year}; see {report}")
@@ -406,7 +441,9 @@ def main() -> int:
                 "elev": st.elev, "source_lat": st.lat, "source_lon": st.lon,
                 "source_elev": st.elev, "ifstn": aliases[st.sid],
                 "relocated": mode == "VIRTUAL_RELOCATED",
-                "raw_annual_coverage": msg
+                "raw_annual_coverage": msg,
+                "wind_data_source": "NOAA_ISD_LITE",
+                "wind_isd_lite": accepted_lite[st.sid]
             })
         manifest = args.out_dir / f"station_selection_{year}.json"
         manifest.write_text(json.dumps({
