@@ -1,0 +1,41 @@
+name: P6C CALMET station geometry Fortran source parity
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/p6c-diagi-station-parity.yml"
+      - "native_cpp/modules/p6_calmet/**"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-diagi-station-source-parity:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gfortran
+      - name: Build all isolated P6 C++20 tests with Werror
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-diagi-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/p6c-diagi-build --parallel 2
+          ctest --test-dir /tmp/p6c-diagi-build --output-on-failure
+      - name: Compare literal original DIAGI station code with P6C C++20
+        run: |
+          set -euo pipefail
+          python3 -m native_cpp.modules.p6_calmet.reference.compare_original_diagi_station \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --cpp /tmp/p6c-diagi-build/cteas_p6_stations \
+            --out /tmp/p6c-station-parity
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p6c-original-diagi-station-subsection-parity
+          path: /tmp/p6c-station-parity/
+          retention-days: 7
+          if-no-files-found: warn
