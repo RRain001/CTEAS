@@ -270,6 +270,14 @@ double receptor_concentration_increment(const SamplingIntegrals& integrals,
     return static_cast<double>(concentration);
 }
 
+double receptor_concentration_increment_with_coupling(const SamplingIntegrals& integrals,
+                                                     const ReceptorAccumulationInputs& inputs,
+                                                     const VcbarInputs& coupling) {
+    auto coupled = inputs;
+    coupled.vertical_factor = vertical_coupling_bar(coupling);
+    return receptor_concentration_increment(integrals, coupled);
+}
+
 ReceptorSet receptors_from_control(const std::string& control_text) {
     const auto control = ControlFile::parse(control_text);
     const auto lines = lines_of(control_text);

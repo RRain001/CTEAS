@@ -680,3 +680,72 @@ Remaining incomparability causes after this round (was four, now two):
    plume rise, `SIGMA()`/`HEFTRAN` restart or terrain interaction), and the
    writer emits only the CTEAS header subset, so the frozen `puff.con` values
    still cannot be reproduced or compared.
+
+## 2026-10-11 P7H vertical coupling (VCBar / VCOUP / CTADJ)
+
+The concentration path's vertical coupling is now reconstructed and wired into
+the receptor accumulation.
+
+- `VCOUP` (`calpuff.for` L53711-53864, self-contained): well-mixed codes
+  (2/6 and their slug forms 12/16), the "above mixed layer and uniform" code 4,
+  the elevated-receptor branches, the `SZCUT` sigma-z screen, the
+  unlimited-mixing rule when the source is above the lid, the reflection sum
+  over ground and lid, and the near-uniform approximation of Yamartino (JAPCA
+  27, 5, 1977) selected by `sz/hlid > 0.63`.
+- `VCBAR` (L53866-54088): the per-step space/time average, i.e. one third
+  weights for a puff (mid-step with `SZM1`, begin with `SZB1`, end with `SZE1`)
+  and one quarter weights for a slug (both ends at both ends of the step), with
+  the plume-tilt heights `ZFINAL - t*VSETL` when `MTILT=1`, the non-negative
+  height conditioning, and the `HLIDMAX = HLID` argument used for the VCOUP
+  calls. `LCALM=TRUE` fails closed (the vendor halts).
+- `CTADJ` (L20480-20540): both the ISC treatment (`MCTADJ=1`) and the partial
+  plume-height correction (`MCTADJ=3`). The vendor's terrain *lookup*
+  (`GETELEV`/`GETCELL`) is not ported: callers pass a lookup function and
+  `MCTADJ=1/3` fails closed without one, so the locked case's `MCTADJ=2` path
+  is what runs today.
+- Wiring: `receptor_concentration_increment_with_coupling` takes the vertical
+  factor from VCBAR instead of a caller constant, so the P7E accumulation now
+  uses reconstructed physics.
+
+### Source anchor
+
+`reference/p7h_source_anchor.py` pins the exact spans of `VCBAR`, `VCOUP`,
+`CTADJ` plus `GETELEV`/`GETCELL` (referenced by VCBAR and linked by the oracle)
+in `reference/p7h_source_anchor.json`, together with every vendor `*.puf`
+include; the constants and 17 statements the port reproduces are asserted
+verbatim in the anchored text. Vendor source
+`sha256 da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568`.
+
+### Evidence
+
+- `P7H_VCOUP_ORACLE_PARITY=PASS CASES=1920 MAX_REL=0.000e+00` - bit-exact
+  against the compiled unmodified `VCOUP` over codes 1/2/4/6/11/12/16/99,
+  receptor and source heights, five sigma-z values and three lid pairs.
+- `P7H_VCBAR_ORACLE_PARITY=PASS CASES=96 MAX_REL=1.076e-07` - puff and slug
+  branches, `MTILT` 0/1, two lid heights, three height pairs and two sigma
+  pairs, against the compiled unmodified `VCBAR` (tolerance `1e-5`).
+- `cteas_p7h_vertical_coupling_contract`: hand-derived closed forms for the
+  well-mixed, elevated-receptor, unlimited-lid, trapping and CTADJ branches,
+  puff/slug weighting, plume tilt, the coupling-aware accumulation equivalence,
+  and every fail-closed path.
+- `P7H_REAL_GRID_RUN=PASS HOUR=0 RECEPTORS=2500 STABILITY=4 URBAN=false
+  SPEED_MS=1.39612 STEP_KM=5.02603 SIGMA_Y_M=293.839 SIGMA_Z_M=88.9692
+  ZI_M=230.977 VCBAR_1_PER_M=0.0065347 SUM=7.91939e+08 MAX=316795 MIN=0
+  NONZERO=2500`: one synthetic puff moved one step over the locked case's
+  receptor grid with real met inputs (statics, `U`/`V`/`ZI`/`IPGT`) and the
+  reconstructed coupling. This is a physical-chain demonstration, explicitly
+  **not** a comparison against the frozen `puff.con`.
+
+### Remaining incomparability causes (still two)
+
+1. `CTSG` - the concentration kernel - is still missing. Its precise
+   requirements: the terrain-factor path (`FCTZ`/`FCTY`/`TFAC` plus the
+   `CTSGDAT` hill arrays), the upper/lower layer split (`UPPER`/`LOWER`,
+   `QATR` numerical integration, `ERF`/`BJI`/`BI` reflection helpers), the slug
+   sampling (`SLUGINT`/`SLUGAVE`/`SLUGSNP`, `ERFDIF`), the wind-shear and PDF
+   options, and the receptor-side averaging that consumes them. `VCBAR` (this
+   round) removes the coupling part of that dependency.
+2. The puff model itself is still the P7C prototype (release cadence,
+   split/merge, plume rise, `SIGMA()`/`HEFTRAN` restart, terrain interaction)
+   and the CONC.DAT writer emits only the CTEAS header subset, so the frozen
+   `puff.con` values still cannot be reproduced or compared.

@@ -298,6 +298,27 @@ jobs:
           fi
           "$scratch/build/cteas_p7f_drydep_probe" --real-cell \
             "$case_dir/met/met.dat" "$case_dir/puff/puff.inp" 25 25 0
+      - name: P7H vertical coupling (VCBar/VCOUP/CTADJ) source parity (required)
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 native_cpp/modules/p7_calpuff/tests/p7h_parity_tests.py \
+            --probe "$scratch/build/cteas_p7e_probe" \
+            --repo-root "$GITHUB_WORKSPACE" --require
+      - name: P7H real receptor-grid coupling run (physical chain only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          case_dir=project/cases/hefei5km_2022_reference_case_20261011/run
+          if [ ! -f "$case_dir/met/met.dat" ]; then
+            echo "P7H_REAL_GRID_RUN=SKIPPED_NOT_IN_SPARSE_CHECKOUT"
+            exit 0
+          fi
+          "$scratch/build/cteas_p7e_probe" --real-grid \
+            "$case_dir/met/met.dat" "$case_dir/puff/puff.inp" 0 2.63e13 \
+            513.3846439571 3533.7689269678 70.8
       - name: P7E locked case receptors and frozen CONC.DAT structure
         shell: bash
         run: |
