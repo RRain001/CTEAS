@@ -199,7 +199,7 @@ def compare(a,b,fa,fb,u0,v0):
         changed+=(abs(float(o[3])-u0[n])>1e-5 or abs(float(o[4])-v0[n])>1e-5)
     af=[line.split() for line in fa.read_text().splitlines()]
     bf=[line.split() for line in fb.read_text().splitlines()]
-    if len(af)!=3600 or len(bf)!=3600:raise ValueError("MINIM boundary count")
+    if len(af)!=1800 or len(bf)!=1800:raise ValueError("MINIM boundary count")
     max_boundary=0.
     for n,(o,c) in enumerate(zip(af,bf)):
         if len(o)!=5 or len(c)!=5 or o[:4]!=c[:4]:
