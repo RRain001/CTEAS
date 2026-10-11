@@ -48,7 +48,7 @@ DRIVER_HEAD = """      program d9akinematic
       real htopo(mxnx,mxny),gamma(mxnx,mxny),temp2d(mxnx,mxny)
       real ub(mxny,2,mxnz),vb(mxnx,2,mxnz),cellzb(mxnzp1)
       real zf1,alpha,tinf,critfn,zero
-      integer isurft,niter
+      integer isurft,niter,ikine
       character*512 fin,fuv,fw
       call get_command_argument(1,fin)
       call get_command_argument(2,fuv)
@@ -62,6 +62,7 @@ DRIVER_HEAD = """      program d9akinematic
       nzp1=nz+1
       zero=0.
       critfn=1.
+      ikine=1
       open(10,file=trim(fin),status='old')
       read(10,*) zf1,isurft,tinf,alpha,niter,critfn
       read(10,*) (dz(k),k=1,nz)
