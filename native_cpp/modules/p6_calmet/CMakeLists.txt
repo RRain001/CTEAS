@@ -286,6 +286,17 @@ else()
 endif()
 add_test(NAME p6d9a_slope_upstream_route_contract COMMAND cteas_p6_slope_route_tests)
 
+# P6D9A selected original IKINE=1 pre-blend kinematic route: W zeroing
+# L5615-L5616, TOPOF2 L5621-L5622 and MINIM L5628-L5629.
+add_executable(cteas_p6_topof2_route_tests tests/p6_diagno_topof2_route_tests.cpp)
+target_link_libraries(cteas_p6_topof2_route_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_topof2_route_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_topof2_route_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6d9a_topof2_preblend_route_contract COMMAND cteas_p6_topof2_route_tests)
+
 # P6D9A composed trace for chained unmodified original Fortran comparisons.
 add_executable(cteas_p6_d9a_source_trace src/diagno_d9a_trace_main.cpp)
 target_link_libraries(cteas_p6_d9a_source_trace PRIVATE cteas_p6a_contracts)

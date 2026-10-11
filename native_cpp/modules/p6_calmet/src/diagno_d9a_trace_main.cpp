@@ -11,8 +11,8 @@
 using namespace cteas::calmet::p6;
 int main(int argc,char** argv){
  try{
-    if(argc!=7)throw std::invalid_argument(
-        "d9a INPUT WIND1_OUT INTER2_OUT FINAL_OUT BOUND_OUT PREPARED_OUT");
+    if(argc!=8)throw std::invalid_argument(
+        "d9a INPUT WIND1_OUT INTER2_OUT FINAL_OUT BOUND_OUT PREPARED_OUT W_OUT");
     std::ifstream f(argv[1]);
     if(!f)throw std::runtime_error("D9A source fixture missing");
     DiagnoD9SelectedInput in;
@@ -115,18 +115,32 @@ int main(int argc,char** argv){
     in.slope.landuse.resize(2500);
     for(int& value:in.slope.landuse)
         if(!(f>>value))throw std::runtime_error("D9A SLOPE landuse missing");
+    int ikine=0;
+    if(!(f>>ikine>>in.alpha>>in.kinematic_iterations>>
+         in.kinematic_divergence_limit_per_s))
+        throw std::runtime_error("D9A IKINE/ALPHA/MINIM controls missing");
+    if(ikine!=0&&ikine!=1)
+        throw std::runtime_error("D9A IKINE flag must be 0 or 1");
+    in.kinematic_route=ikine==1;
     std::string extra;
     if(f>>extra)throw std::runtime_error("D9A input trailing data");
     auto out=integrate_diagno_d9_selected(in);
     std::ofstream fg(argv[2]),blend(argv[3]),fin(argv[4]),bound(argv[5]);
-    std::ofstream prepared(argv[6]);
-    if(!fg||!blend||!fin||!bound||!prepared)
+    std::ofstream prepared(argv[6]),wface(argv[7]);
+    if(!fg||!blend||!fin||!bound||!prepared||!wface)
         throw std::runtime_error("D9A output file unavailable");
     fg<<std::scientific<<std::setprecision(13);
     blend<<std::setprecision(12)<<"i,j,k,u,v\n";
     fin<<std::setprecision(12)<<"i,j,k,u,v,div,w_below,w_above\n";
     prepared<<std::setprecision(12)<<"i,j,k,u_mps,v_mps\n";
+    wface<<std::setprecision(12)<<"i,j,face,w_mps\n";
     bound<<std::setprecision(12);
+    if(!out.kinematic_w_face_mps.empty())
+        for(int k=0;k<10;k++)for(int j=0;j<50;j++)for(int i=0;i<50;i++)
+            wface<<i+1<<","<<j+1<<","<<k+1<<","
+                 <<out.kinematic_w_face_mps[std::size_t(k)*2500+
+                                             std::size_t(j)*50+
+                                             std::size_t(i)]<<'\n';
     for(int k=0;k<9;k++)for(int j=0;j<50;j++)for(int i=0;i<50;i++){
         const auto n=std::size_t(k)*2500+std::size_t(j)*50+std::size_t(i);
         fg<<i+1<<" "<<j+1<<" "<<k+1<<" "
