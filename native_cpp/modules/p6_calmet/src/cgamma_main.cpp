@@ -22,7 +22,10 @@ int main(int argc,char** argv){
   std::ofstream out(argv[3]);
   if(!in||!out)throw std::runtime_error("CGAMMA source forcing/output unavailable");
   std::string line;
-  if(!std::getline(in,line)||line!="hour_index,end_epoch_s,zupt_m,ziconv_m,original_gamma")
+  if(!std::getline(in,line))
+    throw std::runtime_error("CGAMMA forcing header missing");
+  if(!line.empty()&&line.back()=='\r')line.pop_back();
+  if(line!="hour_index,end_epoch_s,zupt_m,ziconv_m,original_gamma")
     throw std::runtime_error("CGAMMA expected exact original forcing schema");
   CGammaState state;
   out<<"hour_index,end_epoch_s,zupt_m,ziconv_m,candidate_gamma,branch\n";
