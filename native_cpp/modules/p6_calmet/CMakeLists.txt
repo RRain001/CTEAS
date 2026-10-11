@@ -286,6 +286,56 @@ else()
 endif()
 add_test(NAME p6d9a_slope_upstream_route_contract COMMAND cteas_p6_slope_route_tests)
 
+# P6D9A selected original IKINE=1 pre-blend kinematic route: W zeroing
+# L5615-L5616, TOPOF2 L5621-L5622 and MINIM L5628-L5629.
+add_executable(cteas_p6_topof2_route_tests tests/p6_diagno_topof2_route_tests.cpp)
+target_link_libraries(cteas_p6_topof2_route_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_topof2_route_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_topof2_route_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6d9a_topof2_preblend_route_contract COMMAND cteas_p6_topof2_route_tests)
+
+# P6D9A in-chain original TERSET envelope (DIAGI L5228, I3DCTW=IWFCOD=1 in the
+# real deck) replacing the caller-supplied HMAX/HMIN/DISTH* planes.
+add_executable(cteas_p6_terset_envelope_tests tests/p6_diagno_terset_envelope_tests.cpp)
+target_link_libraries(cteas_p6_terset_envelope_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_terset_envelope_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_terset_envelope_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6d9a_inchain_terset_envelope_contract COMMAND cteas_p6_terset_envelope_tests)
+
+# P6D real-case wind-field producer (partial product: WIND1 step-one UG/VG
+# plus the in-chain TERSET envelope, with explicit provenance metadata).
+add_executable(cteas_p6_realcase_wind_field src/realcase_wind_field_main.cpp)
+target_link_libraries(cteas_p6_realcase_wind_field PRIVATE cteas_p6a_contracts)
+# Read-only reuse of the P6E submodule headers (SURFVAR/SOLAR/HEATFX); no P6E
+# source is modified and the P6E module keeps its own build.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+  target_include_directories(cteas_p6_realcase_wind_field PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+else()
+  message(FATAL_ERROR "P6E submodule headers required by the real-case producer are missing")
+endif()
+if(MSVC)
+  target_compile_options(cteas_p6_realcase_wind_field PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_realcase_wind_field PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
+# Fail-closed contract run of the real-case producer on the frozen 5 km case
+# tree (read-only inputs; outputs go to the build tree). The producer throws on
+# any missing or invalid case input, so exit status plus the emitted hour count
+# is the whole assertion.
+add_test(NAME p6d_realcase_wind_producer_case_contract
+         COMMAND cteas_p6_realcase_wind_field
+                 --case ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011
+                 --out ${CMAKE_CURRENT_BINARY_DIR}/realcase_wind_ctest)
+set_tests_properties(p6d_realcase_wind_producer_case_contract PROPERTIES
+                     PASS_REGULAR_EXPRESSION "hours=143")
+
 # P6D9A composed trace for chained unmodified original Fortran comparisons.
 add_executable(cteas_p6_d9a_source_trace src/diagno_d9a_trace_main.cpp)
 target_link_libraries(cteas_p6_d9a_source_trace PRIVATE cteas_p6a_contracts)

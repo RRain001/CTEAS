@@ -57,6 +57,20 @@ TRACKS: dict[str, dict] = {
                      "--vendor", VENDOR_CALMET, "--cpp", "{build}/cteas_p6_d9a_source_trace",
                      "--out", "{out}/p6d-chained"],
              "requires": [VENDOR_CALMET]},
+            # Real-case producer + its two original-source verdicts (requested by
+            # the P6D track in PR #23; comparators compile the unchanged original
+            # routines with gfortran and are fail-closed).
+            {"cmd": ["{build}/cteas_p6_realcase_wind_field", "--case", CASE_2022,
+                     "--out", "{out}/p6d-realcase", "--fixtures", "{out}/p6d-realcase-fixtures"],
+             "requires": [CASE_2022]},
+            {"cmd": ["python3", "native_cpp/modules/p6_calmet/reference/compare_original_d9a_realcase_step_one.py",
+                     "--vendor", VENDOR_CALMET, "--fields", "{out}/p6d-realcase",
+                     "--fixtures", "{out}/p6d-realcase-fixtures", "--out", "{out}/p6d-verdict-step-one"],
+             "requires": [VENDOR_CALMET, CASE_2022]},
+            {"cmd": ["python3", "native_cpp/modules/p6_calmet/reference/compare_original_d9a_realcase_blend.py",
+                     "--vendor", VENDOR_CALMET, "--fields", "{out}/p6d-realcase",
+                     "--fixtures", "{out}/p6d-realcase-fixtures", "--out", "{out}/p6d-verdict-blend"],
+             "requires": [VENDOR_CALMET, CASE_2022]},
         ],
     },
     "p6e": {
@@ -116,6 +130,37 @@ TRACKS: dict[str, dict] = {
             {"cmd": ["{build}/cteas_p7d_sigma_probe", "--audit",
                      "project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp"],
              "requires": ["project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp"]},
+            {"cmd": ["{build}/cteas_p7_calmet21_tests", "--met", MET_DAT],
+             "requires": [MET_DAT]},
+            {"cmd": ["{build}/cteas_p7f_drydep_probe", "--real-cell", MET_DAT, PUFF_INP, "25", "25",
+                     "0"],
+             "requires": [MET_DAT, PUFF_INP]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/p7e_parity_tests.py",
+                     "--probe", "{build}/cteas_p7e_probe", "--repo-root", ".",
+                     "--require", "--require-case"]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/reference/p7k_source_anchor.py",
+                     "--check", "native_cpp/modules/p7_calpuff/reference/p7k_source_anchor.json"]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/p7i_parity_tests.py",
+                     "--probe", "{build}/cteas_p7i_tests", "--repo-root", ".", "--require"]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/p7h_parity_tests.py",
+                     "--probe", "{build}/cteas_p7e_probe", "--repo-root", ".", "--require"]},
+            {"cmd": ["{build}/cteas_p7e_probe", "--real-grid", MET_DAT, PUFF_INP, "0", "2.63e13",
+                     "513.3846439571", "3533.7689269678", "70.8"],
+             "requires": [MET_DAT, PUFF_INP]},
+            {"cmd": ["{build}/cteas_p7e_probe", "--receptors", PUFF_INP],
+             "requires": [PUFF_INP]},
+            {"cmd": ["{build}/cteas_p7e_probe", "--structure", CASE_2022 + "/run/puff/puff.con"],
+             "requires": [CASE_2022 + "/run/puff/puff.con"]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/drydep_parity_tests.py",
+                     "--probe", "{build}/cteas_p7f_drydep_probe", "--repo-root", ".",
+                     "--require", "--require-case"]},
+            {"cmd": ["{build}/cteas_p7f_drydep_probe", "--audit", PUFF_INP],
+             "requires": [PUFF_INP]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/case_ledger_real_2023_tests.py",
+                     "--binary", "{build}/cteas_p7_2022_case_ledger",
+                     "--report", "{out}/p7-2022-ledger-refusal.json", "--require"],
+             "requires": ["project/cases/smoke5d_coldstart_20260701/run/met/met.dat",
+                          "project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp"]},
             # ---- real 2022 frozen reference-case gates ----
             {"cmd": ["python3", "-c",
                      "import hashlib,pathlib,sys;"
@@ -133,7 +178,7 @@ TRACKS: dict[str, dict] = {
                      "--report", "{out}/p7-2022-ledger.json"],
              "requires": [MET_DAT, PUFF_INP]},
             {"cmd": ["python3", "native_cpp/modules/p7_calpuff/reference/run_original_calpuff_reference.py",
-                     "--control", PUFF_INP, "--met", MET_DAT, "--out", "{out}/p7-original-calpuff"],
+                     "--control", PUFF_INP, "--met", MET_DAT, "--out", "{build}/p7-original-calpuff"],
              "requires": [PUFF_INP]},
         ],
     },
@@ -200,8 +245,16 @@ def main() -> int:
     rc, driver_sha = sh(["git", "-C", str(repo), "rev-parse", "HEAD"], repo, env)
     evidence["driver_sha"] = driver_sha.strip() if rc == 0 else None
 
-    rc, log = sh(["git", "-C", str(repo), "fetch", "--prune", "--quiet", "origin",
-                  "+refs/heads/*:refs/remotes/origin/*"], repo, env)
+    # Retry: a concurrent fetch (e.g. an agent's own `git fetch` in the same
+    # driver checkout) updates the same remote-tracking refs and can make this
+    # fail with a ref-lock error.  Never report BLOCKED for that.
+    for attempt in range(1, 4):
+        rc, log = sh(["git", "-C", str(repo), "fetch", "--prune", "--quiet", "origin",
+                      "+refs/heads/*:refs/remotes/origin/*"], repo, env)
+        if rc == 0:
+            break
+        print(f"fetch attempt {attempt} failed (rc={rc}); retrying")
+        time.sleep(2 * attempt)
     if rc != 0:
         print(f"BLOCKED: git fetch failed (rc={rc}): {log.strip()[:300]}")
         _write(args, evidence, started)
@@ -213,6 +266,15 @@ def main() -> int:
         _write(args, evidence, started)
         return 2
     evidence["gated_sha"] = gated_sha = sha.strip()
+    # Per-run output directory: a re-run of the same ref must not collide with a
+    # previous run's staged inputs (steps are required to fail closed on overwrite).
+    out = GATE_ROOT / "evidence" / args.track / gated_sha[:12]
+    out.mkdir(parents=True, exist_ok=True)
+    # Per-run worktree as well: two concurrent gate runs of the same track used to
+    # share one path, and either run's cleanup removed the other's checkout
+    # mid-flight (FileNotFoundError on the step scripts).
+    wt = GATE_ROOT / "worktrees" / f"{args.track}-{gated_sha[:12]}"
+    build = wt / "build" / args.track
 
     if wt.exists():
         sh(["git", "-C", str(repo), "worktree", "remove", "--force", str(wt)], repo, env)

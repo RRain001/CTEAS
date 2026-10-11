@@ -1,5 +1,7 @@
 #include "cteas/puff/calmet21.hpp"
+#include <algorithm>
 #include <cstring>
+#include <iostream>
 #include <cassert>
 #include <cstdint>
 #include <filesystem>
@@ -40,7 +42,8 @@ std::vector<std::string> field_names() {
             "T-LEV  1","T-LEV  2","IPGT","USTAR","ZI","EL","WSTAR",
             "TEMPK","RHO","QSW","IRH"};
 }
-void create_fixture(const fs::path& path,bool order=false,bool gap=false,bool nan=false) {
+void create_fixture(const fs::path& path,bool order=false,bool gap=false,bool nan=false,
+                    int static_mode=0) {
     std::ofstream f(path,std::ios::binary|std::ios::trunc);
     std::vector<std::uint8_t> signature(40,' ');
     const std::string id="CALMET.DAT 2.1";
@@ -54,12 +57,14 @@ void create_fixture(const fs::path& path,bool order=false,bool gap=false,bool na
     putfloat(h,100.0F,68); putfloat(h,513000.0F,72);
     putfloat(h,3533000.0F,76); putint(h,1,80); putint(h,1,84); putint(h,1,88);
     record(f,h);
-    // Real original CALMET.DAT 2.1 has static Z0 header records before
-    // U-LEV fields. These can be exactly Nx*Ny*4+24 bytes (same as wind)!
-    std::vector<std::uint8_t> metadata(40,0);
+    // Original CALMET.DAT 2.1 OUTHD static records precede the U-LEV fields and
+    // can be exactly Nx*Ny*4+24 bytes, i.e. the same length as a wind field.
     const std::string static_name="Z0";
+    const std::size_t static_size = static_mode==1 ? 44U : 40U;   // mode 1 = malformed length
+    std::vector<std::uint8_t> metadata(static_size,0);
     for (std::size_t i=0;i<8;++i)
         metadata[i]=i<static_name.size()?std::uint8_t(static_name[i]):' ';
+    if (static_mode==2) putfloat(metadata,500.0F,24);             // out-of-range Z0
     record(f,metadata);
     for (int hour=0;hour<2;++hour) {
         auto labels=field_names();
@@ -87,7 +92,77 @@ template<typename F> void must_fail(F fn) {
 }
 struct Cleanup {fs::path root;~Cleanup(){std::error_code e;fs::remove_all(root,e);} };
 }
-int main() {
+std::uint64_t digest_ints(const std::vector<std::int32_t>& values) {
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const auto value : values) {
+        for (int j = 0; j < 4; ++j) {
+            hash ^= static_cast<std::uint64_t>((value >> (8 * j)) & 0xff);
+            hash *= 1099511628211ULL;
+        }
+    }
+    return hash;
+}
+
+std::uint64_t digest(const std::vector<float>& values) {
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const float value : values) {
+        std::uint32_t bits = 0;
+        std::memcpy(&bits, &value, sizeof(bits));
+        for (int j = 0; j < 4; ++j) {
+            hash ^= (bits >> (8 * j)) & 0xffU;
+            hash *= 1099511628211ULL;
+        }
+    }
+    return hash;
+}
+
+void describe(const char* name, const std::vector<float>& values) {
+    float low = values.front(), high = values.front();
+    double sum = 0.0;
+    for (const float value : values) {
+        low = std::min(low, value);
+        high = std::max(high, value);
+        sum += value;
+    }
+    std::cout << "P7G_STATIC " << name << " COUNT=" << values.size() << " MIN=" << low
+              << " MAX=" << high << " MEAN=" << (sum / static_cast<double>(values.size()))
+              << " DIGEST=" << digest(values) << "\n";
+}
+
+int main(int argc, char** argv) {
+    if (argc == 3 && std::string(argv[1]) == "--met") {
+        const auto summary = Calmet21Reader::read(argv[2]);
+        const auto& statics = summary.statics;
+        assert(summary.header.nx == 50 && summary.header.ny == 50 && summary.header.nz == 9);
+        assert(statics.present && statics.decoded_records == 6);
+        assert(statics.cell_face_m.size() == 10);
+        assert(statics.roughness_m.size() == 2500 && statics.land_use.size() == 2500 &&
+               statics.elevation_m.size() == 2500 && statics.leaf_area_index.size() == 2500 &&
+               statics.nearest_station.size() == 2500);
+        for (const float value : statics.roughness_m) assert(value >= 0.0F && value <= 100.0F);
+        for (const float value : statics.leaf_area_index) assert(value >= 0.0F && value <= 20.0F);
+        for (const auto value : statics.land_use) assert(value >= 0 && value <= 1000);
+        for (const float value : statics.elevation_m) assert(value >= -1000.0F && value <= 10000.0F);
+        // Pinned values of the immutable locked case (sha256 b1823cda...).
+        assert(statics.roughness_m.front() == 0.25F && statics.roughness_m.back() == 0.25F);
+        assert(statics.leaf_area_index.front() == 3.0F);
+        const auto elevation_range =
+            std::minmax_element(statics.elevation_m.begin(), statics.elevation_m.end());
+        assert(*elevation_range.first == 25.0F && *elevation_range.second == 59.5F);
+        assert(digest(statics.roughness_m) == 7401557581232649795ULL);
+        assert(digest(statics.leaf_area_index) == 14015295161301286211ULL);
+        assert(digest(statics.elevation_m) == 16152187619603912443ULL);
+        assert(digest_ints(statics.land_use) == 3196964006486516483ULL);
+        assert(digest_ints(statics.nearest_station) == 14033661785612014883ULL);
+        describe("Z0", statics.roughness_m);
+        describe("XLAI", statics.leaf_area_index);
+        describe("ELEV", statics.elevation_m);
+        std::cout << "P7G_STATIC_LAND_USE_DIGEST=" << digest_ints(statics.land_use)
+                  << " NEAREST_DIGEST=" << digest_ints(statics.nearest_station) << "\n";
+        std::cout << "P7G_REAL_MET_STATIC_DECODE=PASS INTERVALS=" << summary.intervals
+                  << " HOURLY_FIELDS=" << summary.hourly_fields << "\n";
+        return 0;
+    }
     const auto root=fs::temp_directory_path()/"cteas_p7_calmet21_tests";
     fs::create_directories(root);
     Cleanup cleanup{root};
@@ -104,7 +179,10 @@ int main() {
         }
     });
     assert(summary.intervals==2 && summary.hourly_fields==34);
-    assert(summary.metadata_records==1);
+    assert(summary.metadata_records==0);
+    assert(summary.statics.present && summary.statics.decoded_records==1);
+    assert(summary.statics.roughness_m.size()==4);
+    assert(summary.statics.roughness_m.at(0)==0.0F);
     assert(summary.header.nx==2 && summary.header.ny==2 && summary.header.nz==2);
     assert(summary.final_end.unix_seconds-summary.first_begin.unix_seconds==7200);
     assert(called==34 && integers==4);
@@ -118,4 +196,10 @@ int main() {
         must_fail([&]{(void)Calmet21Reader::read(p.string());});
     }
     must_fail([&]{(void)Calmet21Reader::read(good.string(),{},true);});
+    for (const auto& [name,mode] : std::vector<std::pair<std::string,int>>{
+             {"bad-static-size",1},{"bad-static-value",2}}) {
+        const auto p=root/name;
+        create_fixture(p,false,false,false,mode);
+        must_fail([&]{(void)Calmet21Reader::read(p.string());});
+    }
 }

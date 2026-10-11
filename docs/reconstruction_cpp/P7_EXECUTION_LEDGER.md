@@ -418,3 +418,429 @@ vendor routines, versus 2.596e-07 on macOS with gfortran 16.2.0) and
 `P7D_DISPERSION_OPTION_AUDIT=PASS MDISP=3 SELECTED_OPTION_IS_REAL_CASE_PATH=true
 MDISP2_EFFECTIVE=false MTURBVW_EFFECTIVE=false MTAULY_EFFECTIVE=false` for the real
 2023 deck. `MDRY=1` dry deposition is the next physical path and is not implemented.
+
+## 2026-10-11 P7F MDRY=1 dry deposition (computed gas, real-case species)
+
+The locked Hefei 2022 deck
+(`project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp`)
+carries `MDRY=1`, the default `RCUTR=30` s/cm, `RGR=10` s/cm, `REACTR=8.0`,
+`NINT=9`, `IVEG=1`, `ZFACE` with a 20 m first layer (so `ZREF=10 m`), and two
+species in input group 3a:
+
+| species | modeled | emitted | dry deposition | group 7 parameters |
+|---|---|---|---|---|
+| `H-3` | 1 | 1 | `1` = COMPUTED-GAS | `DIFFUSIVITY .1509` cm**2/s, `ALPHA STAR 1.0`, `REACTIVITY 8.0`, `MESOPHYLL 0.0` s/cm, `HENRY 0.04` |
+| `HE-3` | 1 | 0 | `0` = no dry removal | none |
+
+So the real dry-deposition path is the gas resistance model for one species.
+`IDRY=0` in input group 5, i.e. **the case writes no dry-flux output**: the
+frozen `run/puff/puff.con` (1,896,056 bytes, 3,655 sequential-unformatted
+records, 11 distinct record sizes, clean 4-byte envelope) contains
+concentration records only.
+
+New native module (`include/cteas/puff/dry_deposition.hpp`,
+`src/dry_deposition.cpp`, probe `src/drydep_probe.cpp`):
+
+- Input group 3a species table (hyphenated names, which the generic
+  `!KEY=value!` parser cannot express), input group 7 gas parameters and input
+  group 9 reference values are parsed from the control text with anchored
+  patterns, and cross-checked against `CSPEC`.
+- DRYI equivalents: `cm**2/s -> m**2/s` and `s/cm -> s/m` conversions,
+  `SC = vair/pdiff`, `RD1 = d1*SC**d2/vk`, `RCUT = RCUTR*REACTR/REACT`,
+  `RGG = RGR*REACTR/REACT`, `RGW1 = HENRY/(ALPHAS*d3)`, and
+  `ZREF = min(0.5*(ZFACE1+ZFACE2), 10)`.
+- VDCOMP equivalent: the aerodynamic resistance (stability-dependent `PSIH`,
+  `USMIN` floor, `RAMIN` floor, wind-driven water roughness
+  `z0m = 2e-6*w**2.5` with the 1 m/s threshold), the deposition-layer term
+  `RD1/u*`, the canopy resistance from stomatal (`PCONST`, `BMIN`/`BMAX`,
+  `QSWMAX` radiation interpolation and the 35 C/10 C temperature branches),
+  mesophyll, cuticle and ground/water terms, and `vd = 1/(RA+RD+RC)`.
+- DRY uniformly-mixed branch: `DIFFK` from `CONK1`/`CONK2`, `u*`, `w*` and the
+  mixing height, `VDPVD = DIFFK/(DIFFK+vd*dz)`, and
+  `FRACDRY = exp(-VDPVD*vd*dt/lid)`.
+- Fail closed: `MDRY != 1`, particle deposition (method 2), user-specified
+  diurnal velocities (method 3), illegal method values, a gas species without
+  group 7 parameters, group 7 rows for unknown or non-deposited species, a
+  species list that disagrees with `CSPEC`, non-positive `RCUTR`/`RGR`/
+  `REACTR`/diffusivity/alpha/reactivity, `IVEG` outside 1-3, and non-finite or
+  out-of-range environment inputs (lid height, sampling step, mixing height,
+  `w*`, temperature, `u*`, `L`, LAI, roughness, vegetation state) all raise
+  instead of being ignored.
+- Not reconstructed: the Gaussian-puff removal branch (needs the `VCBar`
+  vertical coupling coefficient), the `RDVD` input table and the particle
+  physics of `DRYI`/`VDP1`.
+
+### Source anchor
+
+`reference/drydep_source_anchor.py` slices the exact spans out of the
+unmodified `calpuff.for` and pins them in
+`reference/drydep_source_anchor.json`: compiled by the oracle
+`VDCOMP` L26293-26565 and `VDP` L26567-26681; anchored read-only `BLOCK DATA`
+L1999-2424, `DRY` L26052-26291, `DRYI` L26820-27042, `RDVD` L26683-26818 and
+`VDP1` L27044-27208, plus every vendor `*.puf` include. Vendor source
+`sha256 da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568`.
+The DRYI statements that are ported by hand are asserted to still be present
+verbatim in the anchored text, and the /DRYGAS/ constants (`PCONST`, `BMIN`,
+`BMAX`, `QSWMAX`, `DCONST1`-`DCONST4`) are read back from the vendor BLOCK DATA
+and compared with the values compiled into the module.
+
+### CTest evidence
+
+- `cteas_p7f_dry_deposition_contract`: hand-derived closed forms (inactive
+  vegetation, hot/cold stomata, radiation interpolation and clamping, water
+  cell with wind-driven roughness, neutral/stable `PSIH` branches, `u*` floor),
+  the removal fraction, and every fail-closed path. PASS.
+- `cteas_p7f_locked_case_dry_deposition`: the locked Hefei 2022 deck is audited
+  in C++ (`MDRY=1`, H-3 gas, HE-3 none, `ZREF=10`, `RCUTR=3000` s/m,
+  `RGR=1000` s/m, `REACTR=8`, `RD1=4.9801`). PASS.
+- `cteas_p7f_drydep_source_parity`: anchors + 8 vendor constants + 11 quoted
+  DRYI statements + **11,520 cases x 2 species against the compiled unmodified
+  VDCOMP**: `MAX_REL=1.414e-07` (float32 level) against a fixed `1e-5`
+  acceptance bound, plus the real-deck audit
+  (`P7F_REAL_DECK_DRYDEP_AUDIT=PASS MDRY=1 GAS_SPECIES=1 NON_DEPOSITED=1
+  UNSUPPORTED=0 VEGETATION_STATE=1 ZREF_M=10 RD1_SPECIES_0=4.9801`). PASS in
+  1.4 s.
+- Local `ctest` 13/14 PASS; the only failure remains the pre-existing macOS
+  case-insensitive-filesystem failure of
+  `cteas_p7_original_case_stage_contract` (PASS on Linux).
+
+### Real-case comparability statement (no fabricated comparison)
+
+`run/puff/puff.con` is **not yet comparable** with the new C++ deposition
+velocities, and no comparison number is claimed. Verified gaps:
+
+1. `IDRY=0` in the locked deck: the artifact has no dry-flux records, and the
+   original writes per-step `vd` only behind its debug flag, so a
+   case-level dry-flux comparison is impossible without re-running the
+   original with debug output (out of scope here).
+2. Per-cell dry-deposition inputs are missing: the P7B CALMET.DAT reader
+   decodes the hourly typed fields (`USTAR`, `ZI`, `EL`, `QSW`, `TEMPK`, ...)
+   but skips the static header records, so the real-case `Z0`, land use and
+   `XLAI` are not available yet.
+3. No puff-state integration: the `SIGMA()` restart wrapper, `HEFTRAN` and the
+   `VCBar` coupling coefficient are not reconstructed, and P7C is still a
+   prototype, so the removal fraction cannot be advanced over a real puff
+   trajectory.
+4. No concentration output: P7E does not exist, so there is nothing to diff
+   against the 3,655 concentration records of `puff.con`.
+
+What is comparable and now compared: the deposition velocity and the
+time-invariant parameters for the real species configuration, against the
+unmodified vendor routines (above), which is the strongest available
+original-reference check at this stage.
+
+## 2026-10-11 P7E receptors, puff-to-receptor sampling and CONC.DAT framing
+
+The locked deck uses gridded receptors (`LSAMP=T`, `IBSAMP/JBSAMP=1`,
+`IESAMP/JESAMP=50`, `MESHDN=1`) with an empty discrete-receptor subgroup, i.e.
+**2500 receptors at 100 m spacing** (first at 510.935/3531.320 km, last at
+515.835/3536.220 km).
+
+New native module (`include/cteas/puff/receptors.hpp`,
+`include/cteas/puff/conc_file.hpp`, `src/receptors.cpp`, `src/conc_file.cpp`,
+probe `src/p7e_probe.cpp`):
+
+- Receptor geometry from the sampling grid using the vendor cell-centre
+  convention (`(IBSAMP-0.5)*DGRID + i*DELSAM` with `DELSAM = DGRID/MESHDN`) plus
+  discrete receptors from subgroup 17b (`! N = X, Y, ZELEV [, ZRCT] !`).
+  Fail closed on indices outside the met or computational grid, `MESHDN < 1`,
+  receptors outside the met grid, malformed rows, and a deck that enables
+  neither gridded nor discrete receptors.
+- PFSAMP equivalent (the two sampling integrals, including the `A < 1e-4`
+  low-wind branch) and ERFDIF equivalent, both in REAL*4 like the originals.
+- CALCPF gridded-receptor accumulation
+  `conc += VDPVD*F1*TFRACT*(QOLD*T1 + QNEW*T2)` with
+  `dinv = ASDF/(2*pi*sigma_y**2)`, `T2 = I2*dinv`, `T1 = I1*dinv - T2`. The
+  vertical coupling factor F1 (VCBar) and VDPVD are explicit inputs because
+  those layers are not reconstructed; ASDF defaults to 1.0.
+- CONC.DAT writer and reader with the **measured** record layout of the frozen
+  artifact: version record (96 B), comment count (4 B), 132-byte comments,
+  32-byte sampling-period records `(year, julian, hour, seconds) x2`, 32-byte
+  grid descriptors (`nrec, group index, 'TOTAL' 16 chars, XORIGKM, YORIGKM`)
+  and species fields `label(8) + 7-byte index + nx*ny REAL*4` (10015 B for
+  50x50). Fail closed on label length, date/second ranges, non-finite values,
+  field dimension/species-count mismatches and period inconsistencies.
+- Not reconstructed (and refused or explicitly supplied): CTSG (terrain
+  factors, upper/lower splits, slugs, wind shear, PDF), VCBar, the WROUT1
+  header beyond the version and comment records, area/line/volume source
+  sampling, and the AVET averaging machinery of the original output stage.
+
+### Source anchor
+
+`reference/p7e_source_anchor.py` slices the exact spans out of the unmodified
+`calpuff.for` and pins them in `reference/p7e_source_anchor.json`: `PFSAMP`
+L4683-4751, `ERFDIF` L54910-54965, `WRTI1D` L64706-64739, `WRTR1D`
+L64741-64774, `WRTR2D` L64776-64826, plus every vendor `*.puf` include.
+Vendor source `sha256 da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568`.
+The PFSAMP/ERFDIF constants and 8 quoted statements are asserted to still be
+present verbatim in the anchored text.
+
+### CTest evidence
+
+- `cteas_p7e_receptor_sampling_conc_contract`: receptor geometry (2500
+  receptors, `MESHDN=2` refinement to 99x99, discrete receptors, five
+  fail-closed cases), PFSAMP invariants (low-wind branch closed form, invariance
+  under trajectory reversal, closer approach samples more mass), the ERFDIF
+  branches, the accumulation closed form, writer/reader round trip, and
+  **structure parity with the frozen artifact**: identical period/grid/field
+  counts (143/143/143), identical field record sizes (10015 B) and identical
+  period times, with this module's own values.
+- `cteas_p7e_source_parity`: anchors + 8 quoted statements +
+  `P7E_PFSAMP_ORACLE_PARITY=PASS CASES=182 MAX_REL=4.121e-06` (tolerance
+  `1e-5`) against the compiled unmodified PFSAMP + vendor framing readback
+  (records written by the unmodified `WRTI1D`/`WRTR1D` are parsed by this
+  module's reader) + locked-deck receptor geometry +
+  `P7E_FROZEN_CONC_STRUCTURE=PASS RECORDS=3655 PERIOD_RECORDS=143
+  GRID_RECORDS=143 SPECIES_FIELDS=143 FIRST_BEGIN=2022001 LAST_END=2022006`.
+
+### Real-case comparability statement (no fabricated numbers)
+
+**Structure is compared and matches; values are NOT compared.**
+`run/puff/puff.con` (1,896,056 B, 3,655 records) contains 143 sampling-period
+records, 143 grid descriptors and 143 species fields labelled `H-3`
+(10015 B each, i.e. the 50x50 grid) covering 2022 julian days 1-6. This module
+reproduces that data-record structure exactly for the same configuration, but
+its field values are its own. Verified gaps before a value comparison is
+possible:
+
+1. CTSG (the concentration kernel) and the VCBar vertical coupling factor are
+   not reconstructed, so no receptor concentration can be produced for a real
+   puff yet.
+2. Puff advection is still the P7C prototype: no CALPUFF release cadence,
+   split/merge, plume rise, sigma restart (`SIGMA()`/`HEFTRAN`) or terrain
+   interaction.
+3. Per-cell dry-deposition inputs (`Z0`, land use, `XLAI`) live in CALMET
+   static records that the CALMET.DAT reader does not decode yet.
+4. The writer emits the CTEAS header subset (version + comments), so the
+   original post-processing toolchain cannot read these files yet.
+
+## 2026-10-11 P7G CALMET static fields decoded (Z0 / ILANDU / ELEV / XLAI / NEARS)
+
+Closes the "per-cell dry-deposition inputs missing" gap of the P7E round. The
+original CALMET.DAT 2.1 OUTHD static section is written before the first hourly
+field (CALMET `calmet.for` L12482-12536, anchored):
+
+| record | label | contents |
+|---|---|---|
+| NCOM+4 | `ZFACE` | `nz+1` REAL*4 cell face heights |
+| NCOM+5/6 | `XSSTA`/`YSSTA` | surface station coordinates (when `nssta >= 1`) |
+| NCOM+7/8 | `XUSTA`/`YUSTA` | upper air station coordinates |
+| NCOM+9/10 | `XPSTA`/`YPSTA` | precipitation station coordinates |
+| NCOM+11 | `Z0` | `nx*ny` REAL*4 roughness lengths |
+| NCOM+12 | `ILANDU` | `nx*ny` **INTEGER** land use categories (`WRTI2D`) |
+| NCOM+13 | `ELEV` | `nx*ny` REAL*4 elevations |
+| NCOM+14 | `XLAI` | `nx*ny` REAL*4 leaf area indices |
+| NCOM+15 | `NEARS` | `nx*ny` **INTEGER** nearest station indices |
+
+`Calmet21Reader` now decodes these records instead of skipping them
+(`Calmet21Static` in `calmet21.hpp`): the label must be exact and the payload
+length must match the documented field, otherwise the file is malformed and the
+read fails; `Z0`, `ELEV` and `XLAI` must be finite and within physical bounds
+(0-100 m, -1000-10000 m, 0-20), `ILANDU` categories within 0-1000, and
+`ILANDU`/`NEARS` are read as INTEGER exactly as `WRTI2D` writes them.
+
+Locked-case evidence (`project/cases/hefei5km_2022_reference_case_20261011`,
+`met.dat` sha256 `b1823cda...`), CTest
+`cteas_p7g_locked_case_static_decode` with pinned digests:
+
+```
+P7G_STATIC Z0   COUNT=2500 MIN=0.25  MAX=0.25  MEAN=0.25    DIGEST=7401557581232649795
+P7G_STATIC XLAI COUNT=2500 MIN=3     MAX=3     MEAN=3       DIGEST=14015295161301286211
+P7G_STATIC ELEV COUNT=2500 MIN=25    MAX=59.5  MEAN=42.9157 DIGEST=16152187619603912443
+P7G_STATIC_LAND_USE_DIGEST=3196964006486516483 NEAREST_DIGEST=14033661785612014883
+P7G_REAL_MET_STATIC_DECODE=PASS INTERVALS=143 HOURLY_FIELDS=6435
+```
+
+The decoded fields immediately feed the dry-deposition path: the probe mode
+`cteas_p7f_drydep_probe --real-cell MET.DAT PUFF.INP 25 25 0` builds the
+VDCOMP environment from the real file (land use, `Z0`, `XLAI`, `USTAR`, `EL`,
+`QSW`, `TEMPK`, `ZI`, `WSTAR`) and reports, for the locked case:
+
+```
+P7G_REAL_CELL_VD=PASS CELL=25,25 HOUR=0 LAND_USE=20 Z0_M=0.25 XLAI=3 USTAR=0.246525
+  EL=-49.495 QSW=194.594 TEMPK=279.15 ZI=230.977 WSTAR=0.484167 RA=29.5576 DIFFK=11.1832
+  H-3_VD=0.00198035 H-3_FRACDRY=0.970734 HE-3_VD=0 HE-3_FRACDRY=1 NOT_A_MODEL_RUN=true
+```
+
+i.e. H-3 deposits at 0.198 cm/s with 2.9 % removed per 3600 s step at that cell
+and hour, while HE-3 (flagged with no dry removal in the deck) stays at zero.
+This is a coefficient evaluation on real inputs, not a model run: it still uses
+the caller-supplied vertical factor and does not advance any puff.
+
+Remaining incomparability causes after this round (was four, now two):
+
+1. CTSG (the concentration kernel) and `VCBar` are still missing, so no
+   receptor concentration exists for a real puff. `VCBar` is scoped as
+   `function vcbar(ip,mfact0,hlid,ppcoef,lcalm)` at `calpuff.for`
+   L53866-54088 (223 lines, span sha256 prefix `4c6aa6584979`) and it calls
+   `ctadj`, `getelev` and `hlidmax` plus the `/PUFF/`, `/GRID/`, `/CURRENT/`
+   and `/FLAGS/` state; CTSG additionally needs terrain factors, upper/lower
+   layer splits, slug and shear/PDF paths.
+2. Puff advection is still the P7C prototype (no release cadence, split/merge,
+   plume rise, `SIGMA()`/`HEFTRAN` restart or terrain interaction), and the
+   writer emits only the CTEAS header subset, so the frozen `puff.con` values
+   still cannot be reproduced or compared.
+
+## 2026-10-11 P7H vertical coupling (VCBar / VCOUP / CTADJ)
+
+The concentration path's vertical coupling is now reconstructed and wired into
+the receptor accumulation.
+
+- `VCOUP` (`calpuff.for` L53711-53864, self-contained): well-mixed codes
+  (2/6 and their slug forms 12/16), the "above mixed layer and uniform" code 4,
+  the elevated-receptor branches, the `SZCUT` sigma-z screen, the
+  unlimited-mixing rule when the source is above the lid, the reflection sum
+  over ground and lid, and the near-uniform approximation of Yamartino (JAPCA
+  27, 5, 1977) selected by `sz/hlid > 0.63`.
+- `VCBAR` (L53866-54088): the per-step space/time average, i.e. one third
+  weights for a puff (mid-step with `SZM1`, begin with `SZB1`, end with `SZE1`)
+  and one quarter weights for a slug (both ends at both ends of the step), with
+  the plume-tilt heights `ZFINAL - t*VSETL` when `MTILT=1`, the non-negative
+  height conditioning, and the `HLIDMAX = HLID` argument used for the VCOUP
+  calls. `LCALM=TRUE` fails closed (the vendor halts).
+- `CTADJ` (L20480-20540): both the ISC treatment (`MCTADJ=1`) and the partial
+  plume-height correction (`MCTADJ=3`). The vendor's terrain *lookup*
+  (`GETELEV`/`GETCELL`) is not ported: callers pass a lookup function and
+  `MCTADJ=1/3` fails closed without one, so the locked case's `MCTADJ=2` path
+  is what runs today.
+- Wiring: `receptor_concentration_increment_with_coupling` takes the vertical
+  factor from VCBAR instead of a caller constant, so the P7E accumulation now
+  uses reconstructed physics.
+
+### Source anchor
+
+`reference/p7h_source_anchor.py` pins the exact spans of `VCBAR`, `VCOUP`,
+`CTADJ` plus `GETELEV`/`GETCELL` (referenced by VCBAR and linked by the oracle)
+in `reference/p7h_source_anchor.json`, together with every vendor `*.puf`
+include; the constants and 17 statements the port reproduces are asserted
+verbatim in the anchored text. Vendor source
+`sha256 da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568`.
+
+### Evidence
+
+- `P7H_VCOUP_ORACLE_PARITY=PASS CASES=1920 MAX_REL=0.000e+00` - bit-exact
+  against the compiled unmodified `VCOUP` over codes 1/2/4/6/11/12/16/99,
+  receptor and source heights, five sigma-z values and three lid pairs.
+- `P7H_VCBAR_ORACLE_PARITY=PASS CASES=96 MAX_REL=1.076e-07` - puff and slug
+  branches, `MTILT` 0/1, two lid heights, three height pairs and two sigma
+  pairs, against the compiled unmodified `VCBAR` (tolerance `1e-5`).
+- `cteas_p7h_vertical_coupling_contract`: hand-derived closed forms for the
+  well-mixed, elevated-receptor, unlimited-lid, trapping and CTADJ branches,
+  puff/slug weighting, plume tilt, the coupling-aware accumulation equivalence,
+  and every fail-closed path.
+- `P7H_REAL_GRID_RUN=PASS HOUR=0 RECEPTORS=2500 STABILITY=4 URBAN=false
+  SPEED_MS=1.39612 STEP_KM=5.02603 SIGMA_Y_M=293.839 SIGMA_Z_M=88.9692
+  ZI_M=230.977 VCBAR_1_PER_M=0.0065347 SUM=7.91939e+08 MAX=316795 MIN=0
+  NONZERO=2500`: one synthetic puff moved one step over the locked case's
+  receptor grid with real met inputs (statics, `U`/`V`/`ZI`/`IPGT`) and the
+  reconstructed coupling. This is a physical-chain demonstration, explicitly
+  **not** a comparison against the frozen `puff.con`.
+
+### Remaining incomparability causes (still two)
+
+1. `CTSG` - the concentration kernel - is still missing. Its precise
+   requirements: the terrain-factor path (`FCTZ`/`FCTY`/`TFAC` plus the
+   `CTSGDAT` hill arrays), the upper/lower layer split (`UPPER`/`LOWER`,
+   `QATR` numerical integration, `ERF`/`BJI`/`BI` reflection helpers), the slug
+   sampling (`SLUGINT`/`SLUGAVE`/`SLUGSNP`, `ERFDIF`), the wind-shear and PDF
+   options, and the receptor-side averaging that consumes them. `VCBAR` (this
+   round) removes the coupling part of that dependency.
+2. The puff model itself is still the P7C prototype (release cadence,
+   split/merge, plume rise, `SIGMA()`/`HEFTRAN` restart, terrain interaction)
+   and the CONC.DAT writer emits only the CTEAS header subset, so the frozen
+   `puff.con` values still cannot be reproduced or compared.
+
+## 2026-10-11 P7I CTSG blocks: QATR and TFAC closed; the rest scoped
+
+Status of the CTSG dependency closure, with the locked deck's own values as the
+evidence for what is and is not the real-case path
+(`MSLUG=0`, `MSHEAR=0`, `MPDF=0`, `NHILL=0`, `NINT=9`, `AVET=PGTIME=60`,
+`MCTADJ=2`, `MTILT=0`):
+
+| block | status |
+|---|---|
+| `QATR` Romberg integrator (L25406-25520) | **implemented and parity-checked** (`P7I_QATR_ORACLE_PARITY=PASS CASES=80 MAX_REL=2.980e-07`, status flags match) |
+| `TFAC` terrain distortion interpolation (L25765-25813) | **implemented and parity-checked** (`P7I_TFAC_ORACLE_PARITY=PASS CASES=14 MAX_REL=1.366e-07`) |
+| `FCTZ`/`FCTY` + `CTSGDAT` hill arrays | not the real-case path: `NHILL=0`, so no hill/terrain-following factors exist for this deck; the routines are neither ported nor needed |
+| slug sampling `SLUGINT`/`SLUGAVE`/`SLUGSNP` | not the real-case path: `MSLUG=0`; `ERFDIF` is already ported and parity-checked in P7E |
+| wind shear / PDF options | not the real-case path: `MSHEAR=0`, `MPDF=0` |
+| `AVET` receptor averaging | not effective for this case: `AVET=PGTIME=60`, so the averaging factor is exactly 1 (already recorded in the P7D section) |
+| `CTSG`/`CTREC`/`CTPAR`/`MUNU`/`LOWER`/`UPPER` + `BI`/`BJIL`/`FLOPUFF` | still missing: the remaining real-case kernel. `CTSG` L22923-23112 calls `ctpar`/`ctrec`/`lower`/`puffc`/`upper`; `CTREC` L22841-22921 calls `munu`/`rotate`; `LOWER` L24657-24863 calls `bi`/`bjil`/`munu`; `UPPER` L25815-26001 calls `bi`/`bji`/`flopuff`/`qatr`. With `NHILL=0` and a puff inside the mixed layer the reachable kernel is the lower-segment one, but it still needs the `/CTPASS/` state (`Hd`, `zi`, `ppcoef`, the plume/slug geometry), the `BI`/`BJIL` reflection helpers and the `MUNU` vertical distribution index |
+
+`reference/p7i_source_anchor.py` pins `BLOCK DATA` (L1999-2424), `QATR` and
+`TFAC` spans plus every vendor `*.puf` include, and 12 quoted statements are
+asserted verbatim; the oracle sets the `/CONST/` values that the vendor BLOCK
+DATA would otherwise provide.
+
+Incomparability causes remain two: the CTSG kernel above, and the still
+unfaithful puff model plus the CTEAS-only CONC.DAT header.
+
+## 2026-10-11 P7J CTSG kernel round: ROTATE closed, kernel still open
+
+This round closed one more CTSG-closure block and re-verified the earlier ones;
+the core kernel itself is **not** done and is listed precisely below.
+
+| block | status |
+|---|---|
+| `ROTATE` (L25522-25549, used by CTREC/CTPAR) | **implemented + parity**: `P7I_ROTATE_ORACLE_PARITY=PASS CASES=45 MAX_REL=5.059e-07` |
+| `QATR` (L25406-25520) | implemented + parity (80 cases, `MAX_REL=2.980e-07`, status flags match) |
+| `TFAC` (L25765-25813) | implemented + parity (14 cases, `MAX_REL=1.366e-07`) |
+| `MUNU` | **not done**: the vertical distribution index; the vendor name is not a plain `function munu`/`subroutine munu` under the anchor patterns used so far, so the span must be located by its call sites (`CTREC` L22841-22921 calls it) before it can be extracted and ported |
+| `CTREC` (L22841-22921) | **not done**: needs `MUNU` plus the receptor/puff geometry state it rotates |
+| `CTSG` (L22923-23112) | **not done**: calls `ctpar`/`ctrec`/`lower`/`puffc`/`upper`; the real-case branch selection (`MCTADJ=2`, `NHILL=0`, `MSLUG=0`, `MSHEAR=0`, `MPDF=0`) resolves to the lower-segment kernel, but the routine itself, its slug/puff dispatch and the `PUFfC` path are not ported |
+| `CTPAR` | **not done**: puff geometry/parameter preparation for CTSG |
+| `LOWER` (L24657-24863) | **not done**: needs `BI`/`BJIL` (the reflection-series helpers), `MUNU` and the `/CTPASS/` state (`Hd`, `zi`, `ppcoef`, plume/slug geometry) |
+| `UPPER` (L25815-26001) | **not done**: needs `BI`/`BJI`, `FLOPUFF` and `QATR` (the integrator is now available) |
+| `BI`/`BJIL`/`BJI` | **not done**: the reflection-series helper functions; their spans must be located by call sites before extraction |
+| `FLOPUFF` | **not done**: the flow-splitting routine that provides `Hd` |
+
+Consequence: the `F1` chain is still `VCBAR` (P7H) for the *vertical coupling*,
+but the concentration kernel that consumes it (`CTSG`/`LOWER`) does not exist
+yet, so no receptor concentration can be produced for a real puff and the
+incomparability list stays at two causes (the CTSG kernel above; the
+still-prototype puff model plus the CTEAS-only CONC.DAT header).
+
+Honest status of this round: the acceptance target "CTSG plus CTREC/MUNU with
+original-source parity" was **not reached**; only the support blocks (`ROTATE`,
+re-verified `QATR`/`TFAC`) carry parity evidence. The next round should start by
+locating `MUNU`, `BI`, `BJIL`, `BJI`, `FLOPUFF`, `CTPAR` and `PUFfC` spans by
+their call sites, then port `CTSG` with the lower-segment branch.
+
+## 2026-10-11 P7K CTSG kernel units located by call site
+
+The plain-name anchor patterns used for `QATR`/`TFAC`/`ROTATE` did not match the
+remaining CTSG kernel units, so they are now located by scanning every vendor
+routine header (any `function`/`subroutine` declaration, optional type prefix,
+flexible indentation). `reference/p7k_source_anchor.py` records the exact span,
+SHA-256 and call closure of each unit and `--check` fails on any drift; the gate
+and the workflow run that check.
+
+| unit | span | lines | sha256 prefix | calls |
+|---|---|---|---|---|
+| `bi` | L22229-22263 | 35 | `917e2da3b8b2547a` | - |
+| `bji` | L22265-22316 | 52 | `53e3010313a89e13` | - |
+| `bjil` | L22318-22363 | 46 | `e34ab5ac71fdd8c4` | - |
+| `ctpar` | L22505-22839 | 335 | `00dee71ee0419be6` | `axis`, `hilrot`, `munu`, `path`, `rotate` |
+| `ctrec` | L22841-22921 | 81 | `279397a1d0f7ad5e` | `munu`, `rotate` |
+| `ctsg` | L22923-23112 | 190 | `3f1011394e50` (P7H anchor) | `ctpar`, `ctrec`, `lower`, `puffc`, `upper` |
+| `flopuff` | L23178-23656 | 479 | `5dccb500891d` | (own closure, not yet scanned) |
+| `lower` | L24657-24863 | 207 | `688c6978246d` | `bi`, `bjil`, `munu` |
+| `munu` | L24865-24967 | 103 | `348cec20d84b` | - |
+| `puffc` | L25286-25404 | 119 | `b739807ef741` | - |
+| `upper` | L25815-26001 | 187 | `9e24496fb8da` | `bi`, `bji`, `flopuff`, `qatr`, `to` |
+| `rotate` | L25522-25549 | 28 | `ce0f8fc51d2c` | - (ported, parity 45 cases) |
+| `qatr` | L25406-25520 | 115 | `2cded8ebe7da` | - (ported, parity 80 cases) |
+| `tfac` | L25765-25813 | 49 | `fe35527fd872` | - (ported, parity 14 cases) |
+
+`munu` (vertical distribution index) and `puffc` are self-contained; `bi`,
+`bji` and `bjil` are the reflection-series helpers; `ctrec` is `munu` + a
+rotation; `ctsg` dispatches to `ctpar`/`lower`/`upper`/`puffc`. The real-case
+branch selection (`MCTADJ=2`, `NHILL=0`, `MSLUG=0`, `MSHEAR=0`, `MPDF=0`)
+resolves to the lower-segment kernel, whose remaining inputs are the
+`/CTPASS/` state (`Hd`, `zi`, `ppcoef`, plume/slug geometry) and `BI`/`BJIL`.
+
+Status of the round: **`CTSG`/`CTREC`/`MUNU` are located and pinned but not yet
+ported**, so the F1 chain still ends at `VCBAR` and the incomparability list
+stays at two causes. The next round's port order is now mechanical: `munu` ->
+`bi`/`bjil` -> `lower` -> `puffc` -> `ctrec` -> `ctsg` (lower branch), then wire
+`VCBAR -> CTSG` and re-run the real receptor grid.

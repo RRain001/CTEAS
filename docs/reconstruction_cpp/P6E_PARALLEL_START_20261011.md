@@ -849,3 +849,454 @@ inputs (P6D wind fields, HEATFX/ELUSTR/WSTARR/MIXHT over the real grid, P6C
 SURF/UP observations) and is outside this increment. 27 of the 45 real file
 fields belong to P6D and are listed by the harness as
 `not_implemented_in_p6e`.
+
+## E23 real 2022 reference case: P6E candidate fields and truth verdicts
+
+The frozen reference case `project/cases/hefei5km_2022_reference_case_20261011`
+(exact merged copy, `run/met/met.dat` sha256
+`b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30`, 143
+intervals, 50x50x9, DGRID=100 m) was driven with its **real** inputs through the
+P6E chain as far as the source dependency graph allows.
+
+### Real case inputs actually consumed
+
+- `met/surface/final/surf.dat` (P5 `SURF.DAT 2.1`, station 583210) and
+  `met/upperair/final/up_58424.dat` (P4, station 58424) through the existing
+  E15 CLI `p6e_p6c_hourly_bridge`, run read-only on the case tree:
+  `hours=143 missing_precip_hours=143 observed_zero_precip_hours=0
+  reversed_AABB_hours=72` — the real observation/AA-BB contract holds on the
+  real payload.
+- `run/met/met.lst` resolved options: `IMIXH=1 THRESHL=0 IZICRLX=1 ISURFT=-1
+  IUPT=-1 ITPROG=0 NOOBS=0 NOWSTA=0 IWFCOD=1 LCALGRD=T NSSTA=1 NUSTA=1 NPSTA=0
+  **IAVET=1 IFRADJ=1 IAVEZI=1 IRAD=1 NUMTS=5 TRADKM=500 ICOARE=10 IRHPROG=0**
+  NZ=9 DGRID=100`.
+- Grid geometry and time labels are copied from the reference file's *static
+  records and hourly clocks* — those are run **inputs** (ZFACE, station
+  coordinates, Z0/ILANDU/ELEV/XLAI/NEARS) and labels, not results. The case
+  grid is entirely land: `ILANDU = 20` for all 2500 cells, `Z0 = 0.25 m`,
+  `ELEV` 25.0-59.5 m, `IWAT1/IWAT2 = 50/55`, `NPSTA = 0`.
+
+### Per-field verdicts against the frozen `met.dat`
+
+`p6e_calmet_dat21 emit-realcase` writes a **partial** candidate: only the fields
+the original computes without the diagnostic wind field are produced; every
+other field carries the original `9999.` missing sentinel, so the harness
+reports it as not produced instead of comparing invented numbers.
+
+| field | roadmap status | denominator | missing ref/cand | max abs | max rel | frozen limit | verdict |
+|---|---|---|---|---|---|---|---|
+| `TEMPK` | `PASS_REAL_CASE` | 357,500 | 0 / 0 | **1.28174e-3 K** | 4.72702e-6 | 3e-4 K + 1e-5 rel | 0 exceedances |
+| `T-LEV 1` | `PASS_REAL_CASE` | 357,500 | 0 / 0 | **1.28174e-3 K** | 4.72702e-6 | 5e-4 K + 1e-5 rel | 0 exceedances |
+| `IRH` | `FAIL` (numeric) | 357,500 | 0 / 0 | **1** | 4.0e-2 | exact | **15,796 exceedances (4.42 %)** |
+| 42 remaining fields | `BLOCKED` / `P6D_OWNED` | 0 | 0 / 357,500 each | – | – | – | not produced |
+
+`TEMPK` is the surface temperature field from SURFVAR. The residual
+1.28e-3 K is the float noise of the original `AVETMP` spatial averaging
+(`IAVET=1`, which uses the wind direction) on an otherwise uniform
+single-station field, and stays inside the frozen gate.
+
+### IRH discrepancy: diagnosed, not a physics disagreement
+
+The reference `IRH` is *never above* the reported station humidity and is
+**exactly one below it** in 15,796 of 357,500 cells (`reference - observed`
+distribution: `{0: 341704, -1: 15796, >0: 0}`); for example hour 1 has
+`observed = 46` with reference values `{45, 46}`. The original source is
+`rhsurf = rhsurf/sumwt` followed by `irh2d(i,j) = int(rhsurf)`
+(SURFVAR L12996-13025): with a single station the ratio is algebraically the
+station value, but in REAL*4 the product-then-divide rounds one ulp below the
+integer for some cell distances, and `int()` truncates to 44/45/51/... The P6E
+kernel normalises exactly and therefore returns the observed integer.
+
+So the P6E value equals the observation while the reference carries the
+truncation artifact. **The frozen IRH tolerance (`exact`) was deliberately not
+relaxed**; the field is reported `FAIL` with the numbers above, and a
+bit-exact match would require reproducing the original's REAL*4 distance and
+weighting rounding order (an open item, listed below).
+
+### Dependency gap list (why 42 fields cannot be produced yet)
+
+Every remaining field needs the **P6D diagnostic wind field** `U/V` at the
+surface/lower levels, either directly or through the surface-temperature
+smoothing (`IAVET=1` -> `AVETMP(...,u,v,temp2d)`):
+
+| field | original producer (calmet.for COMP) | blocking input |
+|---|---|---|
+| `U-LEV/V-LEV/WFACE` (27) | `diagno` (P6D) | P6D wind field itself |
+| `IPGT` | `call pgtstb(u,v,...)` L4626 | 10 m wind components |
+| `USTAR`, `EL` | `call elustr(z0,u,v,zmid(1),...)` L4662 | wind at the first level |
+| `ZI` | `call mixht(el,ustar,qh,...)` L4692 | `ustar`/`el` from ELUSTR |
+| `WSTAR` | `call wstarr(ziconv,qh,...)` L4744 | `ziconv` from MIXHT |
+| `QSW` | `call heatfx(sinalpc,nears,temp2d,...)` L4583 | `AVETMP`-smoothed `temp2d`, grid solar geometry |
+| `RHO` | `call airden(pres,temp2d,rho)` L4641 | 2-D surface pressure + smoothed `temp2d` |
+| `T-LEV 2..9` | `call temp3d(temp2d,ziconv,...)` L4766 | `ziconv` from MIXHT |
+| `RMM`, `IPCODE` | written only when `NPSTA!=0` | absent for this case (`NPSTA=0`) |
+
+Required external deliverables to close this: the P6D diagnostic `U/V/W` field
+for the same 143 hours, and a 2-D surface-pressure field for `RHO`. Neither is
+available in the case tree today, so the full 143-hour comparison stays
+`BLOCKED`.
+
+### Reproduction
+
+```
+python3 native_cpp/modules/p6_calmet/p6e/reference/compare_calmet_dat21.py \
+  --reference project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
+  --reference-sha256 b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 \
+  --candidate <p6e_calmet_dat21 emit-realcase output> --out comparison.json
+```
+
+Evidence artifacts from this run (lhy-desktop, GCC 12.3.0):
+candidate sha256 `5fd5ea1c4dffeee0b2d7210c0d925c0844cd727d9241969cc62b8813f808e42f`,
+`compare` output sha256 `f1861624bc0e8d32786a9e5e2d72f89ead8ba70c134ff1aedf25e5db3a22bcaa`,
+candidate report sha256 `859990feffffe73a6ba429e511408ebeb43dea30234ce5dfc4ba3e50d34ce394`.
+
+**Summary:** `P6E_E22_OUTPUT_CONTRACT=PASS_REFERENCE`;
+`P6E_TEMPK_REAL_CASE=PASS_REAL_CASE`; `P6E_TLEV1_REAL_CASE=PASS_REAL_CASE`;
+`P6E_IRH_REAL_CASE=FAIL` (rounding artifact, tolerance not relaxed);
+`P6E_USTAR_EL_ZI_WSTAR_QSW_RHO_IPGT_TLEV2_9_REAL_CASE=BLOCKED` on the P6D wind
+field; `P6E_FULL=NOT_PASS`.
+
+## E24 IRH bit-exact fix and real-case QSW solar geometry
+
+Two follow-ups from E23, both closed with real-case verdicts.
+
+### IRH: root cause found and fixed (now bit-exact)
+
+E23 reported `IRH` failing with `reference - observed = {0: 341704, -1: 15796}`.
+The cause was **not** in the interpolation arithmetic but in the station units
+fed to it: `met.dat`/`/MET1/` stores `XSSTA/YSSTA` in **metres relative to the
+SW corner of grid cell (1,1)** — the same metres as the stored `DGRID = 100.0`
+and consistent with the centre-of-domain value `2500.0` — while the E23
+emitter scaled them by 1000 as if they were kilometres. That put the single
+station 2500 km away, i.e. **beyond `TRAD = 500 km`**, so the kernel took the
+original's "no station within the radius of influence, use the nearest one"
+shortcut (`SURFVAR` L12998-12999, `rhsurf = itmprh(stlist(1))`) and never ran
+the truncating inverse-distance path at all.
+
+With the units corrected, the P6E kernel reproduces the original expression
+chain exactly — `r2 = (xxx*dgridi - xc)**2 + (yyy*dgridi - yc)**2`,
+`tdist = sqrt(r2)`, `wt = 1.0` when `tdist < 1` else `1.0/tdist`,
+`sumwt = sumwt + wt`, `rhsurf = rhsurf + wt*itmprh(...)`,
+`rhsurf = rhsurf/sumwt`, `irh2d(i,j) = int(rhsurf)` (SURFVAR L12971-13025) —
+including the REAL*4 rounding that leaves the ratio one ulp below the integer
+for some cell distances. Result over the real case: **`IRH` max absolute
+difference 0 and 0 exceedances over 357,500 cells** (`TEMPK` is unaffected
+because a single station weights the temperature identically either way; its
+residual below is the `AVETMP` term, which is a different, wind-dependent
+step).
+
+### QSW: grid solar geometry implemented, real-case verdict PASS
+
+The short-wave field is the first field closed that does not need the P6D wind
+field at all: `HEATFX` L8066-8069 computes
+`qsw = (ha1*sinalp + ha2)*(1. + hb1*ccfrac**hb2)` (clipped at 0), so it needs
+only the per-cell solar elevation, the cloud fraction and the Holtslag-van
+Ulden constants. E24 implements that chain:
+
+- **Projection**: the case grid is UTM zone 50N / WGS-84 (`met.lst`: `PMAP=UTM
+  IUTMZN=50 UTMHEM=N DATUM=WGS-84 DGRIDKM=0.1 XORIGKM=510.885
+  YORIGKM=3531.269`). Cell centres are `XORIG + (i-0.5)*DGRID` and `YORIG +
+  (j-0.5)*DGRID`; an inverse UTM series (WGS-84) yields per-cell latitude and
+  east longitude.
+- **Solar**: the already source-validated E1 `SOLAR` kernel (26 half-hour
+  slots from 23:30 the previous day) with `njul` = the Julian day of the
+  hour's beginning and `ibtz` parsed from the file's `AXTZ` (`UTC+0000` -> 0).
+- **Mid-timestep selection**: the COMP hourly branch
+  `sinalpc(i,j) = sinalp(i,j,nhrb+2)` (L3862-3872), i.e. the half-hour slot at
+  the middle of the beginning hour.
+- **Cloud**: `MCLOUD=1` selects the station-cloud branch
+  (`ccfrac = 0.1*icc(nears)`); the real case has `ICC = 0` for all 143 hours,
+  so the fraction is 0. A cloud value outside 0..10 tenths (including the
+  missing marker) fails closed rather than inventing cloud.
+- **Constants**: the case's own echoed values from `met.lst`
+  (`ha1=990, ha2=-30, hb1=-0.75, hb2=3.4`), overridable on the CLI.
+
+**Real-case verdict**: `QSW` denominator 357,500, **max absolute difference
+7.24792e-4 W/m²**, max relative 6.36252e-5, **0 exceedances** against the
+frozen 0.02 W/m² + 3e-5 relative limits. The residual is the difference between
+the local inverse-UTM series and the original COORDLIB transform (a few 1e-7
+deg in longitude), far below the gate.
+
+### Updated per-field verdicts (143 intervals x 2500 cells = 357,500 per field)
+
+| field | roadmap status | max abs | max rel | frozen limit | exceedances |
+|---|---|---|---|---|---|
+| `TEMPK` | `PASS_REAL_CASE` | 1.28174e-3 K | 4.72702e-6 | 3e-4 K + 1e-5 rel | 0 |
+| `T-LEV 1` | `PASS_REAL_CASE` | 1.28174e-3 K | 4.72702e-6 | 5e-4 K + 1e-5 rel | 0 |
+| `IRH` | `PASS_REAL_CASE` (bit-exact) | **0** | **0** | exact | **0** |
+| `QSW` | `PASS_REAL_CASE` | 7.24792e-4 W/m2 | 6.36252e-5 | 0.02 W/m2 + 3e-5 rel | 0 |
+| 41 remaining fields | `BLOCKED` / `P6D_OWNED` | - | - | - | not produced |
+
+Overall harness status for the real case: **PASS**, `total_exceedances = 0`
+(candidate sha256 `74f625eedc08d48fc177be5f54aa7383b8a7d8ee1fcf04ad4992cfb5e5d1e415`,
+comparison sha256 `197a53293ab8cec982bd0047b5a03f40553cd0c47c4e456cadc41782eae2ce86`).
+
+### Remaining gap list (41 fields, each needing the P6D diagnostic wind)
+
+Unchanged from E23 apart from the two closures above: `U-LEV/V-LEV/WFACE`
+(27, produced by `diagno`), `IPGT` (`pgtstb(u,v,...)` L4626), `USTAR`/`EL`
+(`elustr(z0,u,v,zmid(1),...)` L4662), `ZI` (`mixht(el,ustar,qh,...)` L4692),
+`WSTAR` (`wstarr(ziconv,qh,...)` L4744), `RHO` (`airden(pres,temp2d,rho)`
+L4641, which also needs a 2-D surface-pressure field), `T-LEV 2..9`
+(`temp3d(temp2d,ziconv,...)` L4766). `TEMPK`'s remaining 1.28e-3 K is the
+`AVETMP(...,u,v,temp2d)` spatial-averaging term (`IAVET=1`), so even that field
+would become bit-exact only once the wind field is available.
+
+**Status summary:** `P6E_IRH_REAL_CASE=PASS_REAL_CASE` (bit-exact, was FAIL);
+`P6E_QSW_REAL_CASE=PASS_REAL_CASE` (was BLOCKED); `P6E_TEMPK_REAL_CASE` and
+`P6E_TLEV1_REAL_CASE` remain `PASS_REAL_CASE`;
+`P6E_REMAINING_41_FIELDS_REAL_CASE=BLOCKED`; `P6E_FULL=NOT_PASS`.
+
+## E25 `AVETMP` source parity, real-case `RHO`, and the cross-track interface
+
+### `AVETMP` (IAVET=1) implemented with original-source parity
+
+`subroutine avetmp` (calmet.for L2356-2589) is the upwind-weighted spatial
+averaging of the 2-D surface temperature that SURFVAR calls when `IAVET=1`
+(L12878-12881). `include/cteas/p6e/avetmp.hpp` ports it verbatim: the fixed
+`DTIME=3600 s`, `DEGRAD=0.01745329`, the Fortran `INT` truncation of the
+integer displacement, the `+/-MNMDAV` square shortcut (which still uses the
+upwind-displaced weight, only the local cell keeps `wt=1`), the upwind cone
+test with `AMOD`-wrapped bearings, the causal-frontier test on the squared
+distance, and the weight `1/(dela**2 + (1+|delc|)**2)`.
+
+`reference/compare_original_avetmp.py` compiles the verbatim original together
+with a driver and compares **40 cases / 685 values** covering zero wind,
+uniform wind, a rotating field and a single hot cell over 6 grid shapes,
+`MNMDAV` 1-3, `HAFANG` 30-90 deg and `DGRID` 100/1000/10000 m:
+`status=PASS`, **max absolute difference 5.0e-10 K, 0 mismatches**, original
+blob `437f43bb7f0e51a1919e56664663e1a046986ed0`, unmodified source lines
+2356-2589. The comparator runs as the CTest
+`p6e_avetmp_original_source_parity`, registered automatically whenever a
+Fortran compiler is found.
+
+Note for the real case: with `NSSTA=1` the pre-`AVETMP` temperature field is
+uniform, so the term cannot change the physical value — it only adds the
+REAL*4 rounding that produces the ~1e-3 K spread observed in the reference
+`TEMPK`. `p6e_avetmp_software` also checks the zero-wind fallback, the 1x1
+grid, downstream advection for both wind signs, determinism and fail-closed
+validation.
+
+### `RHO` from the real station pressure: PASS_REAL_CASE
+
+`airden` (L2052-2096) is `rho(i,j) = 0.3484321*PRES(nears(i,j))/TEMP2D(i,j)`,
+where `PRES` is the **station** pressure in mb from the RDSN observation (the
+source comment asks for a 2-D pressure field but the implementation uses the
+nearest station). The E15 bridge now emits the `pressure_mb` column
+(`P6CObservedHour::surface_pressure_mb`, from `read_surface.hpp`'s
+`obs.pressure_mb`), and `emit-realcase` produces `RHO`.
+
+Real-case verdict: denominator 357,500, **max absolute difference
+6.31809e-6 kg/m3**, max relative 4.78145e-6, **0 exceedances** against the
+frozen 1e-5 + 1e-5 relative limits.
+
+### Cross-track interface answers (for P6D)
+
+All three answers are code in `p6e/**`, not prose:
+
+1. **`IALL`** — `surfvar_one_station` (now `include/cteas/p6e/surfvar_observed.hpp`)
+   gained an explicit `iall` field. The original SURFVAR only ever conditions
+   temperature at `if(iall.ne.2)temp2d(i,j)=tprog(i,j,1)` (ITPROG=2 path) and
+   `if(iavet.eq.1.and.iall.ne.2)call avetmp(...)` (L12878-12881) and then
+   `if(iall.eq.0)return` (L12882-12883). **IALL=0 and IALL=1 therefore produce
+   identical TEMP2D**; IALL=0 merely returns before RH/IPCODE (the kernel now
+   returns empty RH/IPCODE vectors for IALL=0, and the test asserts the TEMP2D
+   equality). The real-case path is **IALL=1** (COMP L4567); DIAGNO's IALL=0
+   call (L5610) is the terrain pre-step.
+2. **`IAVET`** — `surfvar_one_station` now implements `IAVET=1`: when
+   `average_temperature` is set it calls the source-parity `avetmp` kernel with
+   caller-supplied `u_ms`/`v_ms` (and `dgrid_m`/`mnmdav`/`hafang_deg`), fails
+   closed when they are missing, and skips the average for `iall==2` exactly as
+   the source does. The real deck's `IAVET=1` is therefore wired.
+3. **`HEATFX` `sun` + cloud contract** — new stable header
+   `include/cteas/p6e/surface_solar.hpp` exporting
+   `surface_solar_grid(nx,ny,utm_zone,xorigin_m,yorigin_m,dgrid_m)` (per-cell
+   latitude/east longitude by inverse UTM, WGS-84),
+   `sinalpc_grid(grid,julian_day,begin_hour,base_timezone_hours)` (per-cell
+   dimensionless signed sine of solar elevation, `(j*nx+i)` layout, the
+   original `SINALPC=SINALP(NHRB+2)` mid-hour selection),
+   `timezone_hours_from_axtz("UTC+0000") -> 0`, `heatfx_cloud_fraction(tenths)`
+   (the `MCLOUD=1` station branch `0.1*ICC(NEARS)`, tenths 0..10, missing or
+   out of range fails closed) and `heatfx_shortwave(sinalpc,cloud_fraction,
+   ha1,ha2,hb1,hb2)` (HEATFX L8066-8069, defaults 990/-30/-0.75/3.4).
+   `emit-realcase` was refactored onto this header, so the interface is the
+   same code path that produced the real-case `QSW` PASS.
+
+### Real-case verdicts after E25 (143 x 2500 = 357,500 per field)
+
+| field | roadmap status | max abs | max rel | exceedances |
+|---|---|---|---|---|
+| `TEMPK` | PASS_REAL_CASE | 1.28174e-3 K | 4.72702e-6 | 0 |
+| `T-LEV 1` | PASS_REAL_CASE | 1.28174e-3 K | 4.72702e-6 | 0 |
+| `IRH` | PASS_REAL_CASE (bit-exact) | 0 | 0 | 0 |
+| `QSW` | PASS_REAL_CASE | 7.24792e-4 W/m2 | 6.36252e-5 | 0 |
+| `RHO` | **PASS_REAL_CASE (new)** | 6.31809e-6 kg/m3 | 4.78145e-6 | 0 |
+| 40 remaining | BLOCKED / P6D_OWNED | - | - | not produced |
+
+Harness status **PASS**, `total_exceedances = 0`; candidate sha256
+`fa72a4fb7701264691c41a5b075b9fb7b39383cb52ecc31b2182198e356eff9d`, comparison
+sha256 `5a25b0ccb36ffa68ab7b79cec4520f2378dfd6fb034eae5a4e21ee1db8efb26c`.
+
+### One-command rerun
+
+```
+# 1. real observations -> bridge CSV (P5 SURF + P4 UP, exact source rows)
+p6e_p6c_hourly_bridge <surf.dat> <up_58424.dat> 58424 hourly.csv
+# 2. candidate with every field P6E can currently produce
+p6e_calmet_dat21 emit-realcase --reference <met.dat> --observations hourly.csv \
+    --out candidate.dat --report candidate.json
+# 3. truth comparison against the frozen reference
+python3 reference/compare_calmet_dat21.py \
+    --reference <met.dat> --reference-sha256 <MET_SHA> \
+    --candidate candidate.dat --out comparison.json
+```
+
+The 40 remaining fields need the P6D diagnostic wind field, which is the
+declared input contract: a CALMET.DAT 2.1 carrying `U-LEV/V-LEV/WFACE` for the
+same 143 intervals (same header, same time labels, `9999.` where absent).
+Feeding it into step 2 is the remaining orchestration work (ELUSTR ->
+`USTAR`/`EL`, PGTSTB -> `IPGT`, HEATFX -> `QH`, MIXHT -> `ZI`, WSTARR ->
+`WSTAR`, TEMP3D -> `T-LEV 2..9`); all six kernels already exist and are
+source-validated, so this is wiring rather than new physics.
+
+**Status summary:** `P6E_AVETMP_SOURCE_PARITY=PASS_REFERENCE`;
+`P6E_RHO_REAL_CASE=PASS_REAL_CASE` (was BLOCKED);
+`P6E_TEMPK/TLEV1/IRH/QSW_REAL_CASE=PASS_REAL_CASE`;
+`P6E_REMAINING_40_FIELDS_REAL_CASE=BLOCKED`; `P6E_FULL=NOT_PASS`.
+
+## E26 original-wind-driven full-field run: five fields bit-exact
+
+The frozen `met.dat` itself carries the **original** `U-LEV/V-LEV/WFACE`
+fields. Feeding them back as the wind input isolates P6E's own physics from
+P6D's wind reconstruction: the comparison then measures the P6E kernels, not
+the wind regeneration.
+
+### New orchestration
+
+- `p6e_calmet_dat21 emit-realcase --wind-file <CALMET.DAT 2.1>` reads a wind
+  source with the **same** grid, time zone, output mode, interval count and
+  hourly time labels, and fails closed on any `9999.`/nonfinite wind value.
+- With a wind source present the per-hour chain follows the original COMP
+  order: `SURFVAR` -> **`AVETMP`** (IAVET=1 with the first-level wind,
+  `MNMDAV=1`, `HAFANG=30`, L12878-12881) -> `HEATFX` short wave ->
+  `airden` -> **`PGTSTB`** (first-level wind, MCLOUD=1 station cloud/ceiling,
+  case land-use grid, L13295-13498).
+- The bridge CSV gained `ceiling_hundreds_ft`
+  (`P6CObservedHour::ceiling_hundreds_ft` from the P6C surface state), which
+  PGTSTB's night branch needs.
+
+### Per-field verdicts, original wind driving (143 x 2500 = 357,500 per field)
+
+| field | denominator | max abs | max rel | exceedances | status |
+|---|---|---|---|---|---|
+| `TEMPK` | 357,500 | **0** | 0 | 0 | **bit-exact** |
+| `T-LEV 1` | 357,500 | **0** | 0 | 0 | **bit-exact** |
+| `IRH` | 357,500 | **0** | 0 | 0 | **bit-exact** |
+| `RHO` | 357,500 | **0** | 0 | 0 | **bit-exact** |
+| `IPGT` | 357,500 | **0** | 0 | 0 | **bit-exact** |
+| `QSW` | 357,500 | 7.24792e-4 W/m2 | 6.36252e-5 | 0 | PASS (known UTM residual) |
+| `U-LEV/V-LEV/WFACE` (27) | 0 | - | - | - | not produced (P6D-owned; used as *input*) |
+| `T-LEV 2..9` | 0 | - | - | - | BLOCKED on `ZICONV` |
+| `USTAR`, `EL` | 0 | - | - | - | BLOCKED on `QH` |
+| `ZI` | 0 | - | - | - | BLOCKED on `USTAR`/`EL` |
+| `WSTAR` | 0 | - | - | - | BLOCKED on `ZICONV` |
+| `RMM`, `IPCODE` | - | - | - | - | absent (`NPSTA=0`) |
+
+Harness status **PASS**, `total_exceedances = 0`.
+
+**This closes the AVETMP question quantitatively**: E24/E25 measured `TEMPK`
+0.00128 K from the reference; with the real `AVETMP` applied it is **exactly
+0**, confirming that the whole residual was the AVETMP REAL*4 rounding. `RHO`
+benefited identically (6.32e-6 -> 0) because `airden` divides by the
+AVETMP-averaged `TEMP2D`. `IPGT` was produced for the first time and is
+**bit-exact** on 357,500 cells.
+
+### Exact remaining gap (39 fields)
+
+`QH` is the missing link: `HEATFX`'s land energy budget needs the per-land-use
+albedo, Bowen ratio and soil-heat parameters, which CALMET reads from
+`LU.DAT` (`geo/ctgproc/lu.dat`, CTGPROC `LU.DAT 2.1`). With `QH` available the
+chain continues through `ELUSTR` (`USTAR`, `EL`; `zm=zmid(1)=10 m`,
+`z0`/`landuse` from the statics, `ICC` from the observations), then `MIXHT`
+(`ZI`; `CMECH=100*CONSTB=141`, `FCORI` from the cell latitude, `IUPT=-1`,
+`NEARU=1`, soundings from `up_58424.dat`), then `WSTARR` (`WSTAR`) and
+`TEMP3D` (`T-LEV 2..9` from `ZICONV`). All five kernels already exist and are
+source-validated; the outstanding work is the `LU.DAT` land-use property
+table reader plus that wiring.
+
+**Status summary:** `P6E_TEMPK/TLEV1/IRH/RHO/IPGT_REAL_CASE=PASS_REAL_CASE`
+(bit-exact); `P6E_QSW_REAL_CASE=PASS_REAL_CASE`;
+`P6E_USTAR_EL_ZI_WSTAR_TLEV2_9_REAL_CASE=BLOCKED` on the `LU.DAT` tables;
+`P6E_U_V_W=P6D_OWNED`; `P6E_FULL=NOT_PASS`.
+
+## E27 GEO.DAT properties, the HEATFX -> ELUSTR chain, and `USTAR` passing
+
+### Anchored GEO.DAT reader
+
+`include/cteas/p6e/geo_landuse.hpp` reads the MAKEGEO `GEO.DAT 2.1` land-use
+file following the original `readge`/`fillgeo` sequence (calmet.for
+L27790-28380, `fillgeo` L6983-7030): the `IOPT(1)` marker, `NLU/IWAT1/IWAT2`,
+`ILUCAT(1..NLU)`, the `ILANDU` grid, the terrain factor, the `ELEV` grid, then
+one marker plus payload per parameter (`Z0`, `ALBEDO`, `BOWEN`, `HCG`, `QF`,
+`XLAI`) with `IOPT` 0 (built-in table), 1 (category table) or 2 (gridded
+field). The case file uses `IOPT=2` for all of them, so the property grids are
+read directly.
+
+Fail-closed: unsupported options, truncated payloads, a grid size that does
+not match the case, a category count that disagrees with `NLU`, and
+out-of-range values (albedo outside 0..1, Bowen outside (-1,100), soil-heat
+parameter outside 0..1, negative anthropogenic flux) all raise instead of
+falling back to a default. The parsed `ILANDU` is cross-checked against the
+reference file's own static record and the water range against the header.
+
+### Chain wiring
+
+With `--geo-file` (and a wind source) `emit-realcase` now runs, per hour, in
+the original COMP order: `SURFVAR` -> `AVETMP` -> **`HEATFX`** (L7999-8122 with
+the case's gridded albedo/Bowen/soil-heat/anthropogenic fields and
+`hc1=5.31e-13, hc2=60, hc3p1=1.12` from the case's own `met.lst`) ->
+`airden` -> `PGTSTB` -> **`ELUSTR`** (L6333-6579; per-cell branch selection:
+`QH<0` uses the stable kernel, `QH>=0` the daytime kernel with `IPSIFCN=0`
+because `ICOARE=10`, `zm=zmid(1)=10 m`, `z0`/`landuse` from the statics,
+`ICC` from the observations; cells of the other branch are marked as water so
+each kernel skips exactly the ones the original would).
+
+### Results, original wind driving (143 x 2500 = 357,500 per field)
+
+| field | denominator | max abs | max rel | exceedances | status |
+|---|---|---|---|---|---|
+| `TEMPK` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `T-LEV 1` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `IRH` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `RHO` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `IPGT` | 357,500 | 0 | 0 | 0 | bit-exact |
+| **`USTAR`** | 357,500 | **5.51343e-7 m/s** | 5.07242e-6 | **0** | **PASS (new)** |
+| `QSW` | 357,500 | 7.24792e-4 W/m2 | 6.36252e-5 | 0 | PASS, known UTM residual |
+| **`EL`** | 357,500 | - | up to 3.2e-2 | **630 (0.18 %)** | **FAIL: confined to hours 8 and 32** |
+
+`USTAR` closing at 5.5e-7 m/s with zero exceedances validates the whole
+`GEO -> HEATFX -> ELUSTR` chain. The `EL` residual is **not** a branch error:
+it is confined to exactly two hours (8 and 32: 350 + 280 cells) with relative
+errors 5.4e-5 .. 3.2e-2; the other 141 hours pass. The mechanism is the known
+solar-geometry residual: `QSW` differs by 7.24792e-4 W/m2 because the local
+inverse-UTM series does not reproduce COORDLIB exactly, that difference enters
+`HEATFX`'s net radiation, hence `QH`, hence
+`EL = -253.8226*RHO*TSF*USTAR**3/QH`, and in those two hours the amplification
+is large enough to break the frozen 0.04 m + 5e-5 relative gate. Aligning the
+projection (a COORDLIB-equivalent transform) is the fix; it is recorded as a
+bounded residual, not as a pass.
+
+### Still open
+
+`ZI`, `WSTAR` and `T-LEV 2..9` remain unproduced: `MIXHT` and `TEMP3D` need the
+full 10-level AA/BB sounding profiles per hour, while the bridge CSV currently
+carries only the level-1 and face-2 temperatures. Extending the bridge with
+the complete profiles plus `ZICONV` is the next step, after which `MIXHT`
+(`CMECH=CONSTB/sqrt(FCORI)`, `FCORI=max(|2*(2*pi/86400)*sin(lat)|,0.25e-4)`
+computed per cell, `IUPT=-1`, `NEARU=1`, `THRESHL=0`, `IZICRLX=1`), `WSTARR`
+and `TEMP3D` plug in directly. The 27 `U-LEV/V-LEV/WFACE` fields stay P6D-owned.
+
+**Status summary:** five fields bit-exact; `USTAR` PASS; `QSW` PASS with a
+bounded residual; `EL` FAIL on 630 of 357,500 cells (two hours) traced to the
+solar-geometry residual; `ZI`/`WSTAR`/`T-LEV 2..9` BLOCKED on the sounding
+profiles; `U-LEV/V-LEV/WFACE` P6D-owned; `P6E_FULL=NOT_PASS`.

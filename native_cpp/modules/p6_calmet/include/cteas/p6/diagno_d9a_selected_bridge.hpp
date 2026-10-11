@@ -16,6 +16,8 @@
 #include "cteas/p6/diagno_obrien_minim.hpp"
 #include "cteas/p6/froude_adjust.hpp"
 #include "cteas/p6/slope_flow.hpp"
+#include "cteas/p6/topof2.hpp"
+#include "cteas/p6/terrain_envelope.hpp"
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -60,6 +62,22 @@ struct DiagnoD9SelectedInput {
     // the caller's terrain/heat/slope-corrected UG/VG. Size 50*50*9.
     std::vector<float> corrected_first_guess_u_mps,corrected_first_guess_v_mps;
     bool lake_breeze=false;
+    // Original IKINE=1 pre-blend kinematic route: W zeroed [L5615-5616],
+    // TOPOF2 [L5621-5622], then MINIM(UG,VG,W,UB,VB,DIV,NITER,DIVLIM)
+    // [L5628-5629] using the L5598-5600 boundary snapshot. ALPHA is the
+    // original empirical topographic coefficient. Non-case path: the frozen
+    // real deck has IKINE=0.
+    bool kinematic_route=false;
+    float alpha=0.f;
+    // Original namelist NITER/DIVLIM of the L5628 pre-blend MINIM call.
+    int kinematic_iterations=0;
+    float kinematic_divergence_limit_per_s=0.f;
+    // Original pre-DIAGNO TERSET envelope call (DIAGI L5228, gated by
+    // I3DCTW=IWFCOD, which the real deck sets to 1): builds HMAX, HMIN,
+    // DISTHMAX and DISTHMIN from the GEO terrain inside the bridge. When set,
+    // the caller must NOT also supply those four planes.
+    bool terset_envelope=false;
+    float terrad_km=0.f;
     // Original IFRADJ=1 stage L5643-L5644, applied to the step-one UG/VG
     // before the L5748 WINDBC snapshot and the L6055/L6059 INTER2 calls.
     bool froude_adjustment=false;
@@ -80,6 +98,9 @@ struct DiagnoD9SelectedOutput {
     Wind1FirstGuessSelectedFields raw_first_guess;
     std::vector<float> prepared_ug,prepared_vg;
     std::vector<float> blended_u,blended_v;
+    // Original TOPOF2 terrain-following vertical velocity face field; empty
+    // unless the IKINE=1 pre-blend route is enabled. MINIM holds it fixed.
+    std::vector<float> kinematic_w_face_mps;
     FinalWindSegment final_fields;
 };
 
@@ -113,7 +134,7 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
              !request.corrected_first_guess_v_mps.empty()) {
         throw std::invalid_argument("D9 synthetic identity cannot silently apply corrections");
     }
-    if(request.froude_adjustment||request.slope_flow) {
+    if(request.froude_adjustment||request.slope_flow||request.kinematic_route) {
         if(request.upstream_mode!=DiagnoD9UpstreamMode::SyntheticIdentityForSourceAudit)
             throw std::invalid_argument("D9 terrain stages cannot re-adjust an external corrected field");
     }
@@ -123,15 +144,79 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
     zface[0]=request.cellzb_origin_m;
     for(std::size_t k=0;k<9;++k)zface[k+1]=zface[k]+
         request.layer_thickness_m[k];
+    const auto nx=std::size_t(50),ny=std::size_t(50),plane=nx*ny;
+    // Original TERSET envelope resolution: exactly one provider may supply
+    // HMAX/HMIN/DISTHMAX/DISTHMIN, either the caller or the in-chain kernel.
+    std::vector<float> envelope_max,envelope_min,envelope_dist_max,
+        envelope_dist_min;
+    if(request.terset_envelope) {
+        if(!request.terrain.maximum_terrain_m.empty()||
+           !request.slope.minimum_terrain_m.empty()||
+           !request.slope.distance_to_max_terrain_m.empty()||
+           !request.slope.distance_to_min_terrain_m.empty())
+            throw std::invalid_argument(
+                "D9 TERSET envelope cannot replace supplied envelope planes");
+        if(request.terrain.terrain_m.size()!=2500)
+            throw std::invalid_argument("D9 TERSET envelope missing terrain");
+        const auto envelope=terset(request.terrain.terrain_m,50,50,100.f,100.f,
+                                   request.terrad_km);
+        envelope_max=envelope.maximum_m;
+        envelope_min=envelope.minimum_m;
+        envelope_dist_max=envelope.distance_to_maximum_m;
+        envelope_dist_min=envelope.distance_to_minimum_m;
+    }
+    std::vector<float> kinematic_w;
+    if(request.kinematic_route) {
+        const auto& t=request.terrain;
+        if(!std::isfinite(request.alpha))
+            throw std::invalid_argument("D9 invalid original ALPHA coefficient");
+        if(t.terrain_m.size()!=2500||t.lapse_rate_k_per_m.size()!=2500||
+           t.surface_temperature_k.size()!=2500)
+            throw std::invalid_argument("D9 missing original TOPOF2 50x50 fields");
+        Topof2Input topof2;
+        topof2.nx=50;topof2.ny=50;topof2.nz=9;
+        topof2.dx_m=100.f;topof2.dy_m=100.f;
+        topof2.isurft=t.isurft;topof2.tinf_k=t.tinf_k;
+        topof2.alpha=request.alpha;
+        topof2.dz_m=request.layer_thickness_m;
+        topof2.cellzb_m=zface;
+        topof2.terrain_m=t.terrain_m;
+        topof2.lapse_rate_k_per_m=t.lapse_rate_k_per_m;
+        topof2.surface_temperature_k=t.surface_temperature_k;
+        kinematic_w=original_topof2_w(topof2,u,v);
+        // Original L5598-5600 WINDBC snapshot, taken before this route.
+        std::vector<float> pre_ub(9*2*ny),pre_vb(9*2*nx);
+        for(std::size_t k=0;k<9;++k)for(std::size_t j=0;j<ny;++j){
+            pre_ub[k*2*ny+j]=u[k*plane+j*nx];
+            pre_ub[k*2*ny+ny+j]=u[k*plane+j*nx+nx-1];
+        }
+        for(std::size_t k=0;k<9;++k)for(std::size_t i=0;i<nx;++i){
+            pre_vb[k*2*nx+i]=v[k*plane+i];
+            pre_vb[k*2*nx+nx+i]=v[k*plane+(ny-1)*nx+i];
+        }
+        DivcelInput minim_in;
+        minim_in.nx=50;minim_in.ny=50;minim_in.nz=9;
+        minim_in.dx_m=100.f;minim_in.dy_m=100.f;
+        minim_in.dz_m=request.layer_thickness_m;
+        minim_in.u_mps=u;minim_in.v_mps=v;minim_in.w_mps=kinematic_w;
+        minim_in.ub_west_east_mps=std::move(pre_ub);
+        minim_in.vb_south_north_mps=std::move(pre_vb);
+        auto relaxed=original_minim_scoped(
+            std::move(minim_in),request.kinematic_iterations,
+            request.kinematic_divergence_limit_per_s);
+        u=std::move(relaxed.wind.u_mps);v=std::move(relaxed.wind.v_mps);
+    }
     if(request.froude_adjustment) {
         const auto& f=request.terrain;
-        if(f.terrain_m.size()!=2500||f.maximum_terrain_m.size()!=2500||
+        const std::vector<float>& hmax=request.terset_envelope
+            ? envelope_max:f.maximum_terrain_m;
+        if(f.terrain_m.size()!=2500||hmax.size()!=2500||
            f.lapse_rate_k_per_m.size()!=2500||
            f.surface_temperature_k.size()!=2500)
             throw std::invalid_argument("D9 missing original FRADJ 50x50 fields");
         WindUV step_one{std::move(u),std::move(v)};
         auto adjusted=froude_adjust(
-            50,50,9,100.f,100.f,f.terrain_m,f.maximum_terrain_m,
+            50,50,9,100.f,100.f,f.terrain_m,hmax,
             f.lapse_rate_k_per_m,f.surface_temperature_k,
             f.isurft,f.tinf_k,f.critfn,zface,std::move(step_one));
         u=std::move(adjusted.u);v=std::move(adjusted.v);
@@ -139,11 +224,17 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
     if(request.slope_flow) {
         const auto& t=request.terrain;
         const auto& s=request.slope;
-        if(t.terrain_m.size()!=2500||t.maximum_terrain_m.size()!=2500||
-           t.surface_temperature_k.size()!=2500||
-           s.minimum_terrain_m.size()!=2500||
-           s.distance_to_max_terrain_m.size()!=2500||
-           s.distance_to_min_terrain_m.size()!=2500||
+        const std::vector<float>& hmax=request.terset_envelope
+            ? envelope_max:t.maximum_terrain_m;
+        const std::vector<float>& hmin=request.terset_envelope
+            ? envelope_min:s.minimum_terrain_m;
+        const std::vector<float>& dist_max=request.terset_envelope
+            ? envelope_dist_max:s.distance_to_max_terrain_m;
+        const std::vector<float>& dist_min=request.terset_envelope
+            ? envelope_dist_min:s.distance_to_min_terrain_m;
+        if(t.terrain_m.size()!=2500||hmax.size()!=2500||
+           t.surface_temperature_k.size()!=2500||hmin.size()!=2500||
+           dist_max.size()!=2500||dist_min.size()!=2500||
            s.sensible_heat_w_m2.size()!=2500||s.landuse.size()!=2500)
             throw std::invalid_argument("D9 missing original SLOPE 50x50 fields");
         SlopeInput slope;
@@ -153,10 +244,10 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
         slope.isurft=t.isurft;
         slope.domain_temperature_k=t.tinf_k;
         slope.zface_m=zface;
-        slope.terrain_m=t.terrain_m;slope.hmax_m=t.maximum_terrain_m;
-        slope.hmin_m=s.minimum_terrain_m;
-        slope.disthmax_m=s.distance_to_max_terrain_m;
-        slope.disthmin_m=s.distance_to_min_terrain_m;
+        slope.terrain_m=t.terrain_m;slope.hmax_m=hmax;
+        slope.hmin_m=hmin;
+        slope.disthmax_m=dist_max;
+        slope.disthmin_m=dist_min;
         slope.sensible_heat_w_m2=s.sensible_heat_w_m2;
         slope.surface_temperature_k=t.surface_temperature_k;
         slope.landuse=s.landuse;
@@ -170,8 +261,7 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
     }
 
     // Original DIAGNO refreshes step-one WINDBC after terrain and slope
-    // modifications at L5748, BEFORE the L6055/6059 INTER2 calls.
-    const auto nx=std::size_t(50),ny=std::size_t(50),plane=nx*ny;
+    // modifications at L5748, BEFORE the L6055/L6059 INTER2 calls.
     std::vector<float> ub(9*2*ny),vb(9*2*nx);
     for(std::size_t k=0;k<9;++k)for(std::size_t j=0;j<ny;++j){
         ub[k*2*ny+j]=u[k*plane+j*nx];
@@ -233,6 +323,7 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
     output.prepared_vg=std::move(v);
     output.blended_u=ou.component_mps;
     output.blended_v=ov.component_mps;
+    output.kinematic_w_face_mps=std::move(kinematic_w);
     output.final_fields=std::move(final);
     return output;
 }
