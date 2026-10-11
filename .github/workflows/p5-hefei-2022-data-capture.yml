@@ -62,13 +62,13 @@ jobs:
           python -m native_cpp.modules.p5_smerge.data_prep.prepare_inputs \
             --expected-year 2022 --skip-download --execute 2>&1 | tee run-evidence/p5-process.log
           find project/current/met/surface/isd2smerge_ready -maxdepth 1 -name '*.csv' -size +0c | grep -q .
-      - name: Assert Scheme C wind preservation in actual 2022 observations
+      - name: Assert v2 clean-and-replace wind policy on actual 2022 NOAA observations
         shell: bash
         run: |
           set -euo pipefail
           python -m native_cpp.modules.p5_smerge.data_prep.validate_scheme_c_capture \
             --case-root project/current --expected-hours 144 \
-            --report run-evidence/p5-scheme-c-audit.json
+            --report run-evidence/p5-wind-v2-stages.json
       - name: Independently reconcile all 2022 decoded wind-source hours against ISD-Lite
         shell: bash
         run: |
@@ -137,6 +137,9 @@ jobs:
             project/current/met/surface/isd_raw/*2022*
             project/current/met/surface/isd_raw/isd_lite/*.gz
             project/current/met/surface/isd2smerge_and_fill/*isd_lite_source*
+            project/current/met/surface/isd2smerge_and_fill/*_cleaned.csv
+            project/current/met/surface/isd2smerge_and_fill/*_calm_interpolated.csv
+            project/current/met/surface/isd2smerge_and_fill/*.stage.json
             project/current/met/surface/isd2smerge_ready/*.csv
             project/current/met/surface/isd2smerge_and_fill/*wind_audit*
           if-no-files-found: warn
