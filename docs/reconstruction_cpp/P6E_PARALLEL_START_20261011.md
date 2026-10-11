@@ -1913,3 +1913,80 @@ therefore whether the remaining work is the refresh or the lapse bracket.
 default): `ZI` <= 51.06 m / 4.9 % relative (1.26 % of cells, 42 hours),
 `WSTAR` <= 0.0263 m/s / 1.9 % (1.4 %, 48 hours), `T-LEV 5` 18 / `T-LEV 6` 137
 / `T-LEV 7` 558 cells (max |dT| 2.51669 K), `EL` 630 cells; total 10,711.
+
+## E38 the residual was ONE cell: the original processes the surface-station cell twice per hour
+
+### The lapse is not the problem: `MIXDT` is exact
+
+Feeding the reference's own entering height into this chain's interpolator
+reproduces the reference-implied lapse exactly. Using the full-grid dump
+(`dgm_state.bin`, 143 h x 2500 cells) the reference's lapse is inverted per
+cell as `gamma = DPTT_out^2/(TWODTE*QH/(RHO*CP))` and compared with
+`mixdt(sounding, htold_ref)`:
+
+| hour | cell | `htold` (ref) | `gamma` inverted | `gamma` mine given `htold`(ref) | ratio |
+|---|---|---|---|---|---|
+| 5 | (25,25) | 810.339 | 0.004201 | 0.004201 | 1.000 |
+| 5 | (0,0) | 792.053 | 0.005008 | 0.005008 | 1.000 |
+| 6 | (25,25) | 955.123 | 0.001644 | 0.001644 | 1.000 |
+| 7 | (49,49) | 983.920 | 0.002037 | 0.002037 | 1.000 |
+| 32 | (5,45) | 1105.901 | 0.001705 | 0.001705 | 1.000 |
+| 55 | (40,10) | 700.134 | 0.001727 | 0.001727 | 1.000 |
+
+30 cell-hour checks over five hours: **ratio 1.000 in every case**, so
+`MIXDT` (bracket, layer weights, `DZZI`, `DPTMIN`) is right and the residual
+must be the `htold` state it is fed.
+
+### The state dump says the residual is exactly one cell
+
+Classifying every (hour, cell) of the dump by whether the entering `DPTT`
+equals the hour's own output or the previous hour's output:
+
+| hours | cells where enter == own output | cells where enter == previous output | others |
+|---|---|---|---|
+| 2-8, 30, 80 (typical) | **1** | 2,499 | 0 |
+| 9, 26, 27, 52, 74, 104, 129 | 0 | 2,499 | **1** |
+| over all 143 h | 208,288 (stationary non-growth cells) | 146,705 | 2,507 |
+
+**Exactly one cell - the surface station's own grid cell - is processed twice
+per hour.** Source: `ELUSTR2` (L6580+) calls `MIXHTST`/`MIXHT2ST`
+(L6881/6884) for that single cell `(ist,jst)` and `MIXHTST` (L10684) calls
+`MIXHMC` with `dptt(i,j)`, so when the grid `MIXHT` (L4692) later reaches
+that cell the `/tjump/` `DPTT` already holds the current hour's own `DPTTP1`.
+This also explains the E34 station-cell bump and its `AVEMIX` halo, which is
+where the whole residual sat (all ZI/WSTAR/T-LEV exceedances were cells
+1178, 1225-1228, 1275-1277, 1324-1326 - the station cell, its 3x3 and its
+upwind neighbour).
+
+### Fix: confine the pre-MIXHT refresh to that cell
+
+`MixhtObservedMcInput::{dptt_refresh,refresh_i,refresh_j}` implement the
+double processing for the surface-station cell only (`--dptt-refresh`,
+default 1; the field-wide variant stays falsified and is recorded as a
+diagnostic). `mixht_observed_mc_tests` pins both the refreshed and the
+carried behaviour, including that a different cell still carries its memory.
+
+### Measured result (frozen tolerances, original wind + GEO.DAT, 143 h)
+
+| field | before | after | limit | max abs after | cells above limit |
+|---|---|---|---|---|---|
+| **ZI** | 4,488 | **0** | 0.07 m / 8e-5 rel | 0.0578 m | 0 |
+| **T-LEV 5** | 18 | **0** | 5e-4 K / 1e-5 rel | 6.10e-5 K | 0 |
+| **T-LEV 6** | 137 | **0** | 5e-4 K / 1e-5 rel | 1.22e-4 K | 0 |
+| **T-LEV 7** | 558 | **0** | 5e-4 K / 1e-5 rel | 2.14e-4 K | 0 |
+| **WSTAR** | 4,880 | **39** | 2e-5 m/s / 3e-5 rel | 2.05882e-4 m/s | 39 |
+| EL | 630 | 630 | 0.04 m / 5e-5 rel | 10,733.6 m | 630 (separate, pre-existing) |
+| total | 10,711 | **669** | | | |
+
+Independent cross-check against the dump: the station cell's pre-`AVEMIX`
+`ZICONV` now equals the original's kpt=3 value in **all 143 hours**
+(sum |dZICONV| = 0.0 m), and the **whole post-`AVEMIX` `ZICONV` field**
+(kpt=4) matches the original to better than 6e-5 relative everywhere - only 8
+of 357,500 cell-hours are above 3e-5 and none above 1e-4.
+
+**Remaining WSTAR residual, bounded:** 39 cells (0.01 % of 357,500 values),
+first exceedances in hour 9, the near-neutral transition where `wt` is
+3.1e-5 m/s and `wstar = (g*wt*ziconv/theta)^(1/3)` amplifies relative input
+differences by a third; max |dwstar| = 2.05882e-4 m/s (<= 1.1 % relative).
+The EL 630 cells are the pre-existing separate item in two hours (cells 27,
+29, 30), unchanged by this increment.
