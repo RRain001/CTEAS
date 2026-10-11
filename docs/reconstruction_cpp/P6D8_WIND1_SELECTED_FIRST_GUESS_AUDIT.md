@@ -21,16 +21,16 @@ The earlier [D8A observation adapter](../../native_cpp/modules/p6_calmet/include
 
 D8B provides `wind1_selected_firstguess.hpp`, a strict nine-layer 3-D gridding kernel and an independent trace executable. Its selected contracts explicitly reject unsupported multi-station, overwater, barriers, prognostic wind and incorrect source fields; those omissions are **not** claims that original CALMET lacks such capabilities.
 
-## Planned unchanged-original numeric test — NOT YET ACCEPTED
+## Unchanged-original numeric test — ACCEPTED for selected WIND1 first guess
 
 The comparator `reference/compare_original_wind1_firstguess.py` compiles the original, extracted **unchanged** `WIND1+SIMILT` and compares the separate C++20 output on six synthetic scenes:
 
 1. No BIAS; 2. positive BIAS; 3. negative BIAS; 4. missing upper-air layers; 5. calm surface with `ICALM=0`; 6. calm surface with `ICALM=1`.
 
-Each scene includes 50×50×9×2 = 45,000 U/V values, **270,000 total**. Frozen acceptance tolerance: **2×10⁻⁴ m/s absolute difference**, zero mismatches; CMake `-Werror` and full scoped P6 regression CTests must also pass. The source SHA must remain unchanged. Until the independent workflow completes successfully, mark `P6D8B_ORIGINAL_WIND1_SELECTED_PARITY=PENDING` — no numerical equivalence claim.
+Each scene includes 50×50×9×2 = 45,000 U/V values, **270,000 total**. Frozen acceptance tolerance: **2×10⁻⁴ m/s absolute difference**, zero mismatches; CMake `-Werror` and full scoped P6 regression CTests must also pass. The source SHA must remain unchanged. The independent [dedicated Runner CI #38125704104](https://github.com/RRain001/CTEAS/actions/runs/38125704104) completed **SUCCESS** at code SHA `74f1a8a85adf256fc36830706e4adaba34318ed9`: **22/22 software CTests**, **six source-compiled unchanged original WIND1+SIMILT scenarios PASS**, **270,000/270,000 U/V components PASS**, reported maximum absolute error **0.0 m/s** under the frozen **2×10⁻⁴ m/s** acceptance limit. Source version was locked to vendor Git blob `437f43bb7f0e51a1919e56664663e1a046986ed0`; CI JSON artifact `p6d8b-wind1-firstguess-source-parity` was uploaded. Formal scoped tag: **`P6D8B_ORIGINAL_WIND1_SELECTED_PARITY=PASS`**.
 
 ## Important limits
 
 Even a D8B PASS will not establish original 2022 hour-by-hour `WIND1` (including actual chosen BIAS and meteorological observations), fully coupled `FRADJ/SLOPE/INTER2/DIAGNO`, terrain/vertical-W field equality, **1h, 6h or 143h 2022 full-field original equivalence**, or wet atmospheric precipitation forcing. The final P6D stage remains `IN_PROGRESS / FULL_2022_UVW_NOT_PASS`; P6E/P6F/P6G and full CALPUFF acceptance remain independent gates.
 
-CI: [dedicated WIND1 first-guess source parity workflow](https://github.com/RRain001/CTEAS/actions/workflows/p6d8b-wind1-firstguess-original-parity.yml). PR #22 is Draft pending original-source numerical acceptance.
+CI: [dedicated WIND1 first-guess source parity workflow](https://github.com/RRain001/CTEAS/actions/workflows/p6d8b-wind1-firstguess-original-parity.yml). PR #22 has passed independent selected-path original-source numerical acceptance; full 2022 input/DIAGNO remains outside this test.
