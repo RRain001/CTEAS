@@ -190,7 +190,7 @@ def main():
         cpp_bc=folder/"boundary.cpp"
         # The one-call C++ run never reads original output files.
         run([args.cpp,inp,cpp_w,cpp_blend,cpp_final,cpp_bc])
-        run([original_w,inp,ref_w])
+        run([original_wind,inp,ref_w])
         comparison_first=wind1.compare(ref_w,cpp_w,name)
         u,v=read_original_wind(ref_w)
 
