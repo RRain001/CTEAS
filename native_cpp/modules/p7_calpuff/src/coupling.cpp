@@ -158,7 +158,7 @@ double vertical_coupling_bar(const VcbarInputs& inputs) {
         require_finite(inputs.stack_base_elevation_m, "stack base elevation");
     }
     const auto& state = inputs.state;
-    for (const auto [value, name] :
+    for (const auto& [value, name] :
          {std::pair<double, const char*>{state.z_begin1, "z_begin1"},
           {state.z_end1, "z_end1"}, {state.z_begin2, "z_begin2"}, {state.z_end2, "z_end2"},
           {state.sigma_z_begin1, "sigma_z_begin1"}, {state.sigma_z_mid, "sigma_z_mid"},
