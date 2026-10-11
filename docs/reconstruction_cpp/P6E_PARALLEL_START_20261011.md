@@ -849,3 +849,109 @@ inputs (P6D wind fields, HEATFX/ELUSTR/WSTARR/MIXHT over the real grid, P6C
 SURF/UP observations) and is outside this increment. 27 of the 45 real file
 fields belong to P6D and are listed by the harness as
 `not_implemented_in_p6e`.
+
+## E23 real 2022 reference case: P6E candidate fields and truth verdicts
+
+The frozen reference case `project/cases/hefei5km_2022_reference_case_20261011`
+(exact merged copy, `run/met/met.dat` sha256
+`b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30`, 143
+intervals, 50x50x9, DGRID=100 m) was driven with its **real** inputs through the
+P6E chain as far as the source dependency graph allows.
+
+### Real case inputs actually consumed
+
+- `met/surface/final/surf.dat` (P5 `SURF.DAT 2.1`, station 583210) and
+  `met/upperair/final/up_58424.dat` (P4, station 58424) through the existing
+  E15 CLI `p6e_p6c_hourly_bridge`, run read-only on the case tree:
+  `hours=143 missing_precip_hours=143 observed_zero_precip_hours=0
+  reversed_AABB_hours=72` — the real observation/AA-BB contract holds on the
+  real payload.
+- `run/met/met.lst` resolved options: `IMIXH=1 THRESHL=0 IZICRLX=1 ISURFT=-1
+  IUPT=-1 ITPROG=0 NOOBS=0 NOWSTA=0 IWFCOD=1 LCALGRD=T NSSTA=1 NUSTA=1 NPSTA=0
+  **IAVET=1 IFRADJ=1 IAVEZI=1 IRAD=1 NUMTS=5 TRADKM=500 ICOARE=10 IRHPROG=0**
+  NZ=9 DGRID=100`.
+- Grid geometry and time labels are copied from the reference file's *static
+  records and hourly clocks* — those are run **inputs** (ZFACE, station
+  coordinates, Z0/ILANDU/ELEV/XLAI/NEARS) and labels, not results. The case
+  grid is entirely land: `ILANDU = 20` for all 2500 cells, `Z0 = 0.25 m`,
+  `ELEV` 25.0-59.5 m, `IWAT1/IWAT2 = 50/55`, `NPSTA = 0`.
+
+### Per-field verdicts against the frozen `met.dat`
+
+`p6e_calmet_dat21 emit-realcase` writes a **partial** candidate: only the fields
+the original computes without the diagnostic wind field are produced; every
+other field carries the original `9999.` missing sentinel, so the harness
+reports it as not produced instead of comparing invented numbers.
+
+| field | roadmap status | denominator | missing ref/cand | max abs | max rel | frozen limit | verdict |
+|---|---|---|---|---|---|---|---|
+| `TEMPK` | `PASS_REAL_CASE` | 357,500 | 0 / 0 | **1.28174e-3 K** | 4.72702e-6 | 3e-4 K + 1e-5 rel | 0 exceedances |
+| `T-LEV 1` | `PASS_REAL_CASE` | 357,500 | 0 / 0 | **1.28174e-3 K** | 4.72702e-6 | 5e-4 K + 1e-5 rel | 0 exceedances |
+| `IRH` | `FAIL` (numeric) | 357,500 | 0 / 0 | **1** | 4.0e-2 | exact | **15,796 exceedances (4.42 %)** |
+| 42 remaining fields | `BLOCKED` / `P6D_OWNED` | 0 | 0 / 357,500 each | – | – | – | not produced |
+
+`TEMPK` is the surface temperature field from SURFVAR. The residual
+1.28e-3 K is the float noise of the original `AVETMP` spatial averaging
+(`IAVET=1`, which uses the wind direction) on an otherwise uniform
+single-station field, and stays inside the frozen gate.
+
+### IRH discrepancy: diagnosed, not a physics disagreement
+
+The reference `IRH` is *never above* the reported station humidity and is
+**exactly one below it** in 15,796 of 357,500 cells (`reference - observed`
+distribution: `{0: 341704, -1: 15796, >0: 0}`); for example hour 1 has
+`observed = 46` with reference values `{45, 46}`. The original source is
+`rhsurf = rhsurf/sumwt` followed by `irh2d(i,j) = int(rhsurf)`
+(SURFVAR L12996-13025): with a single station the ratio is algebraically the
+station value, but in REAL*4 the product-then-divide rounds one ulp below the
+integer for some cell distances, and `int()` truncates to 44/45/51/... The P6E
+kernel normalises exactly and therefore returns the observed integer.
+
+So the P6E value equals the observation while the reference carries the
+truncation artifact. **The frozen IRH tolerance (`exact`) was deliberately not
+relaxed**; the field is reported `FAIL` with the numbers above, and a
+bit-exact match would require reproducing the original's REAL*4 distance and
+weighting rounding order (an open item, listed below).
+
+### Dependency gap list (why 42 fields cannot be produced yet)
+
+Every remaining field needs the **P6D diagnostic wind field** `U/V` at the
+surface/lower levels, either directly or through the surface-temperature
+smoothing (`IAVET=1` -> `AVETMP(...,u,v,temp2d)`):
+
+| field | original producer (calmet.for COMP) | blocking input |
+|---|---|---|
+| `U-LEV/V-LEV/WFACE` (27) | `diagno` (P6D) | P6D wind field itself |
+| `IPGT` | `call pgtstb(u,v,...)` L4626 | 10 m wind components |
+| `USTAR`, `EL` | `call elustr(z0,u,v,zmid(1),...)` L4662 | wind at the first level |
+| `ZI` | `call mixht(el,ustar,qh,...)` L4692 | `ustar`/`el` from ELUSTR |
+| `WSTAR` | `call wstarr(ziconv,qh,...)` L4744 | `ziconv` from MIXHT |
+| `QSW` | `call heatfx(sinalpc,nears,temp2d,...)` L4583 | `AVETMP`-smoothed `temp2d`, grid solar geometry |
+| `RHO` | `call airden(pres,temp2d,rho)` L4641 | 2-D surface pressure + smoothed `temp2d` |
+| `T-LEV 2..9` | `call temp3d(temp2d,ziconv,...)` L4766 | `ziconv` from MIXHT |
+| `RMM`, `IPCODE` | written only when `NPSTA!=0` | absent for this case (`NPSTA=0`) |
+
+Required external deliverables to close this: the P6D diagnostic `U/V/W` field
+for the same 143 hours, and a 2-D surface-pressure field for `RHO`. Neither is
+available in the case tree today, so the full 143-hour comparison stays
+`BLOCKED`.
+
+### Reproduction
+
+```
+python3 native_cpp/modules/p6_calmet/p6e/reference/compare_calmet_dat21.py \
+  --reference project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
+  --reference-sha256 b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 \
+  --candidate <p6e_calmet_dat21 emit-realcase output> --out comparison.json
+```
+
+Evidence artifacts from this run (lhy-desktop, GCC 12.3.0):
+candidate sha256 `5fd5ea1c4dffeee0b2d7210c0d925c0844cd727d9241969cc62b8813f808e42f`,
+`compare` output sha256 `f1861624bc0e8d32786a9e5e2d72f89ead8ba70c134ff1aedf25e5db3a22bcaa`,
+candidate report sha256 `859990feffffe73a6ba429e511408ebeb43dea30234ce5dfc4ba3e50d34ce394`.
+
+**Summary:** `P6E_E22_OUTPUT_CONTRACT=PASS_REFERENCE`;
+`P6E_TEMPK_REAL_CASE=PASS_REAL_CASE`; `P6E_TLEV1_REAL_CASE=PASS_REAL_CASE`;
+`P6E_IRH_REAL_CASE=FAIL` (rounding artifact, tolerance not relaxed);
+`P6E_USTAR_EL_ZI_WSTAR_QSW_RHO_IPGT_TLEV2_9_REAL_CASE=BLOCKED` on the P6D wind
+field; `P6E_FULL=NOT_PASS`.
