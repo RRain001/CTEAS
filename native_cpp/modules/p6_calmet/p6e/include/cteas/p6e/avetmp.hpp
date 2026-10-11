@@ -117,4 +117,20 @@ inline std::vector<float> avetmp(const AvetmpInput& a) {
         }
     return out;
 }
+// AVEMIX (calmet.for L2104-2354, called by COMP L4715 when IAVEZI=1, with the
+// ILEVZI wind level): the identical upwind weighting applied to ZI and ZICONV.
+struct AvemixResult {
+    std::vector<float> zi_m,ziconv_m;
+};
+inline AvemixResult avemix(const AvetmpInput& controls,
+                           const std::vector<float>& zi_m,
+                           const std::vector<float>& ziconv_m) {
+    AvetmpInput a=controls;
+    AvemixResult r;
+    a.temperature_k=zi_m;
+    r.zi_m=avetmp(a);
+    a.temperature_k=ziconv_m;
+    r.ziconv_m=avetmp(a);
+    return r;
+}
 } // namespace cteas::p6e

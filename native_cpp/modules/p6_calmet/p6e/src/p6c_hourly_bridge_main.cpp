@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -38,7 +39,8 @@ int main(int argc,char** argv) {
               "past_s,to_go_s,gap_s,air_temperature_k,pressure_mb,humidity_pct,"
               "opaque_cloud_tenths,ceiling_hundreds_ft,precipitation_code,precipitation_observed,"
               "physical_aa_face2_k,physical_bb_face2_k,"
-              "physical_aa_sounding_level1_k,physical_bb_sounding_level1_k\n";
+              "physical_aa_sounding_level1_k,physical_bb_sounding_level1_k,"
+              "aa_profile,bb_profile,aa_face_t,bb_face_t\n";
         out<<std::fixed<<std::setprecision(7);
         int missing_precip=0,observed_zero=0,negative_order=0;
         for(std::size_t n=0;n<hourly_states.size();++n) {
@@ -74,7 +76,27 @@ int main(int argc,char** argv) {
                <<row.physical_aa_face_t_k[1]<<','
                <<row.physical_bb_face_t_k[1]<<','
                <<row.physical_aa.temp_k[0]<<','
-               <<row.physical_bb.temp_k[0]<<'\n';
+               <<row.physical_bb.temp_k[0];
+            // Profiles are packed as "height:temperature;..." so the column
+            // set does not depend on the sounding level count.
+            const auto pack_profile=[](std::ostream& stream,
+                                       const std::vector<float>& height,
+                                       const std::vector<float>& temp) {
+                if(height.size()!=temp.size())
+                    throw std::runtime_error("P6C bridge profile size mismatch");
+                for(std::size_t k=0;k<height.size();++k)
+                    stream<<(k?';':',')<<height[k]<<':'<<temp[k];
+            };
+            pack_profile(out,row.physical_aa.height_m,row.physical_aa.temp_k);
+            pack_profile(out,row.physical_bb.height_m,row.physical_bb.temp_k);
+            const auto pack_faces=[](std::ostream& stream,
+                                     const std::vector<float>& values) {
+                for(std::size_t k=0;k<values.size();++k)
+                    stream<<(k?';':',')<<values[k];
+            };
+            pack_faces(out,row.physical_aa_face_t_k);
+            pack_faces(out,row.physical_bb_face_t_k);
+            out<<'\n';
         }
         if(!out)throw std::runtime_error("P6E hourly CSV write incomplete");
         std::cout<<"P6E_P6C_2022_HOURLY_BRIDGE_SOURCE_INPUT "
