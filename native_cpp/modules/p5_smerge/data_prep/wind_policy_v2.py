@@ -17,17 +17,22 @@ class WindPolicyError(ValueError):
 
 
 def shortest_arc_midpoint_deg(before: float, after: float) -> int:
-    """Circular midpoint in (0,360], with user-defined anti-parallel 180.
+    """Shortest-circular-arc midpoint in (0,360].
 
-    Exactly opposite bearings (including 1/181) have no unique shorter arc:
-    P5 chooses 180 by explicit user policy, NOT mathematical interpolation.
+    Exactly opposite bearings have two equally short arcs. Choose the
+    CLOCKWISE arc from the earlier to the later observation (+90 degrees
+    from the earlier bearing), as explicitly required by the user.
     """
     a, b = float(before), float(after)
     if not (0 < a <= 360 and 0 < b <= 360):
         raise WindPolicyError("wind endpoints must be in (0,360]")
     separation = abs((b - a + 180.0) % 360.0 - 180.0)
     if math.isclose(separation, 180.0, abs_tol=1e-9):
-        return 180
+        # Wind bearings increase clockwise; reversing endpoints changes
+        # the selected semicircle. 1 -> 181 gives 91, not 180.
+        midpoint = (a + 90.0) % 360.0
+        integer = math.floor(midpoint + 0.5) % 360
+        return 360 if integer == 0 else integer
     delta = (b - a + 180.0) % 360.0 - 180.0
     midpoint = (a + delta / 2.0) % 360.0
     # Source file degree resolution is integer. Half-degree ties round upward.
@@ -221,7 +226,7 @@ def clean_then_replace_calms(df: pd.DataFrame, dir_col: str, spd_col: str,
             float(age[invalid].max()) if age[invalid].notna().any() else None),
         "cleaned_status": "数据清洗和缺测处理完毕",
         "interpolated_status": "静风插值处理完毕",
-        "antipodal_direction_tie_policy": "ALL_EXACTLY_180_SEPARATIONS_OUTPUT_180",
+        "antipodal_direction_tie_policy": "CLOCKWISE_FROM_LEFT_ENDPOINT_PLUS_90_DEGREES",
         "interior_calm_speed_mps": 0.5,
         "boundary_calm_speed_policy": "COPY_NEAREST_REAL_NONCALM_VECTOR",
     }
