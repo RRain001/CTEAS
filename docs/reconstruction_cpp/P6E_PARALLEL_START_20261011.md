@@ -1990,3 +1990,68 @@ first exceedances in hour 9, the near-neutral transition where `wt` is
 differences by a third; max |dwstar| = 2.05882e-4 m/s (<= 1.1 % relative).
 The EL 630 cells are the pre-existing separate item in two hours (cells 27,
 29, 30), unchanged by this increment.
+
+## E39 the two remaining residuals (EL, WSTAR) are one upstream QH difference at the 08:00 transition hours
+
+### EL is input-faithful; the residual is the QH it is fed
+
+For the daytime branch the source law is `EL = -u*^3/(k*g*QH/(rho*cp*T))`, so
+a relative QH error propagates as `dEL/EL = -dQH/QH`. Measured over exactly
+the cells the gate reports:
+
+| hour | EL cells over 5e-5 rel | cos(-dQH/QH, dEL/EL) | worst cell | EL mine/ref | QH mine/ref (dQH) |
+|---|---|---|---|---|---|
+| 9 | 447 | **0.999929** | 2123 | -322,042 / -332,776 | 0.000359 / 0.000347 (+1.158e-5) |
+| 33 | 325 | **0.999997** | 2222 | -9,077.6 / -9,080.2 | 0.280881 / 0.280800 (+8.106e-5) |
+
+The correlation is 1.000, so the EL kernel reproduces the reference exactly
+for a given `QH`; the residual is the upstream `QH`.
+
+### The QH difference is quantized, and lives only in the two 08:00 hours
+
+Chain `QH`/`USTAR`/`EL` versus the internal dump (kpt=1), 143 h x 2500 cells:
+
+| hour(s) | cells with `rel dQH > 1e-5` | max rel dQH | max abs dQH | max abs dUSTAR |
+|---|---|---|---|---|
+| 9 | 447 | 3.33e-2 | **5.79e-5 W/m2** | 5.51e-7 |
+| 33 | 1,153 | 2.89e-4 | **8.11e-5 W/m2** | 8.94e-8 |
+| every other hour | <= 254 | <= 1.4e-6 | <= 8.11e-5 | <= 1.79e-7 |
+| 1-8, 10-12 (checked) | 0 | <= 2.2e-6 | <= 7.6e-5 | <= 6.0e-8 |
+
+Hours 9 and 33 are **08:00 local on 2022-01-01 and 2022-01-02** - the sunrise
+transition where the net flux crosses zero (reference `QH` down to 3.5e-4
+W/m2 in the worst cell), so the *absolute* agreement is at the 1e-5 W/m2
+level while the *relative* one reaches 3.3e-2. Every listed difference is an
+**exact multiple of 1.158e-5 W/m2** (k = 1, 2, 3, 5, 7), i.e. one quantized
+term inside `HEATFX`/`ELUSTR`, not a distributed error.
+
+### WSTAR: 47 of 357,500 cell-hours
+
+The `WSTAR` field is now exported with the chain state (`--state-prefix`
+writes `<prefix>.wstar.f32` and `<prefix>.qsw.f32`), so it can be compared
+against the dump directly instead of being reconstructed from its inputs:
+
+| hour | cells over 2e-5 m/s | max |dw*| |
+|---|---|---|---|
+| 9 | 45 | 2.0588e-4 m/s |
+| 6 | 2 | 2.9564e-5 m/s |
+| all others | 0 | - |
+
+47 of 357,500 values (0.013 %); the gate reports 39 cells (it requires both
+the 2e-5 absolute and the 3e-5 relative limit to fail). Same cause as EL:
+`wstar = (g*wt*ziconv/theta)^(1/3)` with `wt = QH/(rho*cp)` at the
+transition hours, where a <= 8e-5 W/m2 absolute QH difference is amplified by
+the cube root of a near-zero `wt` (2.7e-4 m2/s3 in hour 9).
+
+**Verdict for both items: not a geometry, lapse or state error** - `ZI`,
+`T-LEV 1..9`, `ZICONV` (post-AVEMIX, whole field), `TEMPK`, `RHO`, `IPGT`,
+`USTAR`, `QSW` and `IRH` are all inside tolerance, and `EL`/`WSTAR` are proven
+input-faithful. The remaining residual is a single quantized `HEATFX`/
+`ELUSTR` term at the two sunrise hours. Next minimal experiment: diff the new
+`<prefix>.qsw.f32` against the reference `QSW` field per cell/hour (and, if
+that matches, dump `QSW`/`QH` intermediates from the instrumented original at
+hour 9) to name the term; the quantization step 1.158e-5 W/m2 identifies it.
+
+**E39 verification:** adding the two exports leaves the physics untouched -
+total exceedances 669 (ZI 0, `T-LEV 5-7` 0, EL 630, WSTAR 39), same maxima as
+E38.
