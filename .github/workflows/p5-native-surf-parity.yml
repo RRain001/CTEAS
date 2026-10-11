@@ -1,4 +1,7 @@
 name: P5 native SURF.DAT original SMERGE synthetic byte parity
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
@@ -7,35 +10,40 @@ on:
       - ".github/workflows/p5-native-surf-parity.yml"
 jobs:
   synthetic-parity:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-22.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 18
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
+      - name: Reset self-hosted scratch directories
+        shell: bash
+        run: |
+          rm -rf ${{ runner.temp }}/cteas-p5-build ${{ runner.temp }}/cteas-p5-synthetic ${{ runner.temp }}/p5-smg-includes
       - name: Build original SMERGE v5.7.0 and native C++20 writer
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gfortran
-          mkdir -p evidence /tmp/cteas-p5-synthetic
+          gfortran --version | head -1
+          mkdir -p evidence ${{ runner.temp }}/cteas-p5-synthetic
           SRC=engine/vendor/src/SMERGE_v5.7.0_L121203
-          mkdir -p /tmp/p5-smg-includes
+          mkdir -p ${{ runner.temp }}/p5-smg-includes
           for item in "$SRC"/*; do
             name=$(basename "$item" | tr '[:upper:]' '[:lower:]')
-            if [ ! -e "/tmp/p5-smg-includes/$name" ]; then
-              ln -s "$GITHUB_WORKSPACE/$item" "/tmp/p5-smg-includes/$name"
+            if [ ! -e "${{ runner.temp }}/p5-smg-includes/$name" ]; then
+              ln -s "$GITHUB_WORKSPACE/$item" "${{ runner.temp }}/p5-smg-includes/$name"
             fi
           done
           gfortran -O0 -std=legacy -fno-automatic -fno-align-commons \
             -fallow-argument-mismatch -ffixed-line-length-none \
-            -I/tmp/p5-smg-includes "$SRC/SMERGE.FOR" \
-            -o /tmp/cteas-p5-synthetic/smerge-original
-          cmake -S native_cpp/modules/p5_smerge -B /tmp/cteas-p5-build -DCMAKE_BUILD_TYPE=Debug
-          cmake --build /tmp/cteas-p5-build -j2
-          ctest --test-dir /tmp/cteas-p5-build --output-on-failure
+            -I${{ runner.temp }}/p5-smg-includes "$SRC/SMERGE.FOR" \
+            -o ${{ runner.temp }}/cteas-p5-synthetic/smerge-original
+          cmake -S native_cpp/modules/p5_smerge -B ${{ runner.temp }}/cteas-p5-build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build ${{ runner.temp }}/cteas-p5-build -j2
+          ctest --test-dir ${{ runner.temp }}/cteas-p5-build --output-on-failure
           sha256sum "$SRC/SMERGE.FOR" > evidence/fortran.sha256
       - name: Deterministic 2-station GENERIC with arbitrary missing hour, calm, fractional RH, rain and missing temperature
         shell: bash
@@ -44,7 +52,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-          w=Path("/tmp/cteas-p5-synthetic")
+          w=Path("${{ runner.temp }}/cteas-p5-synthetic")
           data=[
               (58321,[
                   [1,1,2022,0,20.55,0,1010.22,40.5,360,1.25,3.8,10.5],
@@ -98,10 +106,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd /tmp/cteas-p5-synthetic
+          cd ${{ runner.temp }}/cteas-p5-synthetic
           ./smerge-original original.inp 2>&1 | tee "$GITHUB_WORKSPACE/evidence/fortran-run.log"
           test -s original.dat
-          /tmp/cteas-p5-build/cteas_p5_smerge native.inp \
+          ${{ runner.temp }}/cteas-p5-build/cteas_p5_smerge native.inp \
             2>&1 | tee "$GITHUB_WORKSPACE/evidence/native-run.log"
           test -s native.dat
           python3 - <<'PY'
@@ -128,9 +136,9 @@ jobs:
           python3 - <<'PY'
           import subprocess,re
           from pathlib import Path
-          root=Path("/tmp/cteas-p5-synthetic")
+          root=Path("${{ runner.temp }}/cteas-p5-synthetic")
           original=(root/"native.inp").read_text()
-          executable="/tmp/cteas-p5-build/cteas_p5_smerge"
+          executable="${{ runner.temp }}/cteas-p5-build/cteas_p5_smerge"
           for key,value in (("JDAT","5"),("IOFORM","1"),("IOPACK","1"),
                             ("LPREV","T"),("LPCALC","T"),("ABTZ","UTC+0900")):
               changed,count=re.subn(r"(!\s*"+key+r"\s*=\s*)[^!]+!",
@@ -148,8 +156,8 @@ jobs:
         shell: bash
         run: |
           for f in original.dat native.dat original.lst parity.json original.inp native.inp; do
-            if [ -f "/tmp/cteas-p5-synthetic/$f" ]; then
-              cp "/tmp/cteas-p5-synthetic/$f" "evidence/$f"
+            if [ -f "${{ runner.temp }}/cteas-p5-synthetic/$f" ]; then
+              cp "${{ runner.temp }}/cteas-p5-synthetic/$f" "evidence/$f"
             fi
           done
       - uses: actions/upload-artifact@v4
