@@ -213,13 +213,15 @@ def write_case(path, zface1_m, dz_m, terrain, lapse, temperature, alpha,
                 handle.write(" ".join(f"{value:.8f}"
                                       for value in field[offset:offset + NX]) + "\n")
 
-def write_bridge_fields(handle, enabled, alpha):
-    """Append the IKINE selector to a fixture stream.
+def write_bridge_fields(handle, enabled, alpha, niter, divlim_per_s):
+    """Append the IKINE selector and its MINIM controls to a fixture stream.
 
     TOPOF2 consumes the shared HTOPO/GAMMA/TEMP2D planes already carried by
-    the terrain record, so only the selector and ALPHA are written here.
+    the terrain record, so only the selector and its namelist controls are
+    written here.
     """
-    handle.write(f"{1 if enabled else 0} {alpha:.9f}\n")
+    handle.write(f"{1 if enabled else 0} {alpha:.9f} {niter} "
+                 f"{divlim_per_s:.9f}\n")
 
 def read_uv(path):
     rows = [line.split() for line in path.read_text().splitlines()]

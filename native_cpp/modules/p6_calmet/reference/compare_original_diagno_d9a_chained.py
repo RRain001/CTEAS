@@ -133,7 +133,8 @@ def write_bridge(path,scene,land,weights,sta_u,sta_v,obrien=False,froude=False,
         line([ZFACE1_M,1 if obrien else 0,MINIM_ITERATIONS,MINIM_DIVLIM])
         fradj.write_bridge_fields(f,1 if froude else 0,*planes)
         upstream.write_bridge_fields(f,1 if slope else 0,slope_planes,land)
-        kinematic.write_bridge_fields(f,1 if kin else 0,ALPHA)
+        kinematic.write_bridge_fields(f,1 if kin else 0,ALPHA,KINEMATIC_NITER,
+                                        KINEMATIC_DIVLIM)
 
 def read_original_wind(path):
     rows=[line.split() for line in path.read_text().splitlines()]

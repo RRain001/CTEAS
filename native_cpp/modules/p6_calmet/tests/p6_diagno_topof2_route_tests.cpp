@@ -84,8 +84,8 @@ int main(){
     // Original IKINE=1 route.
     input.kinematic_route=true;
     input.alpha=0.f;
-    input.minim_iterations=0;
-    input.minim_divergence_limit_per_s=0.f;
+    input.kinematic_iterations=0;
+    input.kinematic_divergence_limit_per_s=0.f;
     const auto topof2_only=integrate_diagno_d9_selected(input);
     require(topof2_only.kinematic_w_face_mps.size()==25000,
             "D9A original TOPOF2 must emit ten faces per column");
@@ -105,8 +105,8 @@ int main(){
     // Original MINIM then relaxes U/V at fixed W.
     auto relaxed=input;
     relaxed.alpha=0.1f;
-    relaxed.minim_iterations=50;
-    relaxed.minim_divergence_limit_per_s=5.e-6f;
+    relaxed.kinematic_iterations=50;
+    relaxed.kinematic_divergence_limit_per_s=5.e-6f;
     const auto minim=integrate_diagno_d9_selected(relaxed);
     require(minim.prepared_ug!=identity.prepared_ug||
             minim.prepared_vg!=identity.prepared_vg,

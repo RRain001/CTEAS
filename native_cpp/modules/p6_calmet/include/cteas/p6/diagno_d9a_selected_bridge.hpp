@@ -68,6 +68,9 @@ struct DiagnoD9SelectedInput {
     // real deck has IKINE=0.
     bool kinematic_route=false;
     float alpha=0.f;
+    // Original namelist NITER/DIVLIM of the L5628 pre-blend MINIM call.
+    int kinematic_iterations=0;
+    float kinematic_divergence_limit_per_s=0.f;
     // Original IFRADJ=1 stage L5643-L5644, applied to the step-one UG/VG
     // before the L5748 WINDBC snapshot and the L6055/L6059 INTER2 calls.
     bool froude_adjustment=false;
@@ -172,8 +175,8 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
         minim_in.ub_west_east_mps=std::move(pre_ub);
         minim_in.vb_south_north_mps=std::move(pre_vb);
         auto relaxed=original_minim_scoped(
-            std::move(minim_in),request.minim_iterations,
-            request.minim_divergence_limit_per_s);
+            std::move(minim_in),request.kinematic_iterations,
+            request.kinematic_divergence_limit_per_s);
         u=std::move(relaxed.wind.u_mps);v=std::move(relaxed.wind.v_mps);
     }
     if(request.froude_adjustment) {

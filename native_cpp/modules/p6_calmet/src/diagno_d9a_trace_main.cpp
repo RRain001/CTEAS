@@ -116,8 +116,9 @@ int main(int argc,char** argv){
     for(int& value:in.slope.landuse)
         if(!(f>>value))throw std::runtime_error("D9A SLOPE landuse missing");
     int ikine=0;
-    if(!(f>>ikine>>in.alpha))
-        throw std::runtime_error("D9A IKINE/ALPHA controls missing");
+    if(!(f>>ikine>>in.alpha>>in.kinematic_iterations>>
+         in.kinematic_divergence_limit_per_s))
+        throw std::runtime_error("D9A IKINE/ALPHA/MINIM controls missing");
     if(ikine!=0&&ikine!=1)
         throw std::runtime_error("D9A IKINE flag must be 0 or 1");
     in.kinematic_route=ikine==1;
