@@ -210,6 +210,8 @@ add_test(NAME cteas_p7h_vertical_coupling_contract COMMAND cteas_p7h_tests)
 # P7I: CTSG support blocks (QATR integrator, TFAC terrain factors).
 add_library(cteas_p7_ctsg STATIC src/ctsg.cpp)
 target_include_directories(cteas_p7_ctsg PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# P7M: PUFFC uses the ERFDIF port that lives with the P7E sampling module.
+target_link_libraries(cteas_p7_ctsg PUBLIC cteas_p7_receptors)
 if(MSVC)
   target_compile_options(cteas_p7_ctsg PRIVATE /W4 /WX)
 else()
@@ -258,6 +260,8 @@ add_test(NAME cteas_p7h_vertical_coupling_contract COMMAND cteas_p7h_tests)
 # P7I: CTSG support blocks (QATR integrator, TFAC terrain factors).
 add_library(cteas_p7_ctsg STATIC src/ctsg.cpp)
 target_include_directories(cteas_p7_ctsg PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# P7M: PUFFC uses the ERFDIF port that lives with the P7E sampling module.
+target_link_libraries(cteas_p7_ctsg PUBLIC cteas_p7_receptors)
 if(MSVC)
   target_compile_options(cteas_p7_ctsg PRIVATE /W4 /WX)
 else()
@@ -291,3 +295,28 @@ add_test(NAME cteas_p7f_drydep_source_parity
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/drydep_parity_tests.py"
           --probe "$<TARGET_FILE:cteas_p7f_drydep_probe>"
           --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+
+# P7M: CTSG kernel (MUNU/IREG/BI/BJI/BJIL/SIGMA/CTREC/PUFFC/LOWER/CTSG) with the
+# unmodified-vendor-source oracle. CTPAR and UPPER are NOT ported and the port
+# fails closed when the vendor would call them.
+add_executable(cteas_p7m_tests tests/p7m_tests.cpp)
+target_link_libraries(cteas_p7m_tests PRIVATE cteas_p7_ctsg)
+if(MSVC)
+  target_compile_options(cteas_p7m_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7m_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7m_ctsg_kernel_contract COMMAND cteas_p7m_tests)
+
+add_executable(cteas_p7m_probe src/ctsg_probe.cpp)
+target_link_libraries(cteas_p7m_probe PRIVATE cteas_p7_ctsg cteas_p7_calmet21
+  cteas_p7_dispersion cteas_p7_receptors cteas_p7_coupling)
+add_test(NAME cteas_p7m_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7m_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7m_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7m_real_grid_ctsg
+    COMMAND cteas_p7m_probe --real-grid "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
+            0 2.63e13 513.3846439571 3533.7689269678 70.8)
+endif()

@@ -884,3 +884,170 @@ has to be scanned before deciding whether it is needed at all.
 
 Incomparability causes remain two: the CTSG kernel (not ported), and the
 still-prototype puff model plus the CTEAS-only CONC.DAT header.
+
+## 2026-10-12 P7M CTSG kernel ported (MUNU/IREG/BI/BJI/BJIL/SIGMA/CTREC/PUFFC/LOWER/CTSG)
+
+Round status: the P7K port order is now closed for the real-case reachable
+kernel. `munu`, `bi`, `bji`, `bjil`, `ireg`, `sigma`, `ctrec`, `puffc`, `lower`
+and `ctsg` are ported, and every one of them is compared against the compiled
+**unmodified** vendor spans. `ctpar`, `upper` and `flopuff` are NOT ported and
+the port fails closed when the vendor would call them.
+
+| unit | vendor span | ported | parity evidence |
+|---|---|---|---|
+| `munu` (elliptical coordinates) | L24865-24967 | yes | `P7M_MUNU_ORACLE_PARITY` 46 cases x 2 columns, `MAX_REL=1.8e-13` |
+| `ireg` (CTSG region index) | L24576-24603 | yes | `P7M_IREG_ORACLE_PARITY` 12 cases, `MAX_REL=0` |
+| `bi` (constant-sigma-z reflection) | L22229-22263 | yes | `P7M_BI_ORACLE_PARITY` 36 cases, `MAX_REL=9.4e-07` |
+| `bji` (UPPER reflection helper) | L22265-22316 | yes | `P7M_BJI_ORACLE_PARITY` 12 cases, `MAX_REL=2.1e-13` |
+| `bjil` (LOWER reflection helper) | L22318-22363 | yes | `P7M_BJIL_ORACLE_PARITY` 24 cases, `MAX_REL=3.0e-13` |
+| `sigma` (nearest-known-sigma restart) | L25551-25648 | yes | `P7M_SIGMA_ORACLE_PARITY` 96 cases, `MAX_REL=1.1e-07` |
+| `ctrec` (receptor frames + travel times) | L22841-22921 | yes | `P7M_CTREC_ORACLE_PARITY` 12 cases x 10 columns, `MAX_REL=1.7e-13` |
+| `puffc` (pole / flat puff sampling) | L25286-25404 | yes | `P7M_PUFFC_ORACLE_PARITY` 12 cases, `MAX_REL=8.9e-08` |
+| `lower` (below the dividing streamline) | L24657-24863 | yes | `P7M_LOWER_ORACLE_PARITY` 12 cases, `MAX_REL=1.4e-13` |
+| `ctsg` (kernel dispatch, lower branch) | L22923-23112 | yes | `P7M_CTSG_ORACLE_PARITY` 11 cases x 2 columns, `MAX_REL=1.2e-07` |
+| `ctpar` / `upper` / `flopuff` | L22505-22839 / L25815-26001 / L23178-23656 | **no** | refused at run time |
+
+`P7M_ORACLE_PARITY_TOTAL_CASES=273` against the compiled unmodified vendor
+routines with a fixed `1e-5` relative acceptance bound, **0 mismatches** and a
+worst absolute difference of `1.9e-06` (the SIGMA matrix; every other matrix
+stays at or below `4.7e-10`). The matrices are driven identically on both sides
+and the ported `SIGMA` wrapper is compared against the **unmodified vendor
+SIGMA** with a deterministic SIGTY/SIGTZ stub pair that both sides share (the
+vendor SIGTY/SIGTZ themselves carry the P7D parity evidence). Linux `gfortran-11`
+runs the same matrices in the local gate.
+
+### Source anchor
+
+`reference/p7m_source_anchor.py` locates every unit with the P7K header scan and
+pins the spans, SHA-256 and call closure in `reference/p7m_source_anchor.json`;
+`--check` additionally cross-checks the nine units P7K already pinned and fails
+on any drift. Vendor source
+`sha256 da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568`.
+
+### Two vendor properties reproduced verbatim (found by the parity test)
+
+1. **`RT2PI` is never initialised.** `RT2PI` is declared in `const.puf`, but
+   `CTINIT` (L22365-22503, the only unit that sets `/CONST/`) sets every constant
+   except it, and no `DATA` statement in a unit that includes `const.puf` writes
+   it either (the five `data ... rt2pi/2.5066283/` statements belong to routines
+   that do not include `const.puf`). The original therefore evaluates the "puff
+   mixed in the vertical" branch of `LOWER`/`PUFFC`/`UPPER` as
+   `fz = rt2pi*sz/zlid = 0`. The port reproduces that zero exactly, the anchor
+   manifest records the static proof (`vendor_rt2pi_initialised=false`), and the
+   parity test reads `RT2PI` back from the compiled oracle as `0.0`
+   (`P7M_CONST_READBACK`).
+2. **The `SIGMA` sigma-z branch does not advance the sigma.** The sigma-y branch
+   passes the advanced `(DKM, TSEC)` pair to the forward `SIGTY` call, but the
+   sigma-z branch passes the *reverse* outputs `(VDZ, VTZ)` to the forward
+   `SIGTZ` call and only uses `TSEC` for its positivity test, so
+   `SIGMA(2,...)` returns the nearest known sigma-z unchanged. The port mirrors
+   this asymmetry (it is what makes the `LOWER` vertical factor behave as the
+   original does) and the sigma matrix would fail without it.
+
+### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
+
+- `cteas_p7m_ctsg_kernel_contract`: closed forms for MUNU/IREG/BI/BJIL, the SIGMA
+  shortcut and both stub-curve closed forms, CTREC frame/travel-time checks, the
+  PUFFC no-reflection closed form and its zero branches, the LOWER BI-branch
+  closed form, the CTSG dispatch (LOWER, PUFFC(2) and the flat comparison) and
+  every fail-closed path (missing curves, invalid modes, CTPAR required, UPPER
+  required, zero transport speed). PASS.
+- `cteas_p7m_source_parity`: anchor + P7K cross-check + 40 quoted statements +
+  `/CONST/` readback + the ten matrices above. PASS (273 cases).
+- `cteas_p7m_real_grid_ctsg`: the physical-chain run below. PASS.
+- Local `ctest` 22/23 PASS; the only failure remains the pre-existing macOS
+  case-insensitive-filesystem failure of
+  `cteas_p7_original_case_stage_contract` (PASS on Linux).
+
+### Gate evidence (Linux, lhy-desktop, g++-12 + gfortran-11)
+
+`LOCAL_GATE_P7=PASS sha=55cd7c9e2 ok=21 blocked=0 failed=0` with the authoritative
+local gate (`python3 scripts/local_gate.py --track p7 --repo /home/lhy/gate/driver`):
+`100% tests passed, 0 tests failed out of 23`, including the three new P7M CTest
+entries. The same case matrices against the compiled unmodified vendor units with
+`GNU Fortran (Ubuntu 11.4.0) 11.4.0`:
+
+```
+MUNU  CASES=46 MAX_REL=1.825e-13   BI    CASES=36 MAX_REL=9.433e-07
+BJI   CASES=12 MAX_REL=2.057e-13   BJIL  CASES=24 MAX_REL=3.008e-13
+SIGMA CASES=96 MAX_REL=3.073e-13   IREG  CASES=12 MAX_REL=0.000e+00
+CTREC CASES=12 MAX_REL=1.655e-13   PUFFC CASES=12 MAX_REL=8.851e-08
+LOWER CASES=12 MAX_REL=1.422e-13   CTSG  CASES=11 MAX_REL=1.247e-07
+TOTAL 273 CASES, MISMATCHES=0
+```
+
+The only difference from macOS (gfortran 16.2.0) is the SIGMA matrix, which
+tightens from `1.1e-07` to `3.1e-13`; every other matrix is unchanged to the
+reported digits.
+
+### Real receptor-grid run (physical chain only)
+
+`cteas_p7m_probe --real-grid MET.DAT puff.inp 0 2.63e13 513.3846439571
+3533.7689269678 70.8` moves one synthetic puff one 3600 s step with the locked
+case's real met inputs (statics, `U`/`V`/`ZI`/`IPGT`), and samples the **2500
+real receptors** with the reconstructed CTSG kernel:
+
+```
+P7M_REAL_GRID_CTSG_RUN=PASS HOUR=0 RECEPTORS=2500 STABILITY=4 URBAN=false
+  SPEED_MS=1.39612 STEP_KM=5.02603 SIGMA_Y_M=294.387 SIGMA_Z_M=89.1519
+  ZI_M=230.977 HILL_RELIEF_M=200 HD_M=120 HILL_OFFSET_KM=2 IMPINGEMENT_S=1432.54
+  SYNTHETIC_HILL=true LOWER_BRANCH=230 POLE_BRANCH=2270 SUM=1.17251e+08
+  MAX=82400 MIN=0 NONZERO=2499 CFLAT_SUM=2.60874e+07 CFLAT_MAX=46304
+  VCBAR_STANDARD_SUM=5.25600e+08 VCBAR_STANDARD_NONZERO=2500
+  PHYSICAL_CHAIN_ONLY=true NOT_A_PUFF_CON_COMPARISON=true
+```
+
+The locked deck has **`NHILL=0` and `NCTREC=0`**, so CALPUFF never calls CTSG for
+it (`lctsg` requires `nctrec > 0`): the deck's concentration path is the ordinary
+puff sampling (`CALCPF` with `VCOUP`, the P7E/P7H chain whose vertical factor is
+`VCBAR`). The run therefore constructs a documented synthetic hill 2 km downwind
+of the stack (relief 200 m, dividing streamline 120 m, 2 km major axis, frame
+rotated onto the real flow) so that the lower-segment branch is actually
+exercised, and reports the `VCBAR` standard-path sum next to the CTSG sum for
+orientation only. **It is not a comparison with the frozen `puff.con`.**
+
+### `VCBAR -> CTSG` is not a vendor call edge (machine-checked)
+
+The CTSG kernel does **not** consume `VCBAR`. The anchored call lists show
+`ctsg -> ctpar, ctrec, lower, puffc, upper` and none of the ported units
+references `VCBAR`; the only caller of `VCBAR` in the whole vendor source is
+`DRY` (`f1=vcbar(jp,mfact0,hlid,ppcoef,lcalmf)`, calpuff.for L26267, the
+Gaussian-puff dry-removal branch that P7F listed as not reconstructed). The
+anchor manifest therefore records the function-reference callers of `VCBAR` and
+`VCOUP` separately from the `call` closure (a `call` scan cannot see
+`f=vcbar(...)`), and the parity test asserts
+`P7M_VCBAR_CLOSURE=PASS VCBAR_FUNCTION_REFERENCE_CALLERS=dry
+CTSG_CONSUMES_VCBAR=false`. What is wired into the F1 chain this round is
+therefore: the standard puff path keeps its P7H `VCBAR` vertical factor, and the
+terrain path gets the reconstructed CTSG kernel - the two are exercised side by
+side on the same real receptor grid below.
+
+### `flopuff` closure scan and case-path verdict
+
+The closure scan is machine-checked by the anchor manifest and asserted by the
+parity test (`P7M_CALL_CLOSURE`): `flopuff` <- `path`, `path0`, `upper`;
+`path` <- `ctpar`; `upper` <- `ctsg`; `ctpar` <- `ctsg`; `ctsg` <- the main
+program. `upper` runs only for receptors above the dividing streamline whose flow
+is in the upper region, and `ctpar`/`upper` run only when CTSG runs, which
+requires a CTSG hill (`nctrec > 0`). The locked 2022 deck has no hill at all -
+read back from the deck itself by the probe
+(`LOCKED_DECK_NHILL=0 LOCKED_DECK_NCTREC=0 CTSG_NOT_ON_LOCKED_DECK_PATH=true`) -
+so `flopuff` is **not on this case's path** and is not ported; `upper` fails
+closed instead of approximating it.
+
+### Correction to the incomparability list
+
+The earlier rounds listed "the CTSG kernel" as one of two causes that make the
+frozen `puff.con` incomparable. That was wrong for this deck: with `NHILL=0` and
+`NCTREC=0` the vendor's `lctsg` is `.FALSE.` and CTSG is never invoked, so a
+missing CTSG kernel never blocked a `puff.con` value comparison. The port is
+still required for reconstructing the CTSG feature and for the kernel-parity
+obligation, and it is now closed for the real-case reachable units.
+
+**Remaining incomparability cause: one.** The puff model is still the P7C
+prototype (no CALPUFF release cadence, split/merge, plume rise, terrain
+interaction), and the `CONC.DAT` writer still emits only the CTEAS header
+subset, so the frozen `puff.con` values cannot be reproduced or compared yet.
+Also still open and explicitly out of this round: `ctpar`/`upper`/`flopuff`,
+the slug/wind-shear/PDF options (`MSLUG=0`, `MSHEAR=0`, `MPDF=0` for this deck),
+and `MCTADJ=1/3` terrain lookup.
