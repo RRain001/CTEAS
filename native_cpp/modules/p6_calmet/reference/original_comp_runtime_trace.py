@@ -28,7 +28,7 @@ def instrument(source:Path,out:Path):
     if "call rdsn(iforms,nssta,ispack,ios,0,ibuf," not in lines[3917] or\
        "ws,wd,iceil,icc,tempk,irh,pres,ipcode)" not in lines[3919] or\
        "call missfc(iyr,ijul,ihr)" not in lines[3985] or\
-       "call CGAMMA(" not in lines[13680].upper().replace("CGAMMA","CGAMMA").replace("call CGAMMA","call CGAMMA") or\
+       "call cgamma(" not in lines[13680].lower() or\
        "gamup(iupt))" not in lines[13681].lower() or\
        "gamup(iu))" not in lines[13694].lower():
         raise ValueError("COMP RDSN/MISSFC/CGAMMA trace anchor mismatch")
@@ -123,7 +123,7 @@ def compare(runtime:Path,joint:Path,up:Path,out:Path):
             raise ValueError("original RDSN trace field count")
         modelbegin=int((instant-datetime.timedelta(hours=1)).strftime("%Y%j%H"))
         originalend=int(instant.strftime("%Y%j%H"))
-        source_times=[int(record["start_epoch_s"]),int(record["end_epoch_s"])]
+        source_times=(int(record["start_epoch_s"]),int(record["end_epoch_s"]))
         actual_tuple=(int(rtime[0]),int(rtime[1]),int(rtime[2]),
                       int(rtime[3]),int(rtime[4]),int(rtime[5]))
         if actual_tuple!=(modelbegin,0,modelbegin,0,originalend,0):
