@@ -250,3 +250,34 @@ night/warm, threshold, collapse, growth, relaxation, and time steps.
 E11 is **a subcomponent of daytime MIXHT**, not full daytime
 `MIXHT` with the actual `MIXDT` temperature-sounding calculation.
 Its status remains PENDING until original-source CI returns PASS.
+
+## 2026-10-11 E10 and E11 original-source acceptance
+
+[lhy-desktop-2 run 38122662755](https://github.com/RRain001/CTEAS/actions/runs/38122662755)
+completed SUCCESS on immutable branch `d501d933`, with **11/11
+CTest**. E10 `SURFVAR` four-station temperature/RH interpolation:
+**2880/2880 comparisons PASS**, zero temperature K difference,
+identical RH/IPCODE, after replicating the original Fortran
+pairwise site ordering (not stable sort). E11 `MIXHMC` provided-lapse
+convective growth: **800/800 comparisons PASS** with zero
+exceedances, maximum mixing-height absolute difference <5e-9 m.
+These remain selected-branch checks, NOT the full 2022 COMP case.
+
+## E12 MIXDT upper-air sounding lapse-rate (pending original CI)
+
+Added independent source-locked 6.5.0 `MIXDT` temperature profile
+search and interpolation, preserving 999.89 K missing threshold,
+strict above/below brackets, original `0.0098 K/m` environmental
+lapse adjustment and `DPTMIN` floor. Unsupported or nonmonotonic
+sounding levels fail closed rather than generating invalid fields.
+Unmodified original `MIXDT` source + original `GEN.MET` is compiled
+with a dual-site 10-level fixture: **96 cases ×3 variables = 288
+scalar original comparisons**. The fixture deliberately includes
+missing levels, multiple heights/depths and minimum-lapse floors.
+E12 remains **NOT PASS** until lhy-desktop-2 numerical CI completes.
+
+Next integration barrier: use the `JUSTA/IUPT/NEARU` AA/BB older
+sounding state from full `MIXHT` to feed E12 then E11, compute
+mechanical/convective max heights and preserve water/negative QH;
+finally `TEMP3D` and selected real 2022 1/6/143h COMP parity.
+`P6E_FULL=NOT_PASS`. Rain `IPCODE` is missing 143/143.
