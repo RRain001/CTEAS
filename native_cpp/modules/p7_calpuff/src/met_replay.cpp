@@ -23,9 +23,8 @@ ReplaySummary replay_calmet_winds(const std::string& met_file,
     if (require_historical_2023) {
         if (metadata.header.dx_m!=1000.0F || metadata.intervals!=119 ||
             metadata.first_begin.year!=2023 ||
-            metadata.first_begin.julian_day!=1 || metadata.first_begin.hour!=0 ||
-            metadata.final_end.year!=2023 ||
-            metadata.final_end.julian_day!=5 || metadata.final_end.hour!=23)
+            metadata.first_begin.unix_seconds!=1672531200LL ||
+            metadata.final_end.unix_seconds!=1672959600LL)
             {
                 std::ostringstream details;
                 details<<"P7C original 2023 gate mismatch: dx="<<metadata.header.dx_m

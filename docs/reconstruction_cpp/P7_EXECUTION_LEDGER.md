@@ -253,3 +253,17 @@ CALPUFF uses its own puff split/merge/cadence, plume rise, sigma,
 terrain and receptor averaging; this initial P7C replay is explicitly
 **NOT a claim of source-faithful puff position or CONC.DAT parity**.
 Run the real integration gate via scoped P7 CI; verdict pending.
+
+## 2026-10-11 original CALMET 2023 endpoint representation
+
+Actual P7 CI [38127081928](https://github.com/RRain001/CTEAS/actions/runs/38127081928)
+established `CALMET.DAT 2.1`: NX=50, NY=50, NZ=9, DX=1000m,
+119 hourly field groups, `FIRST_UNIX_SEC=1672531200`,
+`END_UNIX_SEC=1672959600`, i.e. Jan 1 00:00 through Jan 5
+23:00 UTC. The encoded original **final** Fortran field time is
+`2023 / Julian day 5 / hour 22 / seconds 3600`, which is exactly
+the same instant as 23:00. Our earlier P7C condition erroneously
+required raw hour==23; P7B correctly normalizes seconds with 3600.
+P7C now gates on normalized absolute Unix seconds, not raw Fortran
+packed-hour bytes. This fixes the actual observed real source mismatch
+without weakening the historic original input time interval.
