@@ -26,6 +26,7 @@
 #include "cteas/p6e/geo_landuse.hpp"
 #include "cteas/p6e/heatfx.hpp"
 #include "cteas/p6e/mixht_observed_mc.hpp"
+#include "cteas/p6e/wstarr.hpp"
 #include "cteas/p6e/pgtstb.hpp"
 #include "cteas/p6e/solar.hpp"
 #include "cteas/p6e/surface_solar.hpp"
@@ -280,6 +281,9 @@ struct BridgeObservation {
     double opaque_cloud_tenths=9999.;
     double pressure_mb=9999.;
     int ceiling_hundreds_ft=9999;
+    int justa=1;
+    MixdtSounding aa,bb;
+    std::vector<float> aa_face,bb_face;
 };
 std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
     std::ifstream file(path);
@@ -302,6 +306,41 @@ std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
     const auto cloud=column("opaque_cloud_tenths");
     const auto pressure=column("pressure_mb");
     const auto ceiling=column("ceiling_hundreds_ft");
+    const auto justa=column("justa");
+    const auto aa_profile=column("aa_profile");
+    const auto bb_profile=column("bb_profile");
+    const auto aa_face=column("aa_face_t");
+    const auto bb_face=column("bb_face_t");
+    const auto unpack_profile=[](const std::string& text,MixdtSounding& sounding) {
+        std::size_t position=0;
+        while(position<text.size()) {
+            const auto separator=text.find(';',position);
+            const auto entry=text.substr(position,separator==std::string::npos
+                                         ?std::string::npos:separator-position);
+            const auto colon=entry.find(':');
+            if(colon==std::string::npos)
+                throw std::invalid_argument("bridge profile entry malformed");
+            sounding.height_m.push_back(
+                static_cast<float>(std::stod(entry.substr(0U,colon))));
+            sounding.temp_k.push_back(
+                static_cast<float>(std::stod(entry.substr(colon+1U))));
+            if(separator==std::string::npos)break;
+            position=separator+1U;
+        }
+        if(sounding.height_m.empty())
+            throw std::invalid_argument("bridge profile is empty");
+    };
+    const auto unpack_faces=[](const std::string& text,std::vector<float>& values) {
+        std::size_t position=0;
+        while(position<text.size()) {
+            const auto separator=text.find(';',position);
+            values.push_back(static_cast<float>(std::stod(
+                text.substr(position,separator==std::string::npos
+                            ?std::string::npos:separator-position))));
+            if(separator==std::string::npos)break;
+            position=separator+1U;
+        }
+    };
     std::vector<BridgeObservation> observations;
     while(std::getline(file,line)) {
         if(line.empty())continue;
@@ -318,6 +357,11 @@ std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
         observation.opaque_cloud_tenths=std::stod(fields[cloud]);
         observation.pressure_mb=std::stod(fields[pressure]);
         observation.ceiling_hundreds_ft=std::stoi(fields[ceiling]);
+        observation.justa=std::stoi(fields[justa]);
+        unpack_profile(fields[aa_profile],observation.aa);
+        unpack_profile(fields[bb_profile],observation.bb);
+        unpack_faces(fields[aa_face],observation.aa_face);
+        unpack_faces(fields[bb_face],observation.bb_face);
         observations.push_back(observation);
     }
     if(observations.empty())throw std::invalid_argument("bridge CSV has no hours");
@@ -388,7 +432,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    const std::string& out_path,const std::string& report_path,
                    float ha1,float ha2,float hb1,float hb2,
                    const std::string& wind_path,int mnmdav,float hafang,
-                   const std::string& geo_path,float hc1,float hc2,float hc3) {
+                   const std::string& geo_path,float hc1,float hc2,float hc3,
+                   const std::string& state_prefix) {
     const auto reference=read_calmet_dat21(reference_path);
     // Optional wind source: the frozen original U/V/W for the same intervals.
     std::optional<WindLevels> wind;
@@ -437,6 +482,11 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         h.xorigin_m,h.yorigin_m,h.dgrid_m);
     std::vector<CalmetDat21Field> hourly;
     std::size_t produced_temperature=0U,missing_humidity=0U;
+    // Previous-hour MIXHT state for the ZICONV/DPTT memory (starts at zero,
+    // the original SETUP initialisation for land cells).
+    std::vector<float> previous_ziconv(cells,0.f),previous_dptt(cells,0.f);
+    // Exported chain state (hour-major, i-fastest) when --state-prefix is set.
+    std::vector<float> exported_ziconv,exported_zi;
     for(std::size_t hour=0;hour<reference.intervals;++hour) {
         const auto& observation=observations[hour];
         surf.stations[0].temp_k=static_cast<float>(observation.air_temperature_k);
@@ -497,6 +547,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         for(std::size_t k=0;k<cells;++k)
             density[k]=0.3484321f*station_pressure_mb/surface.temp2d_k[k];
         std::vector<float> ustar,el,heat_flux,heatfx_shortwave_field;
+        std::vector<float> zi_height,ziconv,wstar_field;
         if(geo&&wind) {
             // HEATFX L7999-8122 with the case's gridded land-use properties.
             HeatFluxInput hx;
@@ -563,14 +614,83 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             const auto day_result=elustr_daytime(day);
             ustar.resize(cells);el.resize(cells);
             for(std::size_t k=0;k<cells;++k) {
+                // ELUSTR updates the surface heat flux in place, and MIXHT /
+                // WSTARR consume that updated value (the /HFLUX/ QH array).
                 if(heat_flux[k]<0.f) {
                     ustar[k]=stable_result.ustar_ms[k];
                     el[k]=stable_result.monin_obukhov_m[k];
+                    heat_flux[k]=stable_result.qh_wm2[k];
                 } else {
                     ustar[k]=day_result.ustar_ms[k];
                     el[k]=day_result.monin_obukhov_m[k];
+                    heat_flux[k]=day_result.qh_wm2[k];
                 }
             }
+            // MIXHT L10411-10683 (IMIXH=1 Maul-Carson, the real-case closure).
+            MixhtObservedMcInput mh;
+            mh.nx=static_cast<std::size_t>(h.nx);
+            mh.ny=static_cast<std::size_t>(h.ny);
+            mh.water_first=h.iwat1;mh.water_last=h.iwat2;mh.iupt=-1;
+            mh.imixh=1;mh.izicrlx=1;mh.timestep_s=3600;
+            mh.constn=2400.f;mh.zimin=50.f;mh.zimax=3000.f;
+            mh.threshl=0.f;mh.dptmin=0.001f;mh.dzzi=200.f;
+            mh.onedte=4140.f;mh.twodte=1080.f;mh.tzicrlx=800.f;
+            mh.sounding[0]={observation.aa};
+            mh.sounding[1]={observation.bb};
+            mh.justa={observation.justa};
+            mh.nearu.assign(cells,1);
+            mh.landuse=reference.statics.ilandu;
+            mh.qh=heat_flux;mh.ustar=ustar;mh.el=el;mh.rho=density;
+            mh.cmech.resize(cells);mh.fcori.resize(cells);
+            for(std::size_t k=0;k<cells;++k) {
+                // FCORI=max(|2*(2*pi/86400)*sin(lat)|,0.25e-4), CMECH=CONSTB/sqrt(FCORI)
+                const float lat=0.0174533f*solar_grid.latitude_deg[k];
+                const float f=2.f*(6.2831853f/86400.f)*std::sin(lat);
+                mh.fcori[k]=std::max(std::fabs(f),0.25e-4f);
+                mh.cmech[k]=1.41f/std::sqrt(mh.fcori[k]);
+            }
+            mh.initial_zi.assign(cells,-7777.f);
+            mh.initial_ziconv=previous_ziconv;
+            mh.initial_dptt=previous_dptt;
+            const auto mixing=mixht_observed_mc(mh);
+            zi_height=mixing.zi;
+            ziconv=mixing.ziconv;
+            // COMP L4715: IAVEZI=1 averages ZI and ZICONV upwind with the
+            // ILEVZI=1 wind level before WSTARR and the output write.
+            {
+                AvetmpInput av;
+                av.nx=static_cast<std::size_t>(h.nx);
+                av.ny=static_cast<std::size_t>(h.ny);
+                av.mnmdav=mnmdav;av.hafang_deg=hafang;av.dgrid_m=h.dgrid_m;
+                av.u_ms.resize(cells);av.v_ms.resize(cells);
+                for(std::size_t k=0;k<cells;++k) {
+                    av.u_ms[k]=wind->u[0][hour*cells+k];
+                    av.v_ms[k]=wind->v[0][hour*cells+k];
+                }
+                const auto mixed=avemix(av,zi_height,ziconv);
+                zi_height=mixed.zi_m;
+                ziconv=mixed.ziconv_m;
+            }
+            previous_ziconv=ziconv;
+            previous_dptt=mixing.dptt;
+            if(!state_prefix.empty()) {
+                exported_ziconv.insert(exported_ziconv.end(),
+                                       ziconv.begin(),ziconv.end());
+                exported_zi.insert(exported_zi.end(),
+                                   zi_height.begin(),zi_height.end());
+            }
+            // WSTARR L36884-36949.
+            WstarrInput sw;
+            sw.nx=static_cast<std::size_t>(h.nx);
+            sw.ny=static_cast<std::size_t>(h.ny);
+            sw.water_first=h.iwat1;sw.water_last=h.iwat2;
+            sw.zi_conv_m=ziconv;
+            sw.heat_flux_wm2=heat_flux;
+            sw.temp_k=surface.temp2d_k;
+            sw.rho_kgm3=density;
+            sw.initial_wstar_ms.assign(cells,0.f);
+            sw.landuse=reference.statics.ilandu;
+            wstar_field=wstarr(sw);
         }
         std::vector<float> shortwave(cells,0.f);
         if(heatfx_shortwave_field.empty())
@@ -608,6 +728,12 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                 if(label=="EL"&&!el.empty())
                     for(std::size_t k=0;k<cells;++k)
                         field.real_values[k]=el[k];
+                if(label=="ZI"&&!zi_height.empty())
+                    for(std::size_t k=0;k<cells;++k)
+                        field.real_values[k]=zi_height[k];
+                if(label=="WSTAR"&&!wstar_field.empty())
+                    for(std::size_t k=0;k<cells;++k)
+                        field.real_values[k]=wstar_field[k];
                 if(label=="RHO")
                     for(std::size_t k=0;k<cells;++k)
                         field.real_values[k]=density[k];
@@ -616,14 +742,61 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         }
     }
     write_calmet_dat21(out_path,candidate_header,reference.statics,hourly);
+    if(!state_prefix.empty()) {
+        if(exported_ziconv.size()!=reference.intervals*cells||
+           exported_zi.size()!=reference.intervals*cells)
+            throw std::invalid_argument(
+                "state export requires a wind and GEO source for every hour");
+        const auto write_binary=[&](const std::string& path,
+                                    const std::vector<float>& values) {
+            std::ofstream file(path,std::ios::binary|std::ios::trunc);
+            if(!file)throw std::invalid_argument("cannot write "+path);
+            file.write(reinterpret_cast<const char*>(values.data()),
+                       static_cast<std::streamsize>(values.size()*sizeof(float)));
+            if(!file)throw std::invalid_argument("short write to "+path);
+        };
+        write_binary(state_prefix+".ziconv.f32",exported_ziconv);
+        write_binary(state_prefix+".zi.f32",exported_zi);
+        std::string meta="{\n";
+        meta+="  \"producer\": \"p6e_calmet_dat21 emit-realcase\",\n";
+        meta+="  \"source\": \"chain-internal MIXHT state advanced hour by hour; NOT copied from the reference met.dat\",\n";
+        meta+="  \"fields\": [\"ziconv\",\"zi\"],\n";
+        meta+="  \"units\": \"m\",\n";
+        meta+="  \"dtype\": \"float32 little-endian\",\n";
+        meta+="  \"layout\": \"hour-major, then j-major rows with i fastest, exactly as CALMET.DAT field payloads\",\n";
+        meta+="  \"shape\": ["+std::to_string(reference.intervals)+", "+
+              std::to_string(h.ny)+", "+std::to_string(h.nx)+"],\n";
+        meta+="  \"values_per_file\": "+std::to_string(exported_zi.size())+",\n";
+        meta+="  \"water_sentinel\": -7777.0,\n";
+        meta+="  \"missing_sentinel\": 9999.0,\n";
+        meta+="  \"negative_dptt_or_zero_ziconv_is_physical\": true,\n";
+        meta+="  \"wind_source\": "+json_string(wind_path)+",\n";
+        meta+="  \"geo_source\": "+json_string(geo_path)+",\n";
+        meta+="  \"candidate_artifact\": "+json_string(out_path)+",\n";
+        meta+="  \"difference_from_met_dat_ZI\": \"CALMET.DAT carries ZI (max of convective and mechanical, after AVEMIX averaging); ZICONV is the internal convective height that CGAMMA consumes. This export provides both from the P6E chain; the ZI field here still disagrees with the frozen reference on 62% of cells (audit open), so use ZICONV for wiring until that is resolved.\",\n";
+        meta+="  \"hour_labels\": [";
+        for(std::size_t hour=0;hour<reference.intervals;++hour) {
+            const auto& begin=reference.hourly[hour*reference.fields_per_hour].begin;
+            meta+=std::string(hour?", ":"")+"{\"packed\": "+std::to_string(calmet21_pack(begin))+
+                  ", \"seconds\": "+std::to_string(begin.seconds)+
+                  ", \"year\": "+std::to_string(begin.year)+
+                  ", \"julian_day\": "+std::to_string(begin.julian_day)+
+                  ", \"hour\": "+std::to_string(begin.hour)+"}";
+        }
+        meta+="]\n}\n";
+        std::ofstream metadata(state_prefix+".state.json",std::ios::trunc);
+        if(!metadata)throw std::invalid_argument("cannot write state metadata");
+        metadata<<meta;
+    }
     std::string report="{\n";
     report+="  \"candidate\": "+json_string(out_path)+",\n";
+    if(!state_prefix.empty())report+="  \"state_export_prefix\": "+json_string(state_prefix)+",\n";
     report+="  \"reference\": "+json_string(reference_path)+",\n";
     report+="  \"observations\": "+json_string(observations_path)+",\n";
     report+="  \"intervals\": "+std::to_string(reference.intervals)+",\n";
     report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\",\"QSW\",\"RHO\"";
     if(wind)report+=",\"IPGT\"";
-    if(geo&&wind)report+=",\"USTAR\",\"EL\"";
+    if(geo&&wind)report+=",\"USTAR\",\"EL\",\"ZI\",\"WSTAR\"";
     report+="],\n";
     report+="  \"wind_source\": "+json_string(wind_path)+",\n";
     report+="  \"avetmp_mnmdav\": "+std::to_string(mnmdav)+
@@ -640,7 +813,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             if(label=="TEMPK"||label=="IRH"||label=="T-LEV  1"||label=="QSW"||
                label=="RHO")continue;
             if(label=="IPGT"&&wind)continue;
-            if((label=="USTAR"||label=="EL")&&geo&&wind)continue;
+            if((label=="USTAR"||label=="EL"||label=="ZI"||label=="WSTAR")&&geo&&wind)continue;
             report+=(first?"":", ")+json_string(label);
             first=false;
         }
@@ -972,7 +1145,8 @@ int main(int argc,char** argv) {
                           argument(argc,argv,"--geo-file"),
                           static_cast<float>(std::stod(argument(argc,argv,"--hc1","5.31e-13"))),
                           static_cast<float>(std::stod(argument(argc,argv,"--hc2","60."))),
-                          static_cast<float>(std::stod(argument(argc,argv,"--hc3","0.12"))));
+                          static_cast<float>(std::stod(argument(argc,argv,"--hc3","0.12"))),
+                          argument(argc,argv,"--state-prefix"));
             return 0;
         }
         if(mode=="check") {

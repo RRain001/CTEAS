@@ -196,10 +196,15 @@ def main():
         assert json.loads(full.stdout)["status"]=="PASS"
         # ---- 5b. real-input partial candidate mode ------------------------
         observations=root/"observations.csv"
+        profile="0.0:280.0;100.0:279.0;200.0:278.0"
+        faces="280.0;279.5;279.0"
+        tail=","+profile+","+profile+","+faces+","+faces+"\n"
         observations.write_text(
             "hour_index,air_temperature_k,pressure_mb,humidity_pct,opaque_cloud_tenths,"
-            "ceiling_hundreds_ft\n"+
-            "1,279.25,1028.2,52,0,722\n2,281.75,1027.9,46,0,999\n3,276.50,1025.1,87,0,999\n")
+            "ceiling_hundreds_ft,justa,aa_profile,bb_profile,aa_face_t,bb_face_t\n"+
+            "1,279.25,1028.2,52,0,722,1"+tail+
+            "2,281.75,1027.9,46,0,999,1"+tail+
+            "3,276.50,1025.1,87,0,999,1"+tail)
         candidate=root/"realcase-candidate.dat"
         emitted_real=run([tool,"emit-realcase","--reference",reference,
                           "--observations",observations,"--out",candidate])
@@ -222,7 +227,8 @@ def main():
         bad_observations=root/"short-observations.csv"
         bad_observations.write_text(
             "hour_index,air_temperature_k,pressure_mb,humidity_pct,opaque_cloud_tenths,"
-            "ceiling_hundreds_ft\n1,279.0,1028.2,52,0,999\n")
+            "ceiling_hundreds_ft,justa,aa_profile,bb_profile,aa_face_t,bb_face_t\n"
+            "1,279.0,1028.2,52,0,999,1"+tail)
         assert run([tool,"emit-realcase","--reference",reference,
                     "--observations",bad_observations,
                     "--out",root/"no.dat"]).returncode!=0
