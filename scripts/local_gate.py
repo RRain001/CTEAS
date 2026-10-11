@@ -69,6 +69,20 @@ TRACKS: dict[str, dict] = {
             {"cmd": ["ctest", "--test-dir", "{build}", "--output-on-failure"]},
         ],
     },
+    "p6f": {
+        # CALMET.DAT 2.1 C++ writer. No workflow spec exists (Actions is disabled);
+        # the track mirrors the P6E module shape plus the writer's own CTest set,
+        # which must include the byte-identity round-trip against the frozen
+        # 2022 reference met.dat.
+        "branch": "origin/codex/p6f-calmet-dat21-writer-20261011",
+        "source_workflow": "n/a (local gate track; see docs/reconstruction_cpp/P6_A_TO_G_SEQUENTIAL_EXECUTION_LEDGER.md P6F)",
+        "steps": [
+            {"cmd": ["cmake", "-S", "native_cpp/modules/p6_calmet/p6f", "-B", "{build}",
+                     "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_COMPILER={cxx}"]},
+            {"cmd": ["cmake", "--build", "{build}", "--parallel", "24"]},
+            {"cmd": ["ctest", "--test-dir", "{build}", "--output-on-failure"]},
+        ],
+    },
     "p7": {
         "branch": "origin/codex/cteas-p7-calpuff-20261011",
         "source_workflow": ".github/workflows/p7-calpuff-scoped-ci.yml",
