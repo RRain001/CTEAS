@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -77,6 +78,32 @@ class SparseStationTests(unittest.TestCase):
             self.assertEqual(begin,pd.Timestamp("2022-01-01 18:00"))
             self.assertEqual(end,pd.Timestamp("2022-01-01 20:00"))
             self.assertEqual(g.detect_global_period([("583140","99999",file)]),(begin,end))
+
+    def test_original_fortran_eof_terminal_is_runtime_only_no_interior_fill(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            source=root/"ready/583140-99999.csv"
+            source.parent.mkdir()
+            with source.open("w",newline="") as f:
+                w=csv.writer(f)
+                w.writerow(["GENERIC","Version","'2.0'","Manuallygenerated","Timeasendinghour",""])
+                w.writerow(["Station","ID","='","583140","Temp","Precip","Pressure","RH","Wdir10m","Wspeed10m","Ccover","Cheight"])
+                w.writerow(["Month","Day","Year","Hour","DegC","mm","mb","%","deg","ms-1","tenths","hundreds_of_feet"])
+                w.writerow([1,1,2022,1800,20,0,1000,50,60,2,5,10])
+                w.writerow([1,1,2022,2000,21,0,1000,50,9999,9999,5,10])
+            original_bytes=source.read_bytes()
+            with patch.object(g,"OUTPUT_DIR",root/"run/smerge"):
+                runtime=g.stage_original_smerge_terminal_record(
+                    [("583140","99999",source)],
+                    pd.Timestamp("2022-01-01 23:00"))
+            self.assertEqual(source.read_bytes(),original_bytes)
+            self.assertEqual(len(runtime),1)
+            self.assertNotEqual(runtime[0][2],source)
+            with runtime[0][2].open(newline="") as f:
+                rows=list(csv.reader(f))
+            self.assertEqual([int(float(r[3])) for r in rows[3:]],[1800,2000,2300])
+            self.assertNotIn(1900,[int(float(r[3])) for r in rows[3:]])
+            self.assertEqual([float(v) for v in rows[-1][4:]], [9999.]*8)
 
     def test_real_generic_3_header_file_and_manifest_role(self):
         with tempfile.TemporaryDirectory() as td:
