@@ -385,7 +385,7 @@ def main() -> int:
             else:
                 msg = f"full ISD download failed: {detail}"
             lite_ok, lite_msg, lite_count = False, "ISD-Lite not attempted", 0
-            if success:
+            if success and (mode == "OBSERVED" or full_count * 10 > 9 * expected):
                 for attempt in range(args.retries):
                     lite_ok, lite_msg, _ = download_lite_one(
                         year, st.sid, lite_dir, args.timeout)
@@ -401,6 +401,8 @@ def main() -> int:
                                     f"coverage={lite_count/expected:.4%}")
                     except (ValueError, OSError, EOFError) as exc:
                         lite_ok, lite_msg = False, f"invalid ISD-Lite source: {exc}"
+            if success and mode == "VIRTUAL_RELOCATED" and full_count * 10 <= 9 * expected:
+                lite_msg = "not downloaded: full ISD original coverage <=90% strict external gate"
             # No in-domain observations: strict > 90% for BOTH source files
             # in the exact calendar year. 90.000% is NOT sufficient.
             strict_external_pass = (
