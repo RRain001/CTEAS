@@ -46,7 +46,7 @@ def main():
     rows=parse(a.runtime)
     forcing=a.out/"original_cgamma_real_forcing.csv"
     with forcing.open("w",newline="") as f:
-        w=csv.writer(f)
+        w=csv.writer(f,lineterminator="\n")
         w.writerow(["hour_index","end_epoch_s","zupt_m","ziconv_m","original_gamma"])
         for n,(epoch,zupt,ziconv,gamma) in enumerate(rows,1):
             w.writerow([n,epoch,f"{zupt:.12g}",f"{ziconv:.12g}",f"{gamma:.12g}"])
