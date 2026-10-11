@@ -146,3 +146,16 @@ P7A source/physics fidelity is limited to the supplied, audited control.
 Synthetic staging/unit test is not an original model run.
 
 Pending actual source files from 2022; the old 2023 case is excluded.
+
+## P7A frozen original real-case CI routing
+
+P7-only CI has an optional real ORIGINAL CALPUFF execution gate;
+it requires repository Actions variables with explicit `MET.DAT` and
+CALPUFF control paths, plus both SHA256 hashes:
+`P7_FROZEN_2022_MET_DAT`, `P7_FROZEN_2022_PUFF_INP`,
+`P7_FROZEN_2022_MET_SHA256`, `P7_FROZEN_2022_PUFF_SHA256`.
+All absent => `BLOCKED_NO_FROZEN_2022_CASE`; partial => error, never a
+success. When present, the runner hashes the supplied source files,
+runs the untouched original Fortran binary with a bounded timeout,
+checks listing and concentration output, and writes provenance.
+Successful real original run still does not certify new C++ physics.
