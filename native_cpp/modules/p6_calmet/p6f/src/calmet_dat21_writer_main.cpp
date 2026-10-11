@@ -27,6 +27,7 @@
 //        reconstructed meteorology. The file comments say so.
 // ---------------------------------------------------------------------------
 #include "cteas/p6f/calmet_dat21_writer.hpp"
+#include "cteas/p6f/p6d_fields.hpp"
 #include "cteas/p6f/sha256.hpp"
 
 #include <algorithm>
@@ -39,6 +40,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -50,6 +52,10 @@ using cteas::p6f::Calmet21Statics;
 using cteas::p6f::Calmet21Time;
 
 constexpr const char* kTool = "cteas_p6f_calmet_dat21_writer";
+
+void require_argument(bool condition, const std::string& message) {
+    if(!condition)throw std::runtime_error(message);
+}
 
 std::vector<std::uint8_t> read_bytes(const std::string& path) {
     std::ifstream input(path, std::ios::binary);
@@ -66,6 +72,13 @@ void write_bytes(const std::string& path,
                  static_cast<std::streamsize>(bytes.size()));
     output.close();
     if(!output)throw std::runtime_error("short write to " + path);
+}
+
+std::string trim_text(const std::string& text) {
+    const auto first = text.find_first_not_of(' ');
+    if(first == std::string::npos)return std::string();
+    const auto last = text.find_last_not_of(' ');
+    return text.substr(first, last - first + 1U);
 }
 
 std::string json_string(const std::string& text) {
@@ -285,7 +298,7 @@ Calmet21File build_fixture(int nx, int ny, int nz, int hours, int nssta,
                                          ? 1 + (i + j) % 6
                                          : 40 + (i + 3 * j) % 50;
                     field.integer_values[k] =
-                        (with_missing && label.rfind("IRH", 0U) == 0U && k % 97U == 0U)
+                        (with_missing && k % 97U == 0U)
                             ? cteas::p6f::missing_integer
                             : base;
                 }
@@ -326,8 +339,7 @@ Calmet21File build_fixture(int nx, int ny, int nz, int hours, int nssta,
                     } else if(label.rfind("RMM", 0U) == 0U) {
                         value = 0.1f;
                     }
-                    if(with_missing &&
-                       (label.rfind("TEMPK", 0U) == 0U) && k % 89U == 0U)
+                    if(with_missing && k % 97U == 0U)
                         value = cteas::p6f::missing_real;
                     field.real_values[k] = value;
                 }
@@ -400,6 +412,17 @@ std::string check_report(const std::string& path,
            ", \"xlat1\": " + json_number(header.projection.xlat1) +
            ", \"xlat2\": " + json_number(header.projection.xlat2) + "\n";
     out += "  },\n";
+    // The original copies the land-use categories it read; NLU is not an upper
+    // bound of them in the no-observation case (the frozen reference case itself
+    // stores category 20 with NLU=14), so the categories are reported instead of
+    // being range-rejected.
+    std::size_t ilandu_over_nlu = 0, ilandu_negative = 0;
+    std::int32_t ilandu_max = 0;
+    for(const std::int32_t category : statics.ilandu) {
+        if(category > header.nlu)++ilandu_over_nlu;
+        if(category < 0)++ilandu_negative;
+        ilandu_max = std::max(ilandu_max, category);
+    }
     out += "  \"statics\": {\"zface_faces\": " +
            std::to_string(statics.zface_m.size()) +
            ", \"zface_min_m\": " +
@@ -413,7 +436,15 @@ std::string check_report(const std::string& path,
            ", \"surface_stations\": " + std::to_string(statics.surface_x_m.size()) +
            ", \"upper_stations\": " + std::to_string(statics.upper_x_m.size()) +
            ", \"precip_stations\": " + std::to_string(statics.precip_x_m.size()) +
-           ", \"grid_cells\": " + std::to_string(cells) + "},\n";
+           ", \"grid_cells\": " + std::to_string(cells) +
+           ", \"nlu\": " + std::to_string(header.nlu) +
+           ", \"ilandu_max\": " + std::to_string(ilandu_max) +
+           ", \"ilandu_over_nlu_cells\": " + std::to_string(ilandu_over_nlu) +
+           ", \"ilandu_negative_cells\": " + std::to_string(ilandu_negative) +
+           ", \"ilandu_note\": " +
+           json_string("ILANDU is written verbatim; NLU is not an upper bound in "
+                       "the no-observation case") +
+           "},\n";
     const std::size_t intervals = cteas::p6f::interval_count(file);
     out += "  \"hourly\": {\"intervals\": " + std::to_string(intervals) +
            ", \"fields_per_interval\": " +
@@ -572,14 +603,31 @@ int command_check(const std::string& file, const std::string& report) {
 }
 
 int command_emit_fixture(const std::string& out, int hours, int nx, int ny,
-                         int nz, int nssta, int nusta, int npsta,
+                         int nz, int nssta, int nusta, int npsta, int irtype,
                          const std::string& start, bool with_missing,
                          const std::string& report) {
     const std::int64_t start_instant =
         start.empty() ? cteas::p6f::days_from_civil(2022, 1U, 1U) * 86400
                       : parse_iso_instant(start);
-    const Calmet21File file = build_fixture(nx, ny, nz, hours, nssta, nusta,
-                                            npsta, start_instant, with_missing);
+    Calmet21File file = build_fixture(nx, ny, nz, hours, nssta, nusta,
+                                      npsta, start_instant, with_missing);
+    if(irtype != 1) {
+        // IRTYPE=0 keeps only the wind block of each hour (OUTHR returns after
+        // the U/V/[W] loop), so drop the fields the mode does not write.
+        const std::vector<std::string> keep =
+            cteas::p6f::hourly_labels(file.header.nz, irtype,
+                                      file.header.lcalgrd, file.header.npsta);
+        std::vector<cteas::p6f::Calmet21Field> filtered;
+        for(const cteas::p6f::Calmet21Field& field : file.hourly) {
+            const std::string name = trim_text(field.label);
+            bool wanted = false;
+            for(const std::string& label : keep)
+                wanted = wanted || (trim_text(label) == name);
+            if(wanted)filtered.push_back(field);
+        }
+        file.hourly = std::move(filtered);
+        file.header.irtype = irtype;
+    }
     const std::vector<std::uint8_t> bytes =
         cteas::p6f::serialize_calmet_dat21(file);
     write_bytes(out, bytes);
@@ -600,6 +648,97 @@ int command_emit_fixture(const std::string& out, int hours, int nx, int ny,
               << " intervals=" << hours << " fields_per_interval="
               << cteas::p6f::fields_per_interval(file.header)
               << " (SYNTHETIC layout fixture)\n";
+    return 0;
+}
+
+int command_write_from_p6d(const std::string& fields, const std::string& variant,
+                           const std::string& w_field,
+                           const std::string& statics_from,
+                           const std::string& met_fields_from, int irtype,
+                           int hours, bool allow_unverified,
+                           const std::string& out, const std::string& report) {
+    require_argument(!fields.empty(), "write-from-p6d requires --fields");
+    require_argument(!statics_from.empty(),
+                     "write-from-p6d requires --statics-from <legal CALMET.DAT>");
+    require_argument(!out.empty(), "write-from-p6d requires --out");
+    require_argument(!met_fields_from.empty() || irtype == 0,
+                     "IRTYPE=1 needs --met-fields-from <legal CALMET.DAT>");
+    const cteas::p6f::Calmet21File statics =
+        cteas::p6f::read_calmet_dat21(statics_from);
+    std::unique_ptr<cteas::p6f::Calmet21File> met;
+    if(!met_fields_from.empty())
+        met = std::make_unique<cteas::p6f::Calmet21File>(
+            cteas::p6f::read_calmet_dat21(met_fields_from));
+    std::vector<std::string> labels =
+        cteas::p6f::read_p6d_produced_hours(fields + "/produced_hours.txt");
+    const std::size_t available = labels.size();
+    const cteas::p6f::P6dFieldsMetadata declared =
+        cteas::p6f::read_p6d_fields_metadata(fields + "/metadata.json");
+    if(declared.hourly_label_count > 0)
+        require_argument(static_cast<std::size_t>(declared.hourly_label_count) ==
+                             available,
+                         "metadata.hourly_labels declares " +
+                             std::to_string(declared.hourly_label_count) +
+                             " hours but produced_hours.txt lists " +
+                             std::to_string(available));
+    if(hours > 0 && static_cast<std::size_t>(hours) < labels.size())
+        labels.resize(static_cast<std::size_t>(hours));
+    const cteas::p6f::P6dFieldsMetadata metadata = declared;
+    const cteas::p6f::Calmet21File file = cteas::p6f::build_calmet_from_p6d(
+        fields, variant, w_field, labels, statics, met.get(), irtype,
+        allow_unverified);
+    const std::vector<std::uint8_t> bytes =
+        cteas::p6f::serialize_calmet_dat21(file);
+    write_bytes(out, bytes);
+    std::string text;
+    text += "{\n  \"tool\": " + json_string(kTool) + ",\n";
+    text += "  \"command\": \"write-from-p6d\",\n";
+    text += "  \"fields\": " + json_string(fields) + ",\n";
+    text += "  \"variant\": " + json_string(variant) + ",\n";
+    text += "  \"w_field\": " + json_string(w_field) + ",\n";
+    text += "  \"statics_from\": " + json_string(statics_from) + ",\n";
+    text += "  \"met_fields_from\": " + json_string(met_fields_from) + ",\n";
+    text += "  \"irtype\": " + std::to_string(irtype) + ",\n";
+    text += "  \"hours_available\": " + std::to_string(available) + ",\n";
+    text += "  \"hours_written\": " + std::to_string(labels.size()) + ",\n";
+    text += "  \"first_label\": " + json_string(labels.front()) + ",\n";
+    text += "  \"last_label\": " + json_string(labels.back()) + ",\n";
+    text += "  \"grid\": [" + std::to_string(metadata.nx) + "," +
+            std::to_string(metadata.ny) + "," + std::to_string(metadata.nz) +
+            "],\n";
+    text += "  \"product\": " + json_string(metadata.product) + ",\n";
+    text += "  \"product_status\": " + json_string(metadata.status) + ",\n";
+    text += "  \"product_partial\": " + json_bool(metadata.partial) + ",\n";
+    text += "  \"blend_verification\": " + json_string(metadata.blend_verification) +
+            ",\n";
+    text += "  \"fradj_status\": " + json_string(metadata.fradj_status) + ",\n";
+    text += "  \"variant_source_verified\": " +
+            json_bool(variant == "wind1") + ",\n";
+    text += "  \"w_face_source_verified\": " +
+            json_bool(w_field != "w_face") + ",\n";
+    text += "  \"accept_unverified_variant\": " +
+            json_bool(allow_unverified) + ",\n";
+    text += "  \"grid_layout\": " + json_string(metadata.layout) + ",\n";
+    text += "  \"grid_dtype\": " + json_string(metadata.dtype) + ",\n";
+    text += "  \"missing_sentinel\": " +
+            json_number(metadata.missing_sentinel) + ",\n";
+    text += "  \"out\": " + json_string(out) + ",\n";
+    text += "  \"out_bytes\": " + std::to_string(bytes.size()) + ",\n";
+    text += "  \"out_sha256\": " +
+            json_string(cteas::p6f::sha256_hex(bytes)) + ",\n";
+    text += "  \"intervals\": " +
+            std::to_string(cteas::p6f::interval_count(file)) + ",\n";
+    text += "  \"fields_per_interval\": " +
+            std::to_string(cteas::p6f::fields_per_interval(file.header)) + ",\n";
+    text += "  \"status\": \"PASS_WRITTEN_FROM_P6D_ARRAYS\"\n}\n";
+    write_report(report, text);
+    std::cout << "P6F_WRITE_FROM_P6D_WRITTEN sha256="
+              << cteas::p6f::sha256_hex(bytes) << " bytes=" << bytes.size()
+              << " intervals=" << cteas::p6f::interval_count(file)
+              << " fields_per_interval="
+              << cteas::p6f::fields_per_interval(file.header)
+              << " irtype=" << irtype << " variant=" << variant
+              << " w_field=" << w_field << "\n";
     return 0;
 }
 
@@ -625,14 +764,20 @@ int main(int argc, char** argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
     if(args.empty()) {
         std::cerr << "usage: cteas_p6f_calmet_dat21_writer "
-                     "<roundtrip|check|emit-fixture> [options]\n";
+                     "<roundtrip|check|emit-fixture|write-from-p6d> [options]\n";
         return 2;
     }
     try {
         const std::string command = args[0];
         std::string file, out, expect, report, start;
-        int hours = 3, nx = 8, ny = 5, nz = 3;
-        int nssta = 1, nusta = 1, npsta = 0;
+        std::string fields, variant = "wind1", w_field = "w_face";
+        std::string statics_from, met_fields_from;
+        bool allow_unverified = false;
+        // 0 means "all produced hours" for write-from-p6d and 3 for the
+        // synthetic fixture generator.
+        int hours = 0, nx = 8, ny = 5, nz = 3;
+        int nssta = 1, nusta = 1, npsta = 0, irtype = 1;
+        bool irtype_given = false;
         bool with_missing = false;
         for(std::size_t at = 1; at < args.size(); ++at) {
             const std::string& flag = args[at];
@@ -641,13 +786,26 @@ int main(int argc, char** argv) {
             else if(flag == "--expect-sha256")expect = option_value(args, at, flag);
             else if(flag == "--report")report = option_value(args, at, flag);
             else if(flag == "--start")start = option_value(args, at, flag);
-            else if(flag == "--hours")hours = option_int(args, at, flag);
+            else if(flag == "--hours") {
+                hours = option_int(args, at, flag);
+                require_argument(hours >= 0, "--hours must not be negative");
+            }
             else if(flag == "--nx")nx = option_int(args, at, flag);
             else if(flag == "--ny")ny = option_int(args, at, flag);
             else if(flag == "--nz")nz = option_int(args, at, flag);
             else if(flag == "--nssta")nssta = option_int(args, at, flag);
             else if(flag == "--nusta")nusta = option_int(args, at, flag);
             else if(flag == "--npsta")npsta = option_int(args, at, flag);
+            else if(flag == "--irtype") {
+                irtype = option_int(args, at, flag);
+                irtype_given = true;
+            }
+            else if(flag == "--fields")fields = option_value(args, at, flag);
+            else if(flag == "--variant")variant = option_value(args, at, flag);
+            else if(flag == "--w-field")w_field = option_value(args, at, flag);
+            else if(flag == "--statics-from")statics_from = option_value(args, at, flag);
+            else if(flag == "--met-fields-from")met_fields_from = option_value(args, at, flag);
+            else if(flag == "--accept-unverified-variant")allow_unverified = true;
             else if(flag == "--with-missing")with_missing = true;
             else throw std::runtime_error("unknown option " + flag);
         }
@@ -659,11 +817,21 @@ int main(int argc, char** argv) {
             if(file.empty())throw std::runtime_error("check requires --file");
             return command_check(file, report);
         }
+        if(command == "write-from-p6d") {
+            // The wind-only layout (IRTYPE=0) is the honest product of the P6D
+            // U/V/W contract; IRTYPE=1 additionally needs the 2-D
+            // meteorological fields from another legal file.
+            return command_write_from_p6d(fields, variant, w_field, statics_from,
+                                          met_fields_from,
+                                          irtype_given ? irtype : 0, hours,
+                                          allow_unverified, out, report);
+        }
         if(command == "emit-fixture") {
             if(out.empty())
                 throw std::runtime_error("emit-fixture requires --out");
-            return command_emit_fixture(out, hours, nx, ny, nz, nssta, nusta,
-                                        npsta, start, with_missing, report);
+            return command_emit_fixture(out, hours > 0 ? hours : 3, nx, ny, nz,
+                                        nssta, nusta, npsta, irtype, start,
+                                        with_missing, report);
         }
         std::cerr << "unknown command " << command << "\n";
         return 2;
