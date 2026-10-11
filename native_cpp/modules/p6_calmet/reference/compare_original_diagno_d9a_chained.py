@@ -43,7 +43,7 @@ MINIM_DIVLIM=0.
 # topographic coefficient and the real deck's namelist MINIM pair (unused by
 # the frozen deck because it has IKINE=0).
 ALPHA=0.1
-KINEMATIC_NITER=1
+KINEMATIC_NITER=50
 KINEMATIC_DIVLIM=5.e-6
 
 def run(args):

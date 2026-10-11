@@ -204,13 +204,17 @@ def write_case(path, zface1_m, dz_m, terrain, lapse, temperature, alpha,
     if any(len(field) != size for field, size in shapes):
         raise ValueError("kinematic route input shape")
     with path.open("w") as handle:
-        handle.write(f"{zface1_m:.9f} {chain_fradj.ISURFT} "
-                     f"{chain_fradj.TINF_K:.9f} {alpha:.9f} {niter} "
-                     f"{divlim_per_s:.9f}\n")
-        handle.write(" ".join(f"{value:.9f}" for value in dz_m) + "\n")
+        handle.write(f"{zface1_m!r} {chain_fradj.ISURFT} "
+                     f"{chain_fradj.TINF_K!r} {alpha!r} {niter} "
+                     f"{divlim_per_s!r}\n")
+        handle.write(" ".join(repr(float(value)) for value in dz_m) + "\n")
+        # repr() is the shortest round-trip form, so the unchanged Fortran
+        # reader reconstructs exactly the float32 the C++ bridge holds. A
+        # truncated fixture would seed the MINIM iteration differently and
+        # that difference grows through the Gauss-Seidel sweeps.
         for field in (terrain, lapse, temperature, u, v):
             for offset in range(0, len(field), NX):
-                handle.write(" ".join(f"{value:.8f}"
+                handle.write(" ".join(repr(float(value))
                                       for value in field[offset:offset + NX]) + "\n")
 
 def write_bridge_fields(handle, enabled, alpha, niter, divlim_per_s):
