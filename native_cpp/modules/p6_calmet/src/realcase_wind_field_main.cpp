@@ -18,6 +18,7 @@
 #include "cteas/p6/read_geo.hpp"
 #include "cteas/p6/read_surface.hpp"
 #include "cteas/p6/read_upper.hpp"
+#include "cteas/p6/diagno_segment.hpp"
 #include "cteas/p6/inter2_selected.hpp"
 #include "cteas/p6/similt_neutral.hpp"
 #include "cteas/p6/terrain_envelope.hpp"
@@ -293,6 +294,14 @@ int main(int argc,char** argv){
     const float r1_km=deck_scalar(controls,"R1",50.f);
     const float r2_km=deck_scalar(controls,"R2",100.f);
     const bool lvary=deck_scalar(controls,"LVARY",0.f)!=0.f;
+    std::vector<int> nsmth(9);
+    {
+        const auto it=controls.find("NSMTH");
+        if(it==controls.end()||it->second.size()<9)
+            throw std::runtime_error("the deck must declare nine NSMTH values");
+        for(std::size_t k=0;k<9;++k)
+            nsmth[k]=static_cast<int>(it->second[k]);
+    }
     std::vector<int> nintrp(9);
     {
         const auto it=controls.find("NINTR2");
@@ -375,6 +384,7 @@ int main(int argc,char** argv){
         // case's own controls: WO=1.0 everywhere because IPROG=0 and the deck
         // supplies no WT.DAT (RDWT fills 1.0 for IPROG=0/2/4/14), RVARY off,
         // NINTR2=99 for every layer, and the observed station profiles.
+        std::vector<float> blended_u,blended_v;
         for(int component=0;component<2;++component){
             Inter2SelectedInput blend;
             blend.nx=nx;blend.ny=ny;blend.nz=nz;blend.nstations=2;
@@ -404,9 +414,38 @@ int main(int argc,char** argv){
             }
             blend.step1_mps=component==0?first.ug_mps:first.vg_mps;
             const auto blended=original_inter2_selected(blend);
+            if(component==0)blended_u=blended.component_mps;
+            else blended_v=blended.component_mps;
             write_f32(args.out()/((component==0?"blend_u_":"blend_v_")+
                                   hour_label(clock)+".f32"),
                       blended.component_mps);
+        }
+        // DIAGNO SMOOTH+DIVCEL+W on the blended field, with the per-layer
+        // smoothing counts and boundaries taken from the blended field itself.
+        // The deck's FRADJ/SLOPE corrections are not applied here (they need
+        // TEMP2D/QH), so this is the uncompensated-terrain variant and the
+        // metadata labels it as such.
+        {
+            SmoothInput tail;
+            tail.nx=nx;tail.ny=ny;tail.nz=nz;tail.lake_breeze=false;
+            tail.passes_per_layer=nsmth;
+            tail.u_mps=blended_u;tail.v_mps=blended_v;
+            tail.ub_west_east_mps.assign(9*2*ny,0.f);
+            tail.vb_south_north_mps.assign(9*2*nx,0.f);
+            for(std::size_t k=0;k<9;++k)for(std::size_t j=0;j<ny;++j){
+                tail.ub_west_east_mps[k*2*ny+j]=blended_u[k*2500+j*50];
+                tail.ub_west_east_mps[k*2*ny+ny+j]=
+                    blended_u[k*2500+j*50+49];
+            }
+            for(std::size_t k=0;k<9;++k)for(std::size_t i=0;i<nx;++i){
+                tail.vb_south_north_mps[k*2*nx+i]=blended_v[k*2500+i];
+                tail.vb_south_north_mps[k*2*nx+nx+i]=
+                    blended_v[k*2500+49*50+i];
+            }
+            const auto final_fields=original_smooth_divcel_w(
+                std::move(tail),grid_m,grid_m,thickness_m,false);
+            write_f32(args.out()/("w_face_"+hour_label(clock)+".f32"),
+                      final_fields.w_face_mps);
         }
         if(!args.fixture_dir.empty()){
             // Driver fixture for the unchanged original WIND1/SIMILT, so the
@@ -445,7 +484,7 @@ int main(int argc,char** argv){
     meta<<"], \"center_m\": [";
     for(std::size_t k=0;k<9;++k)meta<<(k?", ":"")<<center_m[k];
     meta<<"]},\n";
-    meta<<"  \"units\": {\"wind1_u_*.f32\": \"m/s\", \"wind1_v_*.f32\": \"m/s\","
+    meta<<"  \"units\": {\"wind1_u_*.f32\": \"m/s\", \"wind1_v_*.f32\": \"m/s\", \"blend_u_*.f32\": \"m/s\", \"blend_v_*.f32\": \"m/s\", \"w_face_*.f32\": \"m/s (10 faces: k=1 face is the surface, k=10 the domain top)\","
           " \"terset_hmax.f32\": \"m\", \"terset_hmin.f32\": \"m\","
           " \"terset_disthmax.f32\": \"m\", \"terset_disthmin.f32\": \"m\"},\n";
     meta<<"  \"missing_sentinel\": "<<MISSING<<",\n";
@@ -474,7 +513,9 @@ int main(int argc,char** argv){
           " \"missing\": [\"GAMMA\", \"TEMP2D\", \"HMAX (provided here as terset_hmax.f32)\"]},\n";
     meta<<"    {\"stage\": \"SLOPE (L5722-L5723)\", \"status\": \"NEEDS_CALLER_PLANES\","
           " \"missing\": [\"QH\", \"TEMP2D\", \"HMIN/DISTHMAX/DISTHMIN (provided here as terset_*.f32)\"]},\n";
-    meta<<"    {\"stage\": \"SMOOTH/DIVCEL/W tail (DIAGNO L6119-L6148)\", \"status\": \"NOT_APPLIED_IN_THIS_PARTIAL\","
+    meta<<"    {\"stage\": \"SMOOTH/DIVCEL/W tail (DIAGNO L6119-L6148)\", \"status\": \"APPLIED_WITHOUT_TERRAIN_CORRECTION\","
+          " \"product\": \"w_face_*.f32 (10 faces per column)\","
+          " \"note\": \"run on the blended field with the deck NSMTH and boundaries taken from that field; the L5748 snapshot after the FRADJ/SLOPE corrections is not available yet (TEMP2D/QH), so this is the uncompensated-terrain variant\"},"
           " \"note\": \"the tail consumes the L5748 WINDBC snapshot taken after the FRADJ/SLOPE corrections, which still need TEMP2D/QH; emitting W from an un-corrected step one would be an unfaithful combination\"},\n";
     meta<<"    {\"stage\": \"TOPOF2/IKINE route and O'Brien/IOBR=1 tail\", \"status\": \"NON_CASE_PATH\","
           " \"note\": \"the case deck sets IKINE=0 and IOBR=0\"}\n";
