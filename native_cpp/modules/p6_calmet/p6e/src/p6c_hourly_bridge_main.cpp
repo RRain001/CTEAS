@@ -26,8 +26,8 @@ int main(int argc,char** argv) {
         // the original CTEAS 2022 case's COMP joint reader.
         const std::vector<float> faces{0.f,20.f,40.f,80.f,160.f,
                                        320.f,640.f,1200.f,2000.f,3000.f};
-        const auto hours=comp_selected_2022_hours(upper,faces);
-        if(hours.size()!=143||surface.hourly.size()!=143)
+        const auto hourly_states=comp_selected_2022_hours(upper,faces);
+        if(hourly_states.size()!=143||surface.hourly.size()!=143)
             throw std::runtime_error("P6E source input not exactly 143 hours");
         RdsnBufferedTimeline rdsn(surface);
         std::ofstream out(argv[4]);
@@ -41,8 +41,8 @@ int main(int argc,char** argv) {
               "physical_aa_sounding_level1_k,physical_bb_sounding_level1_k\n";
         out<<std::fixed<<std::setprecision(7);
         int missing_precip=0,observed_zero=0,negative_order=0;
-        for(std::size_t n=0;n<hours.size();++n) {
-            const auto& h=hours[n];
+        for(std::size_t n=0;n<hourly_states.size();++n) {
+            const auto& h=hourly_states[n];
             const auto surface_state=rdsn.select(
                 h.interpolated.end-hours{1},h.interpolated.end);
             const auto row=p6c_observed_hour(upper,h,surface_state);
