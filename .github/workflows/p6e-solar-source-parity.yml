@@ -95,7 +95,7 @@ jobs:
               raise RuntimeError("GitHub REST tree truncated: refusing incomplete bootstrap")
           prefix = "native_cpp/modules/p6_calmet/p6e/"
           vendor_prefix = "engine/vendor/src/CALMET_v6.5.0_L150223/"
-          allow_vendor = {"calmet.for", "hflux.met", "ziparm.met", "upmet.met"}
+          allow_vendor = {"calmet.for", "hflux.met", "ziparm.met", "upmet.met", "gen.met"}
           files = [
               item for item in tree["tree"]
               if item["type"] == "blob" and (
@@ -129,6 +129,9 @@ jobs:
           }
           test -f engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for || {
             echo "::error::Original CALMET vendor source not retrieved"; exit 1;
+          }
+          test -f engine/vendor/src/CALMET_v6.5.0_L150223/gen.met || {
+            echo "::error::MIXHMC original GEN.MET common block not retrieved"; exit 1;
           }
       - name: Identify lhy-desktop-2 and verify toolchain
         shell: bash
