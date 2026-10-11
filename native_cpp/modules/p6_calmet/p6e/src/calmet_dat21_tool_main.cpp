@@ -432,7 +432,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    const std::string& out_path,const std::string& report_path,
                    float ha1,float ha2,float hb1,float hb2,
                    const std::string& wind_path,int mnmdav,float hafang,
-                   const std::string& geo_path,float hc1,float hc2,float hc3) {
+                   const std::string& geo_path,float hc1,float hc2,float hc3,
+                   const std::string& state_prefix) {
     const auto reference=read_calmet_dat21(reference_path);
     // Optional wind source: the frozen original U/V/W for the same intervals.
     std::optional<WindLevels> wind;
@@ -484,6 +485,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     // Previous-hour MIXHT state for the ZICONV/DPTT memory (starts at zero,
     // the original SETUP initialisation for land cells).
     std::vector<float> previous_ziconv(cells,0.f),previous_dptt(cells,0.f);
+    // Exported chain state (hour-major, i-fastest) when --state-prefix is set.
+    std::vector<float> exported_ziconv,exported_zi;
     for(std::size_t hour=0;hour<reference.intervals;++hour) {
         const auto& observation=observations[hour];
         surf.stations[0].temp_k=static_cast<float>(observation.air_temperature_k);
@@ -670,6 +673,12 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             }
             previous_ziconv=ziconv;
             previous_dptt=mixing.dptt;
+            if(!state_prefix.empty()) {
+                exported_ziconv.insert(exported_ziconv.end(),
+                                       ziconv.begin(),ziconv.end());
+                exported_zi.insert(exported_zi.end(),
+                                   zi_height.begin(),zi_height.end());
+            }
             // WSTARR L36884-36949.
             WstarrInput sw;
             sw.nx=static_cast<std::size_t>(h.nx);
@@ -733,8 +742,55 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         }
     }
     write_calmet_dat21(out_path,candidate_header,reference.statics,hourly);
+    if(!state_prefix.empty()) {
+        if(exported_ziconv.size()!=reference.intervals*cells||
+           exported_zi.size()!=reference.intervals*cells)
+            throw std::invalid_argument(
+                "state export requires a wind and GEO source for every hour");
+        const auto write_binary=[&](const std::string& path,
+                                    const std::vector<float>& values) {
+            std::ofstream file(path,std::ios::binary|std::ios::trunc);
+            if(!file)throw std::invalid_argument("cannot write "+path);
+            file.write(reinterpret_cast<const char*>(values.data()),
+                       static_cast<std::streamsize>(values.size()*sizeof(float)));
+            if(!file)throw std::invalid_argument("short write to "+path);
+        };
+        write_binary(state_prefix+".ziconv.f32",exported_ziconv);
+        write_binary(state_prefix+".zi.f32",exported_zi);
+        std::string meta="{\n";
+        meta+="  \"producer\": \"p6e_calmet_dat21 emit-realcase\",\n";
+        meta+="  \"source\": \"chain-internal MIXHT state advanced hour by hour; NOT copied from the reference met.dat\",\n";
+        meta+="  \"fields\": [\"ziconv\",\"zi\"],\n";
+        meta+="  \"units\": \"m\",\n";
+        meta+="  \"dtype\": \"float32 little-endian\",\n";
+        meta+="  \"layout\": \"hour-major, then j-major rows with i fastest, exactly as CALMET.DAT field payloads\",\n";
+        meta+="  \"shape\": ["+std::to_string(reference.intervals)+", "+
+              std::to_string(h.ny)+", "+std::to_string(h.nx)+"],\n";
+        meta+="  \"values_per_file\": "+std::to_string(exported_zi.size())+",\n";
+        meta+="  \"water_sentinel\": -7777.0,\n";
+        meta+="  \"missing_sentinel\": 9999.0,\n";
+        meta+="  \"negative_dptt_or_zero_ziconv_is_physical\": true,\n";
+        meta+="  \"wind_source\": "+json_string(wind_path)+",\n";
+        meta+="  \"geo_source\": "+json_string(geo_path)+",\n";
+        meta+="  \"candidate_artifact\": "+json_string(out_path)+",\n";
+        meta+="  \"difference_from_met_dat_ZI\": \"CALMET.DAT carries ZI (max of convective and mechanical, after AVEMIX averaging); ZICONV is the internal convective height that CGAMMA consumes. This export provides both from the P6E chain; the ZI field here still disagrees with the frozen reference on 62% of cells (audit open), so use ZICONV for wiring until that is resolved.\",\n";
+        meta+="  \"hour_labels\": [";
+        for(std::size_t hour=0;hour<reference.intervals;++hour) {
+            const auto& begin=reference.hourly[hour*reference.fields_per_hour].begin;
+            meta+=std::string(hour?", ":"")+"{\"packed\": "+std::to_string(calmet21_pack(begin))+
+                  ", \"seconds\": "+std::to_string(begin.seconds)+
+                  ", \"year\": "+std::to_string(begin.year)+
+                  ", \"julian_day\": "+std::to_string(begin.julian_day)+
+                  ", \"hour\": "+std::to_string(begin.hour)+"}";
+        }
+        meta+="]\n}\n";
+        std::ofstream metadata(state_prefix+".state.json",std::ios::trunc);
+        if(!metadata)throw std::invalid_argument("cannot write state metadata");
+        metadata<<meta;
+    }
     std::string report="{\n";
     report+="  \"candidate\": "+json_string(out_path)+",\n";
+    if(!state_prefix.empty())report+="  \"state_export_prefix\": "+json_string(state_prefix)+",\n";
     report+="  \"reference\": "+json_string(reference_path)+",\n";
     report+="  \"observations\": "+json_string(observations_path)+",\n";
     report+="  \"intervals\": "+std::to_string(reference.intervals)+",\n";
@@ -1089,7 +1145,8 @@ int main(int argc,char** argv) {
                           argument(argc,argv,"--geo-file"),
                           static_cast<float>(std::stod(argument(argc,argv,"--hc1","5.31e-13"))),
                           static_cast<float>(std::stod(argument(argc,argv,"--hc2","60."))),
-                          static_cast<float>(std::stod(argument(argc,argv,"--hc3","0.12"))));
+                          static_cast<float>(std::stod(argument(argc,argv,"--hc3","0.12"))),
+                          argument(argc,argv,"--state-prefix"));
             return 0;
         }
         if(mode=="check") {
