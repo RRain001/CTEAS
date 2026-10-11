@@ -312,6 +312,13 @@ add_test(NAME p6d9a_inchain_terset_envelope_contract COMMAND cteas_p6_terset_env
 # plus the in-chain TERSET envelope, with explicit provenance metadata).
 add_executable(cteas_p6_realcase_wind_field src/realcase_wind_field_main.cpp)
 target_link_libraries(cteas_p6_realcase_wind_field PRIVATE cteas_p6a_contracts)
+# Read-only reuse of the P6E submodule headers (SURFVAR/SOLAR/HEATFX); no P6E
+# source is modified and the P6E module keeps its own build.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+  target_include_directories(cteas_p6_realcase_wind_field PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+else()
+  message(FATAL_ERROR "P6E submodule headers required by the real-case producer are missing")
+endif()
 if(MSVC)
   target_compile_options(cteas_p6_realcase_wind_field PRIVATE /W4 /WX)
 else()

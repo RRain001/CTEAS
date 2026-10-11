@@ -19,6 +19,10 @@
 #include "cteas/p6/read_surface.hpp"
 #include "cteas/p6/read_upper.hpp"
 #include "cteas/p6/diagno_segment.hpp"
+#include "cteas/p6/slope_flow.hpp"
+#include "cteas/p6e/heatfx.hpp"
+#include "cteas/p6e/surface_solar.hpp"
+#include "cteas/p6e/surfvar_observed.hpp"
 #include "cteas/p6/inter2_selected.hpp"
 #include "cteas/p6/similt_neutral.hpp"
 #include "cteas/p6/terrain_envelope.hpp"
@@ -384,7 +388,105 @@ int main(int argc,char** argv){
         // case's own controls: WO=1.0 everywhere because IPROG=0 and the deck
         // supplies no WT.DAT (RDWT fills 1.0 for IPROG=0/2/4/14), RVARY off,
         // NINTR2=99 for every layer, and the observed station profiles.
+        // Original upstream physics: SURFVAR builds the 2-D surface
+        // temperature (DIAGNO L5609-L5610, ISURFT<0, IALL=0 returns the same
+        // temp_k and drops RH/IPCODE), SOLAR builds the grid sine of the solar
+        // elevation for the interval start, HEATFX turns both into the
+        // sensible heat flux, and SLOPE adds the Mahrt slope flow to the
+        // step-one winds before the L5748 boundary snapshot.
+        cteas::p6e::SurfaceState surface_state;
+        {
+            cteas::p6e::ObservedSurface observed;
+            observed.nx=nx;observed.ny=ny;
+            observed.station_temp_k=obs->temperature_k;
+            observed.station_rh_percent=obs->humidity_pct;
+            observed.npsta=0;observed.noobs=0;observed.itprog=0;
+            observed.irhprog=0;observed.nowsta=0;
+            observed.land_only=true;observed.average_temperature=true;  // IAVET=1
+            observed.iall=0;                                            // DIAGNO L5610
+            // AVETMP consumes the surface-level diagnostic wind field.
+            observed.u_ms.assign(first.ug_mps.begin(),first.ug_mps.begin()+2500);
+            observed.v_ms.assign(first.vg_mps.begin(),first.vg_mps.begin()+2500);
+            observed.dgrid_m=grid_m;observed.mnmdav=1;observed.hafang_deg=30.f;
+            if(!(std::isfinite(observed.station_temp_k)&&
+                 observed.station_temp_k>0.f))
+                throw std::runtime_error(
+                    "surface temperature observation missing at "+hour_label(clock));
+            surface_state=cteas::p6e::surfvar_one_station(observed);
+        }
+        // SOLAR takes the day of year (1..366) of the interval start.
+        const int julian_day=[&]{
+            const auto day=std::chrono::floor<std::chrono::days>(clock-
+                std::chrono::hours(1));
+            const std::chrono::year_month_day ymd{day};
+            const std::chrono::sys_days first{ymd.year()/
+                std::chrono::January/1};
+            return static_cast<int>((day-first).count())+1;
+        }();
+        const int begin_hour=[&]{
+            const auto day=std::chrono::floor<std::chrono::days>(clock-
+                std::chrono::hours(1));
+            return static_cast<int>(std::chrono::duration_cast<
+                std::chrono::hours>(clock-std::chrono::hours(1)-day).count());
+        }();
+        const auto solar_grid=cteas::p6e::surface_solar_grid(
+            static_cast<std::size_t>(nx),static_cast<std::size_t>(ny),50,
+            origin_x_km*1000.0,origin_y_km*1000.0,grid_m);
+        const auto sinalpc=cteas::p6e::sinalpc_grid(solar_grid,julian_day,
+            begin_hour,0);
+        std::vector<float> heat_flux;
+        {
+            cteas::p6e::HeatFluxInput flux;
+            flux.nx=nx;flux.ny=ny;
+            flux.mcloud=1;
+            flux.water_first=geo.iwat1;flux.water_last=geo.iwat2;
+            flux.ha1=990.f;flux.ha2=-30.f;flux.hb1=-0.75f;flux.hb2=3.4f;
+            flux.hc1=5.31e-13f;flux.hc2=60.f;flux.hc3p1=1.12f;
+            flux.station_cloud={obs->opaque_cloud_tenths};
+            flux.nearest.assign(2500,1);
+            flux.landuse=geo.landuse;
+            flux.sun=sinalpc;
+            flux.temp_k=surface_state.temp_k;
+            flux.cloud_grid.assign(2500,0.1f*
+                static_cast<float>(obs->opaque_cloud_tenths));
+            flux.albedo=geo.albedo;
+            flux.bowen=geo.bowen;
+            flux.soil_heat_fraction=geo.hcg;
+            flux.anthropogenic_wm2=geo.qf;
+            flux.initial_qh.assign(2500,0.f);
+            heat_flux=cteas::p6e::heatfx(flux).sensible_wm2;
+        }
+        std::vector<float> corrected_u=first.ug_mps,corrected_v=first.vg_mps;
+        {
+            SlopeInput slope;
+            slope.nx=nx;slope.ny=ny;slope.nz=nz;
+            slope.dx_m=grid_m;slope.dy_m=grid_m;
+            slope.water_first=geo.iwat1;slope.water_last=geo.iwat2;
+            slope.isurft=-1;
+            slope.domain_temperature_k=285.f;  // unused for ISURFT<0
+            slope.zface_m=std::vector<float>(zface.begin(),zface.end());
+            slope.terrain_m=geo.terrain_m;slope.hmax_m=envelope.maximum_m;
+            slope.hmin_m=envelope.minimum_m;
+            slope.disthmax_m=envelope.distance_to_maximum_m;
+            slope.disthmin_m=envelope.distance_to_minimum_m;
+            slope.sensible_heat_w_m2=heat_flux;
+            slope.surface_temperature_k=surface_state.temp_k;
+            slope.landuse=geo.landuse;
+            const auto flow=compute_original_slope_scoped(slope);
+            for(std::size_t n=0;n<22500;++n){
+                corrected_u[n]+=flow.u_mps[n];
+                corrected_v[n]+=flow.v_mps[n];
+            }
+        }
+        write_f32(args.out()/("slope_corrected_u_"+hour_label(clock)+".f32"),
+                  corrected_u);
+        write_f32(args.out()/("slope_corrected_v_"+hour_label(clock)+".f32"),
+                  corrected_v);
+        write_f32(args.out()/("temp2d_"+hour_label(clock)+".f32"),
+                  surface_state.temp_k);
+        write_f32(args.out()/("qh_"+hour_label(clock)+".f32"),heat_flux);
         std::vector<float> blended_u,blended_v;
+        std::vector<float> station_values[2];
         for(int component=0;component<2;++component){
             Inter2SelectedInput blend;
             blend.nx=nx;blend.ny=ny;blend.nz=nz;blend.nstations=2;
@@ -412,7 +514,8 @@ int main(int argc,char** argv){
                 blend.station_component_mps[9+k]=component==0
                     ? upper_wind.u_mps:upper_wind.v_mps;
             }
-            blend.step1_mps=component==0?first.ug_mps:first.vg_mps;
+            blend.step1_mps=component==0?corrected_u:corrected_v;
+            station_values[component]=blend.station_component_mps;
             const auto blended=original_inter2_selected(blend);
             if(component==0)blended_u=blended.component_mps;
             else blended_v=blended.component_mps;
@@ -462,6 +565,43 @@ int main(int argc,char** argv){
             for(std::size_t k=0;k<9;++k)
                 fixture<<station.upper_observed_profile[k].u_mps<<" "
                        <<station.upper_observed_profile[k].v_mps<<"\n";
+            // Original INTER2 driver inputs for the same hour, so the blend can
+            // be compared against the unchanged original subroutine.
+            for(int component=0;component<2;++component){
+                std::ofstream inter2(args.fixture_dir/
+                    ((component==0?"inter2_u_":"inter2_v_")+
+                     hour_label(clock)+".inp"));
+                if(!inter2)throw std::runtime_error("cannot write INTER2 fixture");
+                inter2<<"2 0 "<<rmin_km<<" "<<rmax1_km<<" "<<rmax2_km<<" "
+                      <<rmax3_km<<" "<<r1_km<<" "<<r2_km<<" 999999 999998\n";
+                for(std::size_t k=0;k<9;++k)
+                    inter2<<nintrp[k]<<(k==8?"\n":" ");
+                const float station_km=static_cast<float>(centre_x_km);
+                inter2<<station_km<<" "<<station_km<<"\n";
+                inter2<<static_cast<float>(centre_y_km)<<" "
+                      <<static_cast<float>(centre_y_km)<<"\n";
+                for(std::size_t row=0;row<50;++row){
+                    for(std::size_t i=0;i<50;++i)
+                        inter2<<geo.landuse[row*50+i]<<(i==49?"\n":" ");
+                }
+                // Original driver reads one row of two station values per level.
+                for(std::size_t k=0;k<9;++k)
+                    inter2<<station_values[component][k]<<" "
+                          <<station_values[component][9+k]<<"\n";
+                // Original driver reads the step-one field and the observation
+                // weights level by level, one grid row per record.
+                const std::vector<float>& guess=component==0?corrected_u:corrected_v;
+                for(std::size_t k=0;k<9;++k)
+                    for(std::size_t row=0;row<50;++row){
+                        for(std::size_t i=0;i<50;++i)
+                            inter2<<guess[k*2500+row*50+i]<<(i==49?"\n":" ");
+                    }
+                for(std::size_t k=0;k<9;++k)
+                    for(std::size_t row=0;row<50;++row){
+                        for(std::size_t i=0;i<50;++i)
+                            inter2<<1.0f<<(i==49?"\n":" ");
+                    }
+            }
         }
         index<<hour_label(clock)<<"\n";
         ++written;
@@ -472,11 +612,12 @@ int main(int argc,char** argv){
     meta<<"{\n";
     meta<<"  \"product\": \"p6d_realcase_wind_fields\",\n";
     meta<<"  \"partial\": true,\n";
-    meta<<"  \"status\": \"PARTIAL_WIND1_STEP_ONE_AND_TERSET_ENVELOPE\",\n";
+    meta<<"  \"status\": \"PARTIAL_WIND1_BLEND_SLOPE_TEMP2D_QH_TERSET\",\n";
     meta<<"  \"case_dir\": \""<<args.case_dir.string()<<"\",\n";
     meta<<"  \"grid\": {\"nx\": "<<nx<<", \"ny\": "<<ny<<", \"nz\": "<<nz
         <<", \"grid_spacing_m\": "<<grid_m
-        <<", \"layout\": \"k-major, j-major, i-fastest\", \"dtype\": \"float32 little-endian\"},\n";
+        <<", \"layout\": \"i_fastest\", \"layout_note\": \"index = i + nx*(j + ny*k), i fastest\""
+        <<", \"dtype\": \"float32\", \"byte_order\": \"little\"},\n";
     meta<<"  \"levels\": {\"zface_m\": [";
     for(std::size_t k=0;k<10;++k)meta<<(k?", ":"")<<zface[k];
     meta<<"], \"thickness_m\": [";
@@ -489,7 +630,7 @@ int main(int argc,char** argv){
           " \"terset_disthmax.f32\": \"m\", \"terset_disthmin.f32\": \"m\"},\n";
     meta<<"  \"missing_sentinel\": "<<MISSING<<",\n";
     meta<<"  \"hourly_labels\": "<<written<<",\n";
-    meta<<"  \"hour_label\": \"YYYY-MM-DD_HH (UTC), the label is the hour END\",\n";
+    meta<<"  \"hour_label\": \"END\", \"hour_label_note\": \"YYYY-MM-DD_HH in UTC; the label is the hourly interval end\",\n";
     meta<<"  \"surface_wind_speed_range_mps\": ["<<speed_min<<", "<<speed_max<<"],\n";
     meta<<"  \"blend\": {\"product\": \"blend_u_*.f32 / blend_v_*.f32\", "
           "\"stage\": \"original INTER2 two-component blend on the step-one field\", "
@@ -499,24 +640,33 @@ int main(int argc,char** argv){
           "\"lvary\": "<<(lvary?"true":"false")<<", \"nintrp_per_layer\": 99, "
           "\"station_local_km\": ["<<centre_x_km<<", "<<centre_y_km<<"], "
           "\"station_local_km_source\": \"case.yaml grid centre equals stations.csv lat/lon\", "
-          "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\"},\n";
+          "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\", "
+          "\"verification\": \"NOT_SOURCE_VERIFIED: the 143-hour comparison against the unchanged original INTER2 FAILED (worst 10.36 m/s) at producer head 2026-10-12; treat blend_u/v as unverified until the station-selection/influence branch difference is resolved\"},\n";
     meta<<"  \"stages_applied_in_chain\": [";
     meta<<"\"WIND1 selected first guess (IEXTRP=-4 neutral SIMILT)\"";
-    meta<<", \"original INTER2 two-component blend (WO=1.0)\"";
+    meta<<", \"SURFVAR 2-D surface temperature (ISURFT<0, IALL=0, IAVET=1)\"";
+    meta<<", \"SOLAR grid sine of elevation (interval start)\"";
+    meta<<", \"HEATFX sensible heat flux (mcloud=1 station cloud)\"";
+    meta<<", \"SLOPE slope flow added to the step-one winds\"";
+    meta<<", \"original INTER2 two-component blend (WO=1.0)\" " ;
     meta<<", \"TERSET envelope (DIAGI L5228, TERRAD="<<terrad_km<<" km)\"],\n";
     meta<<"  \"stages_not_applied\": [\n";
-    meta<<"    {\"stage\": \"SURFVAR -> TEMP2D (DIAGNO L5609-L5610)\", \"status\": \"BLOCKED\","
-          " \"missing\": [\"TPROG 3-D prognostic temperature\", \"IRH2D\", \"IPCODE2D\"]},\n";
-    meta<<"    {\"stage\": \"HEATFX/ELUSTR -> QH (DIAGNO L5676-L5715)\", \"status\": \"BLOCKED\","
-          " \"missing\": [\"SINAPC\", \"NEARS\", \"TSFNSP\", \"CCGRID\", \"MCLOUD\", \"IPSIFCN\", \"Z0\", \"RHO\", \"USTAR\", \"EL\"]},\n";
-    meta<<"    {\"stage\": \"FRADJ (L5643-L5644)\", \"status\": \"NEEDS_CALLER_PLANES\","
-          " \"missing\": [\"GAMMA\", \"TEMP2D\", \"HMAX (provided here as terset_hmax.f32)\"]},\n";
-    meta<<"    {\"stage\": \"SLOPE (L5722-L5723)\", \"status\": \"NEEDS_CALLER_PLANES\","
-          " \"missing\": [\"QH\", \"TEMP2D\", \"HMIN/DISTHMAX/DISTHMIN (provided here as terset_*.f32)\"]},\n";
-    meta<<"    {\"stage\": \"SMOOTH/DIVCEL/W tail (DIAGNO L6119-L6148)\", \"status\": \"APPLIED_WITHOUT_TERRAIN_CORRECTION\","
+    meta<<"    {\"stage\": \"SURFVAR -> TEMP2D (DIAGNO L5609-L5610)\", \"status\": \"APPLIED\","
+          " \"product\": \"temp2d_*.f32\","
+          " \"note\": \"surfvar_one_station with iall=0 (same temp_k, RH/IPCODE dropped) and average_temperature=1 (IAVET=1)\"},\n";
+    meta<<"    {\"stage\": \"HEATFX -> QH (DIAGNO L5676-L5715)\", \"status\": \"APPLIED\","
+          " \"product\": \"qh_*.f32\","
+          " \"note\": \"mcloud=1 uses the station cloud amount (0 tenths for every case hour); coefficients from met.lst (ha1=990, ha2=-30, hb1=-0.75, hb2=3.4, hc1=5.31e-13, hc2=60, hc3+1=1.12)\"},\n";
+    meta<<"    {\"stage\": \"SLOPE (L5722-L5723)\", \"status\": \"APPLIED\","
+          " \"product\": \"slope_corrected_u/v_*.f32\","
+          " \"note\": \"chain-computed QH, TEMP2D and TERSET envelope; the corrected step one feeds the blend and the W tail\"},";
+    meta<<"\n";
+    meta<<"    {\"stage\": \"FRADJ (L5643-L5644)\", \"status\": \"PENDING_GAMMA\","
+          " \"missing\": [\"GAMMA grid: CGAMMA needs ZICONV from the traced convective forcing (P6E MIXHT/WSTARR family)\"],"
+          " \"note\": \"therefore the emitted W faces are SLOPE-compensated but not FRADJ-compensated\"},\n";
+    meta<<"    {\"stage\": \"SMOOTH/DIVCEL/W tail (DIAGNO L6119-L6148)\", \"status\": \"APPLIED_SLOPE_COMPENSATED_FRADJ_PENDING\","
           " \"product\": \"w_face_*.f32 (10 faces per column)\","
-          " \"note\": \"run on the blended field with the deck NSMTH and boundaries taken from that field; the L5748 snapshot after the FRADJ/SLOPE corrections is not available yet (TEMP2D/QH), so this is the uncompensated-terrain variant\"},"
-          " \"note\": \"the tail consumes the L5748 WINDBC snapshot taken after the FRADJ/SLOPE corrections, which still need TEMP2D/QH; emitting W from an un-corrected step one would be an unfaithful combination\"},\n";
+          " \"note\": \"run on the SLOPE-corrected blended field with the deck NSMTH, so the boundaries are the L5748 snapshot except for the still-pending FRADJ (GAMMA) correction\"},\n";
     meta<<"    {\"stage\": \"TOPOF2/IKINE route and O'Brien/IOBR=1 tail\", \"status\": \"NON_CASE_PATH\","
           " \"note\": \"the case deck sets IKINE=0 and IOBR=0\"}\n";
     meta<<"  ],\n";
