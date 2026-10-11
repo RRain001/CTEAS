@@ -42,6 +42,48 @@ The two real-case verdicts are not yet inside `scripts/local_gate.py`'s `p6d` st
 
 Both comparators compile the unchanged original routines with gfortran and are fail-closed, so they belong in the gate rather than only in local evidence.
 
+### Round 12: the AUX per-level table, and one root cause behind the low levels and every W face
+
+Full AUX verdicts (product through P6F written into `CALMET.DAT 2.1` vs the frozen `met.dat`, 357,500 cells per level, tolerance `1e-4 + 1e-5*|ref|`), from `p6g_report.json` of the run recorded in round 11:
+
+| field | max_abs | max_rel | exceedances | verdict |
+|---|---|---|---|---|
+| `U-LEV 1` | 0.00156724 | 264.542 | 1,451 | FAIL |
+| `V-LEV 1` | 0.00132227 | 15,650.6 | 906 | FAIL |
+| `WFACE 1` | 0.000265355 | 1,491.51 | 36 | FAIL |
+| `U-LEV 2` | 2.47476 | 65.9057 | 357,306 | FAIL |
+| `V-LEV 2` | 2.6212 | 27.2546 | 357,115 | FAIL |
+| `WFACE 2` | 0.00381483 | 1.22e+08 | 25,235 | FAIL |
+| `U-LEV 3` | 3.22231 | 12.5257 | 239,982 | FAIL |
+| `V-LEV 3` | 2.87008 | 1.54638 | 239,814 | FAIL |
+| `WFACE 3` | 0.0122024 | 3.46e+07 | 75,687 | FAIL |
+| `U-LEV 4` | 4.12656 | 0.993557 | 182,498 | FAIL |
+| `V-LEV 4` | 2.7318 | 2.29782 | 182,433 | FAIL |
+| `WFACE 4` | 0.0301357 | 2.45e+07 | 138,685 | FAIL |
+| `U-LEV 5` | 4.8366 | 2.41797 | 130,000 | FAIL |
+| `V-LEV 5` | 3.93422 | 11.4096 | 130,000 | FAIL |
+| `WFACE 5` | 0.0850979 | 5.63e+07 | 167,611 | FAIL |
+| `U-LEV 6` | 2.71215 | 1.36005 | 102,499 | FAIL |
+| `V-LEV 6` | 3.03253 | 11.9904 | 102,478 | FAIL |
+| `WFACE 6` | 0.158154 | 2.00e+07 | 179,295 | FAIL |
+| `U-LEV 7` | 2.54216 | 3.20113 | 37,500 | FAIL |
+| `V-LEV 7` | 3.90401 | 1.6656 | 37,500 | FAIL |
+| `WFACE 7` | 0.158155 | 2.91e+07 | 180,199 | FAIL |
+| `U-LEV 8` | **2.90871e-05** | 4.92287 | 0 | PASS |
+| `V-LEV 8` | **2.09808e-05** | 0.000148759 | 0 | PASS |
+| `WFACE 8` | 0.158156 | 6,271.09 | 180,266 | FAIL |
+| `U-LEV 9` | **4.00543e-05** | 9.36849e-05 | 0 | PASS |
+| `V-LEV 9` | **2.09808e-05** | 8.42658e-05 | 0 | PASS |
+| `WFACE 9` | 0.15816 | 35,640.2 | 180,318 | FAIL |
+
+The first significant divergence is at level 1 for U/V (0.0016 m/s, 1,451 cells) and at level 2 for W (25,235 cells); the large terms start at level 2 and peak at level 5.
+
+**The W faces are downstream, not a `FRADJ`/order problem.** Measured on the frozen reference itself: its `WFACE` follows its own `U/V` horizontal divergence with the original's `W(K+1) = W(K) - (DZ/2)*HTOP*(dU/dx+dV/dy)` factor - the ratio of `DZ*|div_h|` to `|dW|` is 0.46-0.61 at levels 2, 3, 5, 6, 7 (levels 1/4/8/9 are distorted by the crude one-sided edge differencing used in the check). My product's `U/V` are **exactly uniform per level** (spread 0 against the reference's `1.1e-4` at level 1, `1.0e-2` at level 2, `1.1e-2` at level 3, `1.2e-2` at level 5, `2-5e-3` aloft), so its W is legitimately ~0 (`max 1e-5` at hour 1) where the reference reaches `0.0115`; at the worst hour the reference's `WFACE 9` peaks at **0.15023 exactly at the station's grid cell** and decays radially (0.0253 at +-5 cells, 0.0064 at +-20, 0.002 at the corners). `FRADJ` cannot be the cause: it is inert on this domain (FROUDE 5.14 against `CRITFN = 1.0`, measured 0.0 m/s effect), and the tail's order is verified against the compiled original. The W faces therefore measure the *U/V structure* that this product does not have.
+
+**One mechanism explains both remaining terms**: the original's station profile is built by the *stability-dependent* branch (`STHEOR`, the `IEXTRP = +-4` path in `DIAGI`, which uses the 2-D `temp2d`/fluxes and the analysis radii), while the selected kernel is the *neutral* SIMILT. That is what (a) sets the levels inside the mixing height to a sheared, spatially varying profile (my neutral profile is uniform in space and, at deep-mixing hours, 2-5 m/s away from the reference at levels 2-6), and (b) is the only source of the station-centred structure the W integration needs. Both station files place their station exactly at the declared grid centre (verified: `583210` at 31.939774444/117.141610855 and `58424` at 31.9398/117.1416 against `case.yaml`'s 31.939774444/117.141610855), so the structure cannot come from station distance; it has to come from the 2-D surface fields inside `STHEOR`.
+
+This round is therefore diagnostic: no numerical clearance was achieved, and the next increment is the `STHEOR` port (stable/unstable profile with `zmo` from the surface fluxes, `psiud`/`psiuc`, and the 2-D `temp2d`/`qh` this producer already emits).
+
 ### Product verification labels (round 11, final)
 
 `metadata.json` now labels each stage with the verdict that belongs to it: `blend.verification` is the **closed field's** own verdict (`PARTIAL_LEVELS_8_9_PASS_LEVELS_1_7_NEUTRAL_SIMILT_GAP` with the frozen-reference numbers when `--ziconv` is given, `MIXING_HEIGHT_NOT_SUPPLIED_ALL_LEVELS_NEUTRAL_SIMILT` with the measured 13.5074/10.0186 m/s levels 9/8 errors when it is not), and the unchanged-original INTER2 verdict moved to `inter2.verification` because it describes `inter2_u/v_*.f32`. The closed-field verdict never over-claims for the uncapped variant.
