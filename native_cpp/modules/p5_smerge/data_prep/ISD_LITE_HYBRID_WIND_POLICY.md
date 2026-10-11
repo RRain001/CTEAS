@@ -1,46 +1,92 @@
-# P5 hybrid NOAA inputs — frozen scientific policy (2026-10-11)
+# P5 wind data contract — approved policy v2, 2026-10-11
 
-Original engine/preprocess scripts and vendored SMERGE/CALMET Fortran remain untouched.
+**ACTIVE:** P5_ISD_LITE_WIND_V2_WHOLE_VECTOR_HOLD_CALM_REPLACE.
+Older Scheme C (retain original zero wind) and Hybrid V1 (independently
+forward-fill direction and speed) are superseded. Original CTEAS scripts
+under engine/preprocess and vendor SMERGE/CALMET Fortran remain unchanged.
 
-## Official input formats
+## Sources and coverage
+- Download full NOAA Global Hourly ISD CSV and official same-station/year
+  ISD-Lite gzip. Full ISD supplies all nonwind fields; ISD-Lite exclusively
+  supplies wind direction and wind speed, without C/V/N or WND fallback.
+- Merge by UTC hour, NOT by source row number. Reindex to every calendar-hour
+  from Jan 1 00:00 through Dec 31 23:00, including gaps such as 18 -> 20
+  (insert 19 with no original source).
+- Annual raw coverage: UNIQUE UTC hours with an ISD-Lite record divided by
+  calendar hours (8760; leap year 8784), including records where both wind
+  fields are missing. Missing entire hours and present-but-invalid wind
+  records must be tracked separately. Domain and external fallback selection
+  rules stay unchanged: nearest qualifying external source, >=80% raw-time
+  coverage on BOTH official input sources; in-domain station collection does
+  not silently discard records based on wind quality.
+- ISD-Lite field 8 is integer wind direction (degrees, 0..360); field 9
+  integer speed in 0.1 m/s units; original missing is -9999. Model input
+  must use 9999 missing sentinel. No original C/V/N provenance is inferred.
 
-- All nonwind variables (temperature, dewpoint, sea-level pressure, derived RH, precipitation, cloud, ceiling) stay from the full NOAA Global Hourly / ISD CSV.
-- Wind direction and speed originate **exclusively** from the same-station/year ISD-Lite gzip file, downloaded from:
-  https://www.ncei.noaa.gov/pub/data/noaa/isd-lite/YEAR/USAF-WBAN-YEAR.gz
-- Official definitions:
-  https://www.ncei.noaa.gov/pub/data/noaa/isd-lite/isd-lite-format.txt
-  https://www.ncei.noaa.gov/pub/data/noaa/isd-lite/isd-lite-technical-document.txt
-- ISD-Lite provides 12 whitespace-separated integer fields; field 8 is wind direction in whole degrees, field 9 is wind speed in tenths of m/s. Missing -9999. Wind from north = 360 degrees when moving; calm = wind speed 0, wind direction 0 degrees.
-- ISD-Lite does not preserve wind-type C/V/N flags or per-record quality-code provenance. P5 makes no attempt to reconstruct them, and does not use the full-ISD WND field for wind.
-- Both NOAA files are required for each selected station/year. External virtual-station selection demands >=80% original-hour coverage of each file, plus existing spatial/stack rules. No automatic full-ISD wind fallback.
+## Stage 1: 数据清洗和缺测处理完毕
+- Complete OBSERVED noncalm wind: WD in (0,360], WS>0 => use as observed.
+  This is the ONLY allowable source for later whole-vector forward hold.
+- (WD,WS)=(0,0) => standard original calm, retain (0,0).
+- (WD,WS)=(360,0) => accepted original calm, normalize to (0,0),
+  preserve original source WD and count separately.
+- Any other combo (partial missing -9999, both missing, WD=0 WS>0, or
+  other invalid), or an entire missing original hour => invalidate the
+  ENTIRE wind vector, not just the absent component, then carry the latest
+  whole valid OBSERVED noncalm (WD,WS) pair together, without time limit.
+  Observed calm must never seed the carry.
+- If no previous valid OBSERVED noncalm wind exists, retain both fields as
+  9999 (strict mode aborts); never backfill a missing source hour or
+  synthesize a bearing.
+- Every other meteorological field (temperature, pressure, humidity,
+  precipitation and cloud fields) independently carries its own previous
+  valid value without a duration cap. Leading missing stays 9999.
+- Stage file: USAF-WBAN-YEAR_cleaned.csv with same 3 GENERIC header lines.
+  Sidecar USAF-WBAN-YEAR_cleaned.stage.json has exact Chinese completion
+  status, without contaminating the fixed SMERGE GENERIC header.
 
-## Hourly join
+## Stage 2: 静风插值处理完毕
+- ONLY observed calm hours from original categories (0,0)/(360,0) are
+  replaced; no forward-held synthetic calm is eligible.
+- Identify maximal contiguous original calm runs first.
+- Interior calm run with REAL observed positive-speed bearings on BOTH
+  sides: use one fixed shortest-circular-arc midpoint for the ENTIRE run,
+  and one fixed WS=0.5 m/s for EVERY hour in that run.
+- All modeled positive-speed bearings are in (0,360], never WD=0.
+  For example 350/10 ->360; 170/190 ->180; 360/360 ->360.
+- Explicit USER SPECIAL CASE: exactly antipodal endpoints (difference 180)
+  always produce WD=180, including 90/270 and 1/181. Opposite endpoints
+  have no unique shortest circular arc; 1/181 ->180 is an imposed convention
+  and is NOT the mathematical circular midpoint.
+- Beginning-of-year calm without real positive prior anchor: copy BOTH
+  direction AND speed from the next real positive observed vector for the
+  entire run (do not force 0.5). End-of-year calm without next anchor:
+  copy BOTH components from preceding real positive vector.
+- If a whole year has no positive observed wind endpoint, abort rather than
+  invent input.
+- Interpolation endpoints must be ORIGINAL valid noncalm observations, never
+  forward-held data or previously inserted artificial calm replacements.
+- Output file: USAF-WBAN-YEAR_calm_interpolated.csv with corresponding
+  sidecar .stage.json bearing Chinese stage status. The downstream
+  compatible USAF-WBAN-YEAR_filled.csv is numerically identical to stage2,
+  and becomes research-period-clipped isd2smerge_ready/USAF-WBAN.csv.
 
-Join by UTC whole-hour timestamp, not row number. Use the union of full-ISD hourly report timestamps and ISD-Lite hourly wind timestamps. Missing field remains missing prior to forward holding, never silently borrow full ISD WND. Station/year, source URL, SHA256, raw wind codes and invalid conditions are recorded in a separate source-audit CSV and JSON. The SMERGE GENERIC file has its original schema; source metadata is kept outside that file.
+## Mandatory annual audit
+- Total calendar hours, present ISD-Lite raw hours and ratio,
+  entire absent source hours and ratio.
+- All wind-invalid hours (include absent + present-but-invalid), count/rate.
+- All original calms, count/rate, separate (0,0) and (360,0).
+- Complete true positive wind hours, whole-pair held hours and longest
+  age, stage1/stage2 valid-vector counts, calm run count.
+- Interior constant half-mps replaced hours vs boundary copied hours.
+- Every individual source/hold/replaced vector; source UTC and real
+  calm interpolation endpoint UTC.
+- Raw source ISD-Lite gzip SHA256 and station-year metadata.
 
-## Missing wind reconstruction (no maximum duration)
-
-1. Both WD and WS present, WS>0: preserve each.
-2. Speed only (WD missing), WS>0: use the most recent **noncalm observed** WD, retain current observed WS. Never use a 0-degree encoding from previous calm as an observed north wind.
-3. Direction only (WS missing): use this WD with preceding valid WS; if that preceding WS was zero, write calm WD=0, WS=0 in GENERIC and record that the current observed direction was overridden by held calm speed.
-4. Both missing: use prior valid WD and WS independently, with their own source timestamps and ages. No arbitrary maximum carry duration.
-5. Exact zero-speed calm: encode WD=0, WS=0 only in GENERIC, preserve raw source direction in provenance, do NOT seed future noncalm direction from calm.
-6. A nonzero wind speed paired with WD=0 is inconsistent in ISD-Lite (true north is 360). Treat WD as missing; apply direction hold if possible.
-7. Leading missing wind fields without a previous observation remain 9999. A positive-speed hour after earlier calm with no historical noncalm WD also retains missing WD; do not fabricate north wind. A partial wind pair is invalidated by original SMERGE GENERIC reader. Strict mode can abort.
-8. Direction or speed originally invalid remains independently marked in audit even when subsequent held data allows a numeric wind pair for CALMET.
-
-Per-hour wind audit records original/held/generated values, observed vs derived flags, source UTC timestamps and age hours; summary captures original speed-only, direction-only, both-missing counts, incomplete numeric pairs and maximum hold age. Observation completeness is a separate metric from the original-hour (>=80%) station selection criterion.
-
-## SMERGE/CALMET separation
-
-The original SMERGE v5.7.0 GENERIC JDAT=8 path reads numeric WD and WS, no C/V/N interpretation; missing in either yields missing pair. It preserves exact zero-speed and records exact calm hours. The original CALMET v6.5.0 handles zero winds with different internal guards: 0.0001 and 0.001 m/s in separate extrapolation/safety branches, a 0.5 m/s local minimum for particular stable Ustar/ThetaStar/HQ calculations, and ICALM=0 prevents extrapolated surface calm influence aloft. These are not universal P5 thresholds; Scheme C retains real zero wind. See CALM_POLICY_C_VENDOR_AUDIT.md for Fortran source line ranges.
-
-## Constraints and pending work
-
-- ISD-Lite is a derived subset with fewer QC/provenance details, not a higher-accuracy independently measured wind record. NOAA's official technical note cautions about exact observation time and different selected reports for different meteorological variables.
-- A same-hour wind vector and temperature may come from different source reports up to NOAA's selected capture window. Do not interpret that as strict simultaneous observation.
-- Annual raw presence >=80% does not prove wind-pair coverage >=80%; separately audit wind-vector validity and carry duration.
-- Original ISD-Lite file availability is proven for 583210-99999 / 2022, not every year or nonnumeric station ID; unavailable Lite files fail closed.
-- Multi-year leading gaps and cross-year previous-hour carry require an explicit separate implementation; per-year P5 processing does not silently invent values across a year boundary.
-- Other variables, their missing-data rules, precipitation, cloud and relocated station elevation remain unchanged at this stage.
-- True Fortran SURF.DAT and CALMET meteorological numerical equivalence on the *same hybrid input* has not yet been demonstrated.
+## SMERGE/CALMET boundary
+SMERGE v5.7.0 GENERIC JDAT=8 only reads numeric wind pair, not C/V/N.
+Partial pair with 9999 becomes missing. Original CALMET local wind-speed
+safety minima are separate from this user-prescribed human calm replacement.
+The new P5 results deliberately differ from Scheme C: original calm is
+now replaced before model input. **Reference Fortran SURF.DAT and CALMET
+numerical validation have NOT yet been demonstrated.** Data completion and
+user-chosen artificial calm replacement are not higher-quality observations.
