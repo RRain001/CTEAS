@@ -1478,6 +1478,16 @@ report. The deck selects `MCTADJ=2`, whose strain (`CTADJ2`) and valley
 than hiding the difference. This is a physical-chain demonstration, **not** a
 comparison with the frozen `puff.con`.
 
+### Gate evidence (Linux, lhy-desktop, g++-12 + gfortran-11)
+
+`LOCAL_GATE_P7=PASS sha=539aa11b1 ok=33 blocked=0 failed=0` with the authoritative
+local gate, `100% tests passed, 0 tests failed out of 35` (including the three new
+P7Q CTest entries). The same matrices against the compiled unmodified vendor
+blocks with `GNU Fortran (Ubuntu 11.4.0) 11.4.0`: begin/mid/end 192x18
+`MAX_REL=3.991e-13` (vs `8.5e-08` on macOS, the same compiler constant-folding
+difference seen in P7N/P7O), sigma-y 144x6 `MAX_REL=2.648e-13`, sigma-z 72x5
+`MAX_REL=2.166e-13` - 408 cases, `MISMATCHES=0`.
+
 ### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
 
 - `cteas_p7q_sigma_update_contract`: the begin/mid/end closed forms (including the
