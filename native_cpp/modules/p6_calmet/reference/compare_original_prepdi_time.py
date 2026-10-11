@@ -51,9 +51,15 @@ def run(args):
     if r.returncode:raise RuntimeError(f"PREPDI reference error {args}: rc={r.returncode}, stderr={r.stderr[-1600:]}, stdout={r.stdout[-1600:]}")
 def extract(path,destination):
     ls=path.read_text().splitlines(keepends=True)
-    st=[i for i,l in enumerate(ls) if l.strip()=="xfact = float(jtogo) / float(jdelta)"]
-    if len(st)!=2:raise RuntimeError(f"unexpected PREPDI duplicated xfact source occurrences: {st}")
-    # Second occurrence is PREPDI's per-level station loop L13976–13985.
+    begin=[i for i,l in enumerate(ls) if l.lower().startswith("      subroutine prepdi(")]
+    end=[i for i,l in enumerate(ls) if l.lower().startswith("      subroutine progrd(")]
+    if len(begin)!=1 or len(end)!=1 or end[0]<=begin[0]:
+        raise RuntimeError("original CALMET PREPDI procedure boundaries drifted")
+    st=[i for i in range(begin[0],end[0])
+        if ls[i].strip()=="xfact = float(jtogo) / float(jdelta)"]
+    if len(st)!=2:
+        raise RuntimeError(f"unexpected PREPDI in-routine time factors: {st}")
+    # Second original occurrence is PREPDI's per-layer UAVE time loop.
     i=st[1]
     en=next((j for j in range(i+1,i+15) if ls[j].strip()=="15    continue"),None)
     if en is None:raise RuntimeError("PREPDI ending original DO15 not found")
