@@ -139,7 +139,7 @@ void write_header(std::ostream& out,const Window& window,
  out<<padded("SURF.DAT",16)<<padded("2.1",16)
     <<padded("Hour Start and End Times with Seconds",64)<<"\n";
  out<<std::setw(4)<<1<<"\n";
- out<<padded("Produced by SMERGE Version: "+"5.7.0"+" "+"Level: "+"121203",80)<<"\n";
+ out<<padded(std::string("Produced by SMERGE Version: ")+"5.7.0"+" "+"Level: "+"121203",80)<<"\n";
  out<<"NONE    \nUTC+0000\n";
  emit_time(out,begin,6,4,4,6);
  emit_time(out,end,6,4,4,6);
