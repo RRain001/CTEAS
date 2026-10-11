@@ -1,4 +1,7 @@
 name: P4 P5 against ORIGINAL CTEAS CALMET 100m
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
@@ -7,8 +10,8 @@ on:
       - 'project/cases/**'
 jobs:
   original-calmet:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-22.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
     permissions:
       contents: read
@@ -16,6 +19,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Verify integrated P1-P5 HEAD (no cross-branch overlays)
         shell: bash
         run: |
@@ -44,8 +49,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gfortran libgdal-dev
+          if ! pkg-config --exists gdal; then
+            sudo -n apt-get update -qq
+            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
+          fi
           python3 -m pip install --disable-pip-version-check PyYAML numpy pandas
           gfortran --version | head -1 | tee integration-evidence/compiler.txt
       - name: Original unchanged P1-P2-P3 100m GEO.DAT

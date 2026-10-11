@@ -1,4 +1,7 @@
 name: P3 MAKEGEO independent reference and C++20 comparison
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
@@ -7,15 +10,22 @@ on:
       - 'docs/reconstruction_cpp/**'
 jobs:
   compare:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 18
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Original and C++ compilers
-        run: sudo apt-get update && sudo apt-get install -y gfortran libgdal-dev
+        run: |
+          if ! pkg-config --exists gdal; then
+            sudo -n apt-get update -qq
+            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
+          fi
+          gfortran --version | head -1
       - name: Isolated original P1/P2 capture
         run: python3 native_cpp/reference/capture_p1_p2.py --output /tmp/p3-compare
       - name: Isolated original P3 MAKEGEO capture

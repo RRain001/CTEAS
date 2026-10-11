@@ -1,17 +1,22 @@
 name: P5 NOAA ISD-Lite multistation wind-code research
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
       - '.github/workflows/p5-isd-lite-multistation-wind-audit.yml'
 jobs:
   audit:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 14
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Download actual NOAA gzip files and audit source wind values
         shell: bash
         run: |
@@ -142,16 +147,12 @@ jobs:
           if manifest['successes']<10:
               raise SystemExit('too few independent NOAA case-year samples')
           PY
-      - name: Install numerical policy test runtime
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
       - name: Independently replay final P5 wind stages on all twenty original NOAA files
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check -q numpy pandas
-          python - <<'PY'
+          python3 -m pip install --disable-pip-version-check -q numpy pandas
+          python3 - <<'PY'
           from pathlib import Path
           import json
           import pandas as pd

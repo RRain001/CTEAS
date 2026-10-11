@@ -1,4 +1,7 @@
 name: P2 GEN independent numerical comparison
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
@@ -6,15 +9,22 @@ on:
       - '.github/workflows/p2-gen-reference-compare.yml'
 jobs:
   compare:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 16
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Reference toolchain
-        run: sudo apt-get update && sudo apt-get install -y gfortran libgdal-dev
+        run: |
+          if ! pkg-config --exists gdal; then
+            sudo -n apt-get update -qq
+            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
+          fi
+          gfortran --version | head -1
       - name: Configure modern C++20
         run: cmake -S native_cpp -B /tmp/cteas-p2-build -DCMAKE_BUILD_TYPE=Debug
       - name: Build scoped C++ implementation

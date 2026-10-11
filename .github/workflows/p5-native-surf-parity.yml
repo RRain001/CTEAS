@@ -1,4 +1,7 @@
 name: P5 native SURF.DAT original SMERGE synthetic byte parity
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
@@ -7,19 +10,20 @@ on:
       - ".github/workflows/p5-native-surf-parity.yml"
 jobs:
   synthetic-parity:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-22.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 18
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Build original SMERGE v5.7.0 and native C++20 writer
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gfortran
+          gfortran --version | head -1
           mkdir -p evidence /tmp/cteas-p5-synthetic
           SRC=engine/vendor/src/SMERGE_v5.7.0_L121203
           mkdir -p /tmp/p5-smg-includes

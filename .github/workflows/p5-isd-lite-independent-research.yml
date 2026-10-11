@@ -1,12 +1,15 @@
 name: NOAA ISD-Lite independent 2022 comparison input
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
       - '.github/workflows/p5-isd-lite-independent-research.yml'
 jobs:
   lite-reference:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 8
     permissions:
       contents: read

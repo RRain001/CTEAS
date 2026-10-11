@@ -1,4 +1,7 @@
 name: P4 READ62 original Fortran reference / UP.DAT parity
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
@@ -7,17 +10,17 @@ on:
       - '.github/workflows/p4-read62-fortran-parity.yml'
 jobs:
   original-fortran:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-22.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 25
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Fortran compiler
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gfortran
+        run: gfortran --version | head -1
       - name: Build original READ62 unchanged
         shell: bash
         run: |

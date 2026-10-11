@@ -1,4 +1,7 @@
 name: P5 SMERGE scoped C++20
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
@@ -8,13 +11,15 @@ on:
       - '.github/workflows/p5-smerge-scoped.yml'
 jobs:
   unit:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 8
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Configure
         run: cmake -S native_cpp/modules/p5_smerge -B /tmp/cteas-p5-build -DCMAKE_BUILD_TYPE=Debug
       - name: Build

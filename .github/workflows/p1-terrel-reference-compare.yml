@@ -1,4 +1,7 @@
 name: P1 terrain Fortran numerical comparison
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
@@ -6,15 +9,22 @@ on:
       - '.github/workflows/p1-terrel-reference-compare.yml'
 jobs:
   compare:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 16
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Install C++ GDAL and original Fortran toolchains
-        run: sudo apt-get update && sudo apt-get install -y libgdal-dev gfortran
+        run: |
+          if ! pkg-config --exists gdal; then
+            sudo -n apt-get update -qq
+            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
+          fi
+          gfortran --version | head -1
       - name: Configure P1 only (shared foundations unchanged)
         run: cmake -S native_cpp/p1 -B /tmp/cteas-p1-build -DCMAKE_BUILD_TYPE=Debug
       - name: Compile modern C++ P1

@@ -1,4 +1,7 @@
 name: C++ input contracts
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
@@ -13,14 +16,21 @@ on:
       - '.github/workflows/cpp-input-contracts.yml'
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Install GDAL headers
-        run: sudo apt-get update && sudo apt-get install -y libgdal-dev
+        run: |
+          if ! pkg-config --exists gdal; then
+            sudo -n apt-get update -qq
+            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
+          fi
       - name: Configure
         run: cmake -S native_cpp -B /tmp/cteas-cpp-build -DCMAKE_BUILD_TYPE=Debug
       - name: Build
