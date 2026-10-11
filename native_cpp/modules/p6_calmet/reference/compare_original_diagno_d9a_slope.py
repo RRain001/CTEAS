@@ -50,7 +50,7 @@ DRIVER_HEAD = """      program d9aupstream
       real hmax(mxnx,mxny),cellzb(mxnzp1)
       real critfn,tinf,zf1
       integer isurft
-      logical ifradj,islope
+      integer ifradj,islope
       character*512 fin,fout
       call get_command_argument(1,fin)
       call get_command_argument(2,fout)
@@ -60,8 +60,8 @@ DRIVER_HEAD = """      program d9aupstream
       dx=100.0
       dy=100.0
       iwr=0
-      ifradj=.true.
-      islope=.true.
+      ifradj=1
+      islope=1
       open(10,file=trim(fin),status='old')
       read(10,*) zf1,isurft,tinf,critfn,iwat1,iwat2
       read(10,*) (dz(k),k=1,nz)
