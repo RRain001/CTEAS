@@ -94,7 +94,9 @@ def main():
                 raise RuntimeError(f"missing fixture {fixture.name}")
             inter2.run([binary, fixture, reference])
             original = read_original(reference)
-            candidate = read_f32(args.fields / f"blend_{name}_{label}.f32")
+            # This comparator anchors the pre-tail INTER2 stage; the closed
+            # DIAGNO field (after SMOOTH/DIVCEL) lives in blend_*.f32.
+            candidate = read_f32(args.fields / f"inter2_{name}_{label}.f32")
             for index, (a, b) in enumerate(zip(original, candidate)):
                 if not (math.isfinite(a) and math.isfinite(b)):
                     raise RuntimeError(f"{label}: nonfinite {name} at {index}")

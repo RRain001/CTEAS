@@ -541,6 +541,7 @@ int main(int argc,char** argv){
         write_f32(args.out()/("qh_"+hour_label(clock)+".f32"),heat_flux);
         std::vector<float> blended_u,blended_v;
         std::vector<float> station_values[2];
+        std::vector<float> inter2_u,inter2_v;
         for(int component=0;component<2;++component){
             Inter2SelectedInput blend;
             blend.nx=nx;blend.ny=ny;blend.nz=nz;blend.nstations=2;
@@ -574,9 +575,11 @@ int main(int argc,char** argv){
             const auto blended=original_inter2_selected(blend);
             if(component==0)blended_u=blended.component_mps;
             else blended_v=blended.component_mps;
-            write_f32(args.out()/((component==0?"blend_u_":"blend_v_")+
+            write_f32(args.out()/((component==0?"inter2_u_":"inter2_v_")+
                                   hour_label(clock)+".f32"),
                       blended.component_mps);
+            if(component==0)inter2_u=blended.component_mps;
+            else inter2_v=blended.component_mps;
         }
         // DIAGNO SMOOTH+DIVCEL+W on the blended field, with the per-layer
         // smoothing counts and boundaries taken from the blended field itself.
@@ -604,6 +607,20 @@ int main(int argc,char** argv){
                 std::move(tail),grid_m,grid_m,thickness_m,false);
             write_f32(args.out()/("w_face_"+hour_label(clock)+".f32"),
                       final_fields.w_face_mps);
+            // The DIAGNO product is the wind *after* SMOOTH and DIVCEL; the
+            // INTER2 blend above is only the pre-tail stage, so the canonical
+            // blend_* slot carries the closed field that downstream writers
+            // (P6F write-from-p6d --variant blend) consume.
+            write_f32(args.out()/("blend_u_"+hour_label(clock)+".f32"),
+                      final_fields.u_mps);
+            write_f32(args.out()/("blend_v_"+hour_label(clock)+".f32"),
+                      final_fields.v_mps);
+            // WINDBC (calmet.for L36404): lateral boundary values of the field
+            // entering the tail, refreshed by the tail's own boundary pass.
+            write_f32(args.out()/("windbc_ub_"+hour_label(clock)+".f32"),
+                      final_fields.ub_west_east_mps);
+            write_f32(args.out()/("windbc_vb_"+hour_label(clock)+".f32"),
+                      final_fields.vb_south_north_mps);
         }
         if(!args.fixture_dir.empty()){
             // Driver fixture for the unchanged original WIND1/SIMILT, so the
@@ -680,7 +697,7 @@ int main(int argc,char** argv){
     meta<<"], \"center_m\": [";
     for(std::size_t k=0;k<9;++k)meta<<(k?", ":"")<<center_m[k];
     meta<<"]},\n";
-    meta<<"  \"units\": {\"wind1_u_*.f32\": \"m/s\", \"wind1_v_*.f32\": \"m/s\", \"blend_u_*.f32\": \"m/s\", \"blend_v_*.f32\": \"m/s\", \"w_face_*.f32\": \"m/s (10 faces: k=1 face is the surface, k=10 the domain top)\","
+    meta<<"  \"units\": {\"wind1_u_*.f32\": \"m/s\", \"wind1_v_*.f32\": \"m/s\", \"blend_u_*.f32\": \"m/s (DIAGNO product: INTER2 blend then SMOOTH then DIVCEL)\", \"blend_v_*.f32\": \"m/s (DIAGNO product)\", \"inter2_u_*.f32\": \"m/s (INTER2 blend before the tail)\", \"inter2_v_*.f32\": \"m/s (INTER2 blend before the tail)\", \"windbc_ub_*.f32\": \"m/s (nz*2*ny: level-major, west then east column)\", \"windbc_vb_*.f32\": \"m/s (nz*2*nx: level-major, south then north row)\", \"w_face_*.f32\": \"m/s (10 faces: k=1 face is the surface, k=10 the domain top)\","
           " \"terset_hmax.f32\": \"m\", \"terset_hmin.f32\": \"m\","
           " \"terset_disthmax.f32\": \"m\", \"terset_disthmin.f32\": \"m\"},\n";
     meta<<"  \"missing_sentinel\": "<<MISSING<<",\n";
@@ -692,7 +709,7 @@ int main(int argc,char** argv){
     meta<<"  \"hourly_labels\": "<<written<<",\n";
     meta<<"  \"hour_label\": \"END\", \"hour_label_note\": \"YYYY-MM-DD_HH in UTC; the label is the hourly interval end\",\n";
     meta<<"  \"surface_wind_speed_range_mps\": ["<<speed_min<<", "<<speed_max<<"],\n";
-    meta<<"  \"blend\": {\"product\": \"blend_u_*.f32 / blend_v_*.f32\", "
+    meta<<"  \"blend\": {\"product\": \"blend_u_*.f32 / blend_v_*.f32 = the closed DIAGNO field (INTER2, SMOOTH, DIVCEL); the pre-tail INTER2 stage stays available as inter2_u/v_*.f32\", "
           "\"stage\": \"original INTER2 two-component blend on the step-one field\", "
           "\"observation_weight\": \"WO(i,j,k)=1.0 everywhere: RDWT fills 1.0 for IPROG=0/2/4/14 and the deck supplies no WT.DAT\", "
           "\"radii_km\": {\"RMIN\": "<<rmin_km<<", \"RMAX1\": "<<rmax1_km<<", \"RMAX2\": "<<rmax2_km<<", "
@@ -709,6 +726,10 @@ int main(int argc,char** argv){
     meta<<", \"HEATFX sensible heat flux (mcloud=1 station cloud)\"";
     meta<<", \"SLOPE slope flow added to the step-one winds\"";
     meta<<", \"original INTER2 two-component blend (WO=1.0)\" " ;
+    meta<<", \"DIAGNO SMOOTH (1-2-1, deck NSMTH passes per layer)\" ";
+    meta<<", \"DIAGNO DIVCEL (no-divergence projection with the WINDBC boundaries)\" ";
+    meta<<", \"DIAGNO W integration and boundary refresh\" ";
+    meta<<", \"WINDBC lateral boundary extraction (L36404, boundaries of the field entering the tail)\" ";
     meta<<", \"TERSET envelope (DIAGI L5228, TERRAD="<<terrad_km<<" km)\"],\n";
     meta<<"  \"stages_not_applied\": [\n";
     meta<<"    {\"stage\": \"SURFVAR -> TEMP2D (DIAGNO L5609-L5610)\", \"status\": \"APPLIED\","

@@ -42,6 +42,23 @@ The two real-case verdicts are not yet inside `scripts/local_gate.py`'s `p6d` st
 
 Both comparators compile the unchanged original routines with gfortran and are fail-closed, so they belong in the gate rather than only in local evidence.
 
+### The DIAGNO product is the closed field: SMOOTH + DIVCEL now reach U/V (round 11)
+
+The tail (`SMOOTH` -> `DIVCEL` -> `W`, `original_smooth_divcel_w`) was already executed and self-verified against the frozen routines, but only its **W faces** were written out; the U/V the tail computes were discarded. The end-to-end run against the frozen `met.dat` therefore compared the *pre-tail* INTER2 blend and its error grew monotonically with height (level 1 `1.518e-03` m/s -> level 9 `13.507` m/s), which is exactly the signature of a missing per-layer smoothing pass (the deck smooths 2 passes on level 1 and 4 on each level above).
+
+The product layout is now honest about the chain:
+
+| array | stage |
+|---|---|
+| `wind1_u/v_*.f32` | WIND1 first guess (`IEXTRP=-4` neutral SIMILT) |
+| `slope_corrected_u/v_*.f32` | after `SLOPE` (+`FRADJ` when `--gamma` is given) |
+| `inter2_u/v_*.f32` | after the INTER2 two-component blend (the old `blend_*` content, still the anchor of `compare_original_d9a_realcase_blend.py`) |
+| `w_face_*.f32` | after the tail's `SMOOTH`+`DIVCEL`+`W` |
+| `windbc_ub/vb_*.f32` | `WINDBC` (L36404): lateral boundary values (`nz*2*ny` / `nz*2*nx`) of the field entering the tail |
+| `blend_u/v_*.f32` | **the closed DIAGNO field**: INTER2 blend, then `SMOOTH`, then `DIVCEL` (the canonical slot downstream writers consume) |
+
+`WINDBC` itself is a two-line boundary copy (L36404-L36435) and was already being performed inside the tail before `SMOOTH`; it is now emitted so the stage is auditable, and the tail's refreshed boundaries are what `DIVCEL` uses.
+
 ### FRADJ behind an explicit switch, and why it is a no-op for this domain
 
 `FRADJ` (L5643-L5644) is now wired behind `--gamma <dir>`: when given, the producer reads a per-hour gridded `GAMMA` (`gamma_<label>.f32`, 2500 float32) and runs the unchanged Froude kernel before SLOPE, emitting `fradj_corrected_u/v_*.f32`; `metadata.json` then reports `FRADJ: APPLIED_WITH_CALLER_GAMMA` with the `gamma_source` path, and the tail note distinguishes "SLOPE+FRADJ compensated" from "the supplied GAMMA accuracy is not verified here". With the switch off it stays `PENDING_GAMMA`.
