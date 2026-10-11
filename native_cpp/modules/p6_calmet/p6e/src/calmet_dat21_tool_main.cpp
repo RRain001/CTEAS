@@ -21,6 +21,10 @@
 //        gates. Layout or unit mismatches fail closed.
 #include "cteas/p6e/calmet_dat21.hpp"
 #include "cteas/p6e/avetmp.hpp"
+#include "cteas/p6e/elustr_daytime.hpp"
+#include "cteas/p6e/elustr_stable.hpp"
+#include "cteas/p6e/geo_landuse.hpp"
+#include "cteas/p6e/heatfx.hpp"
 #include "cteas/p6e/mixht_observed_mc.hpp"
 #include "cteas/p6e/pgtstb.hpp"
 #include "cteas/p6e/solar.hpp"
@@ -383,11 +387,21 @@ WindLevels read_wind_levels(const std::string& path,
 void emit_realcase(const std::string& reference_path,const std::string& observations_path,
                    const std::string& out_path,const std::string& report_path,
                    float ha1,float ha2,float hb1,float hb2,
-                   const std::string& wind_path,int mnmdav,float hafang) {
+                   const std::string& wind_path,int mnmdav,float hafang,
+                   const std::string& geo_path,float hc1,float hc2,float hc3) {
     const auto reference=read_calmet_dat21(reference_path);
     // Optional wind source: the frozen original U/V/W for the same intervals.
     std::optional<WindLevels> wind;
     if(!wind_path.empty())wind=read_wind_levels(wind_path,reference);
+    std::optional<GeoLandUse> geo;
+    if(!geo_path.empty()) {
+        geo=read_geo_landuse(geo_path,reference.header.nx,reference.header.ny);
+        if(geo->ilandu!=reference.statics.ilandu)
+            throw std::invalid_argument(
+                "GEO.DAT land-use grid does not match the reference ILANDU");
+        if(geo->iwat1!=reference.header.iwat1||geo->iwat2!=reference.header.iwat2)
+            throw std::invalid_argument("GEO.DAT water range does not match the reference");
+    }
     const auto observations=read_bridge_csv(observations_path);
     const auto& h=reference.header;
     if(observations.size()!=reference.intervals)
@@ -482,9 +496,88 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         std::vector<float> density(cells,0.f);
         for(std::size_t k=0;k<cells;++k)
             density[k]=0.3484321f*station_pressure_mb/surface.temp2d_k[k];
+        std::vector<float> ustar,el,heat_flux,heatfx_shortwave_field;
+        if(geo&&wind) {
+            // HEATFX L7999-8122 with the case's gridded land-use properties.
+            HeatFluxInput hx;
+            hx.nx=static_cast<std::size_t>(h.nx);
+            hx.ny=static_cast<std::size_t>(h.ny);
+            hx.mcloud=1;hx.water_first=h.iwat1;hx.water_last=h.iwat2;
+            hx.ha1=ha1;hx.ha2=ha2;hx.hb1=hb1;hx.hb2=hb2;
+            hx.hc1=hc1;hx.hc2=hc2;hx.hc3p1=hc3+1.f;
+            hx.station_cloud={static_cast<int>(observation.opaque_cloud_tenths)};
+            hx.nearest.assign(cells,1);
+            hx.landuse=reference.statics.ilandu;
+            hx.sun=sinalpc;
+            hx.temp_k=surface.temp2d_k;
+            hx.cloud_grid.assign(cells,0.f);
+            hx.albedo=geo->albedo;
+            hx.bowen=geo->bowen;
+            hx.soil_heat_fraction=geo->soil_heat_fraction;
+            hx.anthropogenic_wm2=geo->anthropogenic_wm2;
+            hx.initial_qh.assign(cells,0.f);
+            const auto flux=heatfx(hx);
+            heat_flux=flux.sensible_wm2;
+            heatfx_shortwave_field=flux.shortwave_wm2;
+            // ELUSTR L6333-6579: one branch per cell, cells of the other
+            // branch are marked as water so the kernel skips them.
+            std::vector<int> stable_use(cells),day_use(cells);
+            for(std::size_t k=0;k<cells;++k) {
+                const bool land=reference.statics.ilandu[k]<h.iwat1||
+                                reference.statics.ilandu[k]>h.iwat2;
+                stable_use[k]=(land&&heat_flux[k]<0.f)?
+                    reference.statics.ilandu[k]:h.iwat1;
+                day_use[k]=(land&&heat_flux[k]>=0.f)?
+                    reference.statics.ilandu[k]:h.iwat1;
+            }
+            StableElustr stable;
+            stable.nx=static_cast<std::size_t>(h.nx);
+            stable.ny=static_cast<std::size_t>(h.ny);
+            stable.mcloud=1;stable.water_first=h.iwat1;stable.water_last=h.iwat2;
+            stable.zm=0.5f*(reference.statics.zface_m[0]+reference.statics.zface_m[1]);
+            stable.landuse=stable_use;
+            stable.nearest.assign(cells,1);
+            stable.station_cloud={static_cast<int>(observation.opaque_cloud_tenths)};
+            stable.z0=reference.statics.z0_m;
+            stable.u1.resize(cells);stable.v1.resize(cells);
+            for(std::size_t k=0;k<cells;++k) {
+                stable.u1[k]=wind->u[0][hour*cells+k];
+                stable.v1[k]=wind->v[0][hour*cells+k];
+            }
+            stable.rho=density;stable.temp_k=surface.temp2d_k;
+            stable.cloud_grid.assign(cells,0.f);
+            stable.heat_flux_initial=heat_flux;
+            const auto stable_result=stable_elustr(stable);
+            DaytimeElustrInput day;
+            day.nx=static_cast<std::size_t>(h.nx);
+            day.ny=static_cast<std::size_t>(h.ny);
+            day.water_first=h.iwat1;day.water_last=h.iwat2;day.ipsifcn=0;
+            day.zm=stable.zm;
+            day.landuse=day_use;
+            day.z0=reference.statics.z0_m;
+            day.u1=stable.u1;day.v1=stable.v1;
+            day.rho=density;day.temp_k=surface.temp2d_k;
+            day.heat_flux_initial=heat_flux;
+            day.initial_ustar.assign(cells,0.05f);
+            day.initial_el.assign(cells,-9.9e9f);
+            const auto day_result=elustr_daytime(day);
+            ustar.resize(cells);el.resize(cells);
+            for(std::size_t k=0;k<cells;++k) {
+                if(heat_flux[k]<0.f) {
+                    ustar[k]=stable_result.ustar_ms[k];
+                    el[k]=stable_result.monin_obukhov_m[k];
+                } else {
+                    ustar[k]=day_result.ustar_ms[k];
+                    el[k]=day_result.monin_obukhov_m[k];
+                }
+            }
+        }
         std::vector<float> shortwave(cells,0.f);
-        for(std::size_t k=0;k<cells;++k)
-            shortwave[k]=heatfx_shortwave(sinalpc[k],cloud_fraction,ha1,ha2,hb1,hb2);
+        if(heatfx_shortwave_field.empty())
+            for(std::size_t k=0;k<cells;++k)
+                shortwave[k]=heatfx_shortwave(sinalpc[k],cloud_fraction,ha1,ha2,hb1,hb2);
+        else
+            shortwave=heatfx_shortwave_field;
         for(const std::string& label:labels) {
             CalmetDat21Field field;
             field.label=label;
@@ -509,6 +602,12 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                 if(label=="QSW")
                     for(std::size_t k=0;k<cells;++k)
                         field.real_values[k]=shortwave[k];
+                if(label=="USTAR"&&!ustar.empty())
+                    for(std::size_t k=0;k<cells;++k)
+                        field.real_values[k]=ustar[k];
+                if(label=="EL"&&!el.empty())
+                    for(std::size_t k=0;k<cells;++k)
+                        field.real_values[k]=el[k];
                 if(label=="RHO")
                     for(std::size_t k=0;k<cells;++k)
                         field.real_values[k]=density[k];
@@ -524,6 +623,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     report+="  \"intervals\": "+std::to_string(reference.intervals)+",\n";
     report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\",\"QSW\",\"RHO\"";
     if(wind)report+=",\"IPGT\"";
+    if(geo&&wind)report+=",\"USTAR\",\"EL\"";
     report+="],\n";
     report+="  \"wind_source\": "+json_string(wind_path)+",\n";
     report+="  \"avetmp_mnmdav\": "+std::to_string(mnmdav)+
@@ -540,6 +640,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             if(label=="TEMPK"||label=="IRH"||label=="T-LEV  1"||label=="QSW"||
                label=="RHO")continue;
             if(label=="IPGT"&&wind)continue;
+            if((label=="USTAR"||label=="EL")&&geo&&wind)continue;
             report+=(first?"":", ")+json_string(label);
             first=false;
         }
@@ -867,7 +968,11 @@ int main(int argc,char** argv) {
                           static_cast<float>(std::stod(argument(argc,argv,"--hb2","3.4"))),
                           argument(argc,argv,"--wind-file"),
                           number_argument(argc,argv,"--mnmdav",1),
-                          static_cast<float>(std::stod(argument(argc,argv,"--hafang","30."))));
+                          static_cast<float>(std::stod(argument(argc,argv,"--hafang","30."))),
+                          argument(argc,argv,"--geo-file"),
+                          static_cast<float>(std::stod(argument(argc,argv,"--hc1","5.31e-13"))),
+                          static_cast<float>(std::stod(argument(argc,argv,"--hc2","60."))),
+                          static_cast<float>(std::stod(argument(argc,argv,"--hc3","0.12"))));
             return 0;
         }
         if(mode=="check") {
