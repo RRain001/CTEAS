@@ -564,3 +564,38 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7v_probe --deck-advection "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
             0 513.3846439571 3533.7689269678 70.8 89.152)
 endif()
+
+# P7W: RISEWIND and the one-step numerical comparison against the vendor's
+# instrumented puff-step dump.
+add_library(cteas_p7_rise_wind STATIC src/rise_wind.cpp)
+target_include_directories(cteas_p7_rise_wind PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_rise_wind PUBLIC cteas_p7_advection)
+if(MSVC)
+  target_compile_options(cteas_p7_rise_wind PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_rise_wind PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7w_tests tests/p7w_tests.cpp)
+target_link_libraries(cteas_p7w_tests PRIVATE cteas_p7_rise_wind)
+if(MSVC)
+  target_compile_options(cteas_p7w_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7w_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7w_rise_wind_contract COMMAND cteas_p7w_tests)
+
+add_executable(cteas_p7w_probe src/puff_step_probe.cpp)
+target_link_libraries(cteas_p7w_probe PRIVATE cteas_p7_rise_wind cteas_p7_advection
+  cteas_p7_plume_rise cteas_p7_calmet21 cteas_p7_control)
+add_test(NAME cteas_p7w_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7w_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7w_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}"
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin")
+  add_test(NAME cteas_p7w_dgm_step_comparison
+    COMMAND cteas_p7w_probe --dgm-steps
+            "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin"
+            "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
+            "513.3846439571" "3533.7689269678" "70.8" "1.6" "17.26" "298.15")
+endif()
