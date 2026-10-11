@@ -666,6 +666,9 @@ def render_capture_markdown(manifest: dict) -> str:
         "",
         "## Downstream consumption",
         "",
+        "`MET_SHA256` pins the file named by `P7_FROZEN_2022_MET_DAT` (the CALMET.DAT 2.1",
+        "binary); `PUFF_SHA256` pins the file named by `PUFF_INP` (the rendered CALPUFF deck).",
+        "",
         "- `P7_FROZEN_2022_MET_DAT` = `" + manifest["actions_variables"]["P7_FROZEN_2022_MET_DAT"] + "`",
         "- `PUFF_INP` = `" + manifest["actions_variables"]["PUFF_INP"] + "`",
         "- `MET_SHA256` = `" + manifest["actions_variables"]["MET_SHA256"] + "`",
@@ -1046,9 +1049,12 @@ def main() -> int:
     print(json.dumps({
         "case": args.case_name,
         "met_dat": manifest["actions_variables"]["P7_FROZEN_2022_MET_DAT"],
-        "met_dat_sha256": sha256(case_dir / "run" / "met" / "met.dat"),
-        "puff_con_sha256": manifest["actions_variables"]["PUFF_SHA256"],
+        "met_dat_sha256": manifest["actions_variables"]["MET_SHA256"],
+        "puff_inp": manifest["actions_variables"]["PUFF_INP"],
+        "puff_inp_sha256": manifest["actions_variables"]["PUFF_SHA256"],
+        "puff_con_sha256": sha256(case_dir / "run" / "puff" / "puff.con"),
         "hourly_labels": verification["calmet"]["hourly_labels"],
+        "artifacts": len(artifacts),
         "manifest": str(manifest_path),
     }, indent=2))
     return 0
