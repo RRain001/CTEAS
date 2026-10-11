@@ -53,10 +53,12 @@ under engine/preprocess and vendor SMERGE/CALMET Fortran remain unchanged.
   and one fixed WS=0.5 m/s for EVERY hour in that run.
 - All modeled positive-speed bearings are in (0,360], never WD=0.
   For example 350/10 ->360; 170/190 ->180; 360/360 ->360.
-- Explicit USER SPECIAL CASE: exactly antipodal endpoints (difference 180)
-  always produce WD=180, including 90/270 and 1/181. Opposite endpoints
-  have no unique shortest circular arc; 1/181 ->180 is an imposed convention
-  and is NOT the mathematical circular midpoint.
+- Exactly antipodal endpoint bearings (difference 180) have two equally
+  short arcs. Choose the CLOCKWISE arc from the *earlier* valid observation
+  to the later one, so the midpoint is earlier bearing +90 degrees, modulo
+  360, with 0 encoded as 360. Examples: 90->270 = 180; 270->90 = 360;
+  1->181 = 91; 181->1 = 271. This replaces the former rule incorrectly
+  returning 180 for every opposite pair. Direction order matters.
 - Beginning-of-year calm without real positive prior anchor: copy BOTH
   direction AND speed from the next real positive observed vector for the
   entire run (do not force 0.5). End-of-year calm without next anchor:
