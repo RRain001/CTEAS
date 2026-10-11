@@ -118,20 +118,20 @@ jobs:
         run: gfortran --version | head -1
       - name: Build strict C++20 and run all P6 CTests
         run: |
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-p6d-smooth -DCMAKE_BUILD_TYPE=Debug
-          cmake --build /tmp/cteas-p6d-smooth --parallel 2
-          ctest --test-dir /tmp/cteas-p6d-smooth --output-on-failure
+          cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/cteas-p6d-smooth-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$RUNNER_TEMP/cteas-p6d-smooth-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/cteas-p6d-smooth-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output-on-failure
       - name: Original CALMET unmodified SMOOTH Fortran against C++
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_original_smooth.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
-            --cpp /tmp/cteas-p6d-smooth/cteas_p6_smooth \
-            --out /tmp/p6d-smooth-reference
+            --cpp "$RUNNER_TEMP/cteas-p6d-smooth-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"/cteas_p6_smooth \
+            --out "$RUNNER_TEMP/p6d-smooth-reference-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
       - name: Preserve independent comparison JSON
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-calmet-smooth-parity
-          path: /tmp/p6d-smooth-reference/p6d-smooth-parity.json
+          path: ${{ runner.temp }}/p6d-smooth-reference-${{ github.run_id }}-${{ github.run_attempt }}/p6d-smooth-parity.json
           if-no-files-found: warn
           retention-days: 14
