@@ -121,20 +121,20 @@ jobs:
         run: gfortran --version | head -1
       - name: C++20 build and all prior P6 CTests
         run: |
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-p6d-final -DCMAKE_BUILD_TYPE=Debug
-          cmake --build /tmp/cteas-p6d-final --parallel 2
-          ctest --test-dir /tmp/cteas-p6d-final --output-on-failure
+          cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/cteas-p6d-final-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$RUNNER_TEMP/cteas-p6d-final-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/cteas-p6d-final-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output-on-failure
       - name: Literal DIAGNO source L6119–6148 and vendor Fortran against C++
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_original_diagno_final_segment.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
-            --cpp /tmp/cteas-p6d-final/cteas_p6_final_segment \
-            --out /tmp/cteas-diagno-original-segment
+            --cpp "$RUNNER_TEMP/cteas-p6d-final-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"/cteas_p6_final_segment \
+            --out "$RUNNER_TEMP/cteas-diagno-original-segment-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
       - name: Record comparison
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: p6d-original-diagno-selected-segment
-          path: /tmp/cteas-diagno-original-segment/p6d-final-segment-parity.json
+          path: ${{ runner.temp }}/cteas-diagno-original-segment-${{ github.run_id }}-${{ github.run_attempt }}/p6d-final-segment-parity.json
           if-no-files-found: warn
           retention-days: 14
