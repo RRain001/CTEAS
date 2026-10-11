@@ -26,6 +26,8 @@ struct P6CObservedHour {
     float surface_temp_k=0.f;
     float surface_pressure_mb=9999.f;
     int surface_humidity_pct=9999,opaque_cloud_tenths=9999;
+    // Original station ceiling in hundreds of feet (PGTSTB night branch).
+    int ceiling_hundreds_ft=9999;
     int precipitation_code=9999;
     bool precipitation_code_observed=false;
     MixdtSounding physical_aa,physical_bb;
@@ -86,6 +88,8 @@ inline P6CObservedHour p6c_observed_hour(
     // Surface pressure feeds the original airden(): RHO = 0.3484321*PRES/TEMP2D.
     x.surface_pressure_mb=s.record->obs.pressure_valid?
         s.record->obs.pressure_mb:9999.f;
+    x.ceiling_hundreds_ft=s.record->obs.ceiling_valid?
+        s.record->obs.ceiling_hundreds_ft:9999;
     x.precipitation_code_observed=s.record->obs.precipitation_code_valid;
     // Missing 9999 MUST NOT be interpreted as observed dry (0).
     x.precipitation_code=x.precipitation_code_observed?
