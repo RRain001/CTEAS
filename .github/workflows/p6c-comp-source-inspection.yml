@@ -37,3 +37,7 @@ jobs:
           sed -n '3550,4120p' "$SRC" | grep -inE 'subroutine comp|cgamma|rdsn|ntzaa|ntzbb|nsecdt|isnap|read|jorder|justa|rdupn|nusta|susta|wsta|prepdi' | head -140
           echo '==== PREPDI observation and CGAMMA callsites ===='
           grep -inE 'call cgamma|call rdsn|call prepdi|call comp\(' "$SRC" | head -80
+          echo '==== original COMP surface read and preprocessing 3850-4050 ===='
+          sed -n '3850,4050p' "$SRC" | nl -ba -v 3850
+          echo '==== original PREPDI vertical temperature route 13640-13725 ===='
+          sed -n '13640,13725p' "$SRC" | nl -ba -v 13640
