@@ -254,7 +254,7 @@ def write_wind_audit(file_path, audit, summary):
 def read_selection_role(file_path):
     from pathlib import Path
     source = Path(file_path).resolve()
-    m = re.fullmatch(r"([0-9A-Za-z]{6})-([0-9A-Za-z]{5})-(\\d{4})\\.csv", source.name)
+    m = re.fullmatch(r"([0-9A-Za-z]{6})-([0-9A-Za-z]{5})-(\d{4})\.csv", source.name)
     if m is None:
         raise WindPolicyError(f"invalid source station filename: {source.name}")
     year = int(m.group(3))
@@ -301,7 +301,7 @@ def save_sparse_station(file_path, header_lines, df_out):
     path = f"{base}_filled{ext}"
     with open(path, "w", encoding="utf-8", newline="") as writer:
         for head in header_lines:
-            writer.write(head + "\\n")
+            writer.write(head + "\n")
         df_out.to_csv(writer, index=False, header=False)
     with open(f"{base}_filled.stage.json", "w", encoding="utf-8") as writer:
         json.dump({
@@ -311,7 +311,7 @@ def save_sparse_station(file_path, header_lines, df_out):
             "calendar_hours_reindexed": False,
             "missing_sentinel": 9999,
         }, writer, ensure_ascii=False, indent=2)
-        writer.write("\\n")
+        writer.write("\n")
     return path
 
 def process_one_station(file_path, strict=False):
