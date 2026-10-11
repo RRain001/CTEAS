@@ -1,9 +1,9 @@
 #include "cteas/p6/slope_flow.hpp"
-#include <cassert>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
 using namespace cteas::calmet::p6;
+static void require(bool ok) { if (!ok) throw std::runtime_error("P6D SLOPE test assertion failed"); }
 static SlopeInput make_input() {
     SlopeInput x;
     x.nx=4; x.ny=4; x.nz=3; x.dx_m=100; x.dy_m=100;
@@ -26,34 +26,34 @@ static SlopeInput make_input() {
 template<class F> void expect_invalid(F f) {
     bool threw=false;
     try { f(); } catch(const std::invalid_argument&) { threw=true; }
-    assert(threw);
+    require(threw);
 }
 int main() {
     const auto x=make_input();
     const auto w=compute_original_slope_scoped(x);
-    assert(w.u_mps.size()==48 && w.v_mps.size()==48);
-    assert(std::hypot(w.u_mps[5],w.v_mps[5])>0.01f);
-    assert(std::abs(w.u_mps[5]-w.u_mps[16+5])<1e-5f);
-    assert(w.u_mps[32+5]==0.0f && w.v_mps[32+5]==0.0f);
+    require(w.u_mps.size()==48 && w.v_mps.size()==48);
+    require(std::hypot(w.u_mps[5],w.v_mps[5])>0.01f);
+    require(std::abs(w.u_mps[5]-w.u_mps[16+5])<1e-5f);
+    require(w.u_mps[32+5]==0.0f && w.v_mps[32+5]==0.0f);
     {
         auto water=x; water.landuse[5]=52;
         const auto wind=compute_original_slope_scoped(water);
         for(int k=0;k<3;++k) {
-            assert(wind.u_mps[16*k+5]==0.0f);
-            assert(wind.v_mps[16*k+5]==0.0f);
+            require(wind.u_mps[16*k+5]==0.0f);
+            require(wind.v_mps[16*k+5]==0.0f);
         }
     }
     {
         auto uphill=x; uphill.sensible_heat_w_m2[5]=110.0f;
         const auto wind=compute_original_slope_scoped(uphill);
-        assert(wind.u_mps[5]*w.u_mps[5]<0.0f ||
+        require(wind.u_mps[5]*w.u_mps[5]<0.0f ||
                wind.v_mps[5]*w.v_mps[5]<0.0f);
     }
     {
         auto flat=x; for(auto& z:flat.terrain_m) z=100.0f;
         const auto wind=compute_original_slope_scoped(flat);
-        for(float u:wind.u_mps) assert(u==0.0f);
-        for(float v:wind.v_mps) assert(v==0.0f);
+        for(float u:wind.u_mps) require(u==0.0f);
+        for(float v:wind.v_mps) require(v==0.0f);
     }
     {
         auto bad=x; bad.disthmax_m.pop_back();
