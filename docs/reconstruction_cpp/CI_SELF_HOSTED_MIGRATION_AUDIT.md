@@ -19,3 +19,12 @@ Scope: workflow scheduler/toolchain only, no CALMET/CALPUFF physics, no vendor c
 1. INTER2 PR #16 independent original CALMET numerical parity must pass **before** merging it.
 2. This CI migration PR may merge to the P6 development base only after `cteas-selfhosted-smoke.yml` successfully builds C++20, literal Fortran and runs all current P6 CTests; no unsupported success claims.
 3. Trigger an explicit full regression request before a P6 stage acceptance claim. Preserve original-source artifacts, exceptions, JUnit/CTest logs and any real 2022 deficiencies separately.
+
+## Independent self-hosted acceptance (2026-10-11)
+
+CI migration PR head `742ee9411d70c7f51c0409fa81c26b5c5ef73277` received actual self-hosted execution:
+- [Runner smoke #38121624741](https://github.com/RRain001/CTEAS/actions/runs/38121624741) **SUCCESS**: HTTPS preflight, private GitHub checkout, shared GCC12+ / gfortran11+ composite selection, literal Fortran compilation, strict P6 C++20 compilation and all P6 CTests passed.
+- [P6A C++ contracts #38121624736](https://github.com/RRain001/CTEAS/actions/runs/38121624736) **SUCCESS**.
+- [C++ input contracts #38121624744](https://github.com/RRain001/CTEAS/actions/runs/38121624744) **SUCCESS**: C++ input compile/tests, GDAL inspection and immutable crop hashes.
+
+This acceptance **only** validates the self-hosted execution substrate, dependency bootstrap and quick smoke. Changed per-module P6C/P6D work, 2022 143h P6B, and full-rerun gate must still run when their paths/explicit sentinel are exercised. One green smoke is not an end-to-end CALMET P6 PASS.
