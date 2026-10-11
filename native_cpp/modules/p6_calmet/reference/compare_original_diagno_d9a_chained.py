@@ -44,7 +44,7 @@ MINIM_DIVLIM=0.
 # the frozen deck because it has IKINE=0).
 ALPHA=0.1
 KINEMATIC_NITER=50
-KINEMATIC_DIVLIM=5.e-6
+KINEMATIC_DIVLIM=0.
 
 def run(args):
     p=subprocess.run([str(x) for x in args],capture_output=True,text=True,timeout=180)
