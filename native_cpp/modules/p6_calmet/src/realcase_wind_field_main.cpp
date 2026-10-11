@@ -18,6 +18,8 @@
 #include "cteas/p6/read_geo.hpp"
 #include "cteas/p6/read_surface.hpp"
 #include "cteas/p6/read_upper.hpp"
+#include "cteas/p6/diagno_segment.hpp"
+#include "cteas/p6/inter2_selected.hpp"
 #include "cteas/p6/similt_neutral.hpp"
 #include "cteas/p6/terrain_envelope.hpp"
 #include "cteas/p6/upper_hourly_wind.hpp"
@@ -128,7 +130,7 @@ std::string hour_label(std::chrono::sys_seconds clock){
 }
 
 struct Arguments {
-    fs::path case_dir,out_dir,geo,deck,surface,upper;
+    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir;
     int hours=143;
     fs::path out()const{return out_dir;}
 };
@@ -149,6 +151,7 @@ int main(int argc,char** argv){
         else if(flag=="--deck")args.deck=next();
         else if(flag=="--surface")args.surface=next();
         else if(flag=="--upper")args.upper=next();
+        else if(flag=="--fixtures")args.fixture_dir=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
         else throw std::invalid_argument("unknown argument "+flag);
     }
@@ -214,6 +217,48 @@ int main(int argc,char** argv){
             for(std::size_t k=0;k<9;++k)bias[k]=it->second[k];
     }
 
+    // Station local geometry. This case places both stations at the declared
+    // grid centre (case.yaml grid.center equals stations.csv lat/lon), and no
+    // branch-local lat/lon projection exists, so the centre is taken from the
+    // case metadata and anything else fails closed instead of being guessed.
+    double centre_x_km=0.,centre_y_km=0.,station_lat_deg=0.;
+    {
+        const std::string yaml=read_text(args.case_dir/"case.yaml");
+        static const std::regex lon(R"(longitude:\s*([-0-9.]+))");
+        static const std::regex lat(R"(latitude:\s*([-0-9.]+))");
+        static const std::regex len(R"(length_km:\s*([0-9.]+))");
+        static const std::regex wid(R"(width_km:\s*([0-9.]+))");
+        std::smatch loom,lam,lom,wim;
+        if(!std::regex_search(yaml,loom,lon)||!std::regex_search(yaml,lam,lat)||
+           !std::regex_search(yaml,lom,len)||!std::regex_search(yaml,wim,wid))
+            throw std::runtime_error("case.yaml grid block missing");
+        const double centre_lon=std::stod(loom[1]),centre_lat=std::stod(lam[1]);
+        const double length_km=std::stod(lom[1]),width_km=std::stod(wim[1]);
+        const auto csv=read_text(args.surface);
+        (void)csv;
+        // Station lat/lon come from the case station tables.
+        const std::string table=read_text(args.case_dir/"met/surface/final/stations.csv");
+        double station_lat=0.,station_lon=0.;
+        {
+            std::istringstream stream(table);
+            std::string line;
+            std::getline(stream,line);
+            std::getline(stream,line);
+            std::istringstream row(line);
+            std::string field;
+            std::vector<std::string> fields;
+            while(std::getline(row,field,','))fields.push_back(field);
+            if(fields.size()<4)throw std::runtime_error("stations.csv row malformed");
+            station_lat=std::stod(fields[2]);station_lon=std::stod(fields[3]);
+        }
+        station_lat_deg=station_lat;
+        if(std::abs(station_lat-centre_lat)>1e-4||std::abs(station_lon-centre_lon)>1e-4)
+            throw std::runtime_error(
+                "station is not at the declared grid centre and no branch-local "
+                "lat/lon projection is available; supply local coordinates instead");
+        centre_x_km=0.5*length_km;centre_y_km=0.5*width_km;
+    }
+
     const auto geo=read_geo_50(args.geo.string(),origin_x_km,origin_y_km);
     const auto surface=read_surface_2022(args.surface.string());
     // UP.DAT carries the upper station ID in its 6201 record tags; the case
@@ -240,6 +285,33 @@ int main(int argc,char** argv){
     const std::vector<float> zface_vector(zface.begin(),zface.end());
     const auto hourly_upper=calmet_prepdi_2022_hours(upper,zface_vector);
 
+    // Original INTER2 controls from the deck: radii in km, RVARY off and the
+    // per-layer station limit. WO is not read here: RDWT sets 1.0 for IPROG=0.
+    const float rmin_km=deck_scalar(controls,"RMIN",0.1f);
+    const float rmax1_km=deck_scalar(controls,"RMAX1",100.f);
+    const float rmax2_km=deck_scalar(controls,"RMAX2",200.f);
+    const float rmax3_km=deck_scalar(controls,"RMAX3",200.f);
+    const float r1_km=deck_scalar(controls,"R1",50.f);
+    const float r2_km=deck_scalar(controls,"R2",100.f);
+    const bool lvary=deck_scalar(controls,"LVARY",0.f)!=0.f;
+    std::vector<int> nsmth(9);
+    {
+        const auto it=controls.find("NSMTH");
+        if(it==controls.end()||it->second.size()<9)
+            throw std::runtime_error("the deck must declare nine NSMTH values");
+        for(std::size_t k=0;k<9;++k)
+            nsmth[k]=static_cast<int>(it->second[k]);
+    }
+    std::vector<int> nintrp(9);
+    {
+        const auto it=controls.find("NINTR2");
+        if(it==controls.end()||it->second.size()<9)
+            throw std::runtime_error("the deck must declare nine NINTR2 values");
+        // The deck's NINTR2=99 is an upper bound on stations per layer; with
+        // two stations in this case the original uses min(NINTR2, NWIND).
+        for(std::size_t k=0;k<9;++k)
+            nintrp[k]=std::max(1,std::min(static_cast<int>(it->second[k]),2));
+    }
     const auto envelope=terset(geo.terrain_m,nx,ny,grid_m,grid_m,terrad_km);
     write_f32(args.out()/"terset_hmax.f32",envelope.maximum_m);
     write_f32(args.out()/"terset_hmin.f32",envelope.minimum_m);
@@ -308,6 +380,89 @@ int main(int argc,char** argv){
         const auto first=wind1_firstguess_selected(station,settings);
         write_f32(args.out()/("wind1_u_"+hour_label(clock)+".f32"),first.ug_mps);
         write_f32(args.out()/("wind1_v_"+hour_label(clock)+".f32"),first.vg_mps);
+        // Original INTER2 two-component blend on the step-one field, with the
+        // case's own controls: WO=1.0 everywhere because IPROG=0 and the deck
+        // supplies no WT.DAT (RDWT fills 1.0 for IPROG=0/2/4/14), RVARY off,
+        // NINTR2=99 for every layer, and the observed station profiles.
+        std::vector<float> blended_u,blended_v;
+        for(int component=0;component<2;++component){
+            Inter2SelectedInput blend;
+            blend.nx=nx;blend.ny=ny;blend.nz=nz;blend.nstations=2;
+            blend.dx_m=grid_m;blend.dy_m=grid_m;
+            blend.rmin_km=rmin_km;blend.rmax1_km=rmax1_km;
+            blend.rmax2_km=rmax2_km;blend.rmax3_km=rmax3_km;
+            blend.r1_km=r1_km;blend.r2_km=r2_km;
+            blend.lvary=lvary;
+            blend.iprog=0;blend.nbar=0;blend.noobs=0;
+            blend.water_first=geo.iwat1;blend.water_last=geo.iwat2;
+            blend.edit=999999.f;blend.editl=999998.f;
+            blend.nintrp_per_layer=nintrp;
+            blend.station_x_km={static_cast<float>(centre_x_km),
+                                static_cast<float>(centre_x_km)};
+            blend.station_y_km={static_cast<float>(centre_y_km),
+                                static_cast<float>(centre_y_km)};
+            blend.landuse=geo.landuse;
+            blend.observation_weight.assign(22500,1.f);
+            blend.station_component_mps.resize(18);
+            for(std::size_t k=0;k<9;++k){
+                const auto& surface_wind=station.surface_neutral_profile[k];
+                const auto& upper_wind=station.upper_observed_profile[k];
+                blend.station_component_mps[k]=component==0
+                    ? surface_wind.u_mps:surface_wind.v_mps;
+                blend.station_component_mps[9+k]=component==0
+                    ? upper_wind.u_mps:upper_wind.v_mps;
+            }
+            blend.step1_mps=component==0?first.ug_mps:first.vg_mps;
+            const auto blended=original_inter2_selected(blend);
+            if(component==0)blended_u=blended.component_mps;
+            else blended_v=blended.component_mps;
+            write_f32(args.out()/((component==0?"blend_u_":"blend_v_")+
+                                  hour_label(clock)+".f32"),
+                      blended.component_mps);
+        }
+        // DIAGNO SMOOTH+DIVCEL+W on the blended field, with the per-layer
+        // smoothing counts and boundaries taken from the blended field itself.
+        // The deck's FRADJ/SLOPE corrections are not applied here (they need
+        // TEMP2D/QH), so this is the uncompensated-terrain variant and the
+        // metadata labels it as such.
+        {
+            SmoothInput tail;
+            tail.nx=nx;tail.ny=ny;tail.nz=nz;tail.lake_breeze=false;
+            tail.passes_per_layer=nsmth;
+            tail.u_mps=blended_u;tail.v_mps=blended_v;
+            tail.ub_west_east_mps.assign(9*2*ny,0.f);
+            tail.vb_south_north_mps.assign(9*2*nx,0.f);
+            for(std::size_t k=0;k<9;++k)for(std::size_t j=0;j<static_cast<std::size_t>(ny);++j){
+                tail.ub_west_east_mps[k*2*ny+j]=blended_u[k*2500+j*50];
+                tail.ub_west_east_mps[k*2*ny+ny+j]=
+                    blended_u[k*2500+j*50+49];
+            }
+            for(std::size_t k=0;k<9;++k)for(std::size_t i=0;i<static_cast<std::size_t>(nx);++i){
+                tail.vb_south_north_mps[k*2*nx+i]=blended_v[k*2500+i];
+                tail.vb_south_north_mps[k*2*nx+nx+i]=
+                    blended_v[k*2500+49*50+i];
+            }
+            const auto final_fields=original_smooth_divcel_w(
+                std::move(tail),grid_m,grid_m,thickness_m,false);
+            write_f32(args.out()/("w_face_"+hour_label(clock)+".f32"),
+                      final_fields.w_face_mps);
+        }
+        if(!args.fixture_dir.empty()){
+            // Driver fixture for the unchanged original WIND1/SIMILT, so the
+            // step-one field can be compared numerically against the original.
+            std::ofstream fixture(args.fixture_dir/
+                ("wind1_driver_"+hour_label(clock)+".inp"));
+            if(!fixture)throw std::runtime_error("cannot write WIND1 driver fixture");
+            fixture<<(centre_x_km*1000.)<<" "<<(centre_y_km*1000.)<<" "
+                   <<(centre_x_km*1000.)<<" "<<(centre_y_km*1000.)<<" "
+                   <<surface_u<<" "<<surface_v<<" "<<roughness<<" "
+                   <<station_lat_deg<<" "<<"10.0 "<<icalm<<"\n";
+            for(std::size_t k=0;k<9;++k)
+                fixture<<bias[k]<<(k==8?"\n":" ");
+            for(std::size_t k=0;k<9;++k)
+                fixture<<station.upper_observed_profile[k].u_mps<<" "
+                       <<station.upper_observed_profile[k].v_mps<<"\n";
+        }
         index<<hour_label(clock)<<"\n";
         ++written;
     }
@@ -329,15 +484,25 @@ int main(int argc,char** argv){
     meta<<"], \"center_m\": [";
     for(std::size_t k=0;k<9;++k)meta<<(k?", ":"")<<center_m[k];
     meta<<"]},\n";
-    meta<<"  \"units\": {\"wind1_u_*.f32\": \"m/s\", \"wind1_v_*.f32\": \"m/s\","
+    meta<<"  \"units\": {\"wind1_u_*.f32\": \"m/s\", \"wind1_v_*.f32\": \"m/s\", \"blend_u_*.f32\": \"m/s\", \"blend_v_*.f32\": \"m/s\", \"w_face_*.f32\": \"m/s (10 faces: k=1 face is the surface, k=10 the domain top)\","
           " \"terset_hmax.f32\": \"m\", \"terset_hmin.f32\": \"m\","
           " \"terset_disthmax.f32\": \"m\", \"terset_disthmin.f32\": \"m\"},\n";
     meta<<"  \"missing_sentinel\": "<<MISSING<<",\n";
     meta<<"  \"hourly_labels\": "<<written<<",\n";
     meta<<"  \"hour_label\": \"YYYY-MM-DD_HH (UTC), the label is the hour END\",\n";
     meta<<"  \"surface_wind_speed_range_mps\": ["<<speed_min<<", "<<speed_max<<"],\n";
+    meta<<"  \"blend\": {\"product\": \"blend_u_*.f32 / blend_v_*.f32\", "
+          "\"stage\": \"original INTER2 two-component blend on the step-one field\", "
+          "\"observation_weight\": \"WO(i,j,k)=1.0 everywhere: RDWT fills 1.0 for IPROG=0/2/4/14 and the deck supplies no WT.DAT\", "
+          "\"radii_km\": {\"RMIN\": "<<rmin_km<<", \"RMAX1\": "<<rmax1_km<<", \"RMAX2\": "<<rmax2_km<<", "
+                        "\"RMAX3\": "<<rmax3_km<<", \"R1\": "<<r1_km<<", \"R2\": "<<r2_km<<"}, "
+          "\"lvary\": "<<(lvary?"true":"false")<<", \"nintrp_per_layer\": 99, "
+          "\"station_local_km\": ["<<centre_x_km<<", "<<centre_y_km<<"], "
+          "\"station_local_km_source\": \"case.yaml grid centre equals stations.csv lat/lon\", "
+          "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\"},\n";
     meta<<"  \"stages_applied_in_chain\": [";
     meta<<"\"WIND1 selected first guess (IEXTRP=-4 neutral SIMILT)\"";
+    meta<<", \"original INTER2 two-component blend (WO=1.0)\"";
     meta<<", \"TERSET envelope (DIAGI L5228, TERRAD="<<terrad_km<<" km)\"],\n";
     meta<<"  \"stages_not_applied\": [\n";
     meta<<"    {\"stage\": \"SURFVAR -> TEMP2D (DIAGNO L5609-L5610)\", \"status\": \"BLOCKED\","
@@ -348,8 +513,10 @@ int main(int argc,char** argv){
           " \"missing\": [\"GAMMA\", \"TEMP2D\", \"HMAX (provided here as terset_hmax.f32)\"]},\n";
     meta<<"    {\"stage\": \"SLOPE (L5722-L5723)\", \"status\": \"NEEDS_CALLER_PLANES\","
           " \"missing\": [\"QH\", \"TEMP2D\", \"HMIN/DISTHMAX/DISTHMIN (provided here as terset_*.f32)\"]},\n";
-    meta<<"    {\"stage\": \"INTER2 blend + SMOOTH/DIVCEL/W tail\", \"status\": \"NOT_APPLIED_IN_THIS_PARTIAL\","
-          " \"note\": \"the D9A bridge models the INTER2 observation weighting as a 22500-cell array, while the original reads per-station UDAT/VDAT and WO; the real-case mapping is not yet established, so no blend is emitted\"},\n";
+    meta<<"    {\"stage\": \"SMOOTH/DIVCEL/W tail (DIAGNO L6119-L6148)\", \"status\": \"APPLIED_WITHOUT_TERRAIN_CORRECTION\","
+          " \"product\": \"w_face_*.f32 (10 faces per column)\","
+          " \"note\": \"run on the blended field with the deck NSMTH and boundaries taken from that field; the L5748 snapshot after the FRADJ/SLOPE corrections is not available yet (TEMP2D/QH), so this is the uncompensated-terrain variant\"},"
+          " \"note\": \"the tail consumes the L5748 WINDBC snapshot taken after the FRADJ/SLOPE corrections, which still need TEMP2D/QH; emitting W from an un-corrected step one would be an unfaithful combination\"},\n";
     meta<<"    {\"stage\": \"TOPOF2/IKINE route and O'Brien/IOBR=1 tail\", \"status\": \"NON_CASE_PATH\","
           " \"note\": \"the case deck sets IKINE=0 and IOBR=0\"}\n";
     meta<<"  ],\n";
