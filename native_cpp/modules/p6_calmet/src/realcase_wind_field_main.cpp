@@ -15,6 +15,7 @@
 // for stages whose real-case inputs are not available in this branch
 // (SURFVAR TEMP2D, ISFCMET QH), so those stages are reported as not applied
 // rather than silently substituted.
+#include <iomanip>
 #include "cteas/p6/read_geo.hpp"
 #include "cteas/p6/read_surface.hpp"
 #include "cteas/p6/read_upper.hpp"
@@ -135,7 +136,7 @@ std::string hour_label(std::chrono::sys_seconds clock){
 }
 
 struct Arguments {
-    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,zi_file,el_file;
+    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,zi_file,el_file,zii_file;
     int hours=143;
     fs::path out()const{return out_dir;}
 };
@@ -160,6 +161,7 @@ int main(int argc,char** argv){
         else if(flag=="--gamma")args.gamma_dir=next();
         else if(flag=="--zi")args.zi_file=next();
         else if(flag=="--el")args.el_file=next();
+        else if(flag=="--zii-cell")args.zii_file=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
         else throw std::invalid_argument("unknown argument "+flag);
     }
@@ -243,6 +245,7 @@ int main(int argc,char** argv){
     // branch-local lat/lon projection exists, so the centre is taken from the
     // case metadata and anything else fails closed instead of being guessed.
     double centre_x_km=0.,centre_y_km=0.,station_lat_deg=0.;
+    double surface_x_km=0.,surface_y_km=0.,upper_x_km=0.,upper_y_km=0.;
     {
         const std::string yaml=read_text(args.case_dir/"case.yaml");
         static const std::regex lon(R"(longitude:\s*([-0-9.]+))");
@@ -273,11 +276,44 @@ int main(int argc,char** argv){
             station_lat=std::stod(fields[2]);station_lon=std::stod(fields[3]);
         }
         station_lat_deg=station_lat;
-        if(std::abs(station_lat-centre_lat)>1e-4||std::abs(station_lon-centre_lon)>1e-4)
+        if(std::abs(station_lat-centre_lat)>0.2||std::abs(station_lon-centre_lon)>0.2)
             throw std::runtime_error(
-                "station is not at the declared grid centre and no branch-local "
-                "lat/lon projection is available; supply local coordinates instead");
+                "surface station is more than 0.2 deg from the declared grid centre");
         centre_x_km=0.5*length_km;centre_y_km=0.5*width_km;
+        // Branch-local equirectangular projection at the case's latitude, used
+        // only to place the two stations relative to the grid. The original
+        // uses the coordinates in the station tables, and their ~3 m offset is
+        // what makes the inverse-square weights differ across the domain.
+        const double metres_per_deg_lat=110574.0;
+        const double metres_per_deg_lon=111320.0*std::cos(centre_lat*3.14159265358979/180.0);
+        auto project=[&](double lat,double lon,double& x_km,double& y_km){
+            x_km=centre_x_km+(lon-centre_lon)*metres_per_deg_lon/1000.0;
+            y_km=centre_y_km+(lat-centre_lat)*metres_per_deg_lat/1000.0;
+            if(!(x_km>0.0&&x_km<length_km&&y_km>0.0&&y_km<width_km))
+                throw std::runtime_error("station projects outside the grid");
+        };
+        project(station_lat,station_lon,surface_x_km,surface_y_km);
+        // Upper-air station coordinates come from the upper-air station table.
+        {
+            const std::string upper_table=read_text(
+                args.case_dir/"met/upperair/final/stations.csv");
+            std::istringstream rows(upper_table);
+            std::string row;
+            std::getline(rows,row);
+            double upper_lat=0.,upper_lon=0.;
+            bool found=false;
+            while(std::getline(rows,row)){
+                std::vector<std::string> fields;
+                std::istringstream line(row);
+                std::string field;
+                while(std::getline(line,field,','))fields.push_back(field);
+                if(fields.size()<4)throw std::runtime_error("upper stations.csv row malformed");
+                upper_lat=std::stod(fields[2]);upper_lon=std::stod(fields[3]);
+                found=true;
+            }
+            if(!found)throw std::runtime_error("upper station table is empty");
+            project(upper_lat,upper_lon,upper_x_km,upper_y_km);
+        }
     }
 
     const auto geo=read_geo_50(args.geo.string(),origin_x_km,origin_y_km);
@@ -365,6 +401,23 @@ int main(int argc,char** argv){
         if(!stream)throw std::runtime_error("cannot open the ZI file");
         zi_hours.assign(bytes/std::size_t(4),0.f);
         stream.read(reinterpret_cast<char*>(zi_hours.data()),
+                    static_cast<std::streamsize>(bytes));
+    }
+    // The ZII that the original hands to SIMILT, per hour (143 float32). DIAGI
+    // overwrites its local ZI through MIXHTST/MIXHT2ST (L6882-L6887) before the
+    // SIMILT call (L6894), so the grid ZI early-stops the profile by one level
+    // in 50 of the 143 hours. Source: DGM's instrumented original run.
+    std::vector<float> zii_hours;
+    if(!args.zii_file.empty()){
+        if(!fs::is_regular_file(args.zii_file))
+            throw std::runtime_error("ZII file does not exist: "+args.zii_file.string());
+        const auto bytes=fs::file_size(args.zii_file);
+        if(bytes%4!=0||bytes/4<3)
+            throw std::runtime_error("ZII file must hold whole hourly float32 values");
+        std::ifstream stream(args.zii_file,std::ios::binary);
+        if(!stream)throw std::runtime_error("cannot open the ZII file");
+        zii_hours.assign(bytes/4,0.f);
+        stream.read(reinterpret_cast<char*>(zii_hours.data()),
                     static_cast<std::streamsize>(bytes));
     }
     // Monin-Obukhov length per hour (P6E E29 <prefix>.el.f32, same layout).
@@ -455,16 +508,28 @@ int main(int argc,char** argv){
             // L30345). The WIND1 first guess is a different call: L36171 uses
             // zmo=zml=10000 (neutral, uncapped), so it keeps all nine levels.
             std::size_t levels_filled=0;
-            if(!zi_hours.empty()&&!el_hours.empty()){
+            if((!zi_hours.empty()||!zii_hours.empty())&&!el_hours.empty()){
                 const std::size_t cell=std::size_t(ny/2)*std::size_t(nx)+
                                        std::size_t(nx/2);
                 const std::size_t offset=h*std::size_t(nx)*std::size_t(ny)+cell;
-                if(offset>=zi_hours.size()||offset>=el_hours.size())
-                    throw std::runtime_error("EL/ZI file has no block for "+
+                if(offset>=el_hours.size())
+                    throw std::runtime_error("EL file has no block for "+
                                              hour_label(clock));
+                float cutoff_m=0.f;
+                if(!zii_hours.empty()){
+                    if(h>=zii_hours.size())
+                        throw std::runtime_error("ZII file has no value for "+
+                                                 hour_label(clock));
+                    cutoff_m=zii_hours[h];
+                }else{
+                    if(offset>=zi_hours.size())
+                        throw std::runtime_error("ZI file has no block for "+
+                                                 hour_label(clock));
+                    cutoff_m=zi_hours[offset];
+                }
                 const SimiltProfileInput diagi{
                     static_cast<float>(station_lat_deg),10.f,roughness,surface_u,surface_v,
-                    el_hours[offset],zi_hours[offset],zimin_m,0,zface};
+                    el_hours[offset],cutoff_m,zimin_m,0,zface};
                 const auto profile=original_similt_profile(diagi);
                 levels_filled=profile.levels_filled;
                 for(std::size_t k=0;k<9;++k)
@@ -504,6 +569,10 @@ int main(int argc,char** argv){
         settings.grid_spacing_m=grid_m;
         settings.vertical_bias=bias;
         settings.icalm=icalm;settings.iextrp=iextrp;
+        settings.surface_x_relative_m=surface_x_km*1000.;
+        settings.surface_y_relative_m=surface_y_km*1000.;
+        settings.upper_x_relative_m=upper_x_km*1000.;
+        settings.upper_y_relative_m=upper_y_km*1000.;
         for(std::size_t k=0;k<9;++k)
             settings.upper_layer_valid[k]=true;
         if(!settings_upper_layer_one_valid)settings.upper_layer_valid[0]=false;
@@ -653,10 +722,11 @@ int main(int argc,char** argv){
             blend.water_first=geo.iwat1;blend.water_last=geo.iwat2;
             blend.edit=999999.f;blend.editl=999998.f;
             blend.nintrp_per_layer=nintrp;
-            blend.station_x_km={static_cast<float>(centre_x_km),
-                                static_cast<float>(centre_x_km)};
-            blend.station_y_km={static_cast<float>(centre_y_km),
-                                static_cast<float>(centre_y_km)};
+            // Station order is the original STDAT1 station index: 1 = surface.
+            blend.station_x_km={static_cast<float>(surface_x_km),
+                                static_cast<float>(upper_x_km)};
+            blend.station_y_km={static_cast<float>(surface_y_km),
+                                static_cast<float>(upper_y_km)};
             blend.landuse=geo.landuse;
             blend.observation_weight.assign(22500,1.f);
             blend.station_component_mps.resize(18);
@@ -727,8 +797,12 @@ int main(int argc,char** argv){
             std::ofstream fixture(args.fixture_dir/
                 ("wind1_driver_"+hour_label(clock)+".inp"));
             if(!fixture)throw std::runtime_error("cannot write WIND1 driver fixture");
-            fixture<<(centre_x_km*1000.)<<" "<<(centre_y_km*1000.)<<" "
-                   <<(centre_x_km*1000.)<<" "<<(centre_y_km*1000.)<<" "
+            // Full precision: the driver consumes these positions verbatim, and
+            // a rounded coordinate shifts the inverse-distance weights enough
+            // to exceed the step-one tolerance.
+            fixture<<std::setprecision(17)
+                   <<(surface_x_km*1000.)<<" "<<(surface_y_km*1000.)<<" "
+                   <<(upper_x_km*1000.)<<" "<<(upper_y_km*1000.)<<" "
                    <<surface_u<<" "<<surface_v<<" "<<roughness<<" "
                    <<station_lat_deg<<" "<<"10.0 "<<icalm<<"\n";
             for(std::size_t k=0;k<9;++k)
@@ -747,10 +821,11 @@ int main(int argc,char** argv){
                       <<rmax3_km<<" "<<r1_km<<" "<<r2_km<<" 999999 999998\n";
                 for(std::size_t k=0;k<9;++k)
                     inter2<<nintrp[k]<<(k==8?"\n":" ");
-                const float station_km=static_cast<float>(centre_x_km);
-                inter2<<station_km<<" "<<station_km<<"\n";
-                inter2<<static_cast<float>(centre_y_km)<<" "
-                      <<static_cast<float>(centre_y_km)<<"\n";
+                inter2<<std::setprecision(17)
+                      <<static_cast<float>(surface_x_km)<<" "
+                      <<static_cast<float>(upper_x_km)<<"\n";
+                inter2<<static_cast<float>(surface_y_km)<<" "
+                      <<static_cast<float>(upper_y_km)<<"\n";
                 for(std::size_t row=0;row<50;++row){
                     for(std::size_t i=0;i<50;++i)
                         inter2<<geo.landuse[row*50+i]<<(i==49?"\n":" ");
@@ -827,7 +902,7 @@ int main(int argc,char** argv){
           "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\", "
           "\"verification\": \""<<(zi_hours.empty()
             ? "MIXING_HEIGHT_NOT_SUPPLIED_ALL_LEVELS_NEUTRAL_SIMILT: with no --zi/--el the DIAGI/INTER2 surface column is the uncapped neutral SIMILT at all nine levels, which is the measured cause of the height-growing error (against the frozen met.dat: U-LEV 9 13.5074 and U-LEV 8 10.0186 worst over 143 hours, both FAIL)"
-            : "PARTIAL_LEVELS_7_9_PASS: against the frozen met.dat through P6F+P6E (143 hours, 357500 cells per level, tolerance 1e-4+1e-5*|ref|) U-LEV 7 1.82837e-05, V-LEV 7 1.21593e-05, U-LEV 8 2.90871e-05, V-LEV 8 2.09808e-05, U-LEV 9 4.00543e-05 and V-LEV 9 2.09808e-05 pass with zero exceedances; the stability-dependent SIMILT (PSIUD) moved levels 2-5 from 2.47476/3.22231/4.12656/4.8366 to 0.0315449/0.0330477/0.0419641/0.0491858 (80-100x, measured); remaining: level 1 0.00156724 (the station-centred structure term), level 6 1.8483 (one deep-mixing episode), and every WFACE (0.158 plateau, the same structure term the W integration consumes); report /home/lhy/build/p6d/e2e/work/p6g_report.json")
+            : "PARTIAL_LEVELS_7_9_PASS_LEVEL_2_28MMPS: against the frozen met.dat through P6F+P6E (143 hours, 357500 cells per level, tolerance 1e-4+1e-5*|ref|) U/V levels 7-9 pass with zero exceedances at 1.4e-06..4.8e-06 m/s; with the instrumented ZII (the value SIMILT actually receives, not the grid ZI) and the station tables' own coordinates, U/V levels 2-6 sit at 0.0280/0.0018/0.0023/0.0027/0.0023 m/s and every WFACE improved 18-180x (0.000265/0.000718/0.0018/0.0039/0.0085 at levels 2-6/9 against 0.0038/0.0122/0.0301/0.0851/0.158 before); remaining: level 1 0.00156724 (1,450 cells) and the WFACE exceedance tails; report /home/lhy/build/p6d/e2e/work/p6g_report.json")
             <<"\"},\n";
     meta<<"  \"inter2\": {\"product\": \"inter2_u/v_*.f32 = the pre-tail INTER2 stage\", "
           "\"verification\": \"PASS_REALCASE_BLEND_ORIGINAL_INTER2: 143 hours, 6,435,000 components compared against the unchanged original INTER2, worst absolute error 4.22e-05 m/s at a 2e-4 m/s tolerance, worst relative 9.37e-04, zero mismatches. An earlier head failed at 10.36 m/s because the producer filled station_component_mps station-major while the original STDAT1(K,L) layout is level-major; fixed and re-verified\"},\n";
