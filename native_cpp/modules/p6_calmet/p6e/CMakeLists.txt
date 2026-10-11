@@ -226,3 +226,11 @@ add_test(NAME p6e_p6c_143h_formatted_input_cli
   COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_p6c_cli_formatted_143h.py"
     --cpp "$<TARGET_FILE:p6e_p6c_hourly_bridge>")
+
+# E18 actual 2022 P6C original COMP observation trace (NOT source P6E physics).
+add_test(NAME p6e_e18_real_2022_p6c_observed_temp3d_smoke
+  COMMAND "${Python3_EXECUTABLE}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_real_2022_p6c_temp3d_replay.py"
+  --fixture "${CMAKE_CURRENT_SOURCE_DIR}/reference/data/hefei_2022_p6c_original_obs.zlib.b64"
+  --cpp "$<TARGET_FILE:p6e_temp3d_observed_land_reference>"
+  --out "${CMAKE_CURRENT_BINARY_DIR}/e18-real2022-observed-replay.json")

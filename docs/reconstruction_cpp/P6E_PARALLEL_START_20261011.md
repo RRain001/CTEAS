@@ -422,3 +422,38 @@ physical source claim: **the meteorological values are all synthetic**.
 `E17_FORMATTED_CLI` awaits CTest PASS; the true 2022 SURF/UP
 files remain external to the P6E sparse checkout, and the
 original-source full CALMET 143h parity gate remains pending.
+
+## E18 pinned actual P6C Hefei 2022 observation replay (source-backed input, provisional mixing)
+
+[Original P6B 2022 CI #38113874913](https://github.com/RRain001/CTEAS/actions/runs/38113874913)
+produced retained artifact `11693445092` with actual original 2022
+P6C joint observation CSV (SHA256 `400226164f4e17665487ec0845f3ca6025ecdf310178a12fd9bed9d53818554f`)
+and independent original COMP/RDSN 143h parity status
+`PASS_ORIGINAL_COMP_RUNTIME_AA_BB` (14 original COMP/RDSN scopes,
+all 143 hours, 11 physical AA/BB flips, no source mismatch).
+Its original runtime-source match was performed in P6B, **not re-run
+by P6E**.
+
+E18 stores a compact zlib/base64 trace of **exact original P6C
+measured** 143 surface temperature / RH / cloud / 9999 precipitation
+states and 13 unique upper sounding temperature-face arrays. The
+dataset uses chronological AA/BB indices, `JUSTA`, `AA_SLOT/BB_SLOT`,
+sounding time lags and turnover counts preserved from the real
+hourly P6C CSV. Canonical JSON SHA256:
+`ac45709dec5d5c624e2fbeeede57b4e55c311e384cfcb7a127afa4b5dcc9513b`.
+Exact original CSV and original COMP report hashes are pinned in the
+validation script, so source evidence is auditable and survives
+the expiry of temporary 7-day workflow artifacts.
+
+The E18 runner test replays all **143 actual 2022 observation hours**
+into independently already source-validated selected E14 `TEMP3D`
+with a *single fictive land grid receptor* at 50m/50m and **three
+explicitly synthetic convective-mixing scenarios**
+`ZICONV = 0 / 150 / 500 m`; it asserts physical temperature
+bounds, exactly original source surface temperature on layer 1,
+AA/BB inversion and clocks, zero invented precipitation and
+output-byte determinism, with separate 1h/6h/143h QA windows.
+No P6D or real original CALMET 2022 P6E full field equivalence is
+asserted. **The only actual physical 2022 inputs here are archived
+P6C observations; ZICONV is a clearly labeled test parameter.**
+E18 remains pending CI until accepted.

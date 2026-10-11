@@ -292,6 +292,12 @@ jobs:
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
             --cpp build/p6e/p6e_temp3d_observed_land_reference \
             --out build/p6e/temp3d-observed-land-original-parity.json
+      - name: Validate replay of original-backed actual 2022 observation trace
+        run: |
+          python3 native_cpp/modules/p6_calmet/p6e/tests/verify_real_2022_p6c_temp3d_replay.py \
+            --fixture native_cpp/modules/p6_calmet/p6e/reference/data/hefei_2022_p6c_original_obs.zlib.b64 \
+            --cpp build/p6e/p6e_temp3d_observed_land_reference \
+            --out build/p6e/e18-real2022-observed-replay.json
       - name: Save scientific gate evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -312,4 +318,5 @@ jobs:
             build/p6e/mixdt-original-parity.json
             build/p6e/mixht-observed-mc-original-parity.json
             build/p6e/temp3d-observed-land-original-parity.json
+            build/p6e/e18-real2022-observed-replay.json
           if-no-files-found: warn
