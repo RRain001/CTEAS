@@ -123,9 +123,20 @@ def main():
     for (key,f),(kk,v) in zip(ref,got):
         if key!=kk:raise ValueError("ELUSTR ordering mismatch")
         if f[1]==-7777.:
+            # Fortran emits QH=-0.1 REAL*4 to 14 decimals whereas C++
+            # exports 11 decimals. Comparing parsed decimals by == falsely
+            # rejects the same underlying binary32 value (~1e-13 output
+            # formatting delta). Preserve exact water USTAR/L sentinels and
+            # compare QH only within its frozen *serialization* tolerance.
             actualwater+=1
-            if f!=v:count+=1
-            if f!=v and len(mismatch)<20:mismatch.append({"cell":key,"original":f,"cpp":v})
+            WATER_QH_PRINT_ABS=5.e-12
+            sentinel_ok=(f[1]==v[1] and f[2]==v[2] and
+                         abs(f[0]-v[0])<=WATER_QH_PRINT_ABS)
+            if not sentinel_ok:
+                count+=1
+                if len(mismatch)<20:
+                    mismatch.append({"cell":key,"original":f,"cpp":v,
+                        "water_qh_serialization_tolerance":WATER_QH_PRINT_ABS})
             continue
         if f[0]>=0 or f[1]<0.05 or f[2]<=0:
             raise ValueError("ELUSTR wrong stable physics state")
@@ -139,6 +150,8 @@ def main():
     result={"status":"PASS" if not count else "FAIL",
             "cases":CASES,"grid_cells":len(ref),"compared_scalars":3*len(ref),
             "water_cells":water_count,"stable_land_cells":len(ref)-water_count,
+            "water_qh_print_tolerance":5.e-12,
+            "water_ustar_and_L_sentinel_exact":True,
             "max_abs_errors_qh_ustar_L":maxerrors,
             "frozen_abs_tolerances":[ABS_QH,ABS_USTAR,ABS_L],
             "frozen_relative_tolerance":REL,
