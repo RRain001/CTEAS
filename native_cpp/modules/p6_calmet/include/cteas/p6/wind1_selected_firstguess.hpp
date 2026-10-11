@@ -59,16 +59,9 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
         const auto& s=station.surface_neutral_profile[k];
         const auto& u=station.upper_observed_profile[k];
         if(!std::isfinite(s.u_mps)||!std::isfinite(s.v_mps)||
-           !std::isfinite(u.u_mps)||!std::isfinite(u.v_mps))
+           !std::isfinite(u.u_mps)||!std::isfinite(u.v_mps)||
+           std::abs(s.u_mps)>=998.99f||std::abs(s.v_mps)>=998.99f)
             throw std::invalid_argument("WIND1 surface or upper nonfinite/missing");
-        // The original's SIMILT stops at the mixing height, so the surface
-        // column carries the original missing sentinel above it. Only the
-        // exact sentinel pair is accepted; partial masks fail closed.
-        if(std::abs(s.u_mps)>=998.99f||std::abs(s.v_mps)>=998.99f){
-            if(s.u_mps!=999999.f||s.v_mps!=999999.f)
-                throw std::invalid_argument(
-                    "WIND1 surface mask must use the original sentinel pair");
-        }
         if(c.upper_layer_valid[k]) {
             if(std::abs(u.u_mps)>=998.99f||std::abs(u.v_mps)>=998.99f)
                 throw std::invalid_argument("WIND1 upper validity mask disagrees with values");
@@ -140,13 +133,6 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
                 vupper=0.f;
             }
             const auto& s=station.surface_neutral_profile[k];
-            if(std::abs(s.u_mps)>=998.99f||std::abs(s.v_mps)>=998.99f){
-                if(vsurface>=1.f)
-                    throw std::invalid_argument(
-                        "WIND1 no valid surface observation at layer");
-                vupper=vupper/(1.f-vsurface);
-                vsurface=0.f;
-            }
             const auto& u=station.upper_observed_profile[k];
             const float ug=vsurface*s.u_mps+vupper*u.u_mps;
             const float vg=vsurface*s.v_mps+vupper*u.v_mps;

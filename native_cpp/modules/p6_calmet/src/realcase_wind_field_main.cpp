@@ -390,6 +390,7 @@ int main(int argc,char** argv){
         speed_max=std::max(speed_max,speed);
 
         Wind1SelectedStationHour station;
+        std::array<LayerWind,9> diagi_surface_column{};
         bool settings_upper_layer_one_valid=true;
         station.hour_end=clock;
         station.surface_station_id=surface.station_id;
@@ -419,16 +420,20 @@ int main(int argc,char** argv){
                     throw std::runtime_error("ZICONV file has no block for "+hour_label(clock));
                 mixing_height_m=ziconv_hours[offset];
             }
+            // The DIAGI-built station column that INTER2 consumes is the one
+            // the mixing height caps (calmet.for L6894 passes
+            // zii=amax1(zimech,ziconv) to SIMILT, whose loop exits above it,
+            // L30345). The WIND1 first guess is a different call: L36171 uses
+            // zmo=zml=10000 (neutral, uncapped), so it keeps all nine levels.
             std::size_t levels_filled=1;
-            for(std::size_t k=1;k<9;++k){
-                const bool inside=mixing_height_m>0.f&&
-                                  mixing_height_m<9998.f&&
-                                  center_m[k]<=mixing_height_m;
-                if(!inside)
-                    station.surface_neutral_profile[k]=
-                        LayerWind{999999.f,999999.f};
-                else
-                    ++levels_filled;
+            for(std::size_t k=0;k<9;++k){
+                const bool inside=k==0||(mixing_height_m>0.f&&
+                                         mixing_height_m<9998.f&&
+                                         center_m[k]<=mixing_height_m);
+                diagi_surface_column[k]=inside
+                    ? station.surface_neutral_profile[k]
+                    : LayerWind{999999.f,999999.f};
+                if(inside)++levels_filled;
             }
             station.similt_levels_filled=levels_filled;
             station.mixing_height_m=mixing_height_m;
@@ -613,7 +618,7 @@ int main(int argc,char** argv){
             blend.observation_weight.assign(22500,1.f);
             blend.station_component_mps.resize(18);
             for(std::size_t k=0;k<9;++k){
-                const auto& surface_wind=station.surface_neutral_profile[k];
+                const auto& surface_wind=diagi_surface_column[k];
                 const auto& upper_wind=station.upper_observed_profile[k];
                 // Original STDAT1(K,L) layout: level-major, station-minor.
                 blend.station_component_mps[k*2]=component==0
@@ -757,7 +762,7 @@ int main(int argc,char** argv){
     meta<<"  \"similt_mixing_height\": {\"status\": \""<<(ziconv_hours.empty()?"MIXING_HEIGHT_NOT_SUPPLIED":"APPLIED_FROM_P6E_ZICONV")<<"\", "
           "\"source\": \""<<(ziconv_hours.empty()?"none":args.ziconv_file.string())<<"\", "
           "\"provenance\": \"ZICONV_SOURCE: P6E_CHAIN_INTERNAL_UNCALIBRATED (accuracy not certified)\", "
-          "\"rule\": \"the original SIMILT fills the surface-station profile only while zmid(k) <= zic and exits above the mixing height (calmet.for L30345); the levels above keep the upper-air sounding and are written as the INTER2 missing sentinel\", "
+          "\"rule\": \"the DIAGI-built station column that INTER2 consumes is capped at the mixing height: DIAGI calls SIMILT with zii=amax1(zimech,ziconv) (L6894) and SIMILT exits above zic (L30345), so those levels are written as the INTER2 missing sentinel and the upper-air station alone feeds the blend. The WIND1 first guess is a different call (L36171, zmo=zml=10000, neutral and uncapped) and keeps all nine levels\", "
           "\"levels_filled_min\": "<<similt_levels_min<<", \"levels_filled_max\": "<<similt_levels_max<<", "
           "\"consequence_when_absent\": \"without it the surface-station profile is a neutral extrapolation at all nine levels, which dilutes the upper-air shear (measured at hour 1 against the frozen reference: level 9 was 0.716 m/s where the reference and the sounding give 2.464 and 1.017 m/s)\"},\n";
     meta<<"  \"iextrp_rmin2\": {\"IEXTRP\": "<<iextrp
