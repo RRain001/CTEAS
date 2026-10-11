@@ -94,7 +94,9 @@ def main():
                 raise RuntimeError(f"missing fixture {fixture.name}")
             inter2.run([binary, fixture, reference])
             original = read_original(reference)
-            candidate = read_f32(args.fields / f"blend_{name}_{label}.f32")
+            # This comparator anchors the pre-tail INTER2 stage; the closed
+            # DIAGNO field (after SMOOTH/DIVCEL) lives in blend_*.f32.
+            candidate = read_f32(args.fields / f"inter2_{name}_{label}.f32")
             for index, (a, b) in enumerate(zip(original, candidate)):
                 if not (math.isfinite(a) and math.isfinite(b)):
                     raise RuntimeError(f"{label}: nonfinite {name} at {index}")
@@ -131,6 +133,8 @@ def main():
     passed = not failures and all(
         stats["status"] == "PASS" for stats in report_windows(windows).values())
     report = {
+        # This verdict is about the pre-tail INTER2 stage (inter2_u/v_*.f32);
+        # the closed DIAGNO field's own verdict lives in metadata.blend.verification.
         "status": ("PASS_REALCASE_BLEND_ORIGINAL_INTER2" if passed else "FAIL"),
         "scope": ("real Hefei 2022 5 km case tree, 143 hourly labels; the "
                   "unchanged original INTER2 is fed the same station values, "

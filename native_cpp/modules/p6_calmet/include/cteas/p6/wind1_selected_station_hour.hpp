@@ -26,6 +26,11 @@ struct Wind1SelectedStationHour {
     float surface_observed_v_mps{};
     std::array<LayerWind,9> surface_neutral_profile{};
     std::array<LayerWind,9> upper_observed_profile{};
+    // SIMILT fill bookkeeping: the original's vertical extrapolation stops at
+    // the mixing height (calmet.for L30345), so the levels above it carry the
+    // missing sentinel and stay out of the objective analysis.
+    std::size_t similt_levels_filled{1};
+    float mixing_height_m{-1.f};
 };
 
 inline Wind1SelectedStationHour wind1_selected_station_hour(

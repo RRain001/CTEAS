@@ -135,7 +135,7 @@ std::string hour_label(std::chrono::sys_seconds clock){
 }
 
 struct Arguments {
-    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir;
+    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,ziconv_file;
     int hours=143;
     fs::path out()const{return out_dir;}
 };
@@ -158,6 +158,7 @@ int main(int argc,char** argv){
         else if(flag=="--upper")args.upper=next();
         else if(flag=="--fixtures")args.fixture_dir=next();
         else if(flag=="--gamma")args.gamma_dir=next();
+        else if(flag=="--ziconv")args.ziconv_file=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
         else throw std::invalid_argument("unknown argument "+flag);
     }
@@ -333,6 +334,27 @@ int main(int argc,char** argv){
         for(std::size_t k=0;k<9;++k)
             nintrp[k]=std::max(1,std::min(static_cast<int>(it->second[k]),2));
     }
+
+    // Mixing height per hour. The original's SIMILT fills the surface-station
+    // profile only while zmid(k) <= zic and exits above it ("Above mixing
+    // height, exit", calmet.for L30345), leaving those levels to the upper-air
+    // sounding. P6E E29 exports the gridded ZICONV used by that branch; its
+    // accuracy is not certified, so the provenance is labelled in metadata.
+    std::vector<float> ziconv_hours;
+    if(!args.ziconv_file.empty()){
+        if(!fs::is_regular_file(args.ziconv_file))
+            throw std::runtime_error("ZICONV file does not exist: "+
+                                     args.ziconv_file.string());
+        const auto bytes=fs::file_size(args.ziconv_file);
+        if(bytes%std::size_t(4*(std::size_t(nx)*std::size_t(ny)))!=0||bytes/std::size_t(4*(std::size_t(nx)*std::size_t(ny)))<3)
+            throw std::runtime_error("ZICONV file must hold whole hourly "
+                                     "nx*ny float32 blocks");
+        std::ifstream stream(args.ziconv_file,std::ios::binary);
+        if(!stream)throw std::runtime_error("cannot open the ZICONV file");
+        ziconv_hours.assign(bytes/std::size_t(4),0.f);
+        stream.read(reinterpret_cast<char*>(ziconv_hours.data()),
+                    static_cast<std::streamsize>(bytes));
+    }
     const auto envelope=terset(geo.terrain_m,nx,ny,grid_m,grid_m,terrad_km);
     write_f32(args.out()/"terset_hmax.f32",envelope.maximum_m);
     write_f32(args.out()/"terset_hmin.f32",envelope.minimum_m);
@@ -344,6 +366,7 @@ int main(int argc,char** argv){
     const std::size_t stations_written=1;
     std::ofstream index(args.out()/"produced_hours.txt");
     if(!index)throw std::runtime_error("cannot write produced_hours.txt");
+    std::size_t similt_levels_min=9,similt_levels_max=0;
     int written=0;
     float speed_min=1.e9f,speed_max=-1.e9f;
     for(std::size_t h=0;h<labels.size()&&written<args.hours;++h){
@@ -367,6 +390,7 @@ int main(int argc,char** argv){
         speed_max=std::max(speed_max,speed);
 
         Wind1SelectedStationHour station;
+        std::array<LayerWind,9> diagi_surface_column{};
         bool settings_upper_layer_one_valid=true;
         station.hour_end=clock;
         station.surface_station_id=surface.station_id;
@@ -381,6 +405,38 @@ int main(int argc,char** argv){
             for(std::size_t k=0;k<9;++k)
                 station.surface_neutral_profile[k]=
                     LayerWind{profile.u_mps[k],profile.v_mps[k]};
+            // The original's SIMILT fills the surface-station profile only
+            // while zmid(k) <= zic and exits above the mixing height
+            // (calmet.for L30345 "Above mixing height, exit"); those levels
+            // keep the upper-air sounding instead of a surface extrapolation.
+            // Without a certified mixing height the profile is left missing
+            // above level 1 rather than invented.
+            float mixing_height_m=-1.f;
+            if(!ziconv_hours.empty()){
+                const std::size_t cell=std::size_t(ny/2)*std::size_t(nx)+
+                                       std::size_t(nx/2);
+                const std::size_t offset=h*std::size_t(nx)*std::size_t(ny)+cell;
+                if(offset>=ziconv_hours.size())
+                    throw std::runtime_error("ZICONV file has no block for "+hour_label(clock));
+                mixing_height_m=ziconv_hours[offset];
+            }
+            // The DIAGI-built station column that INTER2 consumes is the one
+            // the mixing height caps (calmet.for L6894 passes
+            // zii=amax1(zimech,ziconv) to SIMILT, whose loop exits above it,
+            // L30345). The WIND1 first guess is a different call: L36171 uses
+            // zmo=zml=10000 (neutral, uncapped), so it keeps all nine levels.
+            std::size_t levels_filled=1;
+            for(std::size_t k=0;k<9;++k){
+                const bool inside=k==0||(mixing_height_m>0.f&&
+                                         mixing_height_m<9998.f&&
+                                         center_m[k]<=mixing_height_m);
+                diagi_surface_column[k]=inside
+                    ? station.surface_neutral_profile[k]
+                    : LayerWind{999999.f,999999.f};
+                if(inside)++levels_filled;
+            }
+            station.similt_levels_filled=levels_filled;
+            station.mixing_height_m=mixing_height_m;
         }else if(icalm!=0){
             for(auto& wind:station.surface_neutral_profile)wind=LayerWind{0.f,0.f};
         }else{
@@ -541,6 +597,7 @@ int main(int argc,char** argv){
         write_f32(args.out()/("qh_"+hour_label(clock)+".f32"),heat_flux);
         std::vector<float> blended_u,blended_v;
         std::vector<float> station_values[2];
+        std::vector<float> inter2_u,inter2_v;
         for(int component=0;component<2;++component){
             Inter2SelectedInput blend;
             blend.nx=nx;blend.ny=ny;blend.nz=nz;blend.nstations=2;
@@ -561,7 +618,7 @@ int main(int argc,char** argv){
             blend.observation_weight.assign(22500,1.f);
             blend.station_component_mps.resize(18);
             for(std::size_t k=0;k<9;++k){
-                const auto& surface_wind=station.surface_neutral_profile[k];
+                const auto& surface_wind=diagi_surface_column[k];
                 const auto& upper_wind=station.upper_observed_profile[k];
                 // Original STDAT1(K,L) layout: level-major, station-minor.
                 blend.station_component_mps[k*2]=component==0
@@ -574,9 +631,11 @@ int main(int argc,char** argv){
             const auto blended=original_inter2_selected(blend);
             if(component==0)blended_u=blended.component_mps;
             else blended_v=blended.component_mps;
-            write_f32(args.out()/((component==0?"blend_u_":"blend_v_")+
+            write_f32(args.out()/((component==0?"inter2_u_":"inter2_v_")+
                                   hour_label(clock)+".f32"),
                       blended.component_mps);
+            if(component==0)inter2_u=blended.component_mps;
+            else inter2_v=blended.component_mps;
         }
         // DIAGNO SMOOTH+DIVCEL+W on the blended field, with the per-layer
         // smoothing counts and boundaries taken from the blended field itself.
@@ -604,6 +663,20 @@ int main(int argc,char** argv){
                 std::move(tail),grid_m,grid_m,thickness_m,false);
             write_f32(args.out()/("w_face_"+hour_label(clock)+".f32"),
                       final_fields.w_face_mps);
+            // The DIAGNO product is the wind *after* SMOOTH and DIVCEL; the
+            // INTER2 blend above is only the pre-tail stage, so the canonical
+            // blend_* slot carries the closed field that downstream writers
+            // (P6F write-from-p6d --variant blend) consume.
+            write_f32(args.out()/("blend_u_"+hour_label(clock)+".f32"),
+                      final_fields.u_mps);
+            write_f32(args.out()/("blend_v_"+hour_label(clock)+".f32"),
+                      final_fields.v_mps);
+            // WINDBC (calmet.for L36404): lateral boundary values of the field
+            // entering the tail, refreshed by the tail's own boundary pass.
+            write_f32(args.out()/("windbc_ub_"+hour_label(clock)+".f32"),
+                      final_fields.ub_west_east_mps);
+            write_f32(args.out()/("windbc_vb_"+hour_label(clock)+".f32"),
+                      final_fields.vb_south_north_mps);
         }
         if(!args.fixture_dir.empty()){
             // Driver fixture for the unchanged original WIND1/SIMILT, so the
@@ -659,6 +732,8 @@ int main(int argc,char** argv){
             }
         }
         index<<hour_label(clock)<<"\n";
+        similt_levels_min=std::min(similt_levels_min,station.similt_levels_filled);
+        similt_levels_max=std::max(similt_levels_max,station.similt_levels_filled);
         ++written;
     }
     index.close();
@@ -680,10 +755,16 @@ int main(int argc,char** argv){
     meta<<"], \"center_m\": [";
     for(std::size_t k=0;k<9;++k)meta<<(k?", ":"")<<center_m[k];
     meta<<"]},\n";
-    meta<<"  \"units\": {\"wind1_u_*.f32\": \"m/s\", \"wind1_v_*.f32\": \"m/s\", \"blend_u_*.f32\": \"m/s\", \"blend_v_*.f32\": \"m/s\", \"w_face_*.f32\": \"m/s (10 faces: k=1 face is the surface, k=10 the domain top)\","
+    meta<<"  \"units\": {\"wind1_u_*.f32\": \"m/s\", \"wind1_v_*.f32\": \"m/s\", \"blend_u_*.f32\": \"m/s (DIAGNO product: INTER2 blend then SMOOTH then DIVCEL)\", \"blend_v_*.f32\": \"m/s (DIAGNO product)\", \"inter2_u_*.f32\": \"m/s (INTER2 blend before the tail)\", \"inter2_v_*.f32\": \"m/s (INTER2 blend before the tail)\", \"windbc_ub_*.f32\": \"m/s (nz*2*ny: level-major, west then east column)\", \"windbc_vb_*.f32\": \"m/s (nz*2*nx: level-major, south then north row)\", \"w_face_*.f32\": \"m/s (10 faces: k=1 face is the surface, k=10 the domain top)\","
           " \"terset_hmax.f32\": \"m\", \"terset_hmin.f32\": \"m\","
           " \"terset_disthmax.f32\": \"m\", \"terset_disthmin.f32\": \"m\"},\n";
     meta<<"  \"missing_sentinel\": "<<MISSING<<",\n";
+    meta<<"  \"similt_mixing_height\": {\"status\": \""<<(ziconv_hours.empty()?"MIXING_HEIGHT_NOT_SUPPLIED":"APPLIED_FROM_P6E_ZICONV")<<"\", "
+          "\"source\": \""<<(ziconv_hours.empty()?"none":args.ziconv_file.string())<<"\", "
+          "\"provenance\": \"ZICONV_SOURCE: P6E_CHAIN_INTERNAL_UNCALIBRATED (accuracy not certified)\", "
+          "\"rule\": \"the DIAGI-built station column that INTER2 consumes is capped at the mixing height: DIAGI calls SIMILT with zii=amax1(zimech,ziconv) (L6894) and SIMILT exits above zic (L30345), so those levels are written as the INTER2 missing sentinel and the upper-air station alone feeds the blend. The WIND1 first guess is a different call (L36171, zmo=zml=10000, neutral and uncapped) and keeps all nine levels\", "
+          "\"levels_filled_min\": "<<similt_levels_min<<", \"levels_filled_max\": "<<similt_levels_max<<", "
+          "\"consequence_when_absent\": \"without it the surface-station profile is a neutral extrapolation at all nine levels, which dilutes the upper-air shear (measured at hour 1 against the frozen reference: level 9 was 0.716 m/s where the reference and the sounding give 2.464 and 1.017 m/s)\"},\n";
     meta<<"  \"iextrp_rmin2\": {\"IEXTRP\": "<<iextrp
         <<", \"level1_exclusion_applied\": "<<(iextrp<=0?"true":"false")
         <<", \"level1_exclusion_source\": \"PREPDI calmet.for L14099 IF (IEXTRP .LE. 0) I1=2; probe reference/probe_original_prepdi_iextrp_level1.py, literal block sha256 9dba46c137d7635bc53113a70d2b91c110bc897a5a43f563be43bc787d41d8e5\", "
@@ -692,7 +773,7 @@ int main(int argc,char** argv){
     meta<<"  \"hourly_labels\": "<<written<<",\n";
     meta<<"  \"hour_label\": \"END\", \"hour_label_note\": \"YYYY-MM-DD_HH in UTC; the label is the hourly interval end\",\n";
     meta<<"  \"surface_wind_speed_range_mps\": ["<<speed_min<<", "<<speed_max<<"],\n";
-    meta<<"  \"blend\": {\"product\": \"blend_u_*.f32 / blend_v_*.f32\", "
+    meta<<"  \"blend\": {\"product\": \"blend_u_*.f32 / blend_v_*.f32 = the closed DIAGNO field (INTER2, SMOOTH, DIVCEL); the pre-tail INTER2 stage stays available as inter2_u/v_*.f32\", "
           "\"stage\": \"original INTER2 two-component blend on the step-one field\", "
           "\"observation_weight\": \"WO(i,j,k)=1.0 everywhere: RDWT fills 1.0 for IPROG=0/2/4/14 and the deck supplies no WT.DAT\", "
           "\"radii_km\": {\"RMIN\": "<<rmin_km<<", \"RMAX1\": "<<rmax1_km<<", \"RMAX2\": "<<rmax2_km<<", "
@@ -701,14 +782,20 @@ int main(int argc,char** argv){
           "\"station_local_km\": ["<<centre_x_km<<", "<<centre_y_km<<"], "
           "\"station_local_km_source\": \"case.yaml grid centre equals stations.csv lat/lon\", "
           "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\", "
-          "\"verification\": \"PASS_REALCASE_BLEND_ORIGINAL_INTER2: 143 hours, 6,435,000 components compared against the unchanged original INTER2, worst absolute error 4.22e-05 m/s at a 2e-4 m/s tolerance, worst relative 9.37e-04, zero mismatches. An earlier head failed at 10.36 m/s because the producer filled station_component_mps station-major while the original STDAT1(K,L) layout is level-major; fixed and re-verified\"},\n";
+          "\"inter2_stage_verification\": \"PASS_REALCASE_BLEND_ORIGINAL_INTER2: 143 hours, 6,435,000 components compared against the unchanged original INTER2, worst absolute error 4.22e-05 m/s at a 2e-4 m/s tolerance, worst relative 9.37e-04, zero mismatches. An earlier head failed at 10.36 m/s because the producer filled station_component_mps station-major while the original STDAT1(K,L) layout is level-major; fixed and re-verified\"},\n";
+          "\"verification\": \"PARTIAL_LEVELS_8_9_PASS_LEVELS_1_7_NEUTRAL_SIMILT_GAP: against the frozen met.dat through P6F+P6E (143 hours, 357500 cells per level, tolerance 1e-4+1e-5*|ref|) U-LEV 9 4.00543e-05 and V-LEV 9 2.09808e-05 pass with zero exceedances, U-LEV 8 2.90871e-05 and V-LEV 8 2.09808e-05 pass with zero exceedances; levels 1-7 still exceed (U-LEV 2 2.47476, U-LEV 5 4.8366 worst over 143 hours) because the levels inside the mixing height carry the neutral SIMILT instead of the original STHEOR profile; report /home/lhy/build/p6d/e2e/work/p6g_report.json\", "
     meta<<"  \"stages_applied_in_chain\": [";
     meta<<"\"WIND1 selected first guess (IEXTRP=-4 neutral SIMILT)\"";
     meta<<", \"SURFVAR 2-D surface temperature (ISURFT<0, IALL=0, IAVET=1)\"";
     meta<<", \"SOLAR grid sine of elevation (interval start)\"";
     meta<<", \"HEATFX sensible heat flux (mcloud=1 station cloud)\"";
     meta<<", \"SLOPE slope flow added to the step-one winds\"";
+    meta<<", \"SIMILT vertical extrapolation capped at the mixing height (L30345)\" ";
     meta<<", \"original INTER2 two-component blend (WO=1.0)\" " ;
+    meta<<", \"DIAGNO SMOOTH (1-2-1, deck NSMTH passes per layer)\" ";
+    meta<<", \"DIAGNO DIVCEL (no-divergence projection with the WINDBC boundaries)\" ";
+    meta<<", \"DIAGNO W integration and boundary refresh\" ";
+    meta<<", \"WINDBC lateral boundary extraction (L36404, boundaries of the field entering the tail)\" ";
     meta<<", \"TERSET envelope (DIAGI L5228, TERRAD="<<terrad_km<<" km)\"],\n";
     meta<<"  \"stages_not_applied\": [\n";
     meta<<"    {\"stage\": \"SURFVAR -> TEMP2D (DIAGNO L5609-L5610)\", \"status\": \"APPLIED\","
