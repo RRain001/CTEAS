@@ -2107,3 +2107,36 @@ Until those land, the honest statement is: **structure comparable and measured (
 records one for one, header tables missing); values comparable per substep for the
 step chain (P7W/P7X, 0 mismatches on 1,275 real substeps) but not yet for the
 concentration field.**
+
+## 2026-10-12 P7G correction: the SETPUF sigma bookkeeping is already ported (P7Q)
+
+Correction to the gap list recorded above, checked against the modules themselves
+before starting any new port (this is the boundary the parent asked for):
+
+- **SETPUF's sigma bookkeeping is NOT a gap.** P7Q's `sigma_update` module already
+  transcribes `calpuff.for` L48505-48536 (begin/mid/end sigma and virtuals),
+  L48570-48604 (the sigma-y final adjustments, the BZID/quadrature term and the
+  stores) and L48635-48668 (the sigma-z final adjustments) - i.e. exactly the span
+  that the P7G gap list named. `adjust_sigmas` carries the quadrature
+  `SYSQ = BID + SY0SQ`, the monotonicity fix, the stored `SIGYB/SIGZB` and the calm
+  minima.
+- **CTADJ2 and WALLTRAP are NOT a gap either**: P7R/P7S/P7T delivered the terrain
+  path (`CTADJ2`, `WALLTRAP`, the valley widths and the relief), so the `MCTADJ=2`
+  strain and valley constraints are available rather than missing.
+- **HEFTRAN is off this case**: P7D established `MHFTSZ=0`, so the Heffter branch is
+  not on the deck's path.
+- **PRIME wake**: `IDW0` is 0 on this deck, so `WAKE_TAB` is off the path.
+
+So the remaining prerequisites for the whole-case driver are exactly two:
+1. the `WROUT1` header records (the frozen artifact's 3,226 header records: the
+   embedded control file, the model run info and the source/receptor group tables);
+2. the output stage's averaging machinery (`AVET` and the receptor-specific
+   averaging), which must first be classified as effective or not on this deck
+   (`AVET`/`PGTIME` determine `AVEFAC`).
+
+The next round's first action should therefore be a **verification** rather than a
+port: drive P7Q's `sigma_update` with the dump's per-substep inputs (the previous
+substep's stored sigmas, `zpb`, half the step time and distance) and compare
+`syb1/sym1/sye1`, `szb1/szm1/sze1`, `sigyb_out` and `sigzb_out` against the dump -
+the work in progress when the session paused, with the comparison hook
+(`P7W_DGM_STEP_SIGMA_*`) designed but not yet compiled.
