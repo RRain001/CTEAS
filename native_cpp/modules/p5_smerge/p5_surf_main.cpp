@@ -208,7 +208,7 @@ void run(const fs::path& inp){
      std::chrono::floor<std::chrono::days>(start)};
  const int hour=int(std::chrono::duration_cast<std::chrono::hours>(
      start-std::chrono::floor<std::chrono::days>(start)).count());
- const Window effective{{int(d.year()),int(unsigned(d.month())),int(unsigned(d.day()),hour},
+ const Window effective{{int(d.year()),int(unsigned(d.month())),int(unsigned(d.day())),hour},
                         explicit_times.end};
  auto merged=merge_utc_hourly(stations,effective,std::vector<int>(stations.size(),0));
  fs::path target=property(ctl,"SURFDAT");
