@@ -2125,7 +2125,8 @@ TEMPK, RHO, IPGT, USTAR, QSW, IRH) inside tolerance.
 Located the conversion that produces the geometry the original feeds to
 `SOLAR` (the one component E40 left unaligned):
 
-- `calmet.for` **L9575-9603** (sha256 of the block `c9e2b0d9...`): after
+- `calmet.for` **L9575-9603** (sha256 of the block
+  `ff67f7c3954fb687307dd53d23f55a24`): after
   `call GLOBE1(cmapi,iutmi,tmsone,xlat1,xlat2,rnlat0,relon0,feast,fnorth,
   cmapo='LL',...)` each grid cell is converted with
   `call GLOBE(io6,cactionll,datum,vectill,datum,vectoll,xkm,ykm,xelon,xnlat,
