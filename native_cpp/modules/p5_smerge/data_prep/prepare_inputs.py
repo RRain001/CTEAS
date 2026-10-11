@@ -59,19 +59,27 @@ def main() -> int:
         times = (root / "grid" / "research_time").read_text(encoding="utf-8", errors="ignore")
         begin = re.search(r"BEGIN\s*:\s*(\d{8})-\d{6}", times)
         end = re.search(r"END\s*:\s*(\d{8})-\d{6}", times)
-        if not begin or not end or int(begin.group(1)[:4]) != args.expected_year or int(end.group(1)[:4]) != args.expected_year:
-            raise SystemExit("P5 research_time mismatch: expected entire case in " + str(args.expected_year))
+        if not begin or not end:
+            raise SystemExit("P5 research_time missing valid BEGIN/END")
+        first_year = int(begin.group(1)[:4])
+        last_year = int(end.group(1)[:4])
+        if last_year < first_year:
+            raise SystemExit("P5 research_time ends before it begins")
+        if args.expected_year is not None and (
+                first_year != args.expected_year or last_year != args.expected_year):
+            raise SystemExit("P5 requested single-year assertion failed: " + str(args.expected_year))
     if args.execute and args.skip_download:
         import json
         from engine.core.paths import current_project_path
         root = current_project_path() / "met" / "surface" / "isd_raw"
-        source = root / f"station_selection_{args.expected_year}.json"
-        if not source.is_file():
-            raise SystemExit(f"cannot reuse data without station manifest: {source}")
-        selected = {s["sid"] for s in json.loads(source.read_text())["stations"]}
-        actual = {p.name.split("-")[0] for p in root.glob(f"*-{args.expected_year}.csv")}
-        if not selected.issubset(actual):
-            raise SystemExit(f"missing selected NOAA raw files: {selected - actual}")
+        for year in range(first_year, last_year + 1):
+            source = root / f"station_selection_{year}.json"
+            if not source.is_file():
+                raise SystemExit(f"cannot reuse data without annual manifest: {source}")
+            selected = {s["sid"] for s in json.loads(source.read_text())["stations"]}
+            actual = {p.name.split("-")[0] for p in root.glob(f"*-{year}.csv")}
+            if not selected.issubset(actual):
+                raise SystemExit(f"missing selected NOAA raw files in {year}: {selected - actual}")
     for cmd in steps:
         print(" ".join(cmd), flush=True)
         if args.execute:
