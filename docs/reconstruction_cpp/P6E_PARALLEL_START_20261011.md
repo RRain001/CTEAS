@@ -1228,3 +1228,75 @@ table reader plus that wiring.
 (bit-exact); `P6E_QSW_REAL_CASE=PASS_REAL_CASE`;
 `P6E_USTAR_EL_ZI_WSTAR_TLEV2_9_REAL_CASE=BLOCKED` on the `LU.DAT` tables;
 `P6E_U_V_W=P6D_OWNED`; `P6E_FULL=NOT_PASS`.
+
+## E27 GEO.DAT properties, the HEATFX -> ELUSTR chain, and `USTAR` passing
+
+### Anchored GEO.DAT reader
+
+`include/cteas/p6e/geo_landuse.hpp` reads the MAKEGEO `GEO.DAT 2.1` land-use
+file following the original `readge`/`fillgeo` sequence (calmet.for
+L27790-28380, `fillgeo` L6983-7030): the `IOPT(1)` marker, `NLU/IWAT1/IWAT2`,
+`ILUCAT(1..NLU)`, the `ILANDU` grid, the terrain factor, the `ELEV` grid, then
+one marker plus payload per parameter (`Z0`, `ALBEDO`, `BOWEN`, `HCG`, `QF`,
+`XLAI`) with `IOPT` 0 (built-in table), 1 (category table) or 2 (gridded
+field). The case file uses `IOPT=2` for all of them, so the property grids are
+read directly.
+
+Fail-closed: unsupported options, truncated payloads, a grid size that does
+not match the case, a category count that disagrees with `NLU`, and
+out-of-range values (albedo outside 0..1, Bowen outside (-1,100), soil-heat
+parameter outside 0..1, negative anthropogenic flux) all raise instead of
+falling back to a default. The parsed `ILANDU` is cross-checked against the
+reference file's own static record and the water range against the header.
+
+### Chain wiring
+
+With `--geo-file` (and a wind source) `emit-realcase` now runs, per hour, in
+the original COMP order: `SURFVAR` -> `AVETMP` -> **`HEATFX`** (L7999-8122 with
+the case's gridded albedo/Bowen/soil-heat/anthropogenic fields and
+`hc1=5.31e-13, hc2=60, hc3p1=1.12` from the case's own `met.lst`) ->
+`airden` -> `PGTSTB` -> **`ELUSTR`** (L6333-6579; per-cell branch selection:
+`QH<0` uses the stable kernel, `QH>=0` the daytime kernel with `IPSIFCN=0`
+because `ICOARE=10`, `zm=zmid(1)=10 m`, `z0`/`landuse` from the statics,
+`ICC` from the observations; cells of the other branch are marked as water so
+each kernel skips exactly the ones the original would).
+
+### Results, original wind driving (143 x 2500 = 357,500 per field)
+
+| field | denominator | max abs | max rel | exceedances | status |
+|---|---|---|---|---|---|
+| `TEMPK` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `T-LEV 1` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `IRH` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `RHO` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `IPGT` | 357,500 | 0 | 0 | 0 | bit-exact |
+| **`USTAR`** | 357,500 | **5.51343e-7 m/s** | 5.07242e-6 | **0** | **PASS (new)** |
+| `QSW` | 357,500 | 7.24792e-4 W/m2 | 6.36252e-5 | 0 | PASS, known UTM residual |
+| **`EL`** | 357,500 | - | up to 3.2e-2 | **630 (0.18 %)** | **FAIL: confined to hours 8 and 32** |
+
+`USTAR` closing at 5.5e-7 m/s with zero exceedances validates the whole
+`GEO -> HEATFX -> ELUSTR` chain. The `EL` residual is **not** a branch error:
+it is confined to exactly two hours (8 and 32: 350 + 280 cells) with relative
+errors 5.4e-5 .. 3.2e-2; the other 141 hours pass. The mechanism is the known
+solar-geometry residual: `QSW` differs by 7.24792e-4 W/m2 because the local
+inverse-UTM series does not reproduce COORDLIB exactly, that difference enters
+`HEATFX`'s net radiation, hence `QH`, hence
+`EL = -253.8226*RHO*TSF*USTAR**3/QH`, and in those two hours the amplification
+is large enough to break the frozen 0.04 m + 5e-5 relative gate. Aligning the
+projection (a COORDLIB-equivalent transform) is the fix; it is recorded as a
+bounded residual, not as a pass.
+
+### Still open
+
+`ZI`, `WSTAR` and `T-LEV 2..9` remain unproduced: `MIXHT` and `TEMP3D` need the
+full 10-level AA/BB sounding profiles per hour, while the bridge CSV currently
+carries only the level-1 and face-2 temperatures. Extending the bridge with
+the complete profiles plus `ZICONV` is the next step, after which `MIXHT`
+(`CMECH=CONSTB/sqrt(FCORI)`, `FCORI=max(|2*(2*pi/86400)*sin(lat)|,0.25e-4)`
+computed per cell, `IUPT=-1`, `NEARU=1`, `THRESHL=0`, `IZICRLX=1`), `WSTARR`
+and `TEMP3D` plug in directly. The 27 `U-LEV/V-LEV/WFACE` fields stay P6D-owned.
+
+**Status summary:** five fields bit-exact; `USTAR` PASS; `QSW` PASS with a
+bounded residual; `EL` FAIL on 630 of 357,500 cells (two hours) traced to the
+solar-geometry residual; `ZI`/`WSTAR`/`T-LEV 2..9` BLOCKED on the sounding
+profiles; `U-LEV/V-LEV/WFACE` P6D-owned; `P6E_FULL=NOT_PASS`.
