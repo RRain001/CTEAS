@@ -69,7 +69,12 @@ def build(output: Path, source: Path, compiler: str) -> None:
         manifest["binary_sha256"] = sha256(binary)
     (output / "build-manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")
     if proc.returncode:
-        raise RuntimeError("Original CALPUFF compilation failed: see build.log")
+        # Do not hide original Fortran build failure in an ephemeral runner.
+        print("P7A_ORIGINAL_FORTRAN_COMPILE=FAIL", flush=True)
+        print("BEGIN_ORIGINAL_FORTRAN_COMPILER_DIAGNOSTICS", flush=True)
+        print("\n".join(proc.stdout.splitlines()[-160:]), flush=True)
+        print("END_ORIGINAL_FORTRAN_COMPILER_DIAGNOSTICS", flush=True)
+        raise RuntimeError("Original CALPUFF compilation failed; see build.log and CI diagnostics")
     print("P7A_ORIGINAL_FORTRAN_COMPILE=PASS")
     print("P7A_CALPUFF_2022_REFERENCE_RUN=PENDING")
 
