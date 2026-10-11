@@ -1,4 +1,7 @@
 name: P4 READ62 original Fortran reference / UP.DAT parity
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
@@ -7,36 +10,40 @@ on:
       - '.github/workflows/p4-read62-fortran-parity.yml'
 jobs:
   original-fortran:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-22.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 25
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Fortran compiler
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
+      - name: Reset self-hosted scratch directories
+        shell: bash
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gfortran
+          rm -rf ${{ runner.temp }}/cteas-p4-reference ${{ runner.temp }}/cteas-p4-refsource ${{ runner.temp }}/cteas-p4-cpp
+      - name: Fortran compiler
+        run: gfortran --version | head -1
       - name: Build original READ62 unchanged
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/cteas-p4-reference reference-evidence
+          mkdir -p ${{ runner.temp }}/cteas-p4-reference reference-evidence
           SRC=engine/vendor/src/READ62_v5.661_L110225
-          mkdir -p /tmp/cteas-p4-refsource
-          cp -a "$SRC"/. /tmp/cteas-p4-refsource/
+          mkdir -p ${{ runner.temp }}/cteas-p4-refsource
+          cp -a "$SRC"/. ${{ runner.temp }}/cteas-p4-refsource/
           # Upstream Windows case-insensitive include files: Linux temp aliases only.
-          for file in /tmp/cteas-p4-refsource/*; do
+          for file in ${{ runner.temp }}/cteas-p4-refsource/*; do
             base=$(basename "$file")
             lower=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
-            if [ "$base" != "$lower" ] && [ ! -e "/tmp/cteas-p4-refsource/$lower" ]; then
-              ln -s "$base" "/tmp/cteas-p4-refsource/$lower"
+            if [ "$base" != "$lower" ] && [ ! -e "${{ runner.temp }}/cteas-p4-refsource/$lower" ]; then
+              ln -s "$base" "${{ runner.temp }}/cteas-p4-refsource/$lower"
             fi
           done
           gfortran -O0 -std=legacy -ffixed-line-length-72 -fallow-argument-mismatch -fno-automatic \
-            -I/tmp/cteas-p4-refsource -o /tmp/cteas-p4-reference/read62 \
-            /tmp/cteas-p4-refsource/READ62.FOR 2>&1 | tee reference-evidence/fortran-build.log
+            -I${{ runner.temp }}/cteas-p4-refsource -o ${{ runner.temp }}/cteas-p4-reference/read62 \
+            ${{ runner.temp }}/cteas-p4-refsource/READ62.FOR 2>&1 | tee reference-evidence/fortran-build.log
           sha256sum "$SRC/READ62.FOR" > reference-evidence/fortran-source.sha256
       - name: Prepare same isolated Hefei input
         shell: bash
@@ -58,10 +65,10 @@ jobs:
           EOF
           python3 -m native_cpp.modules.p4_read62.data_prep.prepare_inputs \
             --year 2022 --pstop 500 --execute 2>&1 | tee reference-evidence/prepare.log
-          cp project/current/met/upperair/2022/igra2fsl/58424.txt /tmp/cteas-p4-reference/58424.fsl
+          cp project/current/met/upperair/2022/igra2fsl/58424.txt ${{ runner.temp }}/cteas-p4-reference/58424.fsl
           cp project/current/met/upperair/2022/upperair_station_used_list.txt reference-evidence/
           cp project/current/met/upperair/2022/p4_station_selection_audit.json reference-evidence/
-          sha256sum /tmp/cteas-p4-reference/58424.fsl > reference-evidence/fsl.sha256
+          sha256sum ${{ runner.temp }}/cteas-p4-reference/58424.fsl > reference-evidence/fsl.sha256
       - name: Stage original READ62.INP with isolated output paths
         shell: bash
         run: |
@@ -80,7 +87,7 @@ jobs:
           for k,v in replacements.items():
               inp,n=re.subn(r'(!\s*'+k+r'\s*=\s*)[^!]*!',lambda m:m.group(1)+v+" !",inp,count=1)
               if n!=1: raise RuntimeError("READ62.INP missing "+k)
-          out=pathlib.Path("/tmp/cteas-p4-reference/read62.inp")
+          out=pathlib.Path("${{ runner.temp }}/cteas-p4-reference/read62.inp")
           out.write_text(inp)
           print(out)
           PY
@@ -88,7 +95,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd /tmp/cteas-p4-reference
+          cd ${{ runner.temp }}/cteas-p4-reference
           ./read62 read62.inp 2>&1 | tee "$GITHUB_WORKSPACE/reference-evidence/fortran-run.log"
           ls -lah
           test -s reference_up.dat
@@ -100,11 +107,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p4_read62 -B /tmp/cteas-p4-cpp -DCMAKE_BUILD_TYPE=Debug
-          cmake --build /tmp/cteas-p4-cpp -j2
-          ctest --test-dir /tmp/cteas-p4-cpp --output-on-failure
-          /tmp/cteas-p4-cpp/cteas_p4_read62 \
-            /tmp/cteas-p4-reference/58424.fsl reference-evidence/cpp_up.dat \
+          cmake -S native_cpp/modules/p4_read62 -B ${{ runner.temp }}/cteas-p4-cpp -DCMAKE_BUILD_TYPE=Debug
+          cmake --build ${{ runner.temp }}/cteas-p4-cpp -j2
+          ctest --test-dir ${{ runner.temp }}/cteas-p4-cpp --output-on-failure
+          ${{ runner.temp }}/cteas-p4-cpp/cteas_p4_read62 \
+            ${{ runner.temp }}/cteas-p4-reference/58424.fsl reference-evidence/cpp_up.dat \
             2022-01-01T00:00Z 2022-01-06T23:00Z 500 58424 2>&1 | tee reference-evidence/cpp-run.log
       - name: Independently verify every original and C++ UP.DAT numerical field
         shell: bash
@@ -121,11 +128,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m native_cpp.modules.p4_read62.precision_probe \
-            --fsl /tmp/cteas-p4-reference/58424.fsl \
-            --fortran /tmp/cteas-p4-reference/read62 \
-            --template-inp /tmp/cteas-p4-reference/read62.inp \
+            --fsl ${{ runner.temp }}/cteas-p4-reference/58424.fsl \
+            --fortran ${{ runner.temp }}/cteas-p4-reference/read62 \
+            --template-inp ${{ runner.temp }}/cteas-p4-reference/read62.inp \
             --baseline-updat reference-evidence/reference_up.dat \
-            --cpp /tmp/cteas-p4-cpp/cteas_p4_read62 \
+            --cpp ${{ runner.temp }}/cteas-p4-cpp/cteas_p4_read62 \
             --outdir reference-evidence/coord-precision \
             --lat 31.939774444 --lon 117.141610855
       - name: Verify complete 2022 year (730 soundings)
@@ -135,24 +142,24 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-          control=Path("/tmp/cteas-p4-reference/read62.inp").read_text()
+          control=Path("${{ runner.temp }}/cteas-p4-reference/read62.inp").read_text()
           for key,value in {"IEMO":"12","IEDY":"31","IEHR":"23",
                             "UPDAT":"reference_full_year_up.dat",
                             "RUNLST":"reference_full_year.lst"}.items():
               control,n=re.subn(r"(!\s*"+key+r"\s*=\s*)[^!]*!",
                                 lambda m:m.group(1)+value+" !",control,count=1)
               if n!=1:raise RuntimeError("Missing "+key)
-          Path("/tmp/cteas-p4-reference/read62-annual.inp").write_text(control)
+          Path("${{ runner.temp }}/cteas-p4-reference/read62-annual.inp").write_text(control)
           PY
           (
-            cd /tmp/cteas-p4-reference
+            cd ${{ runner.temp }}/cteas-p4-reference
             ./read62 read62-annual.inp
             test -s reference_full_year_up.dat
           ) 2>&1 | tee reference-evidence/fortran-full-year.log
-          cp /tmp/cteas-p4-reference/reference_full_year_up.dat reference-evidence/
-          cp /tmp/cteas-p4-reference/reference_full_year.lst reference-evidence/
-          /tmp/cteas-p4-cpp/cteas_p4_read62 \
-            /tmp/cteas-p4-reference/58424.fsl reference-evidence/cpp_full_year_up.dat \
+          cp ${{ runner.temp }}/cteas-p4-reference/reference_full_year_up.dat reference-evidence/
+          cp ${{ runner.temp }}/cteas-p4-reference/reference_full_year.lst reference-evidence/
+          ${{ runner.temp }}/cteas-p4-cpp/cteas_p4_read62 \
+            ${{ runner.temp }}/cteas-p4-reference/58424.fsl reference-evidence/cpp_full_year_up.dat \
             2022-01-01T00:00Z 2022-12-31T23:00Z 500 58424 \
             | tee reference-evidence/cpp-full-year.log
           python3 -m native_cpp.modules.p4_read62.verify_updat_parity \
@@ -166,7 +173,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m native_cpp.modules.p4_read62.data_prep.run_cpp_pipeline \
-            --cpp-bin /tmp/cteas-p4-cpp/cteas_p4_read62 \
+            --cpp-bin ${{ runner.temp }}/cteas-p4-cpp/cteas_p4_read62 \
             --year 2022 --pstop 500 --skip-inputs --merge-final --execute \
             | tee reference-evidence/cpp-final-pipeline.log
           cp project/current/met/upperair/final/up_58424.dat reference-evidence/merged_final_up_58424.dat

@@ -1,4 +1,7 @@
 name: P4 Hefei 2022 public met capture
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
@@ -6,19 +9,17 @@ on:
       - 'native_cpp/modules/p4_read62/data_prep/**'
 jobs:
   download:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 18
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Dependencies
-        run: python -m pip install --disable-pip-version-check PyYAML
+        run: python3 -m pip install --disable-pip-version-check PyYAML
       - name: Stage isolated 5km 100m Hefei case
         shell: bash
         run: |
@@ -41,9 +42,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m native_cpp.modules.p4_read62.data_prep.prepare_inputs --year 2022 --pstop 500 --execute 2>&1 | tee run-evidence/p4-download.log
+          python3 -m native_cpp.modules.p4_read62.data_prep.prepare_inputs --year 2022 --pstop 500 --execute 2>&1 | tee run-evidence/p4-download.log
           find project/current/met/upperair/2022/igra2fsl -maxdepth 1 -name '*.txt' -size +0c | grep -q .
-          python - <<'PY'
+          python3 - <<'PY'
           import csv,pathlib
           path=pathlib.Path("project/current/met/upperair/2022/upperair_station_used_list.txt")
           rows=list(csv.DictReader(path.open()))
@@ -60,7 +61,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p run-evidence
-          python - <<'PY'
+          python3 - <<'PY'
           import hashlib,json,pathlib
           root=pathlib.Path('project/current/met/upperair/2022')
           files=sorted(p for p in root.rglob('*') if p.is_file()) if root.exists() else []
