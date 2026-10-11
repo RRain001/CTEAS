@@ -304,8 +304,13 @@ def run_fill(workdir):
     venv = os.environ.get("VIRTUAL_ENV", "").strip()
     py = Path(venv) / "bin" / "python" if venv else None
     py_cmd = str(py) if (py and py.exists()) else sys.executable
-    cmd = [py_cmd, str(interp)]
-    return subprocess.run(cmd, cwd=workdir, check=False)
+    # Run as package module so relative imports resolve under staged
+    # project/met/surface/isd2smerge_and_fill working directory.
+    repo_root = str(SCRIPT_DIR.parents[3])
+    env = dict(os.environ)
+    env["PYTHONPATH"] = repo_root + os.pathsep + env.get("PYTHONPATH", "")
+    cmd = [py_cmd, "-m", "native_cpp.modules.p5_smerge.data_prep.interpolate"]
+    return subprocess.run(cmd, cwd=workdir, env=env, check=False)
 
 
 def _fmt_num(x):
