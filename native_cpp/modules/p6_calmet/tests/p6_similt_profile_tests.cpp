@@ -33,9 +33,11 @@ int main(){
   if(!(scale>4.f&&scale<6.f))throw std::runtime_error("SIMILT first level speed");
   if(!(std::hypot(neutral.u_mps[8],neutral.v_mps[8])>scale))
     throw std::runtime_error("SIMILT neutral vertical shear missing");
-  // The neutral branch must not call PSIUD: psim=0 for |1/L|<5e-5.
-  if(std::abs(original_psiud(0.0))>1.0e-12)
-    throw std::runtime_error("PSIUD neutral limit must vanish");
+  // PSIUD at zL=0 takes the stable branch and yields -0.005 in the original
+  // (the port matches the compiled routine; see the parity report). SIMILT
+  // never calls it there: |1/L|<5e-5 short-circuits to the neutral branch.
+  if(std::abs(original_psiud(0.0)+0.005)>1.0e-3)
+    throw std::runtime_error("PSIUD stable branch at zL=0");
   if(!(original_psiud(-0.5)>0.0&&original_psiud(0.5)<0.0))
     throw std::runtime_error("PSIUD stability signs");
   // Stability changes the profile: unstable mixes faster than stable.

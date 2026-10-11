@@ -78,8 +78,15 @@ int main(){
     upper.winds.back()=LayerWind{1.f,1.f};
     rejects([&]{(void)wind1_selected_station_hour(s,0,upper,58424,
                           31.939774f,10.f,0.1f);},"invalid station id");
-    rejects([&]{(void)wind1_selected_station_hour(s,58321,upper,58424,
-                          -31.939774f,10.f,0.1f);},"unsupported SIMILT hemisphere");
+    // The SIMILT port now covers both hemispheres (the southern branch backs
+    // the wind); a southern station must produce a finite profile.
+    {
+        const auto south=wind1_selected_station_hour(s,58321,upper,58424,
+                                                     -31.939774f,10.f,0.1f);
+        if(!std::isfinite(south.surface_neutral_profile[0].u_mps)||
+           !std::isfinite(south.surface_neutral_profile[8].v_mps))
+            throw std::runtime_error("southern SIMILT profile must be finite");
+    }
     std::cout<<"P6D8 WIND1 HOURLY SELECTED OBS ADAPTER SOFTWARE PASS\n";
     return 0;
  }catch(const std::exception& ex){
