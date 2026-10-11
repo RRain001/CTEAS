@@ -1,0 +1,79 @@
+name: P2 GEN independent numerical comparison
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/**'
+      - '.github/workflows/p2-gen-reference-compare.yml'
+jobs:
+  compare:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 16
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
+      - name: Reset self-hosted scratch directories
+        shell: bash
+        run: |
+          rm -rf ${{ runner.temp }}/cteas-p2-build ${{ runner.temp }}/p2-compare-reference
+      - name: Reference toolchain
+        run: |
+          if ! pkg-config --exists gdal; then
+            sudo -n apt-get update -qq
+            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
+          fi
+          gfortran --version | head -1
+      - name: Configure modern C++20
+        run: cmake -S native_cpp -B ${{ runner.temp }}/cteas-p2-build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build scoped C++ implementation
+        run: cmake --build ${{ runner.temp }}/cteas-p2-build -j2
+      - name: Run tests
+        run: ctest --test-dir ${{ runner.temp }}/cteas-p2-build --output-on-failure
+      - name: Capture original TERREL CTGPROC reference
+        run: python3 native_cpp/reference/capture_p1_p2.py --output ${{ runner.temp }}/p2-compare-reference
+      - name: Compute projected GEN fractions from same samples and grid
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r X Y < <(python3 - <<'PY'
+          import json
+          m=json.load(open('${{ runner.temp }}/p2-compare-reference/manifest.json'))
+          print(m['grid']['x0_km'],m['grid']['y0_km'])
+          PY
+          )
+          ${{ runner.temp }}/cteas-p2-build/cteas_p2_gen_fraction \
+            calpuff_terrain_and_landuse_data_crop/hefei_5km/eurasia_asia_landuse/eausgs2_0la_hefei_5km.generic.txt \
+            "$X" "$Y" ${{ runner.temp }}/p2-compare-reference/p2_cpp_fractions.csv
+      - name: Compare 2500 x 38 fields and independent original count
+        run: python3 native_cpp/reference/compare_p2_gen.py --reference ${{ runner.temp }}/p2-compare-reference --cpp ${{ runner.temp }}/p2-compare-reference/p2_cpp_fractions.csv --report ${{ runner.temp }}/p2-compare-reference/p2_numeric_comparison.json
+      - name: Generate separately isolated, multi-category original GEN reference
+        run: python3 native_cpp/reference/prepare_p2_heterogeneous.py --capture-dir ${{ runner.temp }}/p2-compare-reference --output ${{ runner.temp }}/p2-compare-reference/heterogeneous
+      - name: Calculate synthetic multi-category C++ fractions from identical points
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r X Y < <(python3 - <<'PY'
+          import json
+          m=json.load(open('${{ runner.temp }}/p2-compare-reference/manifest.json'))
+          print(m['grid']['x0_km'],m['grid']['y0_km'])
+          PY
+          )
+          ${{ runner.temp }}/cteas-p2-build/cteas_p2_gen_fraction \
+            ${{ runner.temp }}/p2-compare-reference/heterogeneous/data/generic_landuse.txt \
+            "$X" "$Y" ${{ runner.temp }}/p2-compare-reference/heterogeneous/p2_cpp_fractions.csv
+      - name: Independently compare 95000 synthetic fractions and all point counts
+        run: python3 native_cpp/reference/compare_p2_gen.py --reference ${{ runner.temp }}/p2-compare-reference/heterogeneous --cpp ${{ runner.temp }}/p2-compare-reference/heterogeneous/p2_cpp_fractions.csv --report ${{ runner.temp }}/p2-compare-reference/heterogeneous/p2_comparison.json
+      - name: Preserve evidence even on numerical failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-gen-scoped-numerical-evidence
+          path: ${{ runner.temp }}/p2-compare-reference
+          if-no-files-found: warn
+          retention-days: 7

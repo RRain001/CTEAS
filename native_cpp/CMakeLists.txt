@@ -21,3 +21,13 @@ add_test(NAME cteas_p1_input_contracts COMMAND cteas_p1_input_tests)
 add_executable(cteas_p2_input_tests tests/p2_input_tests.cpp)
 target_link_libraries(cteas_p2_input_tests PRIVATE cteas_geo_inputs)
 add_test(NAME cteas_p2_input_contracts COMMAND cteas_p2_input_tests)
+
+# P2 GEN-only subset (no claim of full CTGPROC equivalence).
+add_library(cteas_p2_gen STATIC src/geo/landuse_fraction.cpp)
+target_include_directories(cteas_p2_gen PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p2_gen PUBLIC cteas_geo_inputs)
+add_executable(cteas_p2_gen_fraction src/p2_gen_fraction_cli.cpp)
+target_link_libraries(cteas_p2_gen_fraction PRIVATE cteas_p2_gen)
+add_executable(cteas_p2_gen_tests tests/p2_gen_fraction_tests.cpp)
+target_link_libraries(cteas_p2_gen_tests PRIVATE cteas_p2_gen)
+add_test(NAME cteas_p2_gen_fraction_contract COMMAND cteas_p2_gen_tests)
