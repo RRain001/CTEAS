@@ -472,9 +472,12 @@ void validate_calmet_dat21(const Calmet21File& file) {
     const Calmet21Header& header = file.header;
     const Calmet21Statics& statics = file.statics;
 
-    require(header.irtype == 1,
-            "IRTYPE must be 1: only IRTYPE=1 writes the micrometeorological "
-            "field set this writer supports");
+    // OUTHR writes the wind block for both run types and returns before the
+    // 2-D meteorological fields when IRTYPE=0 (L13160-L13180); the label set
+    // follows from the header, so both layouts are supported.
+    require(header.irtype == 0 || header.irtype == 1,
+            "IRTYPE must be 0 (winds only) or 1 (winds + meteorological "
+            "fields)");
     require(header.iwfcod == 1, "IWFCOD must be 1 (write u, v and w)");
     require(header.nx >= 1 && header.ny >= 1,
             "grid extent NX/NY must be positive");
@@ -494,8 +497,10 @@ void validate_calmet_dat21(const Calmet21File& file) {
     require(header.timezone.size() == 8U,
             "AXTZ must be exactly 8 characters");
     require(header.nssta >= 0 && header.nusta >= 0 && header.npsta >= 0,
-            "station counts must not be negative (NPSTA=-1 MM5 precipitation "
-            "is not a supported mode)");
+            "station counts must not be negative: NPSTA=-1 selects MM5 "
+            "precipitation input, whose RMM/IPCODE mask semantics this writer "
+            "does not implement; supply observed precipitation stations "
+            "(NPSTA>=1) or omit precipitation (NPSTA=0)");
     require(header.nowsta >= 0, "NOWSTA must not be negative");
     require(header.nlu >= 0, "NLU must not be negative");
     require(header.iwat1 <= header.iwat2, "IWAT1 must not exceed IWAT2");
@@ -541,6 +546,9 @@ void validate_calmet_dat21(const Calmet21File& file) {
                   header.nusta);
     check_station("precipitation station", statics.precip_x_m,
                   statics.precip_y_m, header.npsta);
+    for(const std::int32_t category : statics.ilandu)
+        require(category >= 0,
+                "ILANDU must not contain a negative land-use category");
     require(statics.z0_m.size() == cells, "Z0 must have NX*NY values");
     require(statics.elev_m.size() == cells, "ELEV must have NX*NY values");
     require(statics.xlai.size() == cells, "XLAI must have NX*NY values");
@@ -844,8 +852,8 @@ Calmet21File parse_calmet_dat21(const std::vector<std::uint8_t>& bytes) {
     header.projection.xlat1 = read_f32(payload, 168U);
     header.projection.xlat2 = read_f32(payload, 172U);
 
-    require(header.irtype == 1 && header.iwfcod == 1,
-            "only IRTYPE=1 and IWFCOD=1 files are supported");
+    require((header.irtype == 0 || header.irtype == 1) && header.iwfcod == 1,
+            "only IRTYPE=0/1 with IWFCOD=1 files are supported");
     require(header.nx >= 1 && header.nx <= 1000000 && header.ny >= 1 &&
                 header.ny <= 1000000,
             "invalid grid extent in the run controls");
