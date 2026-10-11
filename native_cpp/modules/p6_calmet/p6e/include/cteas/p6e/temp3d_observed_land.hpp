@@ -19,6 +19,11 @@ struct Temp3dObservedInput {
     // Per station, index k corresponds to Fortran grid face k+1.
     std::vector<float> aa_face_temp_k,bb_face_temp_k;
     std::vector<float> surface_temp_k,convective_zi_m;
+    // Optional explicit sounding/current times per station (seconds on any
+    // common axis). When provided they replace the same-day 00Z/12Z model and
+    // reproduce the original DELTSEC-based JTOGO/JPAST with
+    // XFACT = JTOGO/(JPAST+JTOGO), which covers 12Z -> next-day-00Z windows.
+    std::vector<int> past_seconds,to_go_seconds;
 };
 inline std::vector<float> temp3d_observed_land(const Temp3dObservedInput& a) {
     if(!a.nx||!a.ny||a.nz<2||
@@ -54,9 +59,25 @@ inline std::vector<float> temp3d_observed_land(const Temp3dObservedInput& a) {
     const float xpast=static_cast<float>(a.current_hour_utc*3600);
     if(xpast<0.f||xtogo<0.f||xpast+xtogo!=jdelta)
         throw std::invalid_argument("TEMP3D soundings fail to bracket time");
+    const bool explicit_times=!a.past_seconds.empty()||!a.to_go_seconds.empty();
+    if(explicit_times&&(a.past_seconds.size()!=stations||
+                        a.to_go_seconds.size()!=stations))
+        throw std::invalid_argument("TEMP3D explicit sounding times extent");
     std::vector<float> face_time_temp(stations*(a.nz+1),0.f);
     for(std::size_t st=0;st<stations;++st) {
-        const float xfact=xtogo/jdelta;
+        float xfact=xtogo/jdelta;
+        if(explicit_times) {
+            // Original: JTOGO = newer sounding - now, JPAST = now - older
+            // sounding, JDELTA = the AA<->BB interval; the original STOPS on a
+            // negative JTOGO/JPAST, so fail closed here as well.
+            if(a.past_seconds[st]<0||a.to_go_seconds[st]<0)
+                throw std::invalid_argument(
+                    "TEMP3D soundings do not straddle the current hour");
+            const float total=static_cast<float>(a.past_seconds[st]+
+                                                 a.to_go_seconds[st]);
+            if(!(total>0.f))throw std::invalid_argument("TEMP3D zero sounding interval");
+            xfact=static_cast<float>(a.to_go_seconds[st])/total;
+        }
         for(std::size_t k=1;k<=a.nz;++k) {
             const auto p=st*(a.nz+1)+k;
             const float taa=a.aa_face_temp_k[p],tbb=a.bb_face_temp_k[p];
