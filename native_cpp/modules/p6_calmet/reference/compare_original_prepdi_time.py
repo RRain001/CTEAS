@@ -14,7 +14,7 @@ from pathlib import Path
 
 HEAD=r"""      program prepdi_source_time
       implicit none
-      integer nz,j,n,idx,nhours,jorder,jdelta,jtogo
+      integer nz,j,n,idx,nhours,jorder,jdelta,jtogo,i
       real xfact
       real uaveaa(9,1),uavebb(9,1),vaveaa(9,1),vavebb(9,1)
       real uave(9,1),vave(9,1)
