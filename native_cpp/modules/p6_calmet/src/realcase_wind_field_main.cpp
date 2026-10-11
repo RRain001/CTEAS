@@ -514,11 +514,18 @@ int main(int argc,char** argv){
                 if(offset>=zi_hours.size()||offset>=el_hours.size())
                     throw std::runtime_error("EL/ZI file has no block for "+
                                              hour_label(clock));
-                const float cutoff_m=zii_hours.empty()
-                    ? zi_hours[offset]
-                    : zii_hours[h];
-                if(zii_hours.empty()&&offset>=zi_hours.size())
-                    throw std::runtime_error("ZI file has no block for "+hour_label(clock));
+                float cutoff_m=0.f;
+                if(!zii_hours.empty()){
+                    if(h>=zii_hours.size())
+                        throw std::runtime_error("ZII file has no value for "+
+                                                 hour_label(clock));
+                    cutoff_m=zii_hours[h];
+                }else{
+                    if(offset>=zi_hours.size())
+                        throw std::runtime_error("ZI file has no block for "+
+                                                 hour_label(clock));
+                    cutoff_m=zi_hours[offset];
+                }
                 const SimiltProfileInput diagi{
                     static_cast<float>(station_lat_deg),10.f,roughness,surface_u,surface_v,
                     el_hours[offset],cutoff_m,zimin_m,0,zface};
