@@ -1530,3 +1530,57 @@ which the AA/BB face temperatures already transported by the bridge
 `ZI` FAIL 1.26 % (bounded, <= 51.06 m); `WSTAR` FAIL 1.4 % (bounded,
 <= 0.0263 m/s); `T-LEV 2..9` BLOCKED on the TEMP3D bracket generalisation;
 `U-LEV/V-LEV/WFACE` P6D-owned; `P6E_FULL=NOT_PASS`.
+
+## E32 TEMP3D explicit-time generalisation: `T-LEV 1..NZ` produced, 6 of 9 levels pass
+
+### The generalisation
+
+The original TEMP3D interpolates the AA/BB face temperatures with
+`XFACT = float(JTOGO)/float(JDELTA)` where `JTOGO` is the time from the
+*newer* sounding to the current hour, `JPAST` the time from the *older*
+sounding to it (computed with `DELTSEC` per the `JUSTA` order) and
+`JDELTA = JUSDT` is the AA<->BB interval; a negative `JTOGO`/`JPAST` makes the
+original **stop** (L31307-31368). The E14 kernel only modelled the same-day
+00Z/12Z bracket (`current_hour_utc` 0..12, `JDELTA = 43200` fixed), which left
+11 of the 143 real hours out of scope.
+
+`Temp3dObservedInput` now accepts explicit `past_seconds`/`to_go_seconds` per
+station; when present the kernel uses
+`XFACT = to_go/(past+to_go)` and fails closed on negative values, exactly as
+the original does. `emit-realcase` feeds the E15 bridge's own `past_s`/`to_go_s`
+columns, so every one of the 143 hours is bracketed - including the 12Z ->
+next-day-00Z windows - and the bridge already transported the 20 face
+temperatures per hour (`aa_face_t`/`bb_face_t`).
+
+### Verdicts, original wind driving (143 x 2500 = 357,500 per level)
+
+| field | max abs | max rel | exceedances | verdict |
+|---|---|---|---|---|
+| `T-LEV 1` | 0 | 0 | 0 | bit-exact |
+| `T-LEV 2` | 1.2207e-4 K | 4.29919e-7 | 0 | PASS |
+| `T-LEV 3` | 1.5564e-3 K | 5.48547e-6 | 0 | PASS |
+| `T-LEV 4` | 8.54492e-4 K | 3.01813e-6 | 0 | PASS |
+| `T-LEV 5` | 4.29382e-2 K | 1.54164e-4 | 18 | FAIL (bounded) |
+| `T-LEV 6` | 1.43555 K | 5.10876e-3 | 137 | FAIL (bounded) |
+| `T-LEV 7` | 2.51669 K | 9.09273e-3 | 558 | FAIL (bounded) |
+| `T-LEV 8` | 0 | 0 | 0 | **bit-exact** |
+| `T-LEV 9` | 0 | 0 | 0 | **bit-exact** |
+
+**Six of nine levels pass outright** (two of them bit-exact) and the residual
+is confined to levels 5-7 with 713 exceedances in total (0.2 % of those
+fields). The pattern is diagnostic and consistent with the `ZI`/`ZICONV`
+residual already characterised in E31: levels 8-9 lie above the mixing height
+where TEMP3D simply averages the two soundings (bit-exact), levels 2-4 lie
+below it where the dry-adiabatic form is used (exact within 1.6e-3 K), and
+levels 5-7 are exactly the ones that **straddle** `ZICONV`, where the
+interpolation blends the adiabatic and upper-air forms using the (still
+imperfect) convective height.
+
+`not_produced` therefore drops from 35 to **27 fields**: the remaining ones
+are the 27 P6D-owned `U-LEV/V-LEV/WFACE`, with `ZI`, `WSTAR` and `EL` produced
+but failing their gates as characterised in E30/E31.
+
+**Status:** `T-LEV 1..9` produced; 1, 8, 9 bit-exact; 2, 3, 4 PASS; 5, 6, 7 FAIL
+with a bounded residual traced to the convective-height residual; six
+other fields bit-exact or PASS; `ZI`/`WSTAR`/`EL` bounded FAILs;
+`U-LEV/V-LEV/WFACE` P6D-owned; `P6E_FULL=NOT_PASS`.
