@@ -332,6 +332,11 @@ jobs:
             --joint integration-evidence/p6c-joint-observation.csv \
             --up project/current/met/upperair/final/up_58424.dat \
             --out integration-evidence/p6c-original-comp-vs-cpp-143h.json
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_cgamma_2022.py \
+            --runtime integration-evidence/p6c-original-comp-runtime.log \
+            --up project/current/met/upperair/final/up_58424.dat \
+            --cpp /tmp/p6c-up-build/cteas_p6_cgamma \
+            --out integration-evidence/p6c-cgamma-original-reference
       - name: Retain diagnostics even on failure
         if: always()
         shell: bash
