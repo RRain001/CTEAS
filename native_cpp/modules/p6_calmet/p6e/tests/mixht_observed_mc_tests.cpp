@@ -58,7 +58,7 @@ int main(){
     assert(tr.hit&&tr.branch==4);
     assert(tr.dptt_in==a.initial_dptt[0]);
     assert(carried.dptt[0]==tr.dpttp1_k&&carried.dptt[0]!=a.initial_dptt[0]);
-    MixhtObservedMcInput b=a;b.dptt_refresh=1;
+    MixhtObservedMcInput b=a;b.dptt_refresh=1;b.refresh_i=0;b.refresh_j=0;
     const auto refreshed=mixht_observed_mc(b);
     assert(tr.dptt_in==refreshed.dptt[0]);
     assert(refreshed.dptt[0]==carried.dptt[0]);
@@ -68,6 +68,10 @@ int main(){
     assert(mixht_observed_mc(c).ziconv[0]==refreshed.ziconv[0]);
     MixhtObservedMcInput d=a;d.initial_dptt[0]=5.f;
     assert(mixht_observed_mc(d).ziconv[0]!=carried.ziconv[0]);
+    // Refresh is confined to the surface-station cell: a different cell of
+    // the same grid still carries its memory.
+    MixhtObservedMcInput e=b;e.refresh_i=1;e.refresh_j=0;
+    assert(mixht_observed_mc(e).ziconv[0]==carried.ziconv[0]);
     // Trace reports the water skip and the stable land branch.
     MixhtObservedMcTrace tw;
     a.trace=&tw;a.trace_i=2;a.trace_j=0;

@@ -496,13 +496,14 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     std::vector<float> exported_ziconv,exported_zi;
     std::vector<float> exported_pre_ziconv,exported_pre_zi;
     std::vector<float> exported_qh,exported_ustar,exported_el;
-    // Optional per-hour MIXHT term trace for the cell carrying the surface
-    // station (XSSTA/YSSTA are metres from the SW corner of cell (1,1)).
+    // The cell carrying the surface station (XSSTA/YSSTA are metres from the
+    // SW corner of cell (1,1)). The original processes exactly this cell
+    // twice per hour (ELUSTR2 -> MIXHTST before the grid MIXHT), which is
+    // what the DPTT refresh and the optional per-hour trace both address.
     std::ofstream trace_out;
-    std::size_t trace_i=static_cast<std::size_t>(-1),trace_j=static_cast<std::size_t>(-1);
+    const std::size_t trace_i=static_cast<std::size_t>(reference.statics.surface_x_m[0]/h.dgrid_m);
+    const std::size_t trace_j=static_cast<std::size_t>(reference.statics.surface_y_m[0]/h.dgrid_m);
     if(!trace_path.empty()) {
-        trace_i=static_cast<std::size_t>(reference.statics.surface_x_m[0]/h.dgrid_m);
-        trace_j=static_cast<std::size_t>(reference.statics.surface_y_m[0]/h.dgrid_m);
         trace_out.open(trace_path);
         if(!trace_out)throw std::invalid_argument("cannot open MIXHT trace output");
         trace_out<<"hour_index,trace_i,trace_j,branch,htold_m,wt_mks,gamma_mixdt,"
@@ -654,7 +655,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             mh.ny=static_cast<std::size_t>(h.ny);
             mh.water_first=h.iwat1;mh.water_last=h.iwat2;mh.iupt=-1;
             mh.imixh=imixh;mh.izicrlx=1;mh.timestep_s=3600;
-            mh.dptt_refresh=dptt_refresh;
+            mh.dptt_refresh=dptt_refresh;mh.refresh_i=trace_i;mh.refresh_j=trace_j;
             mh.constn=2400.f;mh.zimin=50.f;mh.zimax=3000.f;
             mh.threshl=0.f;mh.dptmin=0.001f;mh.dzzi=200.f;
             mh.onedte=4140.f;mh.twodte=1080.f;mh.tzicrlx=800.f;
@@ -1242,7 +1243,7 @@ int main(int argc,char** argv) {
                               argument(argc,argv,"--fcoriol","1.0e-4"))),
                           std::stoi(argument(argc,argv,"--skip-avemix","0"))!=0,
                           std::stoi(argument(argc,argv,"--imixh","1")),
-                          std::stoi(argument(argc,argv,"--dptt-refresh","0")),
+                          std::stoi(argument(argc,argv,"--dptt-refresh","1")),
                           argument(argc,argv,"--mixht-trace"));
             return 0;
         }
