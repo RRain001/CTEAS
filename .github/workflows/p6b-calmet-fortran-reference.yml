@@ -239,6 +239,41 @@ jobs:
           pathlib.Path("integration-evidence/final-status.json").write_text(json.dumps(result,indent=2)+"\n")
           print("P4_P5_ORIGINAL_CALMET_END_TO_END=PASS",json.dumps(result))
           PY
+      - name: P6C real 143-hour triple input joint observation crosscheck (1h 6h 143h)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from native_cpp.modules.p6_calmet.reference.inspect_calmet_control import parse
+          c=parse(Path("project/current/run/met/met.inp"))
+          required=["XORIGKM","YORIGKM"]
+          if any(k not in c for k in required):
+              raise SystemExit("CALMET rendered input missing original SW grid origin")
+          Path("integration-evidence/p6c-grid-origin.txt").write_text(
+              c["XORIGKM"]+" "+c["YORIGKM"]+"\\n")
+          PY
+          read -r ORIGIN_X ORIGIN_Y < integration-evidence/p6c-grid-origin.txt
+          python3 native_cpp/modules/p6_calmet/reference/compare_fortran_readge.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --geo project/current/geo/makegeo/geo.dat \
+            --cpp /tmp/p6c-up-build/cteas_p6_read_geo \
+            --origin-x "$ORIGIN_X" --origin-y "$ORIGIN_Y" \
+            --out integration-evidence/p6c-joint-geo-original
+          /tmp/p6c-up-build/cteas_p6_comp_joint \
+            project/current/geo/makegeo/geo.dat \
+            project/current/met/surface/final/surf.dat \
+            project/current/met/upperair/final/up_58424.dat \
+            integration-evidence/p6c-joint-observation.csv \
+            58424 "$ORIGIN_X" "$ORIGIN_Y"
+          python3 native_cpp/modules/p6_calmet/reference/check_joint_observation_2022.py \
+            --joint integration-evidence/p6c-joint-observation.csv \
+            --original-geo integration-evidence/p6c-joint-geo-original/reference_fortran_fields.txt \
+            --original-surf integration-evidence/p6c-surf-reference/original_surface.txt \
+            --original-prepdi integration-evidence/p6c-prepdi-time-reference/original_prepdi_143h.txt \
+            --original-facet integration-evidence/p6c-facet-reference/original_face_temperature.txt \
+            --up project/current/met/upperair/final/up_58424.dat \
+            --out integration-evidence/p6c-joint-143-hour-crosscheck.json
       - name: Audit actual CALMET.DAT unformatted record framing and freeze source hashes
         shell: bash
         run: |
