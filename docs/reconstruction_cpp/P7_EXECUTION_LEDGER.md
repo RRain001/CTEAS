@@ -236,3 +236,20 @@ transformations still require original Fortran numerical comparison.
 The 2023 original CONC.DAT does not establish P7C puff trajectory
 parity, since P7D dispersion and P7E concentration have not been
 reconstructed. CI result pending.
+
+## P7C second increment — actual original CALMET hourly replay
+
+Added `met_replay.cpp` and `cteas_p7c_met_replay`: reads the full
+verified original 2023 CALMET.DAT 2.1 twice (metadata integrity, then
+hourly 3-D wind stream), stores only one meteorological hour at a time,
+and moves deterministic prototype packets with bilinear/vertical wind
+interpolation and midpoint RK2. Each source `NSECDT` substep releases
+all configured constant-source species in input units. A per-species
+mass closure gate verifies emitted = active inventory + outflow.
+
+The 2023 original case requires **119 consecutive one-hour intervals**
+(2023-01-01 00 to 2023-01-05 23) with 1-km spacing. Original
+CALPUFF uses its own puff split/merge/cadence, plume rise, sigma,
+terrain and receptor averaging; this initial P7C replay is explicitly
+**NOT a claim of source-faithful puff position or CONC.DAT parity**.
+Run the real integration gate via scoped P7 CI; verdict pending.

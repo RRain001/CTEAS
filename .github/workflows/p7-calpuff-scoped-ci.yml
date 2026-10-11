@@ -227,6 +227,15 @@ jobs:
             --original-binary "$scratch/original-fortran/calpuff-original.x" \
             --native-inspector "$scratch/build/cteas_p7_calmet21_inspect" \
             --output "$scratch/historical-2023" --timeout 600
+      - name: P7C real 2023 CALMET hourly prescribed-wind / conservation smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          "$scratch/build/cteas_p7c_met_replay" \
+            project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp \
+            project/cases/smoke5d_coldstart_20260701/run/met/met.dat \
+            --historical-2023
       - name: Selected 2022 real MET.DAT I/O parity (opt-in immutable input)
         shell: bash
         env:

@@ -1,5 +1,6 @@
 #pragma once
 #include "cteas/puff/control.hpp"
+#include "cteas/puff/calmet21.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -45,4 +46,16 @@ private:
 };
 [[nodiscard]] PointRelease point_source_from_control(const ControlFile&);
 [[nodiscard]] std::vector<double> level_centers_from_zface(const std::vector<double>&);
+// Deterministic P7C dry replay of ORIGINAL CALMET meteorology.
+// One hour of U/V/W arrays is retained at once; original meteorology is
+// decoded twice (first to validate header, second to replay all hours).
+// No claim of original CALPUFF release schedule or concentration parity.
+struct ReplaySummary {
+    Calmet21Summary met;
+    MassBalance mass;
+    std::size_t wind_hours=0,substeps=0;
+};
+[[nodiscard]] ReplaySummary replay_calmet_winds(
+    const std::string& met_file, const SelectedDryInputs& inputs,
+    const PointRelease& source, bool require_historical_2023);
 } // namespace cteas::puff
