@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import gzip
 import json
 import math
 import sys
@@ -15,6 +16,7 @@ from native_cpp.modules.p5_smerge.data_prep import download_isd_by_grid as d
 from native_cpp.modules.p5_smerge.data_prep import isd_to_smerge_and_fill as c
 from native_cpp.modules.p5_smerge.data_prep import interpolate as interp
 from native_cpp.modules.p5_smerge.data_prep.station_identity import numeric_station_ids
+from native_cpp.modules.p5_smerge.data_prep import isd_lite_wind as lite
 
 
 def station(sid: str, lat: float, lon: float) -> d.Station:
@@ -43,11 +45,19 @@ class P5SelectionTests(unittest.TestCase):
             out.mkdir(parents=True, exist_ok=True)
             (out / f"{sid}-{year}.csv").write_text("stub\n")
             return True, "test", False
+        def fake_lite_download(year, sid, out, timeout):
+            out.mkdir(parents=True,exist_ok=True)
+            (out / lite.filename(sid,year)).write_bytes(b"mock source")
+            return True, "test", False
+        def fake_lite_hours(file, year, station_id):
+            return available[station_id], d.expected_hours_in_year(year)
         def fake_hours(file, year, station_id=None):
             return available[file.name.split("-")[0]], d.expected_hours_in_year(year)
         with patch.object(d, "parse_history_txt", return_value=locations), \
              patch.object(d, "download_one", side_effect=fake_download), \
              patch.object(d, "original_coverage", side_effect=fake_hours), \
+             patch.object(lite, "download_lite_one", side_effect=fake_lite_download), \
+             patch.object(lite, "lite_time_coverage", side_effect=fake_lite_hours), \
              patch.object(sys, "argv", argv):
             d.main()
         return json.loads((self.raw / "station_selection_2022.json").read_text())
@@ -119,6 +129,10 @@ class P5FieldsTests(unittest.TestCase):
                 wr=csv.DictWriter(f, fieldnames=columns)
                 wr.writeheader()
                 wr.writerow(record)
+            lite_dir=root/"isd_lite"
+            lite_dir.mkdir()
+            with gzip.open(lite_dir/lite.filename("A12345ABCDE",2022),"wt",encoding="ascii") as out:
+                out.write("2022 01 01 12 250 100 10135 270 40 5 -9999 -9999\n")
             (root/"station_selection_2022.json").write_text(json.dumps({
                 "stations":[{"sid":"A12345ABCDE","ifstn":"1777777"}]}))
             with patch.object(c,"INPUT_DIR",root):
@@ -131,8 +145,8 @@ class P5FieldsTests(unittest.TestCase):
             self.assertEqual(float(row[4]),25.0)  # TMP -> temperature
             self.assertEqual(float(row[5]),1.2)   # AA1 -> precip
             self.assertEqual(float(row[6]),1013.5) # SLP -> pressure
-            self.assertEqual(float(row[8]),90.0)   # WND direction
-            self.assertEqual(float(row[9]),3.0)    # WND speed
+            self.assertEqual(float(row[8]),270.0)   # ISD-Lite direction, not full ISD WND
+            self.assertEqual(float(row[9]),4.0)     # ISD-Lite speed, not full ISD WND
             self.assertEqual(float(row[10]),5.0)   # GF1 cloud
 
     def test_schema_rejects_positional_guess(self):
@@ -164,7 +178,7 @@ class P5MissingPolicyTests(unittest.TestCase):
         self.assertEqual(list(out["ms-1"]),[1.0,0.0,0.2,1.0,1.0])
         self.assertEqual(list(out["deg"]),[350,0,30,10,10])
         self.assertEqual(audit["wind_direction_raw_deg"].iloc[1],120)
-        self.assertEqual(audit["wind_direction_filled_deg"].iloc[1],120)
+        self.assertEqual(audit["wind_direction_filled_deg"].iloc[1],350)  # never inherit calm WD
         self.assertEqual(audit["wind_speed_generic_m_s"].iloc[1],0)
         self.assertTrue(bool(audit["is_calm"].iloc[2]))
         self.assertFalse(bool(audit["is_exact_zero_speed"].iloc[2]))
