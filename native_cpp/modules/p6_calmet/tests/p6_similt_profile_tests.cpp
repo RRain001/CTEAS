@@ -43,9 +43,11 @@ int main(){
   // Stability changes the profile: unstable mixes faster than stable.
   const auto unstable=original_similt_profile(base(-30.f,1000.f));
   const auto stable=original_similt_profile(base(30.f,1000.f));
+  // Compare speeds, not components: the stability-dependent turning angle
+  // rotates the vector, so a component can shrink while the speed grows.
   if(!(std::hypot(unstable.u_mps[5],unstable.v_mps[5])>
        std::hypot(stable.u_mps[5],stable.v_mps[5])))
-    throw std::runtime_error("SIMILT unstable profile must exceed stable");
+    throw std::runtime_error("SIMILT unstable speed must exceed stable");
   // The mixing-height cutoff stops the extrapolation (L30319 exit).
   const auto shallow=original_similt_profile(base(-30.f,50.f));
   if(shallow.levels_filled!=2)
