@@ -1,6 +1,7 @@
 # P6G 端到端验收记录：首次全链 C++ 重建 vs 原版 2022 冻结参考
 
-日期：2026-10-12。轨道分支 `ci/p6g-end-to-end-20261012`（base `origin/main` `9197e6f`）。
+日期：2026-10-12。轨道分支 `ci/p6g-end-to-end-20261012`（base `origin/main` `9197e6f`），
+[PR #27](https://github.com/RRain001/CTEAS/pull/27)。
 主题：把**已重建的 P6D 风场产出器 → P6F `CALMET.DAT` 写出器 → P6E `emit-realcase` 消费端**串成
 一条可复现链路，并对冻结的 2022 参考 `met.dat` 做**全 45 字段**的逐字段判定，两种口径分列。
 
