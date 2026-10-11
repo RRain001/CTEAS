@@ -1,0 +1,35 @@
+name: P6A CALMET contract-only C++20 checks
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/calmet_contract.hpp'
+      - 'native_cpp/modules/p6_calmet/tests/p6_contract_tests.cpp'
+      - 'docs/reconstruction_cpp/P6_CALMET_MINIMAL_MASTER_PLAN.md'
+      - '.github/workflows/p6a-calmet-contracts.yml'
+      - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cpp-contracts:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
+      - name: Reject bundled non-Hefei CALMET control as scientific reference
+        run: |
+          python3 native_cpp/modules/p6_calmet/reference/inspect_calmet_control.py \
+            engine/vendor/src/CALMET_v6.5.0_L150223/calmet.inp --expect-not-ready
+      - name: Configure standalone strict C++20 tests
+        run: cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-p6a-contract-build -DCMAKE_BUILD_TYPE=Debug
+      - name: Compile
+        run: cmake --build /tmp/cteas-p6a-contract-build --parallel 2
+      - name: Unit checks only (no meteorology or physics)
+        run: ctest --test-dir /tmp/cteas-p6a-contract-build --output-on-failure
