@@ -354,3 +354,26 @@ per-hour COMP/2022 HTO wet forcing/meteorology and not claim of P6D
 completion. Dedicated runner now retrieves seven pinned P6C headers
 via sparse-checkout or SHA-verified GitHub REST bootstrap; never
 changes any P6C/P6D source. E15 PASS awaits CTest on runner.
+
+## E15 read-only real 2022 input CLI
+
+`p6e_p6c_hourly_bridge` now takes actual P5 formatted `SURF.DAT`
+and P4 `UP.DAT`, an upper-air station ID, and CSV output path:
+
+`build/p6e/p6e_p6c_hourly_bridge SURF.DAT UP.DAT <UPPER_STATION_ID> p6e-hourly.csv`
+
+This executes P6C's frozen 9-layer/10-face buffered hourly input
+pipeline and emits one row per actual 2022 hour (143 total), including
+the *physical* AA/BB older/newer mapping, RDSN row and temperature
+observations, explicit missing-vs-observed-zero precipitation code,
+and 00/12 sounding state. It is a **read-only preparatory trace**, not
+CALMET's 3D output and not full original COMP numerical parity.
+The runner CI compiles the CLI and tests its core typed mapping using
+synthetic 143-hour data. The runner job intentionally does not claim to
+have the actual SURF.DAT or UP.DAT payload until those files are
+explicitly supplied/generated and traced.
+
+The first E15 CI job #38125910348 exposed default self-hosted
+`GNU 9.5.0` incompatible with P6C's `std::chrono::sys_seconds`.
+P6E-only CI now selects **GCC >=11** and invalidates the stale CMake
+build cache; this is a toolchain correction, not a physics relaxation.

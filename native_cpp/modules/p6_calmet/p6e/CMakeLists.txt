@@ -198,3 +198,13 @@ else()
  target_compile_options(p6e_p6c_hourly_bridge_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME p6e_p6c_143h_hourly_boundary_contract COMMAND p6e_p6c_hourly_bridge_tests)
+
+# Read-only real SURF.DAT/UP.DAT 2022 observation boundary trace.
+add_executable(p6e_p6c_hourly_bridge src/p6c_hourly_bridge_main.cpp)
+target_link_libraries(p6e_p6c_hourly_bridge PRIVATE p6e_solar)
+target_include_directories(p6e_p6c_hourly_bridge PRIVATE ../include)
+if(MSVC)
+ target_compile_options(p6e_p6c_hourly_bridge PRIVATE /W4 /WX)
+else()
+ target_compile_options(p6e_p6c_hourly_bridge PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
