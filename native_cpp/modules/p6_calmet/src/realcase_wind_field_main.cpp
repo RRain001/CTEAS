@@ -184,6 +184,19 @@ int main(int argc,char** argv){
         }
     }
     fs::create_directories(args.out_dir);
+    if(!args.fixture_dir.empty()){
+        // The fixture directory is an output of this run: create it rather
+        // than making the caller prepare it (the gate step passes a fresh
+        // evidence path).
+        std::error_code error;
+        fs::create_directories(args.fixture_dir,error);
+        if(error||!fs::is_directory(args.fixture_dir))
+            throw std::runtime_error("cannot create fixture directory "+
+                                     args.fixture_dir.string());
+    }
+    if(!args.gamma_dir.empty()&&!fs::is_directory(args.gamma_dir))
+        throw std::runtime_error("GAMMA directory does not exist: "+
+                                 args.gamma_dir.string());
 
     const std::string deck=read_text(args.deck);
     const auto controls=deck_values(deck);
