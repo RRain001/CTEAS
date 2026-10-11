@@ -321,7 +321,7 @@ int dgm_steps_mode(const std::string& dump_path, const std::string& met_path,
     Tally puffdz_top, puffdz_bottom, advect_u, advect_v;
     Tally adjusted_u, adjusted_v, adjusted_ws, adjusted_calm;
     Tally step_length, step_distance, position_x, position_y, step_distance_m;
-    Tally cadence_nsam, cadence_tsamp, cadence_reftsamp;
+    Tally cadence_nsam, cadence_tsamp, cadence_reftsamp, cell_i, cell_j;
     long risewind_applied = 0;
     long risewind_skipped = 0;
     long puffs = 0;
@@ -452,6 +452,21 @@ int dgm_steps_mode(const std::string& dump_path, const std::string& met_path,
                 compare(step_distance_m, record.at(60), advance.distance_m, 1.0e-2, "distm",
                         record);
 
+                // GETCELL: the vendor's own cell for the puff's position.
+                cteas::puff::CellLookupInputs cell_inputs;
+                cell_inputs.x_cells = record.at(1);
+                cell_inputs.y_cells = record.at(2);
+                cell_inputs.nx = nx;
+                cell_inputs.ny = ny;
+                cell_inputs.domains = 1;
+                cell_inputs.domain = 1;
+                cell_inputs.nest_factor = 1.0;
+                const auto cell = cteas::puff::grid_cell(cell_inputs);
+                compare(cell_i, static_cast<double>(record.ixs), static_cast<double>(cell.i), 0.0,
+                        "ixs", record);
+                compare(cell_j, static_cast<double>(record.iys), static_cast<double>(cell.j), 0.0,
+                        "iys", record);
+
                 // The vendor's own cadence identities for a new point-source puff.
                 compare(cadence_nsam, static_cast<double>(record.nsam),
                         std::round(static_cast<double>(control.required_int("NSECDT")) /
@@ -533,6 +548,8 @@ int dgm_steps_mode(const std::string& dump_path, const std::string& met_path,
         report("NSAM_IDENTITY", cadence_nsam);
         report("TSAMP_EQ_REFTSAMP", cadence_tsamp);
         report("TSAMP_NOT_ABOVE_REFERENCE", cadence_reftsamp);
+        report("GETCELL_I_VENDOR_VS_PORT", cell_i);
+        report("GETCELL_J_VENDOR_VS_PORT", cell_j);
     }
     std::cout << "P7W_DGM_STEP_COMPARISON_IS_NOT_A_CONC_COMPARISON=true\n";
     return 0;

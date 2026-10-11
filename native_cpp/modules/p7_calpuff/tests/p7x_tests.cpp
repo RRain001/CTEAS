@@ -143,6 +143,39 @@ int main() {
     check_close(moved.distance_m, advance.wind_speed_ms * 66.666666, 1.0e-4, "DISTM = WS*TSAMP");
     check_close(moved.dx_cells, (-0.5793 * 66.666666) / 100.0, 1.0e-6, "DXOLD in grid units");
 
+    // GETCELL: the single-domain GRIDIJ path (truncate then add one, then the
+    // full-precision adjustment).
+    CellLookupInputs cell;
+    cell.nx = 50;
+    cell.ny = 50;
+    cell.domains = 1;
+    cell.domain = 1;
+    cell.nest_factor = 1.0;
+    cell.x_cells = 25.0;
+    cell.y_cells = 25.0;
+    auto located = grid_cell(cell);
+    check(located.i == 26 && located.j == 26, "grid cell at 25.0 cells is (26,26)");
+    check(located.domain == 1, "the selected domain is the only one");
+    cell.x_cells = 24.999;
+    located = grid_cell(cell);
+    check(located.i == 25, "a fraction below a cell edge stays in the lower cell");
+    cell.x_cells = 0.0;
+    cell.y_cells = 0.0;
+    located = grid_cell(cell);
+    check(located.i == 1 && located.j == 1, "the origin is cell (1,1)");
+    cell.x_cells = 49.999;
+    cell.y_cells = 49.999;
+    located = grid_cell(cell);
+    check(located.i == 50 && located.j == 50, "the last cell is reachable");
+    cell.x_cells = 80.0;      // beyond the domain: nudged just inside
+    cell.y_cells = 80.0;
+    located = grid_cell(cell);
+    check(located.i == 50 && located.j == 50, "a position beyond the edge is nudged inside");
+    cell.x_cells = -10.0;
+    cell.y_cells = -10.0;
+    located = grid_cell(cell);
+    check(located.i == 1 && located.j == 1, "a position before the origin is nudged inside");
+
     // Fail-closed refusals.
     SamplingCadenceInputs bad = cadence;
     bad.source_type = 2;
@@ -168,6 +201,15 @@ int main() {
     bad_advance = advance;
     bad_advance.step_s = std::nan("");
     check_refuses([&] { (void)advance_puff(bad_advance); }, "refuses a NaN step");
+    CellLookupInputs bad_cell = cell;
+    bad_cell.domains = 2;
+    check_refuses([&] { (void)grid_cell(bad_cell); }, "GETCELL refuses nested domains");
+    bad_cell = cell;
+    bad_cell.domain = 2;
+    check_refuses([&] { (void)grid_cell(bad_cell); }, "GETCELL refuses a non-outer domain");
+    bad_cell = cell;
+    bad_cell.nx = 0;
+    check_refuses([&] { (void)grid_cell(bad_cell); }, "GETCELL refuses an empty domain");
 
     std::cout << "P7X_STEP_INTEGRATION_CONTRACT=" << (failures == 0 ? "PASS" : "FAIL")
               << " CHECKS=" << checks << " FAILURES=" << failures << '\n';

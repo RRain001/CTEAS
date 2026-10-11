@@ -2032,3 +2032,24 @@ rise and position chain now reproduces the vendor's own instrumented numbers.
 
 Spans for the still-open pieces are pinned in the P7W anchor: `GETCELL`
 L82482-82742, `SETPUF` L48198-48757.
+
+## 2026-10-12 P7X (continued) GETCELL: the cell resolution closed against the dump
+
+`GETCELL` (calpuff.for L82482-82742) is ported for the deck's path: one met domain
+(`NGRID=1`) with `GRIDIJ` input coordinates, i.e. the vendor's truncate-then-add-one
+cell index, the nudge of a location that leaves the outer domain just inside its
+border (`DELTA1 = 0.5/NESTFACM X`), the "no valid cells" halt as a refusal, and the
+final full-precision adjustment `IX0 = (X+DX)+1`, `ICELL = MIN(MAX(1,IX0), NXM)`.
+The nested-domain and other coordinate-type paths are refused, not approximated.
+
+Compared against the vendor's own resolution on the same dump:
+- `P7W_DGM_STEP_GETCELL_I_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=0` (bit-exact)
+- `P7W_DGM_STEP_GETCELL_J_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=0` (bit-exact)
+- `P7X_STEP_INTEGRATION_CONTRACT=PASS CHECKS=49 FAILURES=0`
+
+Comparability statement update: the step chain's values AND the cell resolution are
+now comparable against original CALPUFF on the locked case. The remaining
+non-comparable pieces are SETPUF's `/CURRENT/` publication (L48198-48757, so
+`zpb_out`/`ze1` and the `xb1..sze1` block are not compared), the end-to-end driver
+that runs the reconstructed step loop over the case, and the CTEAS-only `CONC.DAT`
+header subset.

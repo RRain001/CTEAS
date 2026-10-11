@@ -9,6 +9,7 @@ namespace {
 
 using R = StepReal;
 
+constexpr R kZero = 0.0F;
 constexpr R kOne = 1.0F;
 constexpr R kHalf = 0.5F;
 
@@ -130,6 +131,48 @@ Advance advance_puff(const AdvanceInputs& inputs) {
     advance.x_cells = static_cast<double>(to_real(inputs.x_cells, "XOLD") + dxmold);
     advance.y_cells = static_cast<double>(to_real(inputs.y_cells, "YOLD") + dymold);
     return advance;
+}
+
+CellLookup grid_cell(const CellLookupInputs& inputs) {
+    // GETCELL L82559-82720, REAL*4, the single-domain GRIDIJ path.
+    require_true(inputs.domains == 1,
+                 "only one met domain is reconstructed; nested domains need the "
+                 "GRIDNEST plumbing, which is not reconstructed");
+    require_true(inputs.domain == 1, "only met domain 1 is reconstructed");
+    require_true(inputs.nx > 0 && inputs.ny > 0, "the domain must have cells");
+    require_true(inputs.nest_factor > 0.0, "the nesting factor must be positive");
+    const R delta1 = kHalf / to_real(inputs.nest_factor, "the nesting factor");
+    R x1 = to_real(inputs.x_cells, "x");
+    R y1 = to_real(inputs.y_cells, "y");
+    const R dx1 = to_real(inputs.dx_cells, "dx");
+    const R dy1 = to_real(inputs.dy_cells, "dy");
+    // Keep a location that leaves the outer domain just inside its border.
+    x1 = std::min(x1, static_cast<R>(inputs.nx) - delta1 - dx1);
+    x1 = std::max(x1, kZero - dx1);
+    y1 = std::min(y1, static_cast<R>(inputs.ny) - delta1 - dy1);
+    y1 = std::max(y1, kZero - dy1);
+
+    // The single-domain loop: the cell index is the truncated coordinate plus one.
+    CellLookup lookup;
+    lookup.domain = 1;
+    const R xk = x1;
+    const R yk = y1;
+    require_true(xk + dx1 >= kZero && yk + dy1 >= kZero,
+                 "the vendor halts when no valid cell is found for the location");
+    lookup.i = static_cast<int>(xk + dx1) + 1;
+    lookup.j = static_cast<int>(yk + dy1) + 1;
+    require_true(lookup.i >= 1 && lookup.i <= inputs.nx && lookup.j >= 1 &&
+                     lookup.j <= inputs.ny,
+                 "the vendor halts when no valid cell is found for the location");
+
+    // Final adjustment with the full precision of the input data.
+    R ix0 = to_real(inputs.x_cells, "x") + dx1 + kOne;
+    R iy0 = to_real(inputs.y_cells, "y") + dy1 + kOne;
+    ix0 = std::max(kOne, ix0);
+    iy0 = std::max(kOne, iy0);
+    lookup.i = std::min(static_cast<int>(ix0), inputs.nx);
+    lookup.j = std::min(static_cast<int>(iy0), inputs.ny);
+    return lookup;
 }
 
 } // namespace cteas::puff

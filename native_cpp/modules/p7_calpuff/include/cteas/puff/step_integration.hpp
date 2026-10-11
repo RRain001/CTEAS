@@ -76,4 +76,28 @@ struct Advance {
 
 [[nodiscard]] Advance advance_puff(const AdvanceInputs& inputs);
 
+// GETCELL (calpuff.for L82482-82742): the met grid cell and domain holding a
+// position. Only the single-domain GRIDIJ path is reconstructed - the deck runs
+// one met domain - and the nested-domain and other coordinate-type paths are
+// refused instead of approximated.
+struct CellLookupInputs {
+    double x_cells = 0.0;              // X (GRIDIJ: cell lengths from the domain origin)
+    double y_cells = 0.0;              // Y
+    double dx_cells = 0.0;             // DX (usually zero)
+    double dy_cells = 0.0;             // DY
+    int nx = 0;                        // NXM(1)
+    int ny = 0;                        // NYM(1)
+    int domains = 1;                   // NGRID
+    int domain = 1;                    // IDOM
+    double nest_factor = 1.0;          // NESTFAC(1)
+};
+
+struct CellLookup {
+    int i = 0;                         // ICELL
+    int j = 0;                         // JCELL
+    int domain = 1;                    // KDOM
+};
+
+[[nodiscard]] CellLookup grid_cell(const CellLookupInputs& inputs);
+
 } // namespace cteas::puff
