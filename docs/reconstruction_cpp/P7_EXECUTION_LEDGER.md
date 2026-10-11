@@ -117,3 +117,16 @@ Previous successful existing Linux CTEAS builds do not establish the
 compiler selected inside this independent P7 runner job. The most recent
 P7 CI 38122937191 attempt 2 failed on github.com HTTPS before compilation;
 therefore the new compiler selection has not yet been proven by CI.
+
+## 2026-10-11 GNU Fortran 11 fixed-column source diagnosis
+
+Actual Runner-3 job [38123324977](https://github.com/RRain001/CTEAS/actions/runs/38123324977)
+selected `/usr/bin/gfortran-11` (GNU Fortran 11.4.0), so the old
+gfortran 4.7.4 problem has been resolved. Original `calpuff.for` contains
+legacy fixed-format sequence identifiers in columns 73–80; the accidental
+`-ffixed-line-length-none` option made those identifiers parse as Fortran
+tokens, causing cascaded unexpected declarations/duplicate labels/junk
+after function declaration. Build flag corrected to explicit
+`-ffixed-line-length-72`. This is compilation behavior correction,
+**NOT a change to the original Fortran source** and not a claim of
+successful numerical/reference validation.

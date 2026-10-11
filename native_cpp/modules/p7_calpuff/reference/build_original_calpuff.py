@@ -15,8 +15,11 @@ import subprocess
 REPO = Path(__file__).resolve().parents[4]
 VENDOR = REPO / "engine/vendor/src/CALPUFF_v7.2.1_L150618"
 SOURCE = ("modules.for", "calpuff.for")
+# Source is strict fixed-format Fortran with original sequence identifiers in
+# columns 73–80; unlimited fixed-line parsing misreads them as source code.
+# Preserve the original 72-column statement window, including module file.
 FLAGS = ("-O0", "-std=legacy", "-fno-automatic", "-fno-align-commons",
-         "-fallow-argument-mismatch", "-ffixed-line-length-none")
+         "-fallow-argument-mismatch", "-ffixed-line-length-72")
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -72,7 +75,11 @@ def build(output: Path, source: Path, compiler: str) -> None:
         # Do not hide original Fortran build failure in an ephemeral runner.
         print("P7A_ORIGINAL_FORTRAN_COMPILE=FAIL", flush=True)
         print("BEGIN_ORIGINAL_FORTRAN_COMPILER_DIAGNOSTICS", flush=True)
-        print("\n".join(proc.stdout.splitlines()[-160:]), flush=True)
+        lines = proc.stdout.splitlines()
+        print("FIRST_COMPILER_DIAGNOSTICS", flush=True)
+        print("\n".join(lines[:100]), flush=True)
+        print("LAST_COMPILER_DIAGNOSTICS", flush=True)
+        print("\n".join(lines[-100:]), flush=True)
         print("END_ORIGINAL_FORTRAN_COMPILER_DIAGNOSTICS", flush=True)
         raise RuntimeError("Original CALPUFF compilation failed; see build.log and CI diagnostics")
     print("P7A_ORIGINAL_FORTRAN_COMPILE=PASS")
