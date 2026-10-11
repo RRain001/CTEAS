@@ -16,10 +16,10 @@ concurrency:
   cancel-in-progress: true
 jobs:
   p6e-solar-original:
-    # GitHub-hosted minutes exhausted; use the repository's registered runner
-    # (the job UI must confirm runner_name=lhy-desktop before parity can PASS).
-    # Targeting the self-hosted label avoids assuming a custom-name label exists.
-    runs-on: self-hosted
+    # Dedicated P6E host: do not share generic self-hosted queue with P6D.
+    # lhy-desktop-2 must be registered with custom GitHub runner LABEL
+    # lhy-desktop-2 (a runner's display name alone is NOT a scheduling label).
+    runs-on: [self-hosted, lhy-desktop-2]
     timeout-minutes: 15
     steps:
       - name: Identify runner and probe source transports
@@ -29,8 +29,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "Runner: $RUNNER_NAME; OS: $RUNNER_OS; arch: $RUNNER_ARCH"
-          if [[ "$RUNNER_NAME" != "lhy-desktop" || "$RUNNER_OS" != "Linux" ]]; then
-            echo "::error::Expected Linux self-hosted lhy-desktop, got $RUNNER_NAME/$RUNNER_OS"
+          if [[ "$RUNNER_NAME" != "lhy-desktop-2" || "$RUNNER_OS" != "Linux" ]]; then
+            echo "::error::Expected Linux self-hosted lhy-desktop-2, got $RUNNER_NAME/$RUNNER_OS"
             exit 1
           fi
           if curl -fIsS --connect-timeout 5 --max-time 8 "https://github.com/" >/dev/null 2>&1; then
@@ -38,7 +38,7 @@ jobs:
             echo "github.com source transport: CONNECTED"
           else
             echo "github=no" >> "$GITHUB_OUTPUT"
-            echo "::warning::github.com:443 transport unavailable from lhy-desktop"
+            echo "::warning::github.com:443 transport unavailable from lhy-desktop-2"
           fi
           if curl -fIsS --connect-timeout 5 --max-time 8 \
               -H "Authorization: Bearer $GH_TOKEN" \
@@ -48,10 +48,10 @@ jobs:
             echo "api.github.com private repository REST transport: CONNECTED"
           else
             echo "api=no" >> "$GITHUB_OUTPUT"
-            echo "::warning::api.github.com:443 REST transport unavailable from lhy-desktop"
+            echo "::warning::api.github.com:443 REST transport unavailable from lhy-desktop-2"
           fi
           if ! grep -Eq '^github=yes|^api=yes' "$GITHUB_OUTPUT"; then
-            echo "::error::Neither github.com nor api.github.com is available on lhy-desktop: fix outbound HTTPS/proxy first"
+            echo "::error::Neither github.com nor api.github.com is available on lhy-desktop-2: fix outbound HTTPS/proxy first"
             exit 1
           fi
       - name: Checkout required source when github.com is reachable
@@ -130,12 +130,12 @@ jobs:
           test -f engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for || {
             echo "::error::Original CALMET vendor source not retrieved"; exit 1;
           }
-      - name: Identify lhy-desktop and verify toolchain
+      - name: Identify lhy-desktop-2 and verify toolchain
         shell: bash
         run: |
           echo "Runner: ${RUNNER_NAME}; OS: ${RUNNER_OS}; arch: ${RUNNER_ARCH}"
-          if [[ "${RUNNER_NAME}" != "lhy-desktop" ]]; then
-            echo "::error::Expected lhy-desktop but received ${RUNNER_NAME}"
+          if [[ "${RUNNER_NAME}" != "lhy-desktop-2" ]]; then
+            echo "::error::Expected lhy-desktop-2 but received ${RUNNER_NAME}"
             exit 1
           fi
           if [[ "${RUNNER_OS}" != "Linux" ]]; then
@@ -144,7 +144,7 @@ jobs:
           fi
           for tool in cmake c++ gfortran python3 git; do
             if ! command -v "${tool}" >/dev/null 2>&1; then
-              echo "::error::Missing tool ${tool} on lhy-desktop; install it on the runner host"
+              echo "::error::Missing tool ${tool} on lhy-desktop-2; install it on the runner host"
               exit 1
             fi
             command -v "${tool}"
