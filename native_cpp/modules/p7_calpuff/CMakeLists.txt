@@ -110,3 +110,29 @@ add_test(NAME cteas_p7_2022_case_ledger_contract COMMAND cteas_p7_case_ledger_te
 add_test(NAME cteas_p7_2022_ledger_real_2023_refusal
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/case_ledger_real_2023_tests.py"
           --binary "$<TARGET_FILE:cteas_p7_2022_case_ledger>")
+
+# P7D: CALPUFF 7.2.1 dispersion coefficients for the selected MDISP=3 path
+# (PG rural + MP/Briggs urban). Vendor source anchors, not a physics claim.
+add_library(cteas_p7_dispersion STATIC src/dispersion.cpp)
+target_include_directories(cteas_p7_dispersion PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_dispersion PUBLIC cteas_p7_control)
+if(MSVC)
+  target_compile_options(cteas_p7_dispersion PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_dispersion PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7d_sigma_probe src/dispersion_probe.cpp)
+target_link_libraries(cteas_p7d_sigma_probe PRIVATE cteas_p7_dispersion)
+add_executable(cteas_p7_dispersion_tests tests/dispersion_tests.cpp)
+target_link_libraries(cteas_p7_dispersion_tests PRIVATE cteas_p7_dispersion)
+if(MSVC)
+  target_compile_options(cteas_p7_dispersion_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_dispersion_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7d_dispersion_contract COMMAND cteas_p7_dispersion_tests)
+
+add_test(NAME cteas_p7d_sigma_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/sigma_fortran_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7d_sigma_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")

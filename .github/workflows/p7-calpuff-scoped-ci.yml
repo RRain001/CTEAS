@@ -251,6 +251,21 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/tests/case_ledger_real_2023_tests.py \
             --binary "$scratch/build/cteas_p7_2022_case_ledger" \
             --report "$scratch/historical-2023/2022-ledger-refusal.json" --require
+      - name: P7D MDISP=3 dispersion vendor source and Fortran parity (required)
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 native_cpp/modules/p7_calpuff/tests/sigma_fortran_parity_tests.py \
+            --probe "$scratch/build/cteas_p7d_sigma_probe" \
+            --repo-root "$GITHUB_WORKSPACE" --require
+      - name: P7D real deck dispersion option audit (MDISP=3 is the real-case path)
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          "$scratch/build/cteas_p7d_sigma_probe" --audit \
+            project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp
       - name: Selected 2022 real MET.DAT I/O parity (opt-in immutable input)
         shell: bash
         env:

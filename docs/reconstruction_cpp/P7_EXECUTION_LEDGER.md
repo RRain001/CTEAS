@@ -327,3 +327,82 @@ stations are part of the selected scope). `P7_FROZEN_2022_MET_DAT`,
 `P7_FROZEN_2022_PUFF_INP` and both SHA256 repository variables remain
 unset, so the 2022 50x50/100 m case is still
 `BLOCKED_NO_FROZEN_2022_CASE`, and P7D/P7E/P7F/P7G stay unchanged.
+
+## 2026-10-11 P7D MDISP=3 dispersion coefficients (PG rural + MP urban)
+
+The selected real deck `project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp`
+carries `MDISP=3`, `MDISP2=3`, `MTURBVW=3`, `MTAULY=0`, `MHFTSZ=0`, `MROUGH=0`,
+`AVET=60.`, `PGTIME=60.`, `SYTDEP=5.5E2` and `MDRY=1`. For MDISP=3 the vendor
+documentation states: "3 = PG curves (rural), MP (urban)" (`csigma.puf`), so
+`MDISP2`, `MTURBVW` and `MTAULY` are recorded but **not effective** for this
+case (they enter IDOPT 1, 2 and 5 only). `MDISP=3` is therefore the real-case
+dispersion path and the one now reconstructed; wet scavenging (`MWET=0`),
+chemistry (`MCHEM=0`), slug mode (`MSLUG=0`) and gravity settling/tilt
+(`MTILT=0`) remain out of this path, and dry deposition (`MDRY=1`) is the next
+physical path, not yet implemented.
+
+New native module (`include/cteas/puff/dispersion.hpp`, `src/dispersion.cpp`,
+probe `src/dispersion_probe.cpp`):
+
+- SIGTY equivalent: rural Pasquill-Gifford-Turner sigma-y with the ISC 6-8
+  C/D pair per class, averaging-time factor `(AVET/PGTIME)**0.2`, per-cell
+  roughness factor `YZ0FAC`, the secant pseudo-distance inversion for a
+  non-zero start-of-step sigma (CRIT = 1e-4, 50 iteration limit, 0.85 step
+  restriction) and the Heffter (1965) time-based growth beyond `SYH`, with
+  `THFTY` obtained exactly as SETCSIG does (`SIGTY` with `SIGY0 = SYH`).
+- SIGTZ equivalent: rural ISC multi-segment sigma-z (segment A/B pairs per
+  class, segment selection on the SIGSET junctions, optional roughness
+  adjustment `A' = A*AZ0FAC`, `B' = B-BZ0TRM` when `BZ0TRM > -999`), and urban
+  McElroy-Pooler/Briggs sigma-z with the ISC 5000 m cap. Urban sigma-y uses
+  Briggs `AYURB`/`XIYURB`; `XVY`/`XVZ` pseudo-distances are ported verbatim
+  (including the cubic branch for classes A and B).
+- Tables from the vendor `BLOCK DATA`/`SIGTY` DATA statements
+  (`AYURB`, `XIYURB`, `AZURB`, `XIZURB`, `NZBRUR`, `XZBRUR`, `AZRUR`, `BZRUR`,
+  `AYT`, `AZT`, `AYPGT`, `BYPGT`, `SYH`, `SZH`, ISC `C`/`D`), plus the SIGSET
+  junction recomputation from the A/B continuity condition.
+- Original semantics reproduced: the stability class is conditioned to 6 above
+  6 (SETCSIG), small negative increments are reset to zero and reported while
+  larger ones fail closed at the original `ZEROSEC(2)`/`ZEROKM(2)` thresholds,
+  and `SYTDEP` is clipped to `NINT(AVEFAC*100)*1000`.
+- Fail closed (deviation from the original, which silently propagates or
+  halts): negative or non-finite sigma inputs, non-finite results, negative or
+  non-finite setup values, unsupported `MDISP`, unsupported `MROUGH`/`MHFTSZ`
+  values, `MROUGH=1` (gridded CALMET z0 plumbing not reconstructed; use
+  `roughness_adjustment(z0)` per cell) and `MHFTSZ=1` (HEFTRAN transition time
+  not reconstructed).
+
+Not yet reconstructed: the `SIGMA()` nearest-known-sigma restart wrapper,
+`HEFTRAN` slug geometry, `MROUGH=1` gridded roughness plumbing, and MDISP 1, 2,
+4 and 5. No advection, concentration, deposition or chemistry is claimed.
+
+### Source anchor
+
+`reference/sigma_source_anchor.py` slices the exact line spans of the vendor
+units out of the unmodified `calpuff.for` (no edits), pins the vendor file and
+all vendor `*.puf` includes by SHA-256 in `reference/sigma_source_anchor.json`,
+and stages the spans plus the hand-written driver
+`reference/sigma_oracle_driver.f` for compilation. Vendor source:
+`sha256 da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568`,
+`BLOCK DATA` L1999-2424, `SIGSET` L52303-52502, `SIGTY` L50797-51215,
+`SIGTZ` L51263-51752, `XVY` L51217-51261, `XVZ` L51754-51838,
+`WARN` L79648-79797. Any drift fails the `--check` mode.
+
+### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
+
+- `cteas_p7d_dispersion_contract`: hand-derived closed-form values (classes C,
+  D urban/rural), monotone growth for all six classes, pseudo-distance round
+  trip, Heffter growth, roughness adjustment, averaging factor, control audit
+  and every fail-closed path. PASS.
+- `cteas_p7d_sigma_source_parity`: vendor anchor + 243 table values bit-exact
+  as REAL*4 (including the SIGSET junctions, max recomputation deviation
+  1.4e-6 relative) + 612-case matrix against the compiled **unmodified**
+  vendor oracle: `MAX_REL=2.596e-07` with acceptance `1e-5` across 7 columns.
+  PASS in 4.3 s.
+- Local `ctest` 10/11 PASS; the only failure is the pre-existing
+  macOS case-insensitive-filesystem failure of
+  `cteas_p7_original_case_stage_contract` (reproduced from pristine HEAD, PASS
+  on Linux).
+
+The workflow runs the parity test with `--require` (a Fortran compiler is
+mandatory there) and audits the real deck with
+`cteas_p7d_sigma_probe --audit`, asserting `MDISP=3` is the selected option.
