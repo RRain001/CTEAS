@@ -213,3 +213,26 @@ historical decoding until this fix is validated by the next run.
 
 Preserve the new historical original-reference JSON, log and
 `puff.con` as a short-lived GitHub Actions artifact on private PR.
+
+## 2026-10-11 P7C first source and transport implementation
+
+The P7C C++20 prototype implements:
+- Strict single constant original `NPT1=1` source `X` parsing. UTM
+  coordinates are converted km -> m; stack altitude is geometric base +
+  stack height, **WITHOUT** Briggs plume rise.
+- Independent emitted species mass array (as provided in original
+  source units, no arbitrary tritium Bq/g conversion), deterministic
+  sequential puff IDs and one emission per configured time step.
+- Original CALMET i-fastest [z][j][i] 3D wind storage; cell-centred
+  horizontal bilinear and flat-terrain layer-centre vertical interpolation.
+- Explicit midpoint RK2 advection; out-of-domain puffs are classified
+  as outflow, not silently clamped or lost.
+- Per-species equality: release = active inventory + domain outflow.
+  Negative/NaN rates, malformed geometry and fields fail closed.
+
+These are **P7C software contracts only**. Original CALPUFF release
+cadence and source term units/physical momentum and wind/terrain
+transformations still require original Fortran numerical comparison.
+The 2023 original CONC.DAT does not establish P7C puff trajectory
+parity, since P7D dispersion and P7E concentration have not been
+reconstructed. CI result pending.

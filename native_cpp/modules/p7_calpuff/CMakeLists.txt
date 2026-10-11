@@ -60,3 +60,18 @@ add_test(NAME cteas_p7_original_case_stage_contract
 
 add_test(NAME cteas_p7_historical_2023_scope_contract
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/legacy_2023_scope_tests.py")
+
+# P7C isolated constant-source / prescribed wind transport prototype;
+# no dispersion/concentration equivalence until P7D/E gates.
+add_library(cteas_p7_transport STATIC src/transport.cpp)
+target_include_directories(cteas_p7_transport PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_transport PUBLIC cteas_p7_control)
+if(MSVC)
+  target_compile_options(cteas_p7_transport PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_transport PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7_transport_tests tests/transport_tests.cpp)
+target_link_libraries(cteas_p7_transport_tests PRIVATE cteas_p7_transport)
+add_test(NAME cteas_p7c_release_advection_inventory_contract
+  COMMAND cteas_p7_transport_tests)
