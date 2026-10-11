@@ -204,6 +204,8 @@ TRACKS: dict[str, dict] = {
             {"cmd": ["{build}/cteas_p7t_probe", "--deck-valley", MET_DAT, PUFF_INP, "0",
                      "513.3846439571", "3533.7689269678", "70.8"],
              "requires": [MET_DAT, PUFF_INP]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/reference/p7u_source_anchor.py",
+                     "--check", "native_cpp/modules/p7_calpuff/reference/p7u_source_anchor.json"]},
             {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/p7i_parity_tests.py",
                      "--probe", "{build}/cteas_p7i_tests", "--repo-root", ".", "--require"]},
             {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/p7h_parity_tests.py",
