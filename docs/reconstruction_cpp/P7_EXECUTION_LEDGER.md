@@ -418,3 +418,113 @@ vendor routines, versus 2.596e-07 on macOS with gfortran 16.2.0) and
 `P7D_DISPERSION_OPTION_AUDIT=PASS MDISP=3 SELECTED_OPTION_IS_REAL_CASE_PATH=true
 MDISP2_EFFECTIVE=false MTURBVW_EFFECTIVE=false MTAULY_EFFECTIVE=false` for the real
 2023 deck. `MDRY=1` dry deposition is the next physical path and is not implemented.
+
+## 2026-10-11 P7F MDRY=1 dry deposition (computed gas, real-case species)
+
+The locked Hefei 2022 deck
+(`project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp`)
+carries `MDRY=1`, the default `RCUTR=30` s/cm, `RGR=10` s/cm, `REACTR=8.0`,
+`NINT=9`, `IVEG=1`, `ZFACE` with a 20 m first layer (so `ZREF=10 m`), and two
+species in input group 3a:
+
+| species | modeled | emitted | dry deposition | group 7 parameters |
+|---|---|---|---|---|
+| `H-3` | 1 | 1 | `1` = COMPUTED-GAS | `DIFFUSIVITY .1509` cm**2/s, `ALPHA STAR 1.0`, `REACTIVITY 8.0`, `MESOPHYLL 0.0` s/cm, `HENRY 0.04` |
+| `HE-3` | 1 | 0 | `0` = no dry removal | none |
+
+So the real dry-deposition path is the gas resistance model for one species.
+`IDRY=0` in input group 5, i.e. **the case writes no dry-flux output**: the
+frozen `run/puff/puff.con` (1,896,056 bytes, 3,655 sequential-unformatted
+records, 11 distinct record sizes, clean 4-byte envelope) contains
+concentration records only.
+
+New native module (`include/cteas/puff/dry_deposition.hpp`,
+`src/dry_deposition.cpp`, probe `src/drydep_probe.cpp`):
+
+- Input group 3a species table (hyphenated names, which the generic
+  `!KEY=value!` parser cannot express), input group 7 gas parameters and input
+  group 9 reference values are parsed from the control text with anchored
+  patterns, and cross-checked against `CSPEC`.
+- DRYI equivalents: `cm**2/s -> m**2/s` and `s/cm -> s/m` conversions,
+  `SC = vair/pdiff`, `RD1 = d1*SC**d2/vk`, `RCUT = RCUTR*REACTR/REACT`,
+  `RGG = RGR*REACTR/REACT`, `RGW1 = HENRY/(ALPHAS*d3)`, and
+  `ZREF = min(0.5*(ZFACE1+ZFACE2), 10)`.
+- VDCOMP equivalent: the aerodynamic resistance (stability-dependent `PSIH`,
+  `USMIN` floor, `RAMIN` floor, wind-driven water roughness
+  `z0m = 2e-6*w**2.5` with the 1 m/s threshold), the deposition-layer term
+  `RD1/u*`, the canopy resistance from stomatal (`PCONST`, `BMIN`/`BMAX`,
+  `QSWMAX` radiation interpolation and the 35 C/10 C temperature branches),
+  mesophyll, cuticle and ground/water terms, and `vd = 1/(RA+RD+RC)`.
+- DRY uniformly-mixed branch: `DIFFK` from `CONK1`/`CONK2`, `u*`, `w*` and the
+  mixing height, `VDPVD = DIFFK/(DIFFK+vd*dz)`, and
+  `FRACDRY = exp(-VDPVD*vd*dt/lid)`.
+- Fail closed: `MDRY != 1`, particle deposition (method 2), user-specified
+  diurnal velocities (method 3), illegal method values, a gas species without
+  group 7 parameters, group 7 rows for unknown or non-deposited species, a
+  species list that disagrees with `CSPEC`, non-positive `RCUTR`/`RGR`/
+  `REACTR`/diffusivity/alpha/reactivity, `IVEG` outside 1-3, and non-finite or
+  out-of-range environment inputs (lid height, sampling step, mixing height,
+  `w*`, temperature, `u*`, `L`, LAI, roughness, vegetation state) all raise
+  instead of being ignored.
+- Not reconstructed: the Gaussian-puff removal branch (needs the `VCBar`
+  vertical coupling coefficient), the `RDVD` input table and the particle
+  physics of `DRYI`/`VDP1`.
+
+### Source anchor
+
+`reference/drydep_source_anchor.py` slices the exact spans out of the
+unmodified `calpuff.for` and pins them in
+`reference/drydep_source_anchor.json`: compiled by the oracle
+`VDCOMP` L26293-26565 and `VDP` L26567-26681; anchored read-only `BLOCK DATA`
+L1999-2424, `DRY` L26052-26291, `DRYI` L26820-27042, `RDVD` L26683-26818 and
+`VDP1` L27044-27208, plus every vendor `*.puf` include. Vendor source
+`sha256 da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568`.
+The DRYI statements that are ported by hand are asserted to still be present
+verbatim in the anchored text, and the /DRYGAS/ constants (`PCONST`, `BMIN`,
+`BMAX`, `QSWMAX`, `DCONST1`-`DCONST4`) are read back from the vendor BLOCK DATA
+and compared with the values compiled into the module.
+
+### CTest evidence
+
+- `cteas_p7f_dry_deposition_contract`: hand-derived closed forms (inactive
+  vegetation, hot/cold stomata, radiation interpolation and clamping, water
+  cell with wind-driven roughness, neutral/stable `PSIH` branches, `u*` floor),
+  the removal fraction, and every fail-closed path. PASS.
+- `cteas_p7f_locked_case_dry_deposition`: the locked Hefei 2022 deck is audited
+  in C++ (`MDRY=1`, H-3 gas, HE-3 none, `ZREF=10`, `RCUTR=3000` s/m,
+  `RGR=1000` s/m, `REACTR=8`, `RD1=4.9801`). PASS.
+- `cteas_p7f_drydep_source_parity`: anchors + 8 vendor constants + 11 quoted
+  DRYI statements + **11,520 cases x 2 species against the compiled unmodified
+  VDCOMP**: `MAX_REL=1.414e-07` (float32 level) against a fixed `1e-5`
+  acceptance bound, plus the real-deck audit
+  (`P7F_REAL_DECK_DRYDEP_AUDIT=PASS MDRY=1 GAS_SPECIES=1 NON_DEPOSITED=1
+  UNSUPPORTED=0 VEGETATION_STATE=1 ZREF_M=10 RD1_SPECIES_0=4.9801`). PASS in
+  1.4 s.
+- Local `ctest` 13/14 PASS; the only failure remains the pre-existing macOS
+  case-insensitive-filesystem failure of
+  `cteas_p7_original_case_stage_contract` (PASS on Linux).
+
+### Real-case comparability statement (no fabricated comparison)
+
+`run/puff/puff.con` is **not yet comparable** with the new C++ deposition
+velocities, and no comparison number is claimed. Verified gaps:
+
+1. `IDRY=0` in the locked deck: the artifact has no dry-flux records, and the
+   original writes per-step `vd` only behind its debug flag, so a
+   case-level dry-flux comparison is impossible without re-running the
+   original with debug output (out of scope here).
+2. Per-cell dry-deposition inputs are missing: the P7B CALMET.DAT reader
+   decodes the hourly typed fields (`USTAR`, `ZI`, `EL`, `QSW`, `TEMPK`, ...)
+   but skips the static header records, so the real-case `Z0`, land use and
+   `XLAI` are not available yet.
+3. No puff-state integration: the `SIGMA()` restart wrapper, `HEFTRAN` and the
+   `VCBar` coupling coefficient are not reconstructed, and P7C is still a
+   prototype, so the removal fraction cannot be advanced over a real puff
+   trajectory.
+4. No concentration output: P7E does not exist, so there is nothing to diff
+   against the 3,655 concentration records of `puff.con`.
+
+What is comparable and now compared: the deposition velocity and the
+time-invariant parameters for the real species configuration, against the
+unmodified vendor routines (above), which is the strongest available
+original-reference check at this stage.
