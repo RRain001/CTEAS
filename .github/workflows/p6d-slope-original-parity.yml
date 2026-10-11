@@ -16,9 +16,17 @@ permissions:
 jobs:
   p6d-original-slope:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, lhy-desktop]
     timeout-minutes: 15
     steps:
+      - name: Verify dedicated P6D runner
+        shell: bash
+        run: |
+          echo "P6D runner=$RUNNER_NAME os=$RUNNER_OS arch=$RUNNER_ARCH"
+          if [[ "$RUNNER_NAME" != "lhy-desktop" || "$RUNNER_OS" != "Linux" ]]; then
+            echo "::error::P6D must run on the Linux lhy-desktop runner"
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - name: Select self-hosted C++20 and Fortran tools
         uses: ./.github/actions/cteas-linux-toolchain
