@@ -1,0 +1,65 @@
+name: P2 GEN independent numerical comparison
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/**'
+      - '.github/workflows/p2-gen-reference-compare.yml'
+jobs:
+  compare:
+    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reference toolchain
+        run: sudo apt-get update && sudo apt-get install -y gfortran libgdal-dev
+      - name: Configure modern C++20
+        run: cmake -S native_cpp -B /tmp/cteas-p2-build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build scoped C++ implementation
+        run: cmake --build /tmp/cteas-p2-build -j2
+      - name: Run tests
+        run: ctest --test-dir /tmp/cteas-p2-build --output-on-failure
+      - name: Capture original TERREL CTGPROC reference
+        run: python3 native_cpp/reference/capture_p1_p2.py --output /tmp/p2-compare-reference
+      - name: Compute projected GEN fractions from same samples and grid
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r X Y < <(python3 - <<'PY'
+          import json
+          m=json.load(open('/tmp/p2-compare-reference/manifest.json'))
+          print(m['grid']['x0_km'],m['grid']['y0_km'])
+          PY
+          )
+          /tmp/cteas-p2-build/cteas_p2_gen_fraction \
+            calpuff_terrain_and_landuse_data_crop/hefei_5km/eurasia_asia_landuse/eausgs2_0la_hefei_5km.generic.txt \
+            "$X" "$Y" /tmp/p2-compare-reference/p2_cpp_fractions.csv
+      - name: Compare 2500 x 38 fields and independent original count
+        run: python3 native_cpp/reference/compare_p2_gen.py --reference /tmp/p2-compare-reference --cpp /tmp/p2-compare-reference/p2_cpp_fractions.csv --report /tmp/p2-compare-reference/p2_numeric_comparison.json
+      - name: Generate separately isolated, multi-category original GEN reference
+        run: python3 native_cpp/reference/prepare_p2_heterogeneous.py --capture-dir /tmp/p2-compare-reference --output /tmp/p2-compare-reference/heterogeneous
+      - name: Calculate synthetic multi-category C++ fractions from identical points
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r X Y < <(python3 - <<'PY'
+          import json
+          m=json.load(open('/tmp/p2-compare-reference/manifest.json'))
+          print(m['grid']['x0_km'],m['grid']['y0_km'])
+          PY
+          )
+          /tmp/cteas-p2-build/cteas_p2_gen_fraction \
+            /tmp/p2-compare-reference/heterogeneous/data/generic_landuse.txt \
+            "$X" "$Y" /tmp/p2-compare-reference/heterogeneous/p2_cpp_fractions.csv
+      - name: Independently compare 95000 synthetic fractions and all point counts
+        run: python3 native_cpp/reference/compare_p2_gen.py --reference /tmp/p2-compare-reference/heterogeneous --cpp /tmp/p2-compare-reference/heterogeneous/p2_cpp_fractions.csv --report /tmp/p2-compare-reference/heterogeneous/p2_comparison.json
+      - name: Preserve evidence even on numerical failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-gen-scoped-numerical-evidence
+          path: /tmp/p2-compare-reference
+          if-no-files-found: warn
+          retention-days: 7
