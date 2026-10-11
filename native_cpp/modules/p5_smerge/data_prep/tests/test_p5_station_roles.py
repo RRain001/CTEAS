@@ -45,6 +45,35 @@ class SparseStationTests(unittest.TestCase):
         self.assertEqual(meta["wind_forward_filled_hours"],0)
         self.assertEqual(meta["calm_interpolated_hours"],0)
 
+    def test_arbitrary_multi_hour_multi_day_sparse_gaps_never_reindexed(self):
+        # 18->20 is just one example; ANY absent hours remain absent,
+        # including 37-hour, multi-month and year-edge spans.
+        source_hours = pd.to_datetime([
+            "2022-01-01 00:00",
+            "2022-01-03 09:00",
+            "2022-05-10 13:00",
+            "2022-12-31 23:00",
+        ])
+        df = pd.DataFrame({
+            "Month": source_hours.month, "Day": source_hours.day,
+            "Year": source_hours.year, "Hour": source_hours.hour * 100,
+            "deg": [45., 360., 0., 180.],
+            "ms-1": [3., 0., 0., 2.],
+            "DegC": [20., 9999., 22., 23.],
+        }, index=source_hours)
+        result, audit, summary = standardize_sparse_station(df)
+        self.assertTrue(result.index.equals(source_hours))
+        self.assertEqual(len(result), 4)
+        self.assertNotIn(pd.Timestamp("2022-01-02 00:00"), result.index)
+        self.assertNotIn(pd.Timestamp("2022-04-01 00:00"), result.index)
+        self.assertNotIn(pd.Timestamp("2022-12-31 22:00"), result.index)
+        self.assertEqual(summary["rows_created_for_absent_hours"], 0)
+        self.assertEqual(summary["wind_forward_filled_hours"], 0)
+        self.assertEqual(summary["calm_interpolated_hours"], 0)
+        self.assertEqual(tuple(result.iloc[1][["deg","ms-1"]]), (0.,0.))
+        self.assertEqual(tuple(result.iloc[2][["deg","ms-1"]]), (0.,0.))
+        self.assertEqual(result.iloc[1]["DegC"], 9999.)
+
     def test_smerge_missing_sentinel_is_9999_for_pair_and_nonwind(self):
         out,_,meta=standardize_sparse_station(self.observations())
         self.assertEqual(tuple(out.loc["2022-01-01 21",["deg","ms-1"]]),(9999.,9999.))
