@@ -350,6 +350,7 @@ int main(int argc,char** argv){
         speed_max=std::max(speed_max,speed);
 
         Wind1SelectedStationHour station;
+        bool settings_upper_layer_one_valid=true;
         station.hour_end=clock;
         station.surface_station_id=surface.station_id;
         station.upper_station_id=upper.station_id;
@@ -373,6 +374,14 @@ int main(int argc,char** argv){
             throw std::runtime_error(
                 "hourly upper profile is not nine layers at "+hour_label(clock));
         for(std::size_t k=0;k<9;++k)station.upper_observed_profile[k]=hour.winds[k];
+        // Original PREPDI leaves the upper-air first level unset when
+        // IEXTRP<=0 (`IF (IEXTRP .LE. 0) I1=2`, calmet.for L14005 and L14099);
+        // the deck sets IEXTRP=-4, so level 1 carries the original missing
+        // sentinel and is masked out of the first guess.
+        if(iextrp<=0){
+            station.upper_observed_profile[0]=LayerWind{999999.f,999999.f};
+            settings_upper_layer_one_valid=false;
+        }
 
         Wind1FirstGuessSelectedControls settings;
         settings.nx=nx;settings.ny=ny;settings.nz=nz;
@@ -381,6 +390,7 @@ int main(int argc,char** argv){
         settings.icalm=icalm;settings.iextrp=iextrp;
         for(std::size_t k=0;k<9;++k)
             settings.upper_layer_valid[k]=true;
+        if(!settings_upper_layer_one_valid)settings.upper_layer_valid[0]=false;
         const auto first=wind1_firstguess_selected(station,settings);
         write_f32(args.out()/("wind1_u_"+hour_label(clock)+".f32"),first.ug_mps);
         write_f32(args.out()/("wind1_v_"+hour_label(clock)+".f32"),first.vg_mps);
