@@ -2,7 +2,7 @@
 // Output is a trace for independent source-backed checks, NOT CALMET.DAT.
 #include "cteas/p6/comp_buffered_timeline.hpp"
 #include "cteas/p6/read_geo.hpp"
-#include "cteas/p6/read_surface.hpp"
+#include "cteas/p6/surface_hourly_state.hpp"
 #include <chrono>
 #include <exception>
 #include <fstream>
@@ -25,11 +25,14 @@ int main(int argc,char** argv) {
         const auto hours=comp_selected_2022_hours(upper,faces,std::stoi(argv[8]),std::stoi(argv[9]));
         if(surf.hourly.size()!=hours.size()||hours.size()!=143)
             throw std::runtime_error("COMP-SURF interval count mismatch");
+        RdsnBufferedTimeline surface_state(surf,std::stoi(argv[8]));
         std::ofstream out(argv[4]);
         if(!out)throw std::runtime_error("COMP output CSV inaccessible");
         out<<"hour_index,start_epoch_s,end_epoch_s,geo_center_terrain_m,geo_center_z0_m,"
               "surf_station_id,upper_station_id,surf_ws,surf_wd,surf_cloud,surf_temp_k,"
               "surf_precip_code,wind_valid,cloud_valid,temp_valid,precip_valid,"
+              "surf_ceiling,surf_rh,surf_pres,surf_ceiling_valid,surf_rh_valid,surf_pres_valid,"
+              "rdsn_record_index,rdsn_reads,rdsn_reused,"
               "aa_index,bb_index,aa_slot,bb_slot,jorder,turnovers,total_reads,"
               "elapsed_s,to_go_s,gap_s,layer,upper_u,upper_v,"
               "aa_temp_face_low_k,aa_temp_face_high_k,bb_temp_face_low_k,bb_temp_face_high_k\n";
@@ -37,7 +40,9 @@ int main(int argc,char** argv) {
         int no_rain=0;
         for(std::size_t n=0;n<hours.size();++n) {
             const auto& h=hours[n];
-            const auto& sf=surf.hourly[n];
+            const auto surface=surface_state.select(
+                h.interpolated.end-std::chrono::hours{1},h.interpolated.end);
+            const auto& sf=*surface.record;
             if(sf.end!=h.interpolated.end ||
                sf.start!=h.interpolated.end-std::chrono::hours{1})
                 throw std::runtime_error("COMP-SURF clock/endtime mismatch");
@@ -58,6 +63,9 @@ int main(int argc,char** argv) {
                    <<v.opaque_cloud_tenths<<','<<v.temperature_k<<','
                    <<v.precip_code<<','<<v.wind_valid<<','<<v.cloud_valid
                    <<','<<v.temperature_valid<<','<<v.precipitation_code_valid<<','
+                   <<v.ceiling_hundreds_ft<<','<<v.humidity_pct<<','<<v.pressure_mb<<','
+                   <<v.ceiling_valid<<','<<v.humidity_valid<<','<<v.pressure_valid<<','
+                   <<surface.source_row+1<<','<<surface.reads<<','<<surface.reused<<','
                    <<h.aa_profile+1<<','<<h.bb_profile+1<<','
                    <<h.aa_slot<<','<<h.bb_slot<<','<<h.jorder<<','
                    <<h.turnovers<<','<<h.total_reads<<','
