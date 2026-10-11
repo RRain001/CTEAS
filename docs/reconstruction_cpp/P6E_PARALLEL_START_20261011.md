@@ -1300,3 +1300,57 @@ and `TEMP3D` plug in directly. The 27 `U-LEV/V-LEV/WFACE` fields stay P6D-owned.
 bounded residual; `EL` FAIL on 630 of 357,500 cells (two hours) traced to the
 solar-geometry residual; `ZI`/`WSTAR`/`T-LEV 2..9` BLOCKED on the sounding
 profiles; `U-LEV/V-LEV/WFACE` P6D-owned; `P6E_FULL=NOT_PASS`.
+
+## E28 sounding-profile transport, MIXHT/AVEMIX/WSTARR wiring: produced but not yet accepted
+
+### What landed
+
+- The E15 bridge now transports the **full** upper-air profiles: the real
+  `up_58424.dat` soundings have **77 levels** (not 10), so the earlier
+  fixed-width column scheme was misaligned. The bridge emits two packed
+  columns (`aa_profile`, `bb_profile`) as `height:temperature;...` plus two
+  face-temperature columns (`aa_face_t`, `bb_face_t`), so the column set no
+  longer depends on the level count. Verified on the real file: `0 m:278.6 K,
+  96 m:279.9 K, ...` and 20 face temperatures.
+- `emit-realcase` now runs `MIXHT` (IMIXH=1, `ZIMIN=50`, `ZIMAX=3000`,
+  `THRESHL=0`, `IZICRLX=1`, `TZICRLX=800`, `DPTMIN=0.001`, `DZZI=200`,
+  `ONEDTE=4140`, `TWODTE=1080`, `IUPT=-1`, `NEARU=1`; `FCORI` per cell from the
+  cell latitude and `CMECH=CONSTB/sqrt(FCORI)`), then `AVEMIX` (COMP L4715,
+  `IAVEZI=1`, the same upwind weighting applied to `ZI` and `ZICONV` with the
+  `ILEVZI=1` wind), then `WSTARR`.
+
+### Results, original wind driving (143 x 2500 = 357,500 per field)
+
+| field | max abs | max rel | exceedances | verdict |
+|---|---|---|---|---|
+| `TEMPK`, `T-LEV 1`, `IRH`, `RHO`, `IPGT` | 0 | 0 | 0 | bit-exact (unchanged) |
+| `USTAR` | 5.51343e-7 m/s | 5.07242e-6 | 0 | PASS (unchanged) |
+| `QSW` | 7.24792e-4 W/m2 | 6.36252e-5 | 0 | PASS (unchanged) |
+| `EL` | - | 3.2e-2 | 630 (2 hours) | FAIL (unchanged) |
+| **`ZI`** | **113.944 m** | **0.142657** | **221,549 (62 %)** | **FAIL - NOT ACCEPTED** |
+| **`WSTAR`** | **0.0262769 m/s** | **0.019062** | **4,880 (1.4 %)** | **FAIL - NOT ACCEPTED** |
+
+`AVEMIX` measurably improved both fields (`ZI` exceedances 248,197 -> 221,549,
+`WSTAR` 57,210 -> 4,880) and taking the ELUSTR-updated `QH` (the original
+overwrites the `/HFLUX/` array in place before MIXHT) changed nothing, which
+means the remaining `ZI` residual is systematic rather than a missing
+averaging step.
+
+**Honest status:** round 9 did **not** reach its goal of 18 accepted
+non-wind fields. `ZI` and `WSTAR` are produced and compared but **fail** the
+frozen gates (0.07 m / 8e-5 relative for `ZI`, 2e-5 m/s / 3e-5 for `WSTAR`)
+on a large fraction of cells, so they must not be reported as passing. The
+remaining audit targets, in order of likelihood: (a) the AA/BB *physical
+slot* mapping between the E15 bridge (`physical_aa/physical_bb`) and MIXHT's
+`JUSTA` older/newer selection, (b) the `DPTT`/`ZICONV` hour-to-hour memory
+initialisation, (c) the `USTAR`/`EL`/`RHO` provenance inside the MIXHT grid
+path. `T-LEV 2..9` remain unproduced: the E14 `TEMP3D` kernel models only the
+same-day 00Z/12Z bracket (`current_hour_utc` in 0..12), while 11 of the 143
+real hours need the 12Z -> next-day-00Z bracket, so it needs the original's
+`DELTSEC`-based `JTOGO/JPAST` generalisation first.
+
+**Status summary (unchanged where not listed):** five fields bit-exact;
+`USTAR` PASS; `QSW` PASS with a bounded residual; `EL` FAIL on 630 cells;
+`ZI`/`WSTAR` produced but **FAIL** (not accepted); `T-LEV 2..9` BLOCKED on the
+TEMP3D time-bracket generalisation; `U-LEV/V-LEV/WFACE` P6D-owned;
+`P6E_FULL=NOT_PASS`.
