@@ -8,7 +8,7 @@
 // WIND1, interpolation of upper/lower stations onto the 3-D grid, or DIAGNO.
 // Rejects missing or calm surface wind instead of fabricating a profile.
 #include "cteas/p6/read_surface.hpp"
-#include "cteas/p6/similt_neutral.hpp"
+#include "cteas/p6/similt_profile.hpp"
 #include "cteas/p6/upper_hourly_wind.hpp"
 #include <array>
 #include <chrono>
@@ -79,11 +79,13 @@ inline Wind1SelectedStationHour wind1_selected_station_hour(
     if(std::hypot(observed_u,observed_v)<1.0e-4f)
         throw std::invalid_argument("WIND1 calm source needs separate original branch");
 
-    const SimiltNeutralInput input{
+    // WIND1 IEXTRP=-4 calls SIMILT with EL=ZI=ZIMINI=10000 m (L36171), so the
+    // first guess is neutral and uncapped.
+    const SimiltProfileInput input{
         station_latitude_deg,anemometer_height_m,station_roughness_m,
-        observed_u,observed_v,-4,0
+        observed_u,observed_v,10000.f,10000.f,10000.f,0,{0.f,20.f,40.f,80.f,160.f,320.f,640.f,1200.f,2000.f,3000.f}
     };
-    const auto neutral=original_similt_wind1_neutral(input);
+    const auto neutral=original_similt_profile(input);
     Wind1SelectedStationHour result;
     result.hour_end=surface.end;
     result.surface_station_id=surface_station_id;

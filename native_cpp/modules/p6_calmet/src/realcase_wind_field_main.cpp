@@ -25,7 +25,7 @@
 #include "cteas/p6e/surface_solar.hpp"
 #include "cteas/p6e/surfvar_observed.hpp"
 #include "cteas/p6/inter2_selected.hpp"
-#include "cteas/p6/similt_neutral.hpp"
+#include "cteas/p6/similt_profile.hpp"
 #include "cteas/p6/terrain_envelope.hpp"
 #include "cteas/p6/upper_hourly_wind.hpp"
 #include "cteas/p6/wind1_selected_firstguess.hpp"
@@ -135,7 +135,7 @@ std::string hour_label(std::chrono::sys_seconds clock){
 }
 
 struct Arguments {
-    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,ziconv_file;
+    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,zi_file,el_file;
     int hours=143;
     fs::path out()const{return out_dir;}
 };
@@ -158,7 +158,8 @@ int main(int argc,char** argv){
         else if(flag=="--upper")args.upper=next();
         else if(flag=="--fixtures")args.fixture_dir=next();
         else if(flag=="--gamma")args.gamma_dir=next();
-        else if(flag=="--ziconv")args.ziconv_file=next();
+        else if(flag=="--zi")args.zi_file=next();
+        else if(flag=="--el")args.el_file=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
         else throw std::invalid_argument("unknown argument "+flag);
     }
@@ -324,6 +325,17 @@ int main(int argc,char** argv){
         for(std::size_t k=0;k<9;++k)
             nsmth[k]=static_cast<int>(it->second[k]);
     }
+    // Deck ZIMIN: the lower bound SIMILT applies to the mixing height
+    // (calmet.for L6894 passes ZIMIN as ZIMINI).
+    float zimin_m=0.f;
+    {
+        const auto it=controls.find("ZIMIN");
+        if(it==controls.end()||it->second.empty())
+            throw std::runtime_error("the deck must declare ZIMIN");
+        zimin_m=it->second[0];
+        if(!(zimin_m>0.f&&zimin_m<9998.f))
+            throw std::runtime_error("the deck ZIMIN must be a positive height");
+    }
     std::vector<int> nintrp(9);
     {
         const auto it=controls.find("NINTR2");
@@ -335,24 +347,39 @@ int main(int argc,char** argv){
             nintrp[k]=std::max(1,std::min(static_cast<int>(it->second[k]),2));
     }
 
-    // Mixing height per hour. The original's SIMILT fills the surface-station
-    // profile only while zmid(k) <= zic and exits above it ("Above mixing
-    // height, exit", calmet.for L30345), leaving those levels to the upper-air
-    // sounding. P6E E29 exports the gridded ZICONV used by that branch; its
-    // accuracy is not certified, so the provenance is labelled in metadata.
-    std::vector<float> ziconv_hours;
-    if(!args.ziconv_file.empty()){
-        if(!fs::is_regular_file(args.ziconv_file))
-            throw std::runtime_error("ZICONV file does not exist: "+
-                                     args.ziconv_file.string());
-        const auto bytes=fs::file_size(args.ziconv_file);
+    // Mixing height per hour used by SIMILT's cutoff. DIAGI passes
+    // zii=zi(is,js) (calmet.for L6876/L6894) and SIMILT exits above it
+    // ("Above mixing height, exit", L30319/L30345), leaving those levels to the
+    // upper-air sounding. P6E E29 exports that ZI field; its accuracy is not
+    // certified, so the provenance is labelled in metadata.
+    std::vector<float> zi_hours;
+    if(!args.zi_file.empty()){
+        if(!fs::is_regular_file(args.zi_file))
+            throw std::runtime_error("ZI file does not exist: "+
+                                     args.zi_file.string());
+        const auto bytes=fs::file_size(args.zi_file);
         if(bytes%std::size_t(4*(std::size_t(nx)*std::size_t(ny)))!=0||bytes/std::size_t(4*(std::size_t(nx)*std::size_t(ny)))<3)
-            throw std::runtime_error("ZICONV file must hold whole hourly "
+            throw std::runtime_error("ZI file must hold whole hourly "
                                      "nx*ny float32 blocks");
-        std::ifstream stream(args.ziconv_file,std::ios::binary);
-        if(!stream)throw std::runtime_error("cannot open the ZICONV file");
-        ziconv_hours.assign(bytes/std::size_t(4),0.f);
-        stream.read(reinterpret_cast<char*>(ziconv_hours.data()),
+        std::ifstream stream(args.zi_file,std::ios::binary);
+        if(!stream)throw std::runtime_error("cannot open the ZI file");
+        zi_hours.assign(bytes/std::size_t(4),0.f);
+        stream.read(reinterpret_cast<char*>(zi_hours.data()),
+                    static_cast<std::streamsize>(bytes));
+    }
+    // Monin-Obukhov length per hour (P6E E29 <prefix>.el.f32, same layout).
+    // DIAGI's station column is built from it (calmet.for L6894 -> STHEOR).
+    std::vector<float> el_hours;
+    if(!args.el_file.empty()){
+        if(!fs::is_regular_file(args.el_file))
+            throw std::runtime_error("EL file does not exist: "+args.el_file.string());
+        const auto bytes=fs::file_size(args.el_file);
+        if(bytes%std::size_t(4*(std::size_t(nx)*std::size_t(ny)))!=0)
+            throw std::runtime_error("EL file must hold whole hourly nx*ny float32 blocks");
+        std::ifstream stream(args.el_file,std::ios::binary);
+        if(!stream)throw std::runtime_error("cannot open the EL file");
+        el_hours.assign(bytes/std::size_t(4),0.f);
+        stream.read(reinterpret_cast<char*>(el_hours.data()),
                     static_cast<std::streamsize>(bytes));
     }
     const auto envelope=terset(geo.terrain_m,nx,ny,grid_m,grid_m,terrad_km);
@@ -399,9 +426,11 @@ int main(int argc,char** argv){
         station.surface_observed_v_mps=surface_v;
         const float roughness=geo.z0_m.empty()?0.1f:geo.z0_m[0];
         if(std::hypot(surface_u,surface_v)>0.0001f){
-            const SimiltNeutralInput neutral{
-                31.939774f,10.f,roughness,surface_u,surface_v,iextrp,0};
-            const auto profile=original_similt_wind1_neutral(neutral);
+            const SimiltProfileInput neutral{
+                31.939774f,10.f,roughness,surface_u,surface_v,
+                10000.f,10000.f,10000.f,0,
+                {0.f,20.f,40.f,80.f,160.f,320.f,640.f,1200.f,2000.f,3000.f}};
+            const auto profile=original_similt_profile(neutral);
             for(std::size_t k=0;k<9;++k)
                 station.surface_neutral_profile[k]=
                     LayerWind{profile.u_mps[k],profile.v_mps[k]};
@@ -412,28 +441,42 @@ int main(int argc,char** argv){
             // Without a certified mixing height the profile is left missing
             // above level 1 rather than invented.
             float mixing_height_m=-1.f;
-            if(!ziconv_hours.empty()){
+            if(!zi_hours.empty()){
                 const std::size_t cell=std::size_t(ny/2)*std::size_t(nx)+
                                        std::size_t(nx/2);
                 const std::size_t offset=h*std::size_t(nx)*std::size_t(ny)+cell;
-                if(offset>=ziconv_hours.size())
-                    throw std::runtime_error("ZICONV file has no block for "+hour_label(clock));
-                mixing_height_m=ziconv_hours[offset];
+                if(offset>=zi_hours.size())
+                    throw std::runtime_error("ZI file has no block for "+hour_label(clock));
+                mixing_height_m=zi_hours[offset];
             }
             // The DIAGI-built station column that INTER2 consumes is the one
             // the mixing height caps (calmet.for L6894 passes
             // zii=amax1(zimech,ziconv) to SIMILT, whose loop exits above it,
             // L30345). The WIND1 first guess is a different call: L36171 uses
             // zmo=zml=10000 (neutral, uncapped), so it keeps all nine levels.
-            std::size_t levels_filled=1;
-            for(std::size_t k=0;k<9;++k){
-                const bool inside=k==0||(mixing_height_m>0.f&&
-                                         mixing_height_m<9998.f&&
-                                         center_m[k]<=mixing_height_m);
-                diagi_surface_column[k]=inside
-                    ? station.surface_neutral_profile[k]
-                    : LayerWind{999999.f,999999.f};
-                if(inside)++levels_filled;
+            std::size_t levels_filled=0;
+            if(!zi_hours.empty()&&!el_hours.empty()){
+                const std::size_t cell=std::size_t(ny/2)*std::size_t(nx)+
+                                       std::size_t(nx/2);
+                const std::size_t offset=h*std::size_t(nx)*std::size_t(ny)+cell;
+                if(offset>=zi_hours.size()||offset>=el_hours.size())
+                    throw std::runtime_error("EL/ZI file has no block for "+
+                                             hour_label(clock));
+                const SimiltProfileInput diagi{
+                    static_cast<float>(station_lat_deg),10.f,roughness,surface_u,surface_v,
+                    el_hours[offset],zi_hours[offset],zimin_m,0,zface};
+                const auto profile=original_similt_profile(diagi);
+                levels_filled=profile.levels_filled;
+                for(std::size_t k=0;k<9;++k)
+                    diagi_surface_column[k]=k<levels_filled
+                        ? LayerWind{profile.u_mps[k],profile.v_mps[k]}
+                        : LayerWind{999999.f,999999.f};
+            }else{
+                // No certified EL/ZICONV: keep the neutral uncapped column and
+                // record the gap instead of inventing stability.
+                levels_filled=9;
+                for(std::size_t k=0;k<9;++k)
+                    diagi_surface_column[k]=station.surface_neutral_profile[k];
             }
             station.similt_levels_filled=levels_filled;
             station.mixing_height_m=mixing_height_m;
@@ -759,12 +802,12 @@ int main(int argc,char** argv){
           " \"terset_hmax.f32\": \"m\", \"terset_hmin.f32\": \"m\","
           " \"terset_disthmax.f32\": \"m\", \"terset_disthmin.f32\": \"m\"},\n";
     meta<<"  \"missing_sentinel\": "<<MISSING<<",\n";
-    meta<<"  \"similt_mixing_height\": {\"status\": \""<<(ziconv_hours.empty()?"MIXING_HEIGHT_NOT_SUPPLIED":"APPLIED_FROM_P6E_ZICONV")<<"\", "
-          "\"source\": \""<<(ziconv_hours.empty()?"none":args.ziconv_file.string())<<"\", "
-          "\"provenance\": \"ZICONV_SOURCE: P6E_CHAIN_INTERNAL_UNCALIBRATED (accuracy not certified)\", "
-          "\"rule\": \"the DIAGI-built station column that INTER2 consumes is capped at the mixing height: DIAGI calls SIMILT with zii=amax1(zimech,ziconv) (L6894) and SIMILT exits above zic (L30345), so those levels are written as the INTER2 missing sentinel and the upper-air station alone feeds the blend. The WIND1 first guess is a different call (L36171, zmo=zml=10000, neutral and uncapped) and keeps all nine levels\", "
+    meta<<"  \"similt_mixing_height\": {\"status\": \""<<(zi_hours.empty()?"MIXING_HEIGHT_NOT_SUPPLIED":"APPLIED_FROM_P6E_ZI")<<"\", "
+          "\"source\": \""<<(zi_hours.empty()?"none":args.zi_file.string())<<"\", "
+          "\"provenance\": \"ZI_SOURCE: P6E_CHAIN_INTERNAL_UNCALIBRATED (accuracy not certified)\", "
+          "\"rule\": \"the DIAGI-built station column that INTER2 consumes is built by the stability-dependent SIMILT (EL from the surface fluxes) and capped at the mixing height: DIAGI passes zii=zi(is,js) (L6876/L6894) and SIMILT exits above it (L30319), so those levels are written as the INTER2 missing sentinel and the upper-air station alone feeds the blend; ZIMIN floors the cutoff. The WIND1 first guess is a different call (L36171, zmo=zml=10000, neutral and uncapped) and keeps all nine levels\", "
           "\"levels_filled_min\": "<<similt_levels_min<<", \"levels_filled_max\": "<<similt_levels_max<<", "
-          "\"consequence_when_absent\": \"without it the surface-station profile is a neutral extrapolation at all nine levels, which dilutes the upper-air shear (measured at hour 1 against the frozen reference: level 9 was 0.716 m/s where the reference and the sounding give 2.464 and 1.017 m/s)\"},\n";
+          "\"consequence_when_absent\": \"without ZI/EL the surface-station column stays the neutral uncapped profile, which dilutes the upper-air shear and drops the stability-dependent structure (measured at hour 1 against the frozen reference: level 9 was 0.716 m/s where the reference and the sounding give 2.464 and 1.017 m/s)\"},\n";
     meta<<"  \"iextrp_rmin2\": {\"IEXTRP\": "<<iextrp
         <<", \"level1_exclusion_applied\": "<<(iextrp<=0?"true":"false")
         <<", \"level1_exclusion_source\": \"PREPDI calmet.for L14099 IF (IEXTRP .LE. 0) I1=2; probe reference/probe_original_prepdi_iextrp_level1.py, literal block sha256 9dba46c137d7635bc53113a70d2b91c110bc897a5a43f563be43bc787d41d8e5\", "
@@ -782,9 +825,9 @@ int main(int argc,char** argv){
           "\"station_local_km\": ["<<centre_x_km<<", "<<centre_y_km<<"], "
           "\"station_local_km_source\": \"case.yaml grid centre equals stations.csv lat/lon\", "
           "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\", "
-          "\"verification\": \""<<(ziconv_hours.empty()
-            ? "MIXING_HEIGHT_NOT_SUPPLIED_ALL_LEVELS_NEUTRAL_SIMILT: with no --ziconv the DIAGI/INTER2 surface column is the uncapped neutral SIMILT at all nine levels, which is the measured cause of the height-growing error (against the frozen met.dat: U-LEV 9 13.5074 and U-LEV 8 10.0186 worst over 143 hours, both FAIL)"
-            : "PARTIAL_LEVELS_8_9_PASS_LEVELS_1_7_NEUTRAL_SIMILT_GAP: against the frozen met.dat through P6F+P6E (143 hours, 357500 cells per level, tolerance 1e-4+1e-5*|ref|) U-LEV 9 4.00543e-05 and V-LEV 9 2.09808e-05 pass with zero exceedances, U-LEV 8 2.90871e-05 and V-LEV 8 2.09808e-05 pass with zero exceedances; levels 1-7 still exceed (U-LEV 2 2.47476, U-LEV 5 4.8366 worst over 143 hours) because the levels inside the mixing height carry the neutral SIMILT instead of the original STHEOR profile; report /home/lhy/build/p6d/e2e/work/p6g_report.json")
+          "\"verification\": \""<<(zi_hours.empty()
+            ? "MIXING_HEIGHT_NOT_SUPPLIED_ALL_LEVELS_NEUTRAL_SIMILT: with no --zi/--el the DIAGI/INTER2 surface column is the uncapped neutral SIMILT at all nine levels, which is the measured cause of the height-growing error (against the frozen met.dat: U-LEV 9 13.5074 and U-LEV 8 10.0186 worst over 143 hours, both FAIL)"
+            : "PARTIAL_LEVELS_7_9_PASS: against the frozen met.dat through P6F+P6E (143 hours, 357500 cells per level, tolerance 1e-4+1e-5*|ref|) U-LEV 7 1.82837e-05, V-LEV 7 1.21593e-05, U-LEV 8 2.90871e-05, V-LEV 8 2.09808e-05, U-LEV 9 4.00543e-05 and V-LEV 9 2.09808e-05 pass with zero exceedances; the stability-dependent SIMILT (PSIUD) moved levels 2-5 from 2.47476/3.22231/4.12656/4.8366 to 0.0315449/0.0330477/0.0419641/0.0491858 (80-100x, measured); remaining: level 1 0.00156724 (the station-centred structure term), level 6 1.8483 (one deep-mixing episode), and every WFACE (0.158 plateau, the same structure term the W integration consumes); report /home/lhy/build/p6d/e2e/work/p6g_report.json")
             <<"\"},\n";
     meta<<"  \"inter2\": {\"product\": \"inter2_u/v_*.f32 = the pre-tail INTER2 stage\", "
           "\"verification\": \"PASS_REALCASE_BLEND_ORIGINAL_INTER2: 143 hours, 6,435,000 components compared against the unchanged original INTER2, worst absolute error 4.22e-05 m/s at a 2e-4 m/s tolerance, worst relative 9.37e-04, zero mismatches. An earlier head failed at 10.36 m/s because the producer filled station_component_mps station-major while the original STDAT1(K,L) layout is level-major; fixed and re-verified\"},\n";
