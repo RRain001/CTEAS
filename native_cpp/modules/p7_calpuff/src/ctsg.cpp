@@ -789,7 +789,9 @@ CtsgResult ctsg(CtsgState state, const CtsgInputs& inputs, const SigmaYCurve& si
                 const SigmaZCurve& sigma_z_curve) {
     // CTSG (calpuff.for L22923-23112). The CTSG argument list is taken from the
     // state fields; the persistent /CTPASS/ values that decide whether CTPAR
-    // runs are state.tstart, state.ip and state.ih (the PREVIOUS call).
+    // runs are state.tstart, state.ip and state.ih (the PREVIOUS call). The
+    // vendor's TWOKZ/TWOKY derivation is omitted: only CTPAR (not ported) and
+    // the debug print read it.
     const bool same_period = (to_real(state.tstart, "previous start age") ==
                               to_real(inputs.start_age_s, "start age")) &&
                              (state.ip == inputs.puff_index) && (state.ih == inputs.hill_index);

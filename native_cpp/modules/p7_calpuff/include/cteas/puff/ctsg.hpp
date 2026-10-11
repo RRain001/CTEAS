@@ -215,6 +215,10 @@ struct CtsgResult {
 // CTSG equivalent, restricted to the reconstructed branches. Fails closed when
 // the vendor would call CTPAR (a different puff, hill or time step) or UPPER
 // (receptor above the dividing streamline with the flow in the upper region).
+//
+// The vendor also derives TWOKZ/TWOKY (the diffusivities over the step) here.
+// Nothing in the reconstructed kernel reads them: they are consumed by CTPAR
+// (not ported) and by the CTSG debug print, so they are not part of this port.
 [[nodiscard]] CtsgResult ctsg(CtsgState state, const CtsgInputs& inputs,
                               const SigmaYCurve& sigma_y_curve,
                               const SigmaZCurve& sigma_z_curve);
