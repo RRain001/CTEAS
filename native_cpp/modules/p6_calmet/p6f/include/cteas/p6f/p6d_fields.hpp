@@ -14,6 +14,15 @@
 //   <dir>/terset_hmax.f32, terset_hmin.f32, terset_disthmax.f32,
 //        terset_disthmin.f32                    (case-invariant planes, unused here)
 //   <dir>/temp2d_<label>.f32, qh_<label>.f32    (provenance extras, unused here)
+//   <dir>/windbc_ub|vb_<label>.f32              WINDBC lateral boundaries, not a
+//                                               gridded field: rejected here
+//
+// `variant` is the producer's own prefix. The P6D product has renamed one of
+// them over time: the pre-tail INTER2 field was `blend_*` and is now `inter2_*`,
+// while `blend_*` holds the closed DIAGNO field (INTER2 -> SMOOTH -> DIVCEL).
+// Both names are accepted and the choice is the caller's, because the metadata
+// carries the verdict of each. `windbc_*` is not a gridded CALMET field and is
+// refused.
 //
 // `metadata.json` carries grid{nx,ny,nz,grid_spacing_m,layout,dtype},
 // levels{zface_m,...}, units{...}, missing_sentinel, hour_label and

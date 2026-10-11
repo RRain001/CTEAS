@@ -280,6 +280,28 @@ def main() -> int:
                                      nx * ny * nz * 2 * len(labels) +
                                      nx * ny * nz * len(labels)}
 
+        # ---- the renamed INTER2 product: inter2_* planes ----
+        inter2 = root / "inter2"
+        inter2.mkdir()
+        for item in fields.iterdir():
+            if item.name.startswith("wind1_"):
+                continue
+            (inter2 / item.name).write_bytes(item.read_bytes())
+        for label in labels:
+            for kind in ("u", "v"):
+                (inter2 / f"inter2_{kind}_{label}.f32").write_bytes(
+                    (fields / f"wind1_{kind}_{label}.f32").read_bytes())
+        inter2_out = root / "inter2.dat"
+        result = run([args.tool, "write-from-p6d", "--fields", inter2,
+                      "--variant", "inter2", "--w-field", "w_face",
+                      "--statics-from", statics, "--out", inter2_out])
+        if result.returncode != 0 or "P6F_WRITE_FROM_P6D_WRITTEN" not in result.stdout:
+            print(result.stdout + result.stderr)
+            fail("the renamed inter2_* variant could not be written")
+        verify_wind_mapping(inter2_out.read_bytes(), meta, inter2, "inter2",
+                            "w_face", labels, 0)
+        evidence["inter2_variant"] = {"bytes": inter2_out.stat().st_size}
+
         # ---- IRTYPE=1 composition with the 2-D fields of another legal file ----
         composed = root / "composed.dat"
         result = run([args.tool, "write-from-p6d", "--fields", fields,
@@ -427,6 +449,12 @@ def main() -> int:
                      [args.tool, "write-from-p6d", "--fields", gap,
                       "--statics-from", statics, "--out", root / "x.dat"],
                      "contiguous")
+
+        expect_error("boundary_planes_are_not_a_grid",
+                     [args.tool, "write-from-p6d", "--fields", fields,
+                      "--variant", "windbc", "--statics-from", statics,
+                      "--out", root / "x.dat"],
+                     "lateral boundaries")
 
         expect_error("missing_met_source",
                      [args.tool, "write-from-p6d", "--fields", fields,

@@ -304,8 +304,12 @@ std::string trim_text(const std::string& text) {
 }
 
 bool variant_ok(const std::string& variant) {
+    // Producer prefixes that name a gridded U/V plane pair. `inter2` is the
+    // P6D pre-tail INTER2 field (formerly published as `blend`), `blend` is the
+    // closed DIAGNO field. `windbc_*` is deliberately absent: its planes are
+    // stitched lateral boundaries with a nx*2*ny / nz*2*nx layout, not a grid.
     return variant == "wind1" || variant == "blend" ||
-           variant == "slope_corrected";
+           variant == "slope_corrected" || variant == "inter2";
 }
 
 }  // namespace
@@ -441,8 +445,11 @@ P6dWindHour read_p6d_wind_hour(const std::string& directory,
                                const std::string& w_field,
                                const std::string& label,
                                const P6dFieldsMetadata& metadata) {
-    require(variant_ok(variant), "variant must be wind1, blend or "
-                                 "slope_corrected, found " + variant);
+    require(variant_ok(variant),
+            "variant must be wind1, inter2, blend or slope_corrected, found " +
+                variant +
+                " (windbc_* planes are lateral boundaries, not a gridded "
+                "field, and are not a CALMET.DAT source)");
     int year = 0, month = 0, day = 0, hour = 0;
     parse_p6d_label(label, year, month, day, hour);
     const std::size_t cells =
