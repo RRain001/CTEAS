@@ -298,8 +298,10 @@ int main(int argc,char** argv){
         const auto it=controls.find("NINTR2");
         if(it==controls.end()||it->second.size()<9)
             throw std::runtime_error("the deck must declare nine NINTR2 values");
+        // The deck's NINTR2=99 is an upper bound on stations per layer; with
+        // two stations in this case the original uses min(NINTR2, NWIND).
         for(std::size_t k=0;k<9;++k)
-            nintrp[k]=static_cast<int>(it->second[k]);
+            nintrp[k]=std::max(1,std::min(static_cast<int>(it->second[k]),2));
     }
     const auto envelope=terset(geo.terrain_m,nx,ny,grid_m,grid_m,terrad_km);
     write_f32(args.out()/"terset_hmax.f32",envelope.maximum_m);
