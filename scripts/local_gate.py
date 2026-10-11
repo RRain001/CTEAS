@@ -80,7 +80,27 @@ TRACKS: dict[str, dict] = {
             {"cmd": ["cmake", "-S", "native_cpp/modules/p6_calmet/p6f", "-B", "{build}",
                      "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_COMPILER={cxx}"]},
             {"cmd": ["cmake", "--build", "{build}", "--parallel", "24"]},
-            {"cmd": ["ctest", "--test-dir", "{build}", "--output-on-failure"]},
+            # The original-CALPUFF read test is excluded here and run as its own
+            # step below, where its Fortran toolchain and frozen inputs are
+            # declared: a missing toolchain must be reported BLOCKED, never
+            # silently skipped by ctest.
+            {"cmd": ["ctest", "--test-dir", "{build}", "--output-on-failure",
+                     "-E", "p6f_calmet_dat21_original_calpuff"]},
+            # Roadmap clause "原版 P7 读取": rebuild the unmodified original
+            # CALPUFF 7.2.1 from the tracked vendor sources and let it read the
+            # file the writer produced (byte-identical case, changed-value case
+            # and a structurally broken case). --no-tests=error keeps a silent
+            # skip impossible.
+            {"cmd": ["ctest", "--test-dir", "{build}", "--output-on-failure",
+                     "--no-tests=error", "-R",
+                     "p6f_calmet_dat21_original_calpuff"],
+             "requires": ["engine/vendor/src/CALPUFF_v7.2.1_L150618/modules.for",
+                          "engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for",
+                          "project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp",
+                          MET_DAT,
+                          "project/cases/hefei5km_2022_reference_case_20261011/deliverables/puff/puff.con",
+                          "project/cases/hefei5km_2022_reference_case_20261011/deliverables/puff/puff.lst",
+                          "/home/lhy/bin-fortran/gfortran-11"]},
         ],
     },
     "p7": {

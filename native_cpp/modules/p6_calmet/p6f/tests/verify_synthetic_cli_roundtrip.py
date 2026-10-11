@@ -251,6 +251,40 @@ def verify_variant(variant, tool: str, work: pathlib.Path) -> dict:
             "missing_total": sum(missing.values())}
 
 
+def verify_wind_only_mode(tool: str, work: pathlib.Path) -> dict:
+    """IRTYPE=0 writes only the wind block of each hour (OUTHR returns early)."""
+    emitted = work / "fixture-wind-only.dat"
+    result = run([tool, "emit-fixture", "--out", emitted, "--hours", "2",
+                  "--nx", "4", "--ny", "3", "--nz", "2", "--nssta", "1",
+                  "--nusta", "1", "--npsta", "0", "--irtype", "0"])
+    if result.returncode != 0 or "P6F_FIXTURE_WRITTEN" not in result.stdout:
+        print(result.stdout + result.stderr)
+        fail("emit-fixture failed for the IRTYPE=0 fixture")
+    check_json = work / "check-wind-only.json"
+    result = run([tool, "check", "--file", emitted, "--report", check_json])
+    if result.returncode != 0:
+        print(result.stdout + result.stderr)
+        fail("check rejected the IRTYPE=0 fixture")
+    report = json.loads(check_json.read_text())
+    if report["controls"]["irtype"] != 0 or report["hourly"]["fields_per_interval"] != 6:
+        fail("the IRTYPE=0 fixture does not have the wind-only layout")
+    labels = ["U-LEV  1", "V-LEV  1", "WFACE  1", "U-LEV  2", "V-LEV  2", "WFACE  2"]
+    if [entry["label"] for entry in report["hourly_layout"]] != labels:
+        fail("the IRTYPE=0 label order is not the OUTHR wind block")
+    result = run([tool, "roundtrip", "--file", emitted])
+    if result.returncode != 0 or "P6F_ROUNDTRIP_BYTE_IDENTICAL" not in result.stdout:
+        fail("the IRTYPE=0 fixture does not round trip")
+    data = emitted.read_bytes()
+    records = walk(data)
+    (ncom,) = struct.unpack_from("<i", data, records[1][2])
+    first = records[3 + ncom + 10][2]
+    if data[first:first + 8] != b"U-LEV  1":
+        fail("the first IRTYPE=0 record is not U-LEV 1")
+    if len(records) != 3 + 4 + 10 + 2 * len(labels):
+        fail(f"the IRTYPE=0 fixture has {len(records)} records")
+    return {"records": len(records), "fields_per_interval": len(labels)}
+
+
 def verify_subhourly_start(tool: str, work: pathlib.Path) -> dict:
     """The OUTHD run clock is (year, month, day, hour) + seconds in that hour.
 
@@ -322,6 +356,7 @@ def main() -> int:
             evidence["variants"].append(verify_variant(variant, args.tool, root))
         evidence["fail_closed_options"] = fail_closed_options(args.tool, root)
         evidence["subhourly_start"] = verify_subhourly_start(args.tool, root)
+        evidence["wind_only_mode"] = verify_wind_only_mode(args.tool, root)
     evidence["status"] = "PASS"
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)

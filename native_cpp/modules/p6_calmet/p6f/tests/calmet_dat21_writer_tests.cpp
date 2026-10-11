@@ -324,6 +324,36 @@ void standard_tests() {
         assert(back.hourly[0].begin.hour == 0 && back.hourly[0].begin.seconds == 1800);
     }
 
+    // IRTYPE=0: the wind-only layout round trips through the same writer.
+    {
+        Calmet21File winds = make_dataset(3, 2, 1, 2, 0, 0, 0, false);
+        const std::vector<std::string> keep =
+            hourly_labels(winds.header.nz, 0, winds.header.lcalgrd, 0);
+        std::vector<Calmet21Field> filtered;
+        for(const Calmet21Field& field : winds.hourly)
+            for(const std::string& label : keep)
+                if(field.label == label)filtered.push_back(field);
+        winds.hourly = std::move(filtered);
+        winds.header.irtype = 0;
+        const Calmet21File back =
+            parse_calmet_dat21(serialize_calmet_dat21(winds));
+        same_dataset(winds, back);
+        assert(back.header.irtype == 0 && interval_count(back) == 2U);
+        assert(fields_per_interval(back.header) == 3U);  // U/V/W of one level
+    }
+
+    // The frozen real case stores land-use category 20 with NLU=14: the writer
+    // copies the categories verbatim instead of range-rejecting them (the
+    // inventory reports how many cells exceed NLU).
+    {
+        Calmet21File land_use = make_dataset(3, 2, 1, 1, 0, 0, 0, false);
+        land_use.header.nlu = 14;
+        land_use.statics.ilandu.assign(6U, 20);
+        const Calmet21File back =
+            parse_calmet_dat21(serialize_calmet_dat21(land_use));
+        assert(back.statics.ilandu == land_use.statics.ilandu);
+    }
+
     // XMISS sentinels survive bit-exactly and are counted, not treated as data.
     const Calmet21File missing = make_dataset(4, 3, 2, 2, 1, 1, 0, true);
     const Calmet21File round = parse_calmet_dat21(serialize_calmet_dat21(missing));
@@ -364,8 +394,14 @@ void layout_tests() {
     assert(no_lcalgrd.size() == 4U + 9U);
     assert(no_lcalgrd[0] == "U-LEV  1" && no_lcalgrd[1] == "V-LEV  1" &&
            no_lcalgrd[2] == "U-LEV  2");
-    // IRTYPE=0 writes the wind block only.
-    assert(hourly_labels(2, 0, true, 0).size() == 6U);
+    // IRTYPE=0 writes the wind block only (OUTHR returns right after it).
+    const std::vector<std::string> wind_only = hourly_labels(2, 0, true, 0);
+    const std::vector<std::string> wind_expected = {
+        "U-LEV  1", "V-LEV  1", "WFACE  1", "U-LEV  2", "V-LEV  2", "WFACE  2"};
+    assert(wind_only == wind_expected);
+    const std::vector<std::string> wind_only_no_w = hourly_labels(2, 0, false, 0);
+    assert(wind_only_no_w.size() == 4U && wind_only_no_w[0] == "U-LEV  1" &&
+           wind_only_no_w[2] == "U-LEV  2");
     assert(is_integer_label("IPGT    ") && is_integer_label("IRH     "));
     assert(!is_integer_label("U-LEV  1") && !is_integer_label("TEMPK   "));
     // Declared units and masks are explicit for every field of the mode.
@@ -439,7 +475,11 @@ void fail_closed_tests() {
         mutate(copy);
         rejects([&copy] { (void)serialize_calmet_dat21(copy); }, needle);
     };
-    broken([](Calmet21File& f) { f.header.irtype = 0; }, "IRTYPE must be 1");
+    // A dataset whose field set does not match its declared mode must fail
+    // closed: this IRTYPE=1 dataset carries the 2-D meteorological fields that
+    // IRTYPE=0 does not write.
+    broken([](Calmet21File& f) { f.header.irtype = 0; },
+           "does not contain complete intervals");
     broken([](Calmet21File& f) { f.header.iwfcod = 0; }, "IWFCOD must be 1");
     broken([](Calmet21File& f) { f.header.nz = 0; }, "grid extent NZ");
     broken([](Calmet21File& f) { f.header.ny = 0; }, "grid extent NX/NY");
@@ -449,7 +489,12 @@ void fail_closed_tests() {
     broken([](Calmet21File& f) { f.header.timezone = "UTC+000"; }, "AXTZ");
     broken([](Calmet21File& f) { f.header.nssta = -1; }, "station counts");
     broken([](Calmet21File& f) { f.header.npsta = -1; }, "station counts");
+    broken([](Calmet21File& f) { f.header.npsta = -1; }, "MM5 precipitation");
     broken([](Calmet21File& f) { f.header.iwat1 = 60; }, "IWAT1");
+    broken([](Calmet21File& f) { f.header.irtype = 2; },
+           "IRTYPE must be 0 (winds only) or 1");
+    broken([](Calmet21File& f) { f.statics.ilandu[0] = -1; },
+           "negative land-use category");
     broken([](Calmet21File& f) { f.header.dataset = "NOTMET.DAT"; },
            "declaration dataset");
     broken([](Calmet21File& f) { f.header.version = "2.0"; },

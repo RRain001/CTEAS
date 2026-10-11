@@ -19,8 +19,19 @@ add_library(p6f_calmet_dat21 STATIC
   src/sha256.cpp)
 target_include_directories(p6f_calmet_dat21 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+# Input adapter for the P6D real-case wind-field array product. Kept separate so
+# the writer library itself has no dependency on another track's output contract.
+add_library(p6f_p6d_fields STATIC src/p6d_fields.cpp)
+target_link_libraries(p6f_p6d_fields PUBLIC p6f_calmet_dat21)
+target_include_directories(p6f_p6d_fields PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
 add_executable(cteas_p6f_calmet_dat21_writer src/calmet_dat21_writer_main.cpp)
-target_link_libraries(cteas_p6f_calmet_dat21_writer PRIVATE p6f_calmet_dat21)
+target_link_libraries(cteas_p6f_calmet_dat21_writer PRIVATE p6f_calmet_dat21 p6f_p6d_fields)
+
+# Evidence helper: documented, value-only perturbations of a legal file, so the
+# original reader can be exercised on changed-but-legal numbers.
+add_executable(cteas_p6f_calmet_dat21_perturb src/calmet_dat21_perturb_main.cpp)
+target_link_libraries(cteas_p6f_calmet_dat21_perturb PRIVATE p6f_calmet_dat21)
 
 add_executable(p6f_calmet_dat21_writer_tests tests/calmet_dat21_writer_tests.cpp)
 target_link_libraries(p6f_calmet_dat21_writer_tests PRIVATE p6f_calmet_dat21)
@@ -36,8 +47,9 @@ add_executable(p6f_calmet_dat21_e22_cross_read_tests
 target_link_libraries(p6f_calmet_dat21_e22_cross_read_tests PRIVATE p6f_calmet_dat21)
 target_include_directories(p6f_calmet_dat21_e22_cross_read_tests PRIVATE ${P6F_E22_INCLUDE})
 
-foreach(target p6f_calmet_dat21 cteas_p6f_calmet_dat21_writer
-        p6f_calmet_dat21_writer_tests p6f_calmet_dat21_e22_cross_read_tests)
+foreach(target p6f_calmet_dat21 p6f_p6d_fields cteas_p6f_calmet_dat21_writer
+        cteas_p6f_calmet_dat21_perturb p6f_calmet_dat21_writer_tests
+        p6f_calmet_dat21_e22_cross_read_tests)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX)
   else()
@@ -92,3 +104,56 @@ add_test(NAME p6f_calmet_dat21_real_reference_round_trip
 # case without loss (6,435 field records compared cell by cell).
 add_test(NAME p6f_calmet_dat21_e22_contract_cross_read
   COMMAND p6f_calmet_dat21_e22_cross_read_tests "${P6F_REAL_MET_DAT}")
+
+# The P6D real-case wind-array contract: metadata.json + raw float32 planes ->
+# the documented one-command entry, verified value by value against the arrays.
+add_test(NAME p6f_calmet_dat21_p6d_array_input
+  COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_p6d_array_input.py"
+    --tool "$<TARGET_FILE:cteas_p6f_calmet_dat21_writer>"
+    --statics-from "${P6F_REAL_MET_DAT}"
+    --report "${CMAKE_CURRENT_BINARY_DIR}/p6f-p6d-array-input-report.json")
+
+# XMISS at real scale: 50x50x9, 143 intervals, the sentinel in every real and
+# integer field, cross-checked against an independent scan and the P7 decoder.
+add_test(NAME p6f_calmet_dat21_real_scale_xmiss
+  COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_real_scale_xmiss_round_trip.py"
+    --tool "$<TARGET_FILE:cteas_p6f_calmet_dat21_writer>"
+    --p7-decoder "${P6F_P7_DECODER}"
+    --report "${CMAKE_CURRENT_BINARY_DIR}/p6f-real-scale-xmiss-report.json")
+
+# The original CALPUFF read test needs a Fortran compiler and rebuilds the
+# original from the unchanged vendor sources, so it is registered only where the
+# toolchain exists and is run as its own fail-closed step by
+# scripts/local_gate.py (a missing toolchain must never look like a pass).
+# The tracked vendor Fortran only builds with the repository's Linux GNU Fortran
+# recipe, so the test is registered on that toolchain only; on other hosts the
+# gate step in scripts/local_gate.py still declares the toolchain in `requires`.
+find_program(P6F_GFORTRAN NAMES gfortran-11 gfortran-12)
+set(P6F_VENDOR_CALPUFF "${P6F_REPO_ROOT}/engine/vendor/src/CALPUFF_v7.2.1_L150618")
+set(P6F_PUFF_INP "${P6F_REPO_ROOT}/project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp")
+set(P6F_REFERENCE_CON "${P6F_REPO_ROOT}/project/cases/hefei5km_2022_reference_case_20261011/deliverables/puff/puff.con")
+set(P6F_REFERENCE_LST "${P6F_REPO_ROOT}/project/cases/hefei5km_2022_reference_case_20261011/deliverables/puff/puff.lst")
+if(NOT APPLE AND P6F_GFORTRAN AND EXISTS "${P6F_VENDOR_CALPUFF}/modules.for" AND
+   EXISTS "${P6F_PUFF_INP}" AND EXISTS "${P6F_REFERENCE_CON}")
+  add_test(NAME p6f_calmet_dat21_original_calpuff_reads_written_calmet
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_original_calpuff_reads_written_calmet.py"
+      --tool "$<TARGET_FILE:cteas_p6f_calmet_dat21_writer>"
+      --perturb "$<TARGET_FILE:cteas_p6f_calmet_dat21_perturb>"
+      --vendor "${P6F_VENDOR_CALPUFF}"
+      --fortran "${P6F_GFORTRAN}"
+      --control "${P6F_PUFF_INP}"
+      --frozen-met "${P6F_REAL_MET_DAT}"
+      --frozen-sha256 "${P6F_REAL_MET_SHA256}"
+      --reference-con "${P6F_REFERENCE_CON}"
+      --reference-lst "${P6F_REFERENCE_LST}"
+      --out "${CMAKE_CURRENT_BINARY_DIR}/original-calpuff"
+      --report "${CMAKE_CURRENT_BINARY_DIR}/p6f-original-calpuff-report.json")
+  message(STATUS "P6F original CALPUFF read test: REGISTERED (${P6F_GFORTRAN})")
+else()
+  message(STATUS "P6F original CALPUFF read test: not registered here "
+                 "(no Fortran compiler or inputs); scripts/local_gate.py runs it "
+                 "as a fail-closed step with explicit requires")
+endif()

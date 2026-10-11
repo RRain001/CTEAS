@@ -159,6 +159,10 @@ def independent_inventory(data: bytes, nx: int, ny: int, nz: int,
         fail("controls station counts are not the frozen ones")
     if abs(dgrid - 100.0) > 1e-6 or timezone != "UTC+0000":
         fail("controls grid spacing/time zone are not the frozen ones")
+    (nlu,) = struct.unpack_from("<i", controls, 100)
+    ilandu_max = 0
+    ilandu_over_nlu = 0
+    ilandu_negative = 0
     index = 3 + ncom
     statics: dict[str, int] = {}
     for label in STATIC_LABELS:
@@ -183,6 +187,12 @@ def independent_inventory(data: bytes, nx: int, ny: int, nz: int,
             fail(f"static record {label} has {length} bytes, expected "
                  f"{RECORD_HEADER_BYTES + 4 * words}")
         statics[label] = words
+        if label == "ILANDU":
+            categories = struct.unpack_from(
+                f"<{cells}i", data, payload + RECORD_HEADER_BYTES)
+            ilandu_max = max(categories)
+            ilandu_over_nlu = sum(1 for value in categories if value > nlu)
+            ilandu_negative = sum(1 for value in categories if value < 0)
         index += 1
     counts = {label: 0 for label in labels}
     missing = {label: 0 for label in labels}
@@ -239,6 +249,10 @@ def independent_inventory(data: bytes, nx: int, ny: int, nz: int,
         "cells": cells,
         "first_begin": first_begin.isoformat(),
         "last_end": previous_end.isoformat(),
+        "nlu": nlu,
+        "ilandu_max": ilandu_max,
+        "ilandu_over_nlu": ilandu_over_nlu,
+        "ilandu_negative": ilandu_negative,
     }
 
 
@@ -273,6 +287,9 @@ def main() -> int:
         fail(f"record count {inventory['records']} != {FROZEN_RECORDS}")
     evidence["independent_inventory"] = {
         "records": inventory["records"],
+        "nlu": inventory["nlu"],
+        "ilandu_max": inventory["ilandu_max"],
+        "ilandu_over_nlu": inventory["ilandu_over_nlu"],
         "comments": inventory["comments"],
         "intervals": inventory["intervals"],
         "fields_per_interval": inventory["fields_per_interval"],
@@ -341,6 +358,18 @@ def main() -> int:
         if checked["hourly"]["first_begin"] != "2022-01-01T00:00:00Z" or \
                 checked["hourly"]["last_end"] != "2022-01-06T23:00:00Z":
             fail("check reports the wrong time span")
+        # ILANDU is case input written verbatim; NLU is not an upper bound in the
+        # no-observation case (the frozen case stores category 20 with NLU=14), so
+        # the categories are reported instead of range-rejected.
+        frozen_statics = checked["statics"]
+        if frozen_statics["ilandu_max"] != inventory["ilandu_max"] or \
+                frozen_statics["ilandu_over_nlu_cells"] != inventory["ilandu_over_nlu"] or \
+                frozen_statics["ilandu_negative_cells"] != inventory["ilandu_negative"]:
+            fail("the writer's ILANDU statistics disagree with the independent "
+                 "scan")
+        if inventory["ilandu_over_nlu"] == 0:
+            fail("the frozen case was expected to carry land-use categories "
+                 "above NLU; none were found")
         names = [entry["label"] for entry in checked["fields"]]
         if names != inventory["labels"]:
             fail("the writer's field inventory order differs from OUTHR")

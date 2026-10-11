@@ -412,6 +412,17 @@ std::string check_report(const std::string& path,
            ", \"xlat1\": " + json_number(header.projection.xlat1) +
            ", \"xlat2\": " + json_number(header.projection.xlat2) + "\n";
     out += "  },\n";
+    // The original copies the land-use categories it read; NLU is not an upper
+    // bound of them in the no-observation case (the frozen reference case itself
+    // stores category 20 with NLU=14), so the categories are reported instead of
+    // being range-rejected.
+    std::size_t ilandu_over_nlu = 0, ilandu_negative = 0;
+    std::int32_t ilandu_max = 0;
+    for(const std::int32_t category : statics.ilandu) {
+        if(category > header.nlu)++ilandu_over_nlu;
+        if(category < 0)++ilandu_negative;
+        ilandu_max = std::max(ilandu_max, category);
+    }
     out += "  \"statics\": {\"zface_faces\": " +
            std::to_string(statics.zface_m.size()) +
            ", \"zface_min_m\": " +
@@ -425,7 +436,15 @@ std::string check_report(const std::string& path,
            ", \"surface_stations\": " + std::to_string(statics.surface_x_m.size()) +
            ", \"upper_stations\": " + std::to_string(statics.upper_x_m.size()) +
            ", \"precip_stations\": " + std::to_string(statics.precip_x_m.size()) +
-           ", \"grid_cells\": " + std::to_string(cells) + "},\n";
+           ", \"grid_cells\": " + std::to_string(cells) +
+           ", \"nlu\": " + std::to_string(header.nlu) +
+           ", \"ilandu_max\": " + std::to_string(ilandu_max) +
+           ", \"ilandu_over_nlu_cells\": " + std::to_string(ilandu_over_nlu) +
+           ", \"ilandu_negative_cells\": " + std::to_string(ilandu_negative) +
+           ", \"ilandu_note\": " +
+           json_string("ILANDU is written verbatim; NLU is not an upper bound in "
+                       "the no-observation case") +
+           "},\n";
     const std::size_t intervals = cteas::p6f::interval_count(file);
     out += "  \"hourly\": {\"intervals\": " + std::to_string(intervals) +
            ", \"fields_per_interval\": " +
@@ -767,7 +786,10 @@ int main(int argc, char** argv) {
             else if(flag == "--expect-sha256")expect = option_value(args, at, flag);
             else if(flag == "--report")report = option_value(args, at, flag);
             else if(flag == "--start")start = option_value(args, at, flag);
-            else if(flag == "--hours")hours = option_int(args, at, flag);
+            else if(flag == "--hours") {
+                hours = option_int(args, at, flag);
+                require_argument(hours >= 0, "--hours must not be negative");
+            }
             else if(flag == "--nx")nx = option_int(args, at, flag);
             else if(flag == "--ny")ny = option_int(args, at, flag);
             else if(flag == "--nz")nz = option_int(args, at, flag);
