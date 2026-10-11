@@ -106,3 +106,14 @@ The legacy default `/usr/bin/gfortran` does not support
 Original reference CI now prefers installed `gfortran-12`, then
 `gfortran-11`, before falling back to the default binary, logging exact
 compiler version; reference build status stays UNVERIFIED until execution.
+
+## P7A explicit compiler compatibility check
+
+The P7A job now prints all `gfortran-12`, `gfortran-11` and default
+`gfortran` executable paths/versions and uses a minimum GNU Fortran 10
+gate when only the default binary is available. An incompatible old
+compiler fails with a toolchain-specific message before trying CALPUFF.
+Previous successful existing Linux CTEAS builds do not establish the
+compiler selected inside this independent P7 runner job. The most recent
+P7 CI 38122937191 attempt 2 failed on github.com HTTPS before compilation;
+therefore the new compiler selection has not yet been proven by CI.

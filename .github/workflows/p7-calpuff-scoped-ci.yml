@@ -77,13 +77,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "P7A_GFORTRAN_CANDIDATES_BEGIN"
+          for candidate in gfortran-12 gfortran-11 gfortran; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              printf '%s: %s; ' "$candidate" "$(command -v "$candidate")"
+              "$candidate" --version | head -n 1
+            fi
+          done
+          echo "P7A_GFORTRAN_CANDIDATES_END"
           if command -v gfortran-12 >/dev/null 2>&1; then
             fc="$(command -v gfortran-12)"
           elif command -v gfortran-11 >/dev/null 2>&1; then
             fc="$(command -v gfortran-11)"
-          else
+          elif command -v gfortran >/dev/null 2>&1; then
             fc="$(command -v gfortran)"
+            major="$("$fc" -dumpversion | cut -d. -f1)"
+            if ! [[ "$major" =~ ^[0-9]+$ ]] || (( major < 10 )); then
+              echo "::error::Default gfortran is too old for -fallow-argument-mismatch; require gfortran 10+ (prefer gfortran-12/11)."
+              exit 1
+            fi
+          else
+            echo "::error::gfortran not installed on dedicated P7 runner."
+            exit 1
           fi
+          echo "P7A_FORTRAN_COMPILER=$fc"
           "$fc" --version | head -n 1
           python3 native_cpp/modules/p7_calpuff/reference/build_original_calpuff.py \
             --output "${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/original-fortran" \
