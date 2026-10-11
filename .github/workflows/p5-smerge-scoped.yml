@@ -36,13 +36,20 @@ jobs:
           from pathlib import Path
           old=Path("engine/preprocess/smerge_surf_data")
           new=Path("native_cpp/modules/p5_smerge/data_prep")
-          # Scripts intentionally not changed in the scoped P5 refactor.
+          # Original source scripts remain unchanged in their canonical
+          # engine/preprocess location; scoped copies evolve independently.
+          # Stage-specific P5 logic intentionally changes the copied scripts.
+          import subprocess
+          subprocess.run(["git","fetch","--quiet","--depth=1","origin","main"],check=True)
           for name in ("clean_merge_filled_by_research_time.py",
                        "convert_cleaned_to_smerge_ready.py"):
-              assert (old/name).read_bytes()==(new/name).read_bytes(), name
+              source="engine/preprocess/smerge_surf_data/"+name
+              baseline=subprocess.check_output(["git","show","FETCH_HEAD:"+source])
+              assert (old/name).read_bytes()==baseline,name
           assert (old/"README.md").read_bytes()==(new/"upstream_README.md").read_bytes()
           # Edited copies are kept in a separate directory, never in engine.
-          assert "ffill()" in (new/"interpolate.py").read_text()
+          assert "standardize_sparse_station" in (new/"interpolate.py").read_text()
+          assert "P5_CALMET_PRIMARY_WIND_GAP" in (new/"clean_merge_filled_by_research_time.py").read_text()
           assert "station_selection_" in (new/"isd_to_smerge_and_fill.py").read_text()
           assert "station_selection_" in (new/"download_isd_by_grid.py").read_text()
           assert "source-selection manifest" in (new/"isd_to_smerge_and_fill.py").read_text()
