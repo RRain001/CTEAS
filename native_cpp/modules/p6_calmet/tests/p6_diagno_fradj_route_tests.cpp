@@ -83,7 +83,7 @@ int main(){
             "D9A identity route must leave the step-one field untouched");
     // Original FRADJ needs terrain relief, subcritical Froude numbers and an
     // upslope wind; a flat 0 m terrain envelope must be a strict no-op.
-    input.terrain_adjustment=true;
+    input.froude_adjustment=true;
     fill_froude(input.terrain,true);
     const auto flat=integrate_diagno_d9_selected(input);
     require(flat.prepared_ug==identity.prepared_ug&&
