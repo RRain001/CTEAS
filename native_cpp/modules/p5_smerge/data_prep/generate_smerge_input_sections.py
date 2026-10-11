@@ -226,12 +226,45 @@ def detect_time_range_from_wdir(csv_path: Path) -> Tuple[datetime, datetime]:
     return min_dt, max_dt
 
 
+def detect_time_range_from_any_source_hour(csv_path: Path) -> Tuple[datetime, datetime]:
+    """Source timestamps, independent of wind QC; sparse auxiliary may be all 9999.
+
+    The primary guarantees model-hour coverage, so do not infer the global
+    run interval only from the auxiliary's nonmissing wind records.
+    """
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.reader(f)
+        next(reader, None)
+        next(reader, None)
+        columns = [c.strip() for c in next(reader, [])]
+        index = {key: i for i, key in enumerate(columns)}
+        if not {"Month", "Day", "Year", "Hour"}.issubset(index):
+            raise ValueError(f"SMERGE sparse source lacks date columns: {csv_path}")
+        times = []
+        for row in reader:
+            if not row:
+                continue
+            try:
+                times.append(datetime(
+                    int(float(row[index["Year"]])),
+                    int(float(row[index["Month"]])),
+                    int(float(row[index["Day"]])),
+                    int(float(row[index["Hour"]])) // 100))
+            except (ValueError, IndexError) as exc:
+                raise ValueError(f"invalid SMERGE source timestamp: {csv_path}") from exc
+    if not times:
+        raise ValueError(f"no source rows in selected SMERGE station: {csv_path}")
+    if len(times) != len(set(times)):
+        raise ValueError(f"duplicate source timestamps in SMERGE station: {csv_path}")
+    return min(times), max(times)
+
+
 def detect_global_period(filled: List[Tuple[str, str, Path]]) -> Tuple[datetime, datetime]:
     """Detect global start/end from all filled station files based on wind direction."""
     starts: List[datetime] = []
     ends: List[datetime] = []
     for _usaf, _wban, fpath in filled:
-        st, ed = detect_time_range_from_wdir(fpath)
+        st, ed = detect_time_range_from_any_source_hour(fpath)
         starts.append(st)
         ends.append(ed)
     return min(starts), max(ends)
