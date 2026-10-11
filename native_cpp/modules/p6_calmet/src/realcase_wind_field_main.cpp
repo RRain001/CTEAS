@@ -461,7 +461,7 @@ int main(int argc,char** argv){
           "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\"},\n";
     meta<<"  \"stages_applied_in_chain\": [";
     meta<<"\"WIND1 selected first guess (IEXTRP=-4 neutral SIMILT)\"";
-    meta<<", \"original INTER2 two-component blend (WO=1.0)\" ";
+    meta<<", \"original INTER2 two-component blend (WO=1.0)\"";
     meta<<", \"TERSET envelope (DIAGI L5228, TERRAD="<<terrad_km<<" km)\"],\n";
     meta<<"  \"stages_not_applied\": [\n";
     meta<<"    {\"stage\": \"SURFVAR -> TEMP2D (DIAGNO L5609-L5610)\", \"status\": \"BLOCKED\","
