@@ -107,6 +107,9 @@ def locate(lines: list[str], found: dict[str, list[int]], names: tuple[str, ...]
 
 CLOSURE_TARGETS = ("ctsg", "ctpar", "upper", "lower", "puffc", "flopuff", "path", "path0")
 
+# Units referenced as FUNCTIONS (`x = name(...)`), which a `call` scan misses.
+FUNCTION_REFERENCES = ("vcbar", "vcoup")
+
 
 def call_closure(lines: list[str], owner: dict[int, str]) -> dict:
     """Who calls each CTSG-closure unit (the P7L `flopuff` question)."""
@@ -121,6 +124,25 @@ def call_closure(lines: list[str], owner: dict[int, str]) -> dict:
             if caller not in callers[callee]:
                 callers[callee].append(caller)
     return {name: sorted(names) for name, names in callers.items()}
+
+
+def function_reference_callers(lines: list[str], owner: dict[int, str]) -> dict:
+    """Enclosing units that reference each FUNCTION_REFERENCES unit as a function."""
+    result: dict[str, list[str]] = {name: [] for name in FUNCTION_REFERENCES}
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped[0] in "cC*!":
+            continue
+        lowered = stripped.lower()
+        if lowered.startswith(("real", "integer", "logical", "double", "function", "subroutine",
+                               "external", "data", "common")):
+            continue
+        for name in FUNCTION_REFERENCES:
+            if re.search(rf"\b{name}\s*\(", lowered):
+                caller = owner[index]
+                if caller not in result[name]:
+                    result[name].append(caller)
+    return {name: sorted(names) for name, names in result.items()}
 
 
 def const_initialisation_check(lines: list[str], owner: dict[int, str],
@@ -185,6 +207,7 @@ def extract(vendor: pathlib.Path) -> tuple[dict, dict[str, str]]:
                    "ctsg": True},
         "not_ported": ["ctpar", "upper", "flopuff"],
         "call_closure": call_closure(lines, owner),
+        "function_reference_callers": function_reference_callers(lines, owner),
         "const_initialisation": const_quirk,
         "vendor_include_sha256": {
             path.name: sha256_bytes(path.read_bytes())

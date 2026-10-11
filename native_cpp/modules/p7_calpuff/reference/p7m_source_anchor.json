@@ -162,6 +162,20 @@
     ],
     "path0": []
   },
+  "function_reference_callers": {
+    "vcbar": [
+      "dry"
+    ],
+    "vcoup": [
+      "calcpf",
+      "lsslint",
+      "plmfog",
+      "slugave",
+      "slugint",
+      "slugsnp",
+      "vcbar"
+    ]
+  },
   "const_initialisation": {
     "rt2pi_writers": [
       "asdf",

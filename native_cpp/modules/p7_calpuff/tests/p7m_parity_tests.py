@@ -312,6 +312,17 @@ def main() -> int:
              f"upper<-{closure['upper']}")
     print("P7M_CALL_CLOSURE=PASS FLOPUFF_CALLERS=path,path0,upper UPPER_CALLERS=ctsg "
           "CTPAR_CALLERS=ctsg PATH_CALLERS=ctpar")
+    # CTSG does NOT consume VCBAR in the vendor source: VCBAR's only caller is
+    # DRY (the Gaussian-puff dry-removal branch), so "VCBAR -> CTSG" is not a
+    # vendor call edge.
+    references = manifest["function_reference_callers"]
+    if references["vcbar"] != ["dry"]:
+        fail(f"VCBAR function references changed: {references['vcbar']}")
+    for unit in ("ctsg", "lower", "puffc", "ctrec", "sigma"):
+        if "vcbar" in manifest["units"][unit]["calls"]:
+            fail(f"{unit} unexpectedly calls VCBAR")
+    print("P7M_VCBAR_CLOSURE=PASS VCBAR_FUNCTION_REFERENCE_CALLERS=dry "
+          "CTSG_CONSUMES_VCBAR=false")
     quotes = 0
     for name, quoted in QUOTES.items():
         quotes += check_quotes(spans[name], quoted, name.upper())
