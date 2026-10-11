@@ -42,7 +42,7 @@ jobs:
           echo '==== original PREPDI vertical temperature route 13640-13725 ===='
           sed -n '13640,13725p' "$SRC" | nl -ba -v 13640
           echo '==== MISSFC declaration and original preprocessing call sites ===='
-          grep -inE 'subroutine missfc|call missfc|otempk|lcalgrd|isurft|zupt' "$SRC" | head -135
+          grep -inE 'subroutine missfc|call missfc|otempk|lcalgrd|isurft|zupt' "$SRC" | sed -n '1,135p'
           echo '==== original missing surface data routine source if exists ===='
           line=$(grep -in '^      subroutine missfc(' "$SRC" | head -1 | cut -d: -f1 || true)
           if [ -n "$line" ]; then sed -n "${line},$((line+240))p" "$SRC" | nl -ba -v "$line"; fi
