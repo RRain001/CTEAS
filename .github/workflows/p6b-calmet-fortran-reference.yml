@@ -132,6 +132,17 @@ jobs:
             --original-vertav integration-evidence/p6c-vertav-reference/original_vertav_result.txt \
             --modern-hourly integration-evidence/p6c-hourly-prepdi.csv \
             --out integration-evidence/p6c-prepdi-time-reference
+      - name: P6C original FACET and INTP full-source face temperatures vs C++
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_facet.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --up project/current/met/upperair/final/up_58424.dat \
+            --cpp-level /tmp/p6c-up-build/cteas_p6_read_upper \
+            --cpp-facet /tmp/p6c-up-build/cteas_p6_facet \
+            --station 58424 \
+            --out integration-evidence/p6c-facet-reference
       - name: P5 real 2022 ISD + Lite / two-stage wind / GENERIC
         shell: bash
         run: |
