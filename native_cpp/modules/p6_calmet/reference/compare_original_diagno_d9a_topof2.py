@@ -211,15 +211,13 @@ def write_case(path, zface1_m, dz_m, terrain, lapse, temperature, alpha,
                 handle.write(" ".join(f"{value:.8f}"
                                       for value in field[offset:offset + NX]) + "\n")
 
-def write_bridge_fields(handle, enabled, alpha, planes):
-    """Append the IKINE selector and its TOPOF2 planes to a fixture stream."""
-    terrain, highest, lapse, temperature = planes
-    del highest
+def write_bridge_fields(handle, enabled, alpha):
+    """Append the IKINE selector to a fixture stream.
+
+    TOPOF2 consumes the shared HTOPO/GAMMA/TEMP2D planes already carried by
+    the terrain record, so only the selector and ALPHA are written here.
+    """
     handle.write(f"{1 if enabled else 0} {alpha:.9f}\n")
-    for field in (terrain, lapse, temperature):
-        for offset in range(0, N, NX):
-            handle.write(" ".join(f"{value:.8f}"
-                                  for value in field[offset:offset + NX]) + "\n")
 
 def read_uv(path):
     rows = [line.split() for line in path.read_text().splitlines()]
