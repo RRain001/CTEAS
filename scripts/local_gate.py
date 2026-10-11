@@ -57,6 +57,20 @@ TRACKS: dict[str, dict] = {
                      "--vendor", VENDOR_CALMET, "--cpp", "{build}/cteas_p6_d9a_source_trace",
                      "--out", "{out}/p6d-chained"],
              "requires": [VENDOR_CALMET]},
+            # Real-case producer + its two original-source verdicts (requested by
+            # the P6D track in PR #23; comparators compile the unchanged original
+            # routines with gfortran and are fail-closed).
+            {"cmd": ["{build}/cteas_p6_realcase_wind_field", "--case", CASE_2022,
+                     "--out", "{out}/p6d-realcase", "--fixtures", "{out}/p6d-realcase-fixtures"],
+             "requires": [CASE_2022]},
+            {"cmd": ["python3", "native_cpp/modules/p6_calmet/reference/compare_original_d9a_realcase_step_one.py",
+                     "--vendor", VENDOR_CALMET, "--fields", "{out}/p6d-realcase",
+                     "--fixtures", "{out}/p6d-realcase-fixtures", "--out", "{out}/p6d-verdict-step-one"],
+             "requires": [VENDOR_CALMET, CASE_2022]},
+            {"cmd": ["python3", "native_cpp/modules/p6_calmet/reference/compare_original_d9a_realcase_blend.py",
+                     "--vendor", VENDOR_CALMET, "--fields", "{out}/p6d-realcase",
+                     "--fixtures", "{out}/p6d-realcase-fixtures", "--out", "{out}/p6d-verdict-blend"],
+             "requires": [VENDOR_CALMET, CASE_2022]},
         ],
     },
     "p6e": {
