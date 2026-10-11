@@ -28,8 +28,14 @@ jobs:
           python3 native_cpp/modules/p6_calmet/reference/inspect_calmet_control.py \
             engine/vendor/src/CALMET_v6.5.0_L150223/calmet.inp --expect-not-ready
       - name: Configure standalone strict C++20 tests
-        run: cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-p6a-contract-build -DCMAKE_BUILD_TYPE=Debug
+        run: |
+          set -euo pipefail
+          # Several self-hosted runner installations share this machine, so a
+          # fixed /tmp path keeps a CMakeCache from another checkout and CMake
+          # then refuses the source directory. Keep the build unique per run.
+          echo "CTEAS_P6A_BUILD=$RUNNER_TEMP/cteas-p6a-contract-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/cteas-p6a-contract-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -DCMAKE_BUILD_TYPE=Debug
       - name: Compile
-        run: cmake --build /tmp/cteas-p6a-contract-build --parallel 2
+        run: cmake --build "$CTEAS_P6A_BUILD" --parallel 2
       - name: Unit checks only (no meteorology or physics)
-        run: ctest --test-dir /tmp/cteas-p6a-contract-build --output-on-failure
+        run: ctest --test-dir "$CTEAS_P6A_BUILD" --output-on-failure
