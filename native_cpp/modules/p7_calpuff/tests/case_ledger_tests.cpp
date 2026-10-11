@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -318,8 +319,15 @@ int main() {
                 "artifact hash equals direct hash");
 
         write_text(concentration, "synthetic concentration placeholder");
-        const auto with_output =
-            evaluate(met, control, {}, accepted.artifacts.front().sha256, accepted.artifacts[1].sha256);
+        const auto uppercase = [](std::string value) {
+            std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+                return static_cast<char>(std::toupper(c));
+            });
+            return value;
+        };
+        const auto with_output = evaluate(met, control, {},
+                                          uppercase(accepted.artifacts.front().sha256),
+                                          uppercase(accepted.artifacts[1].sha256));
         require(with_output.status == "ACCEPTED_CANONICAL_2022_ORIGINAL_OUTPUT_PRESENT",
                 "discovered concentration artifact status: " + with_output.status);
         require(with_output.exit_code == 0 && with_output.artifacts.size() == 3,

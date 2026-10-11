@@ -5,7 +5,9 @@
 #include "cteas/puff/gregorian.hpp"
 #include "cteas/puff/sha256.hpp"
 
+#include <algorithm>
 #include <charconv>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <iomanip>
@@ -195,6 +197,13 @@ ControlEvidence load_control(const std::string& path) {
     return evidence;
 }
 
+std::string lowered(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
 std::string json_escape(std::string_view text) {
     std::string out;
     out.reserve(text.size());
@@ -316,16 +325,17 @@ CaseLedgerResult evaluate_hefei_2022_case(const CaseLedgerRequest& request) {
     const auto met = load_met(request.met_path);
     const auto control = load_control(request.control_path);
 
-    // Mandatory SHA-256 pins, when the caller declares them.
+    // Mandatory SHA-256 pins, when the caller declares them. Hex case is
+    // normalized because repository variables are free text.
     if (!request.expected_met_sha256.empty()) {
         const auto observed = result.artifacts.front().sha256;
-        add_refusal(result, "original_met_dat_sha256_pin", request.expected_met_sha256, observed,
-                    observed == request.expected_met_sha256);
+        add_refusal(result, "original_met_dat_sha256_pin", lowered(request.expected_met_sha256),
+                    observed, observed == lowered(request.expected_met_sha256));
     }
     if (!request.expected_control_sha256.empty()) {
         const auto observed = result.artifacts[1].sha256;
-        add_refusal(result, "calpuff_control_sha256_pin", request.expected_control_sha256, observed,
-                    observed == request.expected_control_sha256);
+        add_refusal(result, "calpuff_control_sha256_pin", lowered(request.expected_control_sha256),
+                    observed, observed == lowered(request.expected_control_sha256));
     }
 
     add_refusal(result, "original_met_dat_contract",
