@@ -120,20 +120,20 @@ jobs:
         run: gfortran --version | head -1
       - name: Build strict C++20 and test regressions
         run: |
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-p6d-minim -DCMAKE_BUILD_TYPE=Debug
-          cmake --build /tmp/cteas-p6d-minim --parallel 2
-          ctest --test-dir /tmp/cteas-p6d-minim --output-on-failure
+          cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/cteas-p6d-minim-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$RUNNER_TEMP/cteas-p6d-minim-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/cteas-p6d-minim-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output-on-failure
       - name: Execute literal original MINIM DIVCEL WINDBC source parity
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_original_minim.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
-            --cpp /tmp/cteas-p6d-minim/cteas_p6_minim \
-            --out /tmp/p6d-minim-parity
+            --cpp "$RUNNER_TEMP/cteas-p6d-minim-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"/cteas_p6_minim \
+            --out "$RUNNER_TEMP/p6d-minim-parity-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
       - name: Preserve scientific audit evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: original-calmet-minim-parity
-          path: /tmp/p6d-minim-parity/p6d-minim-parity.json
+          path: ${{ runner.temp }}/p6d-minim-parity-${{ github.run_id }}-${{ github.run_attempt }}/p6d-minim-parity.json
           if-no-files-found: warn
           retention-days: 14
