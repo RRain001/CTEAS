@@ -2321,9 +2321,19 @@ frozen case:
    P6E-owned fields.
 
 It is fail-closed: a missing case input exits `BLOCKED` (3), a drifted frozen
-`met.dat` (sha256 pinned) exits `FAIL` (1) - never a silent skip.  CTest runs
-it inside the gate's existing `ctest` step, so `scripts/local_gate.py`'s p6e
-entry did not need a new command.
+`met.dat` (sha256 pinned) exits `FAIL` (1) - never a silent skip.  The frozen
+case directory is resolved from the checkout first and, on the shared gate
+host, from `$CTEAS_GATE_ROOT/driver/project/cases/...`, because the `p6e`
+feature branch predates the tracked `project/` tree.  CTest runs it inside the
+gate's existing `ctest` step, so `scripts/local_gate.py`'s p6e entry did not
+need a new command; the three-step chain is nevertheless kept verbatim in the
+test so a reviewer can replay it by hand.
+
+Verified in the authoritative gate: `ctest 26/26 passed`, with
+`24/26 p6e_calmet_dat21_real_full_field_reference ... Passed 197.22 sec`
+reporting `dQSW_zero_hours = 143`, `qsw_max_abs_error = 0`,
+`total_exceedances = 0`, `owned_fields = 18`, `el_exceedances = 0`,
+`wstar_exceedances = 0`, `status = PASS`.
 
 ### `P6E_FULL`: the two wind regimes, stated separately
 
