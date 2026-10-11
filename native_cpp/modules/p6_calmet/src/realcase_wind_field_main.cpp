@@ -511,8 +511,8 @@ int main(int argc,char** argv){
                 const std::size_t cell=std::size_t(ny/2)*std::size_t(nx)+
                                        std::size_t(nx/2);
                 const std::size_t offset=h*std::size_t(nx)*std::size_t(ny)+cell;
-                if(offset>=zi_hours.size()||offset>=el_hours.size())
-                    throw std::runtime_error("EL/ZI file has no block for "+
+                if(offset>=el_hours.size())
+                    throw std::runtime_error("EL file has no block for "+
                                              hour_label(clock));
                 float cutoff_m=0.f;
                 if(!zii_hours.empty()){
