@@ -136,7 +136,7 @@ std::string hour_label(std::chrono::sys_seconds clock){
 }
 
 struct Arguments {
-    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,zi_file,el_file,zii_file;
+    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,zi_file,el_file,zii_file,el_cell_file;
     int hours=143;
     fs::path out()const{return out_dir;}
 };
@@ -162,6 +162,7 @@ int main(int argc,char** argv){
         else if(flag=="--zi")args.zi_file=next();
         else if(flag=="--el")args.el_file=next();
         else if(flag=="--zii-cell")args.zii_file=next();
+        else if(flag=="--el-cell")args.el_cell_file=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
         else throw std::invalid_argument("unknown argument "+flag);
     }
@@ -420,6 +421,24 @@ int main(int argc,char** argv){
         stream.read(reinterpret_cast<char*>(zii_hours.data()),
                     static_cast<std::streamsize>(bytes));
     }
+    // The Monin-Obukhov length the original actually hands to SIMILT, per hour
+    // (143 float32, from DGM's instrumented run). The P6E E29 EL export agrees
+    // with it in most hours but differs by a factor of ~3 at some (e.g. hours
+    // 42/43: 120.4009 against 43.3443), which moves the SIMILT profile.
+    std::vector<float> el_cell_hours;
+    if(!args.el_cell_file.empty()){
+        if(!fs::is_regular_file(args.el_cell_file))
+            throw std::runtime_error("EL cell file does not exist: "+
+                                     args.el_cell_file.string());
+        const auto bytes=fs::file_size(args.el_cell_file);
+        if(bytes%4!=0||bytes/4<3)
+            throw std::runtime_error("EL cell file must hold whole hourly float32 values");
+        std::ifstream stream(args.el_cell_file,std::ios::binary);
+        if(!stream)throw std::runtime_error("cannot open the EL cell file");
+        el_cell_hours.assign(bytes/4,0.f);
+        stream.read(reinterpret_cast<char*>(el_cell_hours.data()),
+                    static_cast<std::streamsize>(bytes));
+    }
     // Monin-Obukhov length per hour (P6E E29 <prefix>.el.f32, same layout).
     // DIAGI's station column is built from it (calmet.for L6894 -> STHEOR).
     std::vector<float> el_hours;
@@ -508,13 +527,23 @@ int main(int argc,char** argv){
             // L30345). The WIND1 first guess is a different call: L36171 uses
             // zmo=zml=10000 (neutral, uncapped), so it keeps all nine levels.
             std::size_t levels_filled=0;
-            if((!zi_hours.empty()||!zii_hours.empty())&&!el_hours.empty()){
+            if((!zi_hours.empty()||!zii_hours.empty())&&
+               (!el_hours.empty()||!el_cell_hours.empty())){
                 const std::size_t cell=std::size_t(ny/2)*std::size_t(nx)+
                                        std::size_t(nx/2);
                 const std::size_t offset=h*std::size_t(nx)*std::size_t(ny)+cell;
-                if(offset>=el_hours.size())
-                    throw std::runtime_error("EL file has no block for "+
-                                             hour_label(clock));
+                float el_m=0.f;
+                if(!el_cell_hours.empty()){
+                    if(h>=el_cell_hours.size())
+                        throw std::runtime_error("EL cell file has no value for "+
+                                                 hour_label(clock));
+                    el_m=el_cell_hours[h];
+                }else{
+                    if(offset>=el_hours.size())
+                        throw std::runtime_error("EL file has no block for "+
+                                                 hour_label(clock));
+                    el_m=el_hours[offset];
+                }
                 float cutoff_m=0.f;
                 if(!zii_hours.empty()){
                     if(h>=zii_hours.size())
@@ -529,7 +558,7 @@ int main(int argc,char** argv){
                 }
                 const SimiltProfileInput diagi{
                     static_cast<float>(station_lat_deg),10.f,roughness,surface_u,surface_v,
-                    el_hours[offset],cutoff_m,zimin_m,0,zface};
+                    el_m,cutoff_m,zimin_m,0,zface};
                 const auto profile=original_similt_profile(diagi);
                 levels_filled=profile.levels_filled;
                 for(std::size_t k=0;k<9;++k)
