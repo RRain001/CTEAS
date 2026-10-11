@@ -1,0 +1,38 @@
+# P6C Phase 1–2 audit: Original GEO.DAT and SURF.DAT readers
+
+Date: 2026-10-11. Current status: **P6C_GEO_READ_SELECTED_PATH_FORTRAN_FORMAT_PARITY_PASS; P6C_SURF_READ_SELECTED_PATH_NATIVE_FORTRAN_FORMAT_PARITY_PASS; P6C_UPPER_AIR_AND_OBSERVATION_TIME_INTERPOLATION_NOT_IMPLEMENTED; P6C_COMPLETE=FALSE**.
+
+## Fixed scientific scope and source
+
+- CTEAS P6 reconstructs original CALMET 6.5.0 (L150223), limited to user's new Hefei 50×50@100m UTM 50N WGS84 / 9-layer, 2022-01-01 00:00–Jan 06 23:00 UTC case. Original user-supplied 2023 smoke5d case is historical control reference, never the new meteorology golden.
+- P6 workflow pinned original P3 `5b1013b`, P4 `dc4e3f0`, P5 `dd473ce`. Original `engine/vendor/src`, upstream branches and `main` are untouched.
+- The original CALMET input environment has **143 one-hour output intervals from 144 endpoint labels**. Full `P6B` baseline produces original `MET.DAT` SHA256 `968b2dd24f0eb4ad428709b52a154d9022e8c7e37a4be3fb9498e3d7e756d04e`. File format-only equality and isolated input read equality do **not** qualify final C++ solver physics.
+
+## 1. GEO.DAT v2.1 eight fields: PASS independently against native Fortran
+
+CALMET source references: `READGE` `calmet.for` L27790–28392, `FILLGEO` L6983–7104; original selected path `IOPT(1)=1` (new 14 land-use categories), `HTFAC=1`, `IOPT(2...7)=2` (all six supplied gridded fields). The original `READGE` reads **rows j=NY down to 1**, and Fortran/C++ both store **i fastest, j south-to-north**. Check explicit coordinate origin, WGS-84 UTM50N, 0.1km 50×50 and land-use category membership instead of relying solely on dimensions (2023 case had same 50×50 but a 50km domain).
+
+Modern code: `native_cpp/modules/p6_calmet/include/cteas/p6/read_geo.hpp`, `cteas_p6_read_geo`, `p6_read_geo_tests.cpp`. Its gridded input order is exactly `ILANDU, ELEV, Z0, ALBEDO, BOWEN, HCG, QF, XLAI`. Reject legacy default/category-table, second LU source, weather-projection mismatch, extra records and invalid finite numerics.
+
+Reference [P6C native Fortran eight-field data-read CI — PASS](https://github.com/RRain001/CTEAS/actions/runs/38109436038): regenerates new real **2022** `GEO.DAT` using **unchanged original TERREL+CTGPROC+MAKEGEO** from pinned P3 sources, then independently compiles a **native Fortran selected-format reader following original READGE/FILLGEO list-directed source statements**, and compares 2,500×8 = **20,000 numbers** to the C++20 reader. No comparison over preset absolute tolerance `1e-5`; maximum observed printed difference: terrain `6.1000094e-11 m`, albedo and soil heat parameter `3.9539982e-11`, others zero. Real 100m study grid SW origin from P3 manifest `x0=510.8846439571007 km`, `y0=3531.2689269678035 km`; GEO file stores coordinates to 0.001km. Both programs read the same original GEO.DAT text. This independently written Fortran reader is **not** a claim that all of original `READGE`'s QA scratch, land-use fallback or alternate projection paths have been ported.
+
+## 2. SURF.DAT v2.1 one virtual station: raw formatted read PASS
+
+CALMET selected path `RDHD` L14862–14927, `RDSN` L23437–23660; `IFORMS=2` **formatted** `SURF.DAT 2.1`, `PMAP=NONE`, `UTC+0000`, `NSSTA=1`, `ISPACK=0`; original P5 produces `SURF.DAT` through **unchanged Fortran SMERGE** from newly cleaned current 2022 ISD/Lite data. `RDSN` accepts explicit hourly beginning and ending times with seconds, eight surface fields `WS, WD, ICEIL, ICC, TEMPK, IRH, PRES, IPCODE`; Fortran `9999` signals missing.
+
+Modern code: `native_cpp/modules/p6_calmet/include/cteas/p6/read_surface.hpp`, CLI `cteas_p6_read_surface`, test `p6_read_surface_tests.cpp`; reads exactly 143 original one-hour record intervals, checks station ID and UTC continuity, exposes original raw values and separate **validity masks**:
+- Exact calm pair `WS=0, WD=0` is an observed, valid wind and **not missing**; newer P5 may already choose to replace it according to its documented independent wind-policy before SMERGE.
+- `WS=9999` or `WD=9999` means unavailable wind and cannot be assumed calm.
+- `IPCODE=9999` means missing precipitation *code*, never observed zero precipitation. In any event original P6 reference `NPSTA=0` omits gridded rainfall and **does not prove HTO wet-deposition readiness**.
+- Fortran raw output comparator faithfully preserves 143×8 original printed meteorological scalar values and 143 station/time keys; original stable UTM case does not apply LCC/PS wind rotation.
+
+The source-independent comparator `compare_fortran_surface.py` compiles a native Fortran `SURF.DAT` input-format reader following original `RDHD/RDSN` formatted-branch list-directed read order; its QA is limited to the **raw 2022 SMERGE output**, not original RDSN's full state machine, source-data quality, interpolation or weather modeling. It runs as a new mandatory P6B workflow gate **after** original SMERGE and **before** original CALMET. Real 2022 CI [P6B integration + P6C SURF native Fortran selected-path check](https://github.com/RRain001/CTEAS/actions/runs/38109730617) reported the `P6C strict new 2022 SURF.DAT one-hour records vs native Fortran` step **PASS** (all compiler/CTest/source-format tests passed); the workflow still continues its complete CALMET re-run on this run.
+
+## 3. Still blocking P6C phase exit
+
+1. **C-MET-UP:** standalone scoped reader for current `UP.DAT v2.1` `IFMTU=1` READ62 P4 output. Preserve 730 2022 sounding times, `PSTOP=500 hPa`, level-by-level pressure/height MSL, temperature, WD/WS and explicit `9999/999` missing states, versioned station identity. Compare exact selected original `RDHDU/RDUP` branches against C++ *using the same real 2022 P4 product*, and verify its actual run-window integration (P4 standalone has passed whole-year Fortran byte-parity).
+2. **C-HEIGHT-TIME:** original `RDUP` wind direction→U/V, height MSL→height above LGL and missing values (`999` versus `9999` have DIFFERENT meanings by variable), interpolation between 00/12 UTC soundings, sample hour/interval semantics, surface station QA. No nonphysical imputation.
+3. **C-INTEGRATION:** on new 2022 `GEO.DAT+SURF.DAT+UP.DAT`, compare per-hour true station values/masks/vertical interpolation outputs to the original CALMET run, not merely header match; 1h→6h→143 intervals with provenance and failure denominator.
+4. P6D complete initial wind solver, P6E micro-met, P6F original CALMET.DAT writer, P6G full field comparison remain **on HOLD** until P6C COMPLETE.
+
+Status: `P6A_PASS`; `P6B_ORIGINAL_REFERENCE_PASS`; `P6C_GEO_PASS`; `P6C_SURF_RAW_FORTRAN_FORMAT_PASS`; `P6C_UP_NOT_DONE`; `P6C_COMPLETE_FALSE`; `P6D_FRADJ_ISOLATED_PASS_BUT_FULL_D_HOLD`; `P6_CALPUFF_READY_FALSE`.
