@@ -31,6 +31,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 
 GATE_ROOT = pathlib.Path(os.environ.get("CTEAS_GATE_ROOT", "/home/lhy/gate"))
 CXX = os.environ.get("CTEAS_GATE_CXX", "g++-12")
@@ -268,12 +269,14 @@ def main() -> int:
     evidence["gated_sha"] = gated_sha = sha.strip()
     # Per-run output directory: a re-run of the same ref must not collide with a
     # previous run's staged inputs (steps are required to fail closed on overwrite).
-    out = GATE_ROOT / "evidence" / args.track / gated_sha[:12]
+    # Per-run paths keyed by a random token, not by the gated sha: two concurrent
+    # runs of the SAME ref (an agent gating its own tip plus the parent verifying
+    # it) previously shared one worktree, and either run's cleanup removed the
+    # other's checkout mid-build ("fatal error: opening dependency file").
+    run_id = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    out = GATE_ROOT / "evidence" / args.track / f"{gated_sha[:12]}-{run_id}"
     out.mkdir(parents=True, exist_ok=True)
-    # Per-run worktree as well: two concurrent gate runs of the same track used to
-    # share one path, and either run's cleanup removed the other's checkout
-    # mid-flight (FileNotFoundError on the step scripts).
-    wt = GATE_ROOT / "worktrees" / f"{args.track}-{gated_sha[:12]}"
+    wt = GATE_ROOT / "worktrees" / f"{args.track}-{run_id}"
     build = wt / "build" / args.track
 
     if wt.exists():
