@@ -737,3 +737,115 @@ ISURFT=-1, IUPT=-1; 2-D paths and output contract exercised at 50x50/NZ=9);
 over-water `OCD`/`WATER` callers, `ILAPSE=1` `MIXDT2`, `MIXHTST`,
 `IAVEZI`; 2022 precipitation `IPCODE` missing 143/143, so wet forcing and
 P7 wet deposition remain unqualified.
+
+## E22 CALMET.DAT 2.1 output contract and real-file truth-comparison harness
+
+The P6E micrometeorology chain had no defined *output-side* contract. E22 adds
+one, derived from the unmodified original `OUTHD` (L12327-12516), `OUTHR`
+(L13067-13237) and `WRTR1D/WRTR2D/WRTI2D` (L36734-36830) sources, and then
+proves it against the frozen real reference case.
+
+### Contract (`include/cteas/p6e/calmet_dat21.hpp`)
+
+- Fortran sequential-unformatted framing (4-byte little-endian length before
+  and after every payload), file declaration record (96 B), comment count,
+  NCOM x 132 B comments, and the **176-byte controls record** — the original
+  comment says 39 words but the real file has 44, including the ten-word run
+  clock `IBYRN..IESECN`, `AXTZ` at byte 40, `IRLG/IRTYPE/NX/NY/NZ`, `DGRID`,
+  the origin, `IWFCOD/NSSTA/NUSTA/NPSTA/NOWSTA/NLU/IWAT1/IWAT2/LCALGRD` and a
+  60-byte `PMAP/DATUM/DATEN/FEAST/FNORTH/UTMHEM/IUTMZN/RNLAT0/RELON0/XLAT1/
+  XLAT2` tail that is preserved verbatim.
+- Static records (`ZFACE`, `XSSTA/YSSTA`, `XUSTA/YUSTA`, `XPSTA/YPSTA`, `Z0`,
+  `ILANDU`, `ELEV`, `XLAI`, `NEARS`) with the same 24-byte header shape and
+  four zero clock words.
+- Hourly records of `24 + 4*NX*NY` bytes: 8-byte label, packed begin date
+  `YYYYJJJHH`, begin seconds, packed end date, end seconds, then `NX*NY`
+  words. `IRLG` intervals of exactly 3600 s, contiguous, with the original
+  end-clock convention (same packed hour, seconds advanced to 3600).
+- **Exact OUTHR label order.** OUTHR writes U, V and W *inside one loop over
+  levels*, so the order is `U-LEV 1, V-LEV 1, WFACE 1, U-LEV 2, ...`,
+  `T-LEV 1..NZ`, then `IPGT, USTAR, ZI, EL, WSTAR, [RMM], TEMPK, RHO, QSW,
+  IRH, [IPCODE]`. The first P6E implementation grouped the wind components and
+  was rejected by the real file; the mis-grouping is now pinned in the CTest by
+  a literal expected sequence, independent of the reader/writer pair.
+- Missing values use the original `XMISS = 9999.` for real fields and `9999`
+  for the two integer fields (`IPGT`, `IRH`); missing cells are excluded from
+  the truth-comparison denominators.
+
+### Field ownership (what the real case actually needs)
+
+| file field | unit | owner | real case |
+|---|---|---|---|
+| `USTAR` | m/s | P6E E5/E8 ELUSTR | yes |
+| `ZI` | m | P6E E7/E13/E20 MIXHT (max of convective and mechanical) | yes |
+| `EL` | m | P6E E5/E8 ELUSTR | yes |
+| `WSTAR` | m/s | P6E E6 WSTARR | yes |
+| `TEMPK` | K | P6E E3/E10 SURFVAR 2-D surface temperature | yes |
+| `RHO` | kg/m3 | P6E air-density input | yes |
+| `QSW` | W/m2 | P6E E4 HEATFX | yes |
+| `IRH` | percent (int) | P6E E3/E10 SURFVAR | yes |
+| `IPGT` | code (int) | P6E E2 PGTSTB | yes |
+| `T-LEV 1..NZ` | K | P6E E14 TEMP3D (layer 1 equals `TEMPK` exactly) | yes |
+| `U-LEV`, `V-LEV`, `WFACE` (27 fields) | m/s | **P6D**, not implemented in P6E | yes, in the real file |
+| `RMM`, `IPCODE` | - | case input, written only when `NPSTA!=0` | **absent** (NPSTA=0) |
+
+`ZICONV`, `DPTT` and `QH` have **no CALMET.DAT representation** — the original
+writes neither of them — so `write_calmet_dat21` rejects them as file labels
+instead of inventing a field. `ZI` is the field that carries the mixing height;
+`ZICONV` and `DPTT` stay internal diagnostics of E13/E20/E21.
+
+### Byte-exact proof against the frozen real reference case
+
+`check --file met.dat --rewrite out.dat` parses the real 64 MB file, validates
+every rule above, and re-serialises it. The rewrite is **byte-identical** and
+reproduces the frozen SHA-256:
+
+```
+143 intervals x 45 fields x 2500 cells, record 10024 B,
+header NX=50 NY=50 NZ=9 DGRID=100 IWAT1=50 IWAT2=55 NSSTA=1 NUSTA=1 NPSTA=0
+IRLG=143 comments=1114 LCALGRD=T
+rewritten sha256 = b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30
+                   (identical to the frozen reference)
+```
+
+Source-derived invariants evaluated on that real file (357,500 cells per
+field-hour, **zero missing values in all 45 fields**): `T-LEV1 == TEMPK`
+exactly (0 mismatches), `WSTAR >= 0`, `ZI >= 0`, `USTAR >= 0.05 m/s` over
+land, `IRH` in 25..100, `IPGT` in 2..6.
+
+### Truth-comparison harness
+
+`reference/compare_calmet_dat21.py` is the one-command gate for a real
+`met.dat` plus its frozen SHA-256 and a P6E-produced candidate:
+
+```
+python3 native_cpp/modules/p6_calmet/p6e/reference/compare_calmet_dat21.py \
+  --reference project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
+  --reference-sha256 b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 \
+  --candidate <P6E CALMET.DAT 2.1> --out stats.json
+```
+
+It reports an explicit `BLOCKED_REFERENCE_MISSING`,
+`BLOCKED_REFERENCE_SHA256_MISSING`, `BLOCKED_CANDIDATE_MISSING`,
+`FAIL_REFERENCE_SHA256` or `FAIL_LAYOUT` status (exit 3/3/3/2/2) instead of a
+silent pass, and emits per-field per-cell statistics: denominator, missing
+counts on each side, maximum absolute and relative error, frozen per-field
+limits and the first exceedances with hour, cell and both values.
+
+Full-scale runs on the real file:
+
+- reference == candidate: `PASS`, **sum of field denominators 16,087,500**
+  (= 45 x 357,500), 0 exceedances;
+- one injected `+0.5 m` perturbation in `ZI` hour 1 cell 1: `FAIL_NUMERIC`,
+  `total_exceedances = 1`, `max_abs_error = 0.5 m`,
+  `max_rel_error = 2.1649589293390122e-3`, exceedance recorded as
+  `hour=1, cell=1, reference=230.95126342773438, candidate=231.45126342773438`.
+
+**Not achieved, explicitly:** there is still **no P6E-produced candidate** for
+the 143-hour case, so the real truth comparison reports
+`BLOCKED_CANDIDATE_MISSING` — it is never reported as a pass. Producing that
+candidate needs the full 143-hour P6E chain driven from the case `met.inp`
+inputs (P6D wind fields, HEATFX/ELUSTR/WSTARR/MIXHT over the real grid, P6C
+SURF/UP observations) and is outside this increment. 27 of the 45 real file
+fields belong to P6D and are listed by the harness as
+`not_implemented_in_p6e`.
