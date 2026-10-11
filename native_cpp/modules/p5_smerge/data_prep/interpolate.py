@@ -4,6 +4,7 @@ import re
 import numpy as np
 import pandas as pd
 from .wind_policy_v2 import clean_then_replace_calms, WindPolicyError
+from .sparse_station_policy import standardize_sparse_station, POLICY as SPARSE_POLICY
 
 
 def read_station_csv(file_path):
@@ -250,6 +251,69 @@ def write_wind_audit(file_path, audit, summary):
     return audit_path, summary_path
 
 
+def read_selection_role(file_path):
+    from pathlib import Path
+    source = Path(file_path).resolve()
+    m = re.fullmatch(r"([0-9A-Za-z]{6})-([0-9A-Za-z]{5})-(\\d{4})\\.csv", source.name)
+    if m is None:
+        raise WindPolicyError(f"invalid source station filename: {source.name}")
+    year = int(m.group(3))
+    selection_path = source.parent.parent / "isd_raw" / f"station_selection_{year}.json"
+    if not selection_path.is_file():
+        raise WindPolicyError(f"missing annual station-role manifest: {selection_path}")
+    payload = json.loads(selection_path.read_text(encoding="utf-8"))
+    selected = [x for x in payload["stations"] if x["sid"] == m.group(1) + m.group(2)]
+    if len(selected) != 1:
+        raise WindPolicyError(f"missing/duplicate selected station role: {source.name}")
+    role = selected[0].get("wind_treatment")
+    if role not in ("COMPLETE_FILL_AND_CALM_REPLACE", "RAW_SPARSE_STANDARDIZE_ONLY"):
+        raise WindPolicyError(f"invalid or obsolete station role: {role}")
+    if role == "COMPLETE_FILL_AND_CALM_REPLACE" and payload.get("primary_sid") != selected[0]["sid"]:
+        raise WindPolicyError("primary role and yearly manifest disagree")
+    return role
+
+
+def process_sparse_station(file_path):
+    """Read raw UNION records; never reindex to all calendar hours."""
+    header, columns, df = read_station_csv(file_path)
+    required = ["Month", "Day", "Year", "Hour"]
+    dates = pd.to_datetime({
+        "year": df["Year"].astype(int),
+        "month": df["Month"].astype(int),
+        "day": df["Day"].astype(int),
+        "hour": (df["Hour"].astype(int) // 100),
+    })
+    if dates.duplicated().any():
+        raise WindPolicyError(f"duplicate station source hours: {file_path}")
+    df.index = pd.DatetimeIndex(dates)
+    df = df.sort_index()
+    normalized, audit, summary = standardize_sparse_station(df)
+    out = normalized[columns].copy()
+    for field in required:
+        out[field] = out[field].astype(int)
+    out.attrs["p5_policy_summary"] = summary
+    return header, out, audit, summary
+
+
+def save_sparse_station(file_path, header_lines, df_out):
+    """Only formatted original rows, no filled/interpolated stage."""
+    base, ext = os.path.splitext(file_path)
+    path = f"{base}_filled{ext}"
+    with open(path, "w", encoding="utf-8", newline="") as writer:
+        for head in header_lines:
+            writer.write(head + "\\n")
+        df_out.to_csv(writer, index=False, header=False)
+    with open(f"{base}_filled.stage.json", "w", encoding="utf-8") as writer:
+        json.dump({
+            "status": "原始气象数据格式规范化完毕（未补缺、未静风插值）",
+            "stage": "secondary_raw_sparse",
+            "wind_policy": SPARSE_POLICY,
+            "calendar_hours_reindexed": False,
+            "missing_sentinel": 9999,
+        }, writer, ensure_ascii=False, indent=2)
+        writer.write("\\n")
+    return path
+
 def process_one_station(file_path, strict=False):
     header_lines, columns, df_raw = read_station_csv(file_path)
     df = build_hourly_index(df_raw)
@@ -391,13 +455,18 @@ if __name__ == "__main__":
 
     for input_file in candidates:
         try:
-            headers, df_result, audit, summary = process_one_station(input_file, strict=args.strict)
+            role = read_selection_role(input_file)
+            if role == "COMPLETE_FILL_AND_CALM_REPLACE":
+                headers, df_result, audit, summary = process_one_station(input_file, strict=args.strict)
+                output = save_station_csv(input_file, headers, df_result)
+            else:
+                headers, df_result, audit, summary = process_sparse_station(input_file)
+                output = save_sparse_station(input_file, headers, df_result)
         except WindPreparationError as error:
             print(f"[{input_file}] {error.code}: 缺乏前置观测，未生成派生结果")
             for item in error.station_less_ranges:
                 print(f"    {item}")
             raise SystemExit(1)
-        _out = save_station_csv(input_file, headers, df_result)
         if audit is not None:
-            audit_path, summary_path = write_wind_audit(_out, audit, summary)
+            audit_path, summary_path = write_wind_audit(output, audit, summary)
             print(f"[{input_file}] 审计: {os.path.basename(audit_path)} / {os.path.basename(summary_path)}")
