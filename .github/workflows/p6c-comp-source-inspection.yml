@@ -29,3 +29,11 @@ jobs:
           echo '==== original MAXSEP and CGAMMA definition anchors ===='
           grep -inE 'maxsep|subroutine cgamma' "$SRC" | head -60
           echo '==== end source audit (no vendor source modifications) ===='
+          echo '==== CALMET original CGAMMA complete 3031-3252 ===='
+          sed -n '3031,3252p' "$SRC" | nl -ba -v 3031
+          echo '==== CALMET original RDSN selected 23437-23670 ===='
+          sed -n '23437,23670p' "$SRC" | nl -ba -v 23437
+          echo '==== COMP preamble 3550-4120 ===='
+          sed -n '3550,4120p' "$SRC" | grep -inE 'subroutine comp|cgamma|rdsn|ntzaa|ntzbb|nsecdt|isnap|read|jorder|justa|rdupn|nusta|susta|wsta|prepdi' | head -140
+          echo '==== PREPDI observation and CGAMMA callsites ===='
+          grep -inE 'call cgamma|call rdsn|call prepdi|call comp\(' "$SRC" | head -80
