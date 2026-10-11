@@ -6,6 +6,15 @@
 
 
 
+### 2026-10-11 P6D8 WIND1 完成选定路径原版验收（覆盖此前 D6/D7 状态）
+
+- **D7 中性 SIMILT**：[独立 CI #38123117424](https://github.com/RRain001/CTEAS/actions/runs/38123117424)，20/20 CTests、216/216 原版 U/V PASS，最大绝对误差 4.800071451427357e-11 m/s；PR #19 已合并。
+- **D8A 真实格式逐小时观测适配器**：[CI #38124817807](https://github.com/RRain001/CTEAS/actions/runs/38124817807) 21/21 CTests、216/216 原版 SIMILT 对照 PASS；SURF/PREPDI 时次、有效掩码和站点身份显式检查；[PR #21](https://github.com/RRain001/CTEAS/pull/21) 已合并。
+- **D8B WIND1 原版选定首猜三维风场**：[独立 CI #38125704104](https://github.com/RRain001/CTEAS/actions/runs/38125704104) 22/22 CTests PASS，六组人工场景 × 50×50×9×U/V = **270,000/270,000 分量 PASS**，原版比较器报告最大绝对误差 0.0 m/s，预注册阈值 2e-4 m/s；[PR #22](https://github.com/RRain001/CTEAS/pull/22) 已合并。原版 WIND1 L35829–36402、SIMILT L30097–30370，源 Git blob SHA 固定；细节见 [D8 专项审计](P6D8_WIND1_SELECTED_FIRST_GUESS_AUDIT.md)。
+- **P6D 专属 Runner 与源码验证链**：[PR #20](https://github.com/RRain001/CTEAS/pull/20) 已合并；六个专项原版数值工作流最终同一 SHA 6/6 CI SUCCESS。使用 `lhy-desktop`、GitHub REST SHA-1 逐文件校验后备与 Job 独立 CMake 构建路径，解决 github.com:443 间歇失联及旧缓存交叉污染。
+
+**D8B 是单地面站 + 单探空站、50×50×9、IEXTRP=-4、NBAR=0 的首猜网格风场独立原版数值等价，不是完整 DIAGNO。** D9 必须根据原版 DIAGNO 执行次序集成 WIND1→WINDBC→FRADJ→HEATFX/ELUSTR→SLOPE→INTER2→SMOOTH→DIVCEL→W；需确认各节点可用的实际原版气象驱动与边界条件，且与独立 P6E 地表物理子任务保持接口隔离。D10 再逐一验证真实 2022 年 1h/6h/143h 分层 U/V/W。**正式门槛保持 P6D=IN_PROGRESS、P6D_FULL_2022_UVW=NOT_PASS、P6_CALPUFF_READY=FALSE、P6_WET_FORCING_VALIDATED=FALSE**；不能根据上述人工场景 PASS 自动宣称全部 P6 通过。
+
 ### 2026-10-11 P6D6 INTER2 selected-path 原版对照 PASS（新增）
 
 [独立原版 CI #38121613553](https://github.com/RRain001/CTEAS/actions/runs/38121613553) 在专用 Linux/X64 self-hosted Runner 上成功运行：C++20 / Fortran 11.4 独立编译，**19/19 CTests、4 组 50×50×9 原版 INTER2 U-component 90,000 次数值比较 PASS**，最大绝对差 `9.536745997351659e-7 m/s`（预设门槛 `2e-4 m/s`），没有超容差项；原始 vendor Fortran SHA 不变。支持范围仅原版 `IWFCOD=1, IPROG=0, NBAR=0, NOOBS=0` 下的 `INTER2` 观测-初始场融合，包括显式 LVARY 选项。来源：[专项审计](P6D_INTER2_SELECTED_ORIGINAL_AUDIT.md) / [PR #16](https://github.com/RRain001/CTEAS/pull/16)。
