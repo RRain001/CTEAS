@@ -584,9 +584,10 @@ int main(int argc,char** argv){
                     for(std::size_t i=0;i<50;++i)
                         inter2<<geo.landuse[row*50+i]<<(i==49?"\n":" ");
                 }
-                for(std::size_t k=0;k<18;++k)
-                    inter2<<station_values[component][k]
-                          <<(k==17?"\n":" ");
+                // Original driver reads one row of two station values per level.
+                for(std::size_t k=0;k<9;++k)
+                    inter2<<station_values[component][k]<<" "
+                          <<station_values[component][9+k]<<"\n";
                 const std::vector<float>& guess=component==0?corrected_u:corrected_v;
                 for(std::size_t row=0;row<50;++row){
                     for(std::size_t i=0;i<50;++i)
