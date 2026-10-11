@@ -493,6 +493,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     std::vector<float> previous_ziconv(cells,0.f),previous_dptt(cells,0.f);
     // Exported chain state (hour-major, i-fastest) when --state-prefix is set.
     std::vector<float> exported_ziconv,exported_zi;
+    std::vector<float> exported_pre_ziconv,exported_pre_zi;
     for(std::size_t hour=0;hour<reference.intervals;++hour) {
         const auto& observation=observations[hour];
         surf.stations[0].temp_k=static_cast<float>(observation.air_temperature_k);
@@ -667,6 +668,12 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             const auto mixing=mixht_observed_mc(mh);
             zi_height=mixing.zi;
             ziconv=mixing.ziconv;
+            if(!state_prefix.empty()) {
+                exported_pre_ziconv.insert(exported_pre_ziconv.end(),
+                                           ziconv.begin(),ziconv.end());
+                exported_pre_zi.insert(exported_pre_zi.end(),
+                                       zi_height.begin(),zi_height.end());
+            }
             // COMP L4715: IAVEZI=1 averages ZI and ZICONV upwind with the
             // ILEVZI=1 wind level before WSTARR and the output write.
             if(!skip_avemix) {
@@ -797,10 +804,14 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         };
         write_binary(state_prefix+".ziconv.f32",exported_ziconv);
         write_binary(state_prefix+".zi.f32",exported_zi);
+        if(exported_pre_ziconv.size()==exported_ziconv.size()) {
+            write_binary(state_prefix+".pre_avemix.ziconv.f32",exported_pre_ziconv);
+            write_binary(state_prefix+".pre_avemix.zi.f32",exported_pre_zi);
+        }
         std::string meta="{\n";
         meta+="  \"producer\": \"p6e_calmet_dat21 emit-realcase\",\n";
         meta+="  \"source\": \"chain-internal MIXHT state advanced hour by hour; NOT copied from the reference met.dat\",\n";
-        meta+="  \"fields\": [\"ziconv\",\"zi\"],\n";
+        meta+="  \"fields\": [\"ziconv\",\"zi\",\"pre_avemix.ziconv\",\"pre_avemix.zi\"],\n";
         meta+="  \"units\": \"m\",\n";
         meta+="  \"dtype\": \"float32 little-endian\",\n";
         meta+="  \"layout\": \"hour-major, then j-major rows with i fastest, exactly as CALMET.DAT field payloads\",\n";
