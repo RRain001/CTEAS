@@ -743,7 +743,9 @@ int main(int argc, char** argv) {
         std::string file, out, expect, report, start;
         std::string fields, variant = "wind1", w_field = "w_face";
         std::string statics_from, met_fields_from;
-        int hours = 3, nx = 8, ny = 5, nz = 3;
+        // 0 means "all produced hours" for write-from-p6d and 3 for the
+        // synthetic fixture generator.
+        int hours = 0, nx = 8, ny = 5, nz = 3;
         int nssta = 1, nusta = 1, npsta = 0, irtype = 1;
         bool irtype_given = false;
         bool with_missing = false;
@@ -793,9 +795,9 @@ int main(int argc, char** argv) {
         if(command == "emit-fixture") {
             if(out.empty())
                 throw std::runtime_error("emit-fixture requires --out");
-            return command_emit_fixture(out, hours, nx, ny, nz, nssta, nusta,
-                                        npsta, irtype, start, with_missing,
-                                        report);
+            return command_emit_fixture(out, hours > 0 ? hours : 3, nx, ny, nz,
+                                        nssta, nusta, npsta, irtype, start,
+                                        with_missing, report);
         }
         std::cerr << "unknown command " << command << "\n";
         return 2;
