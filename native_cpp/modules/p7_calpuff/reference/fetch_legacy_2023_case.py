@@ -8,27 +8,47 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import http.client
 import json
 import os
+import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 from legacy_2023_case import CASE, PINS, digest
 
-def get(repo: str, token: str, sha: str) -> bytes:
+def fetch_blob(repo: str, token: str, sha: str) -> dict:
     request=Request(f"https://api.github.com/repos/{repo}/git/blobs/{sha}",
                     headers={"Authorization":"Bearer "+token,
                     "Accept":"application/vnd.github+json",
                     "User-Agent":"CTEAS-P7-historical-2023-original-blob",
                     "X-GitHub-Api-Version":"2022-11-28"})
     with urlopen(request,timeout=180) as response:
-        obj=json.load(response)
-    if obj.get("encoding")!="base64":
-        raise ValueError("GitHub large original case blob not provided as base64")
-    raw=base64.b64decode(obj["content"])
-    got=hashlib.sha1(f"blob {len(raw)}\0".encode()+raw).hexdigest()
-    if got!=sha:
-        raise ValueError(f"GitHub historical source SHA mismatch: {sha} != {got}")
-    return raw
+        return json.load(response)
+
+def get(repo: str, token: str, sha: str, attempts: int = 3) -> bytes:
+    # Runner-3 HTTPS transport has repeatedly truncated large API bodies
+    # (http.client.IncompleteRead). Retry only transport faults; a blob whose
+    # canonical Git SHA1 does not match the pin still fails immediately, so a
+    # retry can never accept different bytes.
+    detail=None
+    for attempt in range(1,attempts+1):
+        try:
+            obj=fetch_blob(repo,token,sha)
+        except (OSError,http.client.HTTPException,json.JSONDecodeError) as error:
+            detail=f"{type(error).__name__}: {error}"
+            print(f"P7_2023_GIT_FETCH_RETRY attempt={attempt}/{attempts} sha={sha[:12]}"
+                  f" transport_error={detail}",flush=True)
+            if attempt<attempts:time.sleep(2*attempt)
+            continue
+        if obj.get("encoding")!="base64":
+            raise ValueError("GitHub large original case blob not provided as base64")
+        raw=base64.b64decode(obj["content"])
+        got=hashlib.sha1(f"blob {len(raw)}\0".encode()+raw).hexdigest()
+        if got!=sha:
+            raise ValueError(f"GitHub historical source SHA mismatch: {sha} != {got}")
+        return raw
+    raise RuntimeError(f"GitHub historical blob transport failed after {attempts} attempts:"
+                       f" {sha}: {detail}")
 
 def fetch_case(root: Path, repo: str, token: str) -> None:
     for rel, expected in PINS.items():
