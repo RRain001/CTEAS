@@ -1584,3 +1584,75 @@ but failing their gates as characterised in E30/E31.
 with a bounded residual traced to the convective-height residual; six
 other fields bit-exact or PASS; `ZI`/`WSTAR`/`EL` bounded FAILs;
 `U-LEV/V-LEV/WFACE` P6D-owned; `P6E_FULL=NOT_PASS`.
+
+## E33 convective-branch audit: three targets confirmed consistent, AVEMIX falsified as the cause
+
+### The three targets, with source anchors
+
+1. **`MIXDT` sounding height datum.** The original reads UP.DAT through
+   `RDUPN` with `ICONVRT = 1` (COMP `data ... iconvrt/1/`, L3653) and the reader
+   documents the conversion explicitly: *"Height (m above MSL) converted to
+   height (m above LGL) (however, no conversions are made if iconvrt=0)"*
+   (`RDUPN` L24012-24035). The E15 bridge feeds
+   `height_lgl_m = height_msl - base`, i.e. the same AGL datum, so the bracket
+   heights handed to `MIXDT` are consistent with the original. **Not the cause.**
+2. **`DZZI`.** `/ziparm/` carries `data dzzi/200./,zimax/3000./,zimin/50./`
+   (L1801) and `MIXDT` uses it as `htpdz = htold + dzzi` (L10129). The kernel
+   receives `dzzi_m = 200` and the case's own `met.lst` echoes `DZZI = 200`.
+   **Not the cause.**
+3. **`DPTT` advance and initialisation.** `ZICONV` is initialised to zero in
+   COMP itself (`data ... ziconv/mxxy*0.0/`, L3653) and `DPTT` has no explicit
+   initialisation (zero-filled) and is reset to `0.0` in the stable branch
+   (L10669, L10924, L11113); the case is hourly, so the memory advances once
+   per `MIXHT` call, which is what the P6E chain does. **Not the cause.**
+
+### The decisive experiment: AVEMIX is required and substantially right
+
+The residual was suspected of sitting in the `IAVEZI=1` averaging. The
+discriminator (`--skip-avemix`, a diagnostic flag) shows the opposite:
+
+| build | `ZI` exceedances | `ZI` max abs | `WSTAR` exceedances |
+|---|---|---|---|
+| with `AVEMIX` (production) | 4,488 | 51.06 m | 4,880 |
+| **without `AVEMIX`** | **37,692** | **384.5 m** | 57,210 |
+
+Removing the averaging makes `ZI` **eight times worse**, so `AVEMIX` is both
+required and broadly correct.
+
+### What the residual actually looks like
+
+At the failing hours my `ZI` at the station cell (index 1275, 0-based) equals
+the **reference's value at a neighbouring cell**, not a scaled version of its
+own:
+
+| hour | reference at 1275 / 1276 / 1277 | mine at 1276 |
+|---|---|---|
+| 5 | 985.31 / **1036.44** / 1009.65 | 985.37 |
+| 8 | 971.01 / **1009.95** / 975.30 | 967.76 |
+| 30 | 1112.24 / **1115.34** / 1105.80 | 1105.80 (= reference 1277 exactly) |
+| 32 | 979.20 / **995.49** / 954.70 | 954.80 (= reference 1277) |
+
+The reference carries a local extremum at the station cell in those hours that
+the P6E chain does not reproduce; elsewhere (hours 0, 1, 9-11, 33, 34) the two
+agree exactly. So the residual is a **local spatial pattern difference around
+the domain centre during strong convection**, not a global amplitude error and
+not one of the three audited mechanisms.
+
+### Bounds (unchanged, tolerance not relaxed)
+
+`ZI` <= 51.06 m / 4.9 % relative (1.26 % of cells, 42 hours); `WSTAR` <=
+0.0263 m/s / 1.9 % (1.4 %, 48 hours); `T-LEV 5-7` <= 2.51669 K (713 cells,
+0.2 %), all three sharing this one cause.
+
+### Minimal next-round experiment (specified, not hand-waved)
+
+Dump the **pre-`AVEMIX`** `ZICONV`, `ZI`, `QH`, `USTAR`, `EL`, `RHO` at the
+station cell and its 3x3 neighbourhood for hours 5, 8, 30, 32 and 53 from the
+P6E chain, and reconstruct the reference's pre-average convective height by
+inverting its own `ZI` there (`ZICONV_ref ~ ZI_ref - ZIMIN` where the
+mechanical height is known from the reference `USTAR`). That single table
+separates the two remaining possibilities: (i) a half-cell/off-by-one in the
+`AVEMIX`/`AVETMP` cell-centre or cone geometry near the domain centre (the
+averaging uses `xc = i - 0.5`, `yc = j - 0.5`), or (ii) a genuine local
+difference in the pre-average convective field. Both are checkable from that
+one dump, and neither requires new physics.
