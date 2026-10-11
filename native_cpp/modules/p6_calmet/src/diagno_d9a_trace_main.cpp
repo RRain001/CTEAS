@@ -115,13 +115,25 @@ int main(int argc,char** argv){
     in.slope.landuse.resize(2500);
     for(int& value:in.slope.landuse)
         if(!(f>>value))throw std::runtime_error("D9A SLOPE landuse missing");
-    int ikine=0;
+    int ikine=0,terset_selector=0;
     if(!(f>>ikine>>in.alpha>>in.kinematic_iterations>>
-         in.kinematic_divergence_limit_per_s))
-        throw std::runtime_error("D9A IKINE/ALPHA/MINIM controls missing");
+         in.kinematic_divergence_limit_per_s>>terset_selector>>
+         in.terrad_km))
+        throw std::runtime_error("D9A IKINE/ALPHA/MINIM/TERSET controls missing");
     if(ikine!=0&&ikine!=1)
         throw std::runtime_error("D9A IKINE flag must be 0 or 1");
     in.kinematic_route=ikine==1;
+    if(terset_selector!=0&&terset_selector!=1)
+        throw std::runtime_error("D9A TERSET selector must be 0 or 1");
+    in.terset_envelope=terset_selector==1;
+    if(in.terset_envelope){
+        // The in-chain TERSET kernel owns the envelope; drop the fixture copies
+        // so the bridge's single-provider rule stays enforceable.
+        in.terrain.maximum_terrain_m.clear();
+        in.slope.minimum_terrain_m.clear();
+        in.slope.distance_to_max_terrain_m.clear();
+        in.slope.distance_to_min_terrain_m.clear();
+    }
     std::string extra;
     if(f>>extra)throw std::runtime_error("D9A input trailing data");
     auto out=integrate_diagno_d9_selected(in);
