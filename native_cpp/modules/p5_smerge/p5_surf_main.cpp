@@ -124,7 +124,7 @@ OutputPoint output_point(const std::optional<SurfaceRecord>& value){
  if(r.precipitation_mm.valid){
   const float p=static_cast<float>(r.precipitation_mm.value);
   if(p<=0.0f)out.precip=0;
-  else if(out.tempk>273.15f && out.tempk<9999.0f)out.precip=1;
+  else if(out.tempk>273.15f)out.precip=1;
   else if(out.tempk<=273.15f)out.precip=2;
   // If rain>0 and TEMP missing, Fortran keeps 9999.
  }
@@ -133,13 +133,14 @@ OutputPoint output_point(const std::optional<SurfaceRecord>& value){
 void write_header(std::ostream& out,const Window& window,
                   const std::vector<int>& station_ids){
  using namespace std::chrono;
- // Fortran WRHD passes hour ENDING; output starts one hour before first hour.
- const auto begin=utc_second(window.start)-hours{1};
+ // SMERGE 2.1 control supplies *explicit* beginning time. READCF
+ // increments IBHR before RDWRITS. WRHD subtracts one again.
+ const auto begin=utc_second(window.start);
  const auto end=utc_second(window.end);
  out<<padded("SURF.DAT",16)<<padded("2.1",16)
     <<padded("Hour Start and End Times with Seconds",64)<<"\n";
  out<<std::setw(4)<<1<<"\n";
- out<<padded(std::string("Produced by SMERGE Version: ")+"5.7.0"+" "+"Level: "+"121203",80)<<"\n";
+ out<<padded(std::string("Produced by SMERGE Version: ")+"5.7.0"+"  "+"Level: "+"121203",80)<<"\n";
  out<<"NONE    \nUTC+0000\n";
  emit_time(out,begin,6,4,4,6);
  emit_time(out,end,6,4,4,6);
@@ -199,8 +200,17 @@ void run(const fs::path& inp){
   stations.push_back(read_generic(in,item.id));
   std::cerr<<"P5_CPP_READ station="<<item.id<<" rows="<<stations.back().records.size()<<"\n";
  }
- const Window w{requested_time(ctl,"IB"),requested_time(ctl,"IE")};
- auto merged=merge_utc_hourly(stations,w,std::vector<int>(stations.size(),0));
+ const Window explicit_times{requested_time(ctl,"IB"),requested_time(ctl,"IE")};
+ const auto start=utc_second(explicit_times.start)+std::chrono::hours{1};
+ const auto stop=utc_second(explicit_times.end);
+ if(start>stop)throw ParseError("SMERGE 2.1 period contains no completed hours");
+ const std::chrono::year_month_day d{
+     std::chrono::floor<std::chrono::days>(start)};
+ const int hour=int(std::chrono::duration_cast<std::chrono::hours>(
+     start-std::chrono::floor<std::chrono::days>(start)).count());
+ const Window effective{{int(d.year()),int(unsigned(d.month())),int(unsigned(d.day()),hour},
+                        explicit_times.end};
+ auto merged=merge_utc_hourly(stations,effective,std::vector<int>(stations.size(),0));
  fs::path target=property(ctl,"SURFDAT");
  if(target.is_relative())target=cwd/target;
  target=target.lexically_normal();
@@ -209,7 +219,7 @@ void run(const fs::path& inp){
  try{
   std::ofstream file(temp,std::ios::binary|std::ios::trunc);
   if(!file)throw ParseError("cannot create native SURF.DAT: "+temp.string());
-  write_header(file,w,merged.station_ids);
+  write_header(file,explicit_times,merged.station_ids);
   for(const auto& h:merged.hours)write_one_hour(file,h);
   file.flush();
   if(!file)throw ParseError("write failed: "+temp.string());
