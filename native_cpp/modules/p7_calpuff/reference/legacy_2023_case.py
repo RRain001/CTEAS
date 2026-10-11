@@ -162,11 +162,14 @@ def run(root: Path, output: Path, original_binary: Path,
     result["cpp_met21_inspector_stderr"]=inspector.stderr[:12000]
     result["status"]="HISTORICAL_2023_REFERENCE_EXECUTION_PASS" if inspector.returncode==0 else "HISTORICAL_2023_CPP_MET21_DECODE_FAIL"
     manifest.write_text(json.dumps(result,indent=2)+"\n")
+    # Original Fortran *did* complete and its real historical CONC.DAT
+    # was validated before any C++ MET.DAT reader comparison.
+    print("P7A_HISTORICAL_2023_ORIGINAL_CALPUFF_EXECUTION=PASS",flush=True)
+    print("P7A_HISTORY_CONC_BYTE_PARITY="+result["historical_binary_parity"],flush=True)
+    print("P7A_HISTORICAL_2023_CONC_RECORDS="+str(result["original_concentration_record_envelope"]["records"]),flush=True)
     if inspector.returncode:
         raise RuntimeError("Historical real CALMET.DAT failed P7B decode: "+inspector.stderr[:1500])
-    print("P7A_HISTORICAL_2023_ORIGINAL_CALPUFF_EXECUTION=PASS")
-    print("P7B_HISTORICAL_2023_REAL_CALMET21_DECODE=PASS")
-    print("P7A_HISTORY_CONC_BYTE_PARITY="+result["historical_binary_parity"])
+    print("P7B_HISTORICAL_2023_REAL_CALMET21_DECODE=PASS",flush=True)
     print("P7A_2022_CANONICAL_ACCEPTANCE=NOT_EVALUATED")
     return result
 

@@ -195,3 +195,21 @@ if present; record-envelope differences remain explicitly unverified
 scientifically, and only a future C++ concentration output can establish
 P7E numerical parity. The native `Calmet21Reader` must decode real
 2023 hourly fields to pass. No historical data can satisfy the P7 2022 gate.
+
+## 2026-10-11 first historical real-case diagnostic and exact fix
+
+[CI #38125878790](https://github.com/RRain001/CTEAS/actions/runs/38125878790)
+reliably downloaded all three historical immutable Git blobs (53.9 MB
+MET.DAT, 83.3 KB original puff.inp, 1.65 MB historical puff.con), ran
+all **6/6 scoped software CTest PASS**, compiled original Fortran
+**PASS**, and executed untouched original CALPUFF with real historical
+output present. The C++ MET21 reader then failed on header label
+`Z0` before the hourly `U-LEV` sequence. Source-backed reason:
+CALMET 2.1 static OUTHD header grid records may have the same length
+as hourly 2D wind fields but have zero begin/end times. The reader
+now gates on these static timestamps as well as label and size; the
+synthetic fixture adds a same-size `Z0` record. Do not accept P7B real
+historical decoding until this fix is validated by the next run.
+
+Preserve the new historical original-reference JSON, log and
+`puff.con` as a short-lived GitHub Actions artifact on private PR.

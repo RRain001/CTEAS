@@ -141,13 +141,23 @@ Calmet21Summary Calmet21Reader::read(const std::string& path,
     std::int64_t previous_hour_end=0;
     std::int64_t current_hour_begin=0, current_hour_end=0;
     while (records.next(r)) {
-        if (r.size()!=payload_bytes) {
-            if (result.hourly_fields>0)
-                throw std::runtime_error("P7B CALMET21 unexpected non-field record after hourly data");
+        // Original CALMET OUTHD includes labelled Z0, terrain, land-use and
+        // other static fields. A metadata record may have the SAME byte
+        // length as an hourly field, so payload size alone is insufficient.
+        // OUTHD/OUTHR source: static header records use zero begin/end clocks.
+        if (r.size()<24U) {
+            check(result.hourly_fields==0, "short record after hourly fields");
             ++result.metadata_records;
             continue;
         }
         const std::string label=ascii(r,0,8);
+        const bool no_time=(integer32(r,8)==0 && integer32(r,16)==0);
+        if (no_time && result.hourly_fields==0) {
+            check(label!=labels.at(0), "missing timestamp on first U field");
+            ++result.metadata_records;
+            continue;
+        }
+        check(r.size()==payload_bytes, "unexpected non-field record size: "+label);
         check(label==labels.at(cursor), "field name/order mismatch: "+label);
         const auto begin=timestamp(integer32(r,8),integer32(r,12));
         const auto end=timestamp(integer32(r,16),integer32(r,20));

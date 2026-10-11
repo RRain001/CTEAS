@@ -269,3 +269,14 @@ jobs:
             --expected-met-sha256 "$P7_FROZEN_MET_SHA256" \
             --output "$scratch/original-calpuff-2022" --max-seconds 900 --execute
           echo "P7A_ORIGINAL_2022_REFERENCE_RUN=PASS_NOT_CPP_PHYSICS_PARITY"
+      - name: Preserve historical original CALPUFF replay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p7-historical-2023-reference
+          path: |
+            ${{ runner.temp }}/p7-${{ github.run_id }}-${{ github.run_attempt }}/historical-2023/historical-2023-reference.json
+            ${{ runner.temp }}/p7-${{ github.run_id }}-${{ github.run_attempt }}/historical-2023/original-2023-runtime.log
+            ${{ runner.temp }}/p7-${{ github.run_id }}-${{ github.run_attempt }}/historical-2023/case/run/puff/puff.con
+          retention-days: 7
+          if-no-files-found: warn

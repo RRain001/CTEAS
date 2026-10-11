@@ -54,6 +54,13 @@ void create_fixture(const fs::path& path,bool order=false,bool gap=false,bool na
     putfloat(h,100.0F,68); putfloat(h,513000.0F,72);
     putfloat(h,3533000.0F,76); putint(h,1,80); putint(h,1,84); putint(h,1,88);
     record(f,h);
+    // Real original CALMET.DAT 2.1 has static Z0 header records before
+    // U-LEV fields. These can be exactly Nx*Ny*4+24 bytes (same as wind)!
+    std::vector<std::uint8_t> metadata(40,0);
+    const std::string static_name="Z0";
+    for (std::size_t i=0;i<8;++i)
+        metadata[i]=i<static_name.size()?std::uint8_t(static_name[i]):' ';
+    record(f,metadata);
     for (int hour=0;hour<2;++hour) {
         auto labels=field_names();
         for (std::size_t i=0;i<labels.size();++i) {
@@ -97,6 +104,7 @@ int main() {
         }
     });
     assert(summary.intervals==2 && summary.hourly_fields==34);
+    assert(summary.metadata_records==1);
     assert(summary.header.nx==2 && summary.header.ny==2 && summary.header.nz==2);
     assert(summary.final_end.unix_seconds-summary.first_begin.unix_seconds==7200);
     assert(called==34 && integers==4);
