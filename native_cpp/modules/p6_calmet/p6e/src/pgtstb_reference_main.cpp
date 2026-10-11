@@ -1,7 +1,7 @@
 #include "cteas/p6e/pgtstb.hpp"
 #include <iostream>
 #include <stdexcept>
-int main(int argc,char** argv) {
+int main(int argc,char**) {
     if(argc!=1)return 2;
     int cases=0,nx=0,ny=0,ns=0;
     if(!(std::cin>>cases>>nx>>ny>>ns)||cases<=0||nx<=0||ny<=0||ns<=0)
