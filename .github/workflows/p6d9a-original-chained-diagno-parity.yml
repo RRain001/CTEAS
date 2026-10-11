@@ -97,7 +97,7 @@ jobs:
                              "met1.met", "ovrwat.met", "wparm.met",
                              "d1.met", "d3.met", "d4.met", "geo.met",
                              "wtgrd.met", "mm4hdo.met", "d6.met",
-                             "breez.met"}
+                             "breez.met", "metgrd.met"}
           blobs = [
               item for item in tree["tree"]
               if item["type"] == "blob" and (
