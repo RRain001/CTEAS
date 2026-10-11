@@ -252,3 +252,12 @@ else()
   target_compile_options(cteas_p6_d9a_bridge_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME p6d9a_wind1_inter2_diagno_selected_bridge_contract COMMAND cteas_p6_d9a_bridge_tests)
+
+# P6D9A composed trace for chained unmodified original Fortran comparisons.
+add_executable(cteas_p6_d9a_source_trace src/diagno_d9a_trace_main.cpp)
+target_link_libraries(cteas_p6_d9a_source_trace PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_d9a_source_trace PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_d9a_source_trace PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
