@@ -42,6 +42,48 @@ The two real-case verdicts are not yet inside `scripts/local_gate.py`'s `p6d` st
 
 Both comparators compile the unchanged original routines with gfortran and are fail-closed, so they belong in the gate rather than only in local evidence.
 
+### Round 15: the `U-LEV 6` value is a ZI cutoff flip at one level, and the tilt correlates with the terrain envelope
+
+**Correction first**: round 14's per-level table for the worst hour was built with a truncated hour label, so its *product* column came from hour 01 while its *reference* column came from the worst hour. The corrected table (hour `2022-01-04_09`, index 80) is:
+
+| level | ref U | product U | dU | ref V | product V | dV |
+|---|---|---|---|---|---|---|
+| 1 | -2.9353 | -2.9353 | 0.0000 | -1.9062 | -1.9062 | 0.0000 |
+| 2 | -3.4454 | -3.4453 | 0.0002 | -2.5208 | -2.5209 | 0.0001 |
+| 3 | -3.8299 | -3.8296 | 0.0003 | -2.8545 | -2.8546 | 0.0001 |
+| 4 | -4.2716 | -4.2713 | 0.0004 | -3.3408 | -3.3412 | 0.0003 |
+| 5 | -4.5966 | -4.5961 | 0.0005 | -3.3379 | -3.3383 | 0.0004 |
+| 6 | -4.7156 | -2.8876 | **1.8280** | -2.3417 | -2.6661 | **0.3244** |
+| 7 | -0.7605 | -0.7605 | 0.0000 | 2.2326 | 2.2326 | 0.0000 |
+| 8 | 7.1751 | 7.1751 | 0.0000 | 8.9067 | 8.9067 | 0.0000 |
+| 9 | 14.1135 | 14.1135 | 0.0000 | 8.6280 | 8.6280 | 0.0000 |
+
+So the whole 1.8483 comes from **level 6 at one hour**; the neighbouring hour (index 79) is clean at level 6 (0.0011). The cause is a **cutoff flip**: SIMILT's `zface(k) <= amax1(zi+0.001, zimini)` test decides whether level 6 receives the surface profile or stays missing. At that hour the E29 `ZI` at the station cell is **631.14 m** against `zface(7) = 640 m`, so the port stops one level earlier than the reference, which keeps `-4.7156` (the surface profile) where the port falls back to the sounding (`-2.8876`). The original does not use the raw `ZI` field here: `DIAGI` passes `zii = zi(is,js)` through **`mixhtST`/`mixht2ST`** (L6882-L6887), which update `zii` in place, and only then calls `similt` (L6894). **Instrumentation request**: the value of `zii` as passed to `similt` at L6894 (i.e. after `mixhtST`), per hour, at the station cell `is,js`, together with that routine's inputs (`el, ustar, qqh, rho, ihr2gmt, nearu, iupt, ilandu, iwat1, iwat2, imixh` and the incoming `zii/ziconvi`). With that array the flip is closed without guessing.
+
+**The planar tilt's source: correlations, not yet identified.** For hour 1, `U-LEV 3`'s deviation from its own mean (spread 0.0106; plane fit `dU/di = -1.30e-05`, `dU/dj = +3.78e-05` per cell) correlates with:
+
+| candidate field | correlation |
+|---|---|
+| `terset_disthmin` (distance to the terrain minimum) | **+0.487** |
+| `terset_disthmax` (distance to the terrain maximum) | **-0.394** |
+| my `temp2d` | -0.100 |
+| my SLOPE correction (level 1) | +0.038 |
+| the reference's own `WFACE 3` | -0.001 |
+
+The two terrain-envelope distances are the only fields with a meaningful correlation, which points at a terrain-envelope-driven term of the same family `SLOPE` uses (`hd = 0.05*(HMAX-HTOPO)`, `dcrest` from `disthmax/disthmin`) - but the port's SLOPE cannot be it: on this domain `HMAX` is a uniform 59.5 m, so `hd <= 1.7 m` and the original's own ramp (L30568-L30579) confines that correction to level 1 (measured 0.0413027 there, 0.0 at levels 2-9). **Instrumentation request**: at one hour, `USLOPE/VSLOPE` (the 3-D arrays after the `SLOPE` call at L5722), `UG/VG` immediately before (L5726) and after (L5732) the addition, and the `DIV`/`W` arrays after `DIVCEL` (L6130-L6140) - that isolates which step introduces the tilt and whether the original's slope flow is non-zero above level 1 on this domain.
+
+### Round 14: the `U-LEV 6` episode is an input-side hour, and the W-face structure is *planar* (mechanism still open)
+
+**`U-LEV 6` bisection.** The 1.8483 worst value comes from a single hour on 2022-01-04; at that hour the frozen reference reads `-2.9353 / -3.4454 / -3.8299 / -4.2716 / -4.5966 / -4.7156` (levels 1-6) while the product reads `-1.8955 / -2.1980 / -0.9298 / -0.9764 / -0.8980 / -0.7030`. The decisive detail is **level 1: 1.03982 m/s** - level 1 is the observed surface wind (the case's anemometer is at 10 m, exactly `ZMID(1)`, so no extrapolation is involved) - so the divergence for that episode starts in the *input/assembly* of that hour's station data, not in the profile physics. The next check is bounded: compare the case's surface series around that hour against the interval the product selects.
+
+**The W-face structure is a planar gradient, and three candidate mechanisms are now ruled out by measurement.** The reference's `U-LEV 3` deviation from its own mean is a smooth NW->SE tilt (-1.7e-3 at the NW to +2.8e-3 at the SE, spread 0.0106), *not* a radial, station-centred pattern; the product's own deviation is 1.66e-4 (uniform) and correlates 0.009 with it. Ruled out:
+
+- **station-position offset**: the two station files place their stations 2.6e-5 deg apart in latitude (~3 m). The inverse-square weights differ by ~0.24% across the domain, and the two stations' level-3 values agree to ~1e-3 m/s, so the mechanism can produce ~2e-06 m/s - two orders below the observed 1e-2.
+- **SLOPE's vertical structure**: the original fills `USLOPE(I,J,K)` for all `K` (L5726-5732) but ramps it to zero at the depth `hd = 0.05*(HMAX-HTOPO)` (L30568-30579). On this domain the relief gives `hd <= 1.7 m` against `ZFACE(2) = 20 m`, so the correction is confined to level 1 with a ratio of ~0.085 - which is exactly what the port does (measured: 0.0413027 at level 1, 0.0 at levels 2-9). So the level-1-only behaviour is *correct* here, not a gap.
+- **`STHEOR`'s 2-D dependence** (the round's premise): `DIAGI` calls `STHEOR`/`SIMILT` inside `DO 70 L=1,NSURF` (L6876-6894) with the *station's* cell `IG,JG`, i.e. **once per station**, so the temperature dependence cannot produce a spatial gradient; and the reference's pattern is planar (domain-scale), not station-centred. The premise is therefore not supported by the source, and no port was attempted on it - a large speculative change contradicted by the measurements would be worse than the open gap.
+
+Open, with the bounded next steps: (a) the level-1 input check for the 2022-01-04 episode; (b) correlate the reference's planar deviation against the terrain/landuse and the divergence fields to find which step introduces it (the W faces are its divergence integral, so both fall together); (c) if needed, dump intermediate fields from a full original run, which is outside this track's scope.
+
 ### Round 13: the stability-dependent SIMILT (PSIUD) port closes levels 2-5 and level 7
 
 Ported source-scoped, with the vendor lines and hashes recorded by the comparator: `SIMILT` L30097-L30370 (`sha256` of the extracted block in `p6d-similt-profile-parity.json`) and `PSIUD` L35629-L35674. The kernel now covers the neutral, stable and unstable branches, the Monin-Obukhov clamp at `5*z0`, the Table-2 turning-angle interpolation, the mixing-height cutoff (`zface(k) <= amax1(zi+0.001, zimini)`, "above mixing height, exit") and both hemispheres; `IPSIFCN=1` (PSIUC/COARE) and overwater stations fail closed. The original's write pattern is `US(K-1,NS)` for `K=2..NZP1`, i.e. level 1 receives the profile at `ZMID(1)` - reproducing that exactly was what made the `tall_anemometer` scene agree.
