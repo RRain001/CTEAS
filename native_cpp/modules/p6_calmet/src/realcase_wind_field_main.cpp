@@ -711,7 +711,7 @@ int main(int argc,char** argv){
     meta<<"    {\"stage\": \"FRADJ (L5643-L5644)\", \"status\": \""<<(args.gamma_dir.empty()?"PENDING_GAMMA":"APPLIED_WITH_CALLER_GAMMA")<<"\","
           " \"gamma_source\": \""<<(args.gamma_dir.empty()?"none":args.gamma_dir.string())<<"\","
           " \"missing_when_pending\": [\"GAMMA grid: the real case derives it in PREPDI via CGAMMA (calmet.for L3340-L3395) whose convective branch consumes ZICONV; P6E E29 exports that array as <prefix>.ziconv.f32 with the accuracy caveat GAMMA_SOURCE: P6E_CHAIN_INTERNAL_UNCALIBRATED\"],"
-          " \"numerical_impact_measured\": \"none on this domain: HMAX is the domain-wide 59.5 m (TERRAD=15 km over a 5 km domain), the largest OBSHGT at level 1 is 24.5 m, and FROUDE for a 3 m/s wind is 5.14 against CRITFN=1.0, so the original FRADJ cannot adjust any cell (126 m of OBSHGT would be needed); enabling the switch with a 0.006 K/m GAMMA changes the corrected fields by 0.0 m/s\"","
+          " \"numerical_impact_measured\": \"none on this domain: HMAX is the domain-wide 59.5 m (TERRAD=15 km over a 5 km domain), the largest OBSHGT at level 1 is 24.5 m, and FROUDE for a 3 m/s wind is 5.14 against CRITFN=1.0, so the original FRADJ cannot adjust any cell (126 m of OBSHGT would be needed); enabling the switch with a 0.006 K/m GAMMA changes the corrected fields by 0.0 m/s\",,"
           " \"note\": \"W faces are SLOPE-compensated" << (args.gamma_dir.empty()
              ? " but not FRADJ-compensated (GAMMA pending)"
              : " and FRADJ-compensated with a caller-supplied GAMMA whose accuracy is not verified here") << "\"},\n";
