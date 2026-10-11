@@ -100,12 +100,23 @@ def fill_wind_forward_calm(df, dir_col, spd_col, strict=False):
     spd_src = pd.Series(pd.NaT, index=index).astype("datetime64[ns]")
     spd_src[speed.notna()] = index[speed.notna()]
 
-    direction_filled = direction.ffill()
+    # A calm observation's WD=0 is only a semantic marker, NOT a valid
+    # remembered wind bearing. Recalling that 0 as the direction for a later
+    # non-calm observation with missing WD would fabricate a north wind.
+    direction_seed = direction.mask(speed.eq(0.0))
+    dir_src = dir_src.mask(speed.eq(0.0))
+    direction_filled = direction_seed.ffill()
     speed_filled = speed.ffill()
     dir_src = dir_src.ffill()
     spd_src = spd_src.ffill()
 
     exact_zero = speed_filled.eq(0.0).fillna(False)
+    observation_case = pd.Series("BOTH_MISSING", index=index, dtype="object")
+    observation_case.loc[direction.notna() & speed.notna()] = "BOTH_PRESENT"
+    observation_case.loc[direction.isna() & speed.notna()] = "SPEED_ONLY"
+    observation_case.loc[direction.notna() & speed.isna()] = "DIRECTION_ONLY"
+    observation_case.loc[exact_zero & speed.notna()] = "CALM_OBSERVED"
+    observation_case.loc[exact_zero & speed.isna()] = "CALM_PREVIOUS_SPEED"
     direction_generic = direction_filled.mask(exact_zero, 0.0)
     speed_generic = speed_filled.copy()
 
@@ -150,8 +161,9 @@ def fill_wind_forward_calm(df, dir_col, spd_col, strict=False):
     audit = pd.DataFrame({
         "wind_direction_raw_deg": direction,
         "wind_speed_raw_m_s": speed,
+        "observation_case": observation_case,
         "wind_direction_filled_deg": direction_filled,
-        "wind_direction_was_filled": direction.isna() & direction_filled.notna(),
+        "wind_direction_was_filled": direction_seed.isna() & direction_filled.notna(),
         "wind_direction_fill_source_utc": dir_src,
         "wind_speed_filled_m_s": speed_filled,
         "wind_speed_was_filled": speed.isna() & speed_filled.notna(),
@@ -173,11 +185,14 @@ def fill_wind_forward_calm(df, dir_col, spd_col, strict=False):
         "hour_count": int(len(index)),
         "calm_hours": int(low_wind.sum()),
         "exact_zero_hours": int(exact_zero.sum()),
-        "direction_forward_filled_hours": int((direction.isna() & direction_filled.notna()).sum()),
+        "direction_forward_filled_hours": int((direction_seed.isna() & direction_filled.notna()).sum()),
         "speed_forward_filled_hours": int((speed.isna() & speed_filled.notna()).sum()),
         "calm_segments": len(segments),
         "leading_missing": leading,
         "boundary_calm_segments": boundary_segments,
+        "observed_speed_only_hours": int((observation_case == "SPEED_ONLY").sum()),
+        "observed_direction_only_hours": int((observation_case == "DIRECTION_ONLY").sum()),
+        "observed_both_missing_hours": int((observation_case == "BOTH_MISSING").sum()),
         "statistics_speed_field": "wind_speed_filled_m_s",
         "calculation_speed_field": "wind_speed_generic_m_s (NO P5 MINIMUM)",
         "main_table_speed_field": "wind_speed_generic_m_s (zero and low wind retained)",
