@@ -584,9 +584,26 @@ else()
 endif()
 add_test(NAME cteas_p7w_rise_wind_contract COMMAND cteas_p7w_tests)
 
+add_library(cteas_p7_step_integration STATIC src/step_integration.cpp)
+target_include_directories(cteas_p7_step_integration PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_step_integration PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_step_integration PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
+add_executable(cteas_p7x_tests tests/p7x_tests.cpp)
+target_link_libraries(cteas_p7x_tests PRIVATE cteas_p7_step_integration)
+if(MSVC)
+  target_compile_options(cteas_p7x_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7x_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7x_step_integration_contract COMMAND cteas_p7x_tests)
+
 add_executable(cteas_p7w_probe src/puff_step_probe.cpp)
-target_link_libraries(cteas_p7w_probe PRIVATE cteas_p7_rise_wind cteas_p7_advection
-  cteas_p7_plume_rise cteas_p7_calmet21 cteas_p7_control)
+target_link_libraries(cteas_p7w_probe PRIVATE cteas_p7_rise_wind cteas_p7_step_integration
+  cteas_p7_advection cteas_p7_plume_rise cteas_p7_calmet21 cteas_p7_control)
 add_test(NAME cteas_p7w_source_parity
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7w_parity_tests.py"
           --probe "$<TARGET_FILE:cteas_p7w_probe>"
