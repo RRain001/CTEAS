@@ -14,12 +14,15 @@ acceptance the E42 ticket names, so the local gate reproduces it by itself:
      18 P6E-owned fields.
 
 Fail-closed: a missing case input is an error (exit 3, BLOCKED), never a
-silent skip.
+silent skip.  The case directory is resolved from the checkout first and then
+from the shared local-gate driver checkout, because the p6e feature branch
+predates the tracked `project/` tree.
 """
 import argparse
 import array
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -28,6 +31,28 @@ MET_SHA256 = \
     "b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30"
 HOURS = 143
 CELLS = 2500
+CASE_NAME = "hefei5km_2022_reference_case_20261011"
+
+
+def resolve_case(repo_root):
+    """Locate the frozen 2022 reference case.
+
+    The case is tracked at `project/cases/<CASE_NAME>` on the integration
+    branches, but not every branch/worktree carries it (the p6e feature branch
+    predates the `project/` tree).  Search, in order: an explicit override, the
+    checkout itself, then the shared local-gate host's driver checkout.
+    """
+    candidates = []
+    override = os.environ.get("CTEAS_P6E_REAL_CASE")
+    if override:
+        candidates.append(pathlib.Path(override))
+    candidates.append(repo_root / "project" / "cases" / CASE_NAME)
+    gate_root = pathlib.Path(os.environ.get("CTEAS_GATE_ROOT", "/home/lhy/gate"))
+    candidates.append(gate_root / "driver" / "project" / "cases" / CASE_NAME)
+    for candidate in candidates:
+        if (candidate / "run/met/met.dat").is_file():
+            return candidate
+    return None
 
 
 def run(command, work):
@@ -43,17 +68,23 @@ def load_f32(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--case", required=True, type=pathlib.Path)
+    parser.add_argument("--repo-root", required=True, type=pathlib.Path)
     parser.add_argument("--bridge", required=True, type=pathlib.Path)
     parser.add_argument("--tool", required=True, type=pathlib.Path)
     parser.add_argument("--work", required=True, type=pathlib.Path)
     parser.add_argument("--reference-sha256", default=MET_SHA256)
     args = parser.parse_args()
 
-    met = args.case / "run/met/met.dat"
-    surf = args.case / "met/surface/final/surf.dat"
-    upper = args.case / "met/upperair/final/up_58424.dat"
-    geo = args.case / "geo/makegeo/geo.dat"
+    case = resolve_case(args.repo_root)
+    if case is None:
+        print("P6E_FULL_FIELD_REFERENCE=BLOCKED: frozen case "
+              f"{CASE_NAME} not found under {args.repo_root}/project/cases or "
+              "the local-gate driver checkout")
+        return 3
+    met = case / "run/met/met.dat"
+    surf = case / "met/surface/final/surf.dat"
+    upper = case / "met/upperair/final/up_58424.dat"
+    geo = case / "geo/makegeo/geo.dat"
     for required in (met, surf, upper, geo):
         if not required.is_file():
             print(f"P6E_FULL_FIELD_REFERENCE=BLOCKED missing {required}")
