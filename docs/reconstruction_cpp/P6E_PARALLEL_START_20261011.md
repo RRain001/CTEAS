@@ -1163,3 +1163,140 @@ source-validated, so this is wiring rather than new physics.
 `P6E_RHO_REAL_CASE=PASS_REAL_CASE` (was BLOCKED);
 `P6E_TEMPK/TLEV1/IRH/QSW_REAL_CASE=PASS_REAL_CASE`;
 `P6E_REMAINING_40_FIELDS_REAL_CASE=BLOCKED`; `P6E_FULL=NOT_PASS`.
+
+## E26 original-wind-driven full-field run: five fields bit-exact
+
+The frozen `met.dat` itself carries the **original** `U-LEV/V-LEV/WFACE`
+fields. Feeding them back as the wind input isolates P6E's own physics from
+P6D's wind reconstruction: the comparison then measures the P6E kernels, not
+the wind regeneration.
+
+### New orchestration
+
+- `p6e_calmet_dat21 emit-realcase --wind-file <CALMET.DAT 2.1>` reads a wind
+  source with the **same** grid, time zone, output mode, interval count and
+  hourly time labels, and fails closed on any `9999.`/nonfinite wind value.
+- With a wind source present the per-hour chain follows the original COMP
+  order: `SURFVAR` -> **`AVETMP`** (IAVET=1 with the first-level wind,
+  `MNMDAV=1`, `HAFANG=30`, L12878-12881) -> `HEATFX` short wave ->
+  `airden` -> **`PGTSTB`** (first-level wind, MCLOUD=1 station cloud/ceiling,
+  case land-use grid, L13295-13498).
+- The bridge CSV gained `ceiling_hundreds_ft`
+  (`P6CObservedHour::ceiling_hundreds_ft` from the P6C surface state), which
+  PGTSTB's night branch needs.
+
+### Per-field verdicts, original wind driving (143 x 2500 = 357,500 per field)
+
+| field | denominator | max abs | max rel | exceedances | status |
+|---|---|---|---|---|---|
+| `TEMPK` | 357,500 | **0** | 0 | 0 | **bit-exact** |
+| `T-LEV 1` | 357,500 | **0** | 0 | 0 | **bit-exact** |
+| `IRH` | 357,500 | **0** | 0 | 0 | **bit-exact** |
+| `RHO` | 357,500 | **0** | 0 | 0 | **bit-exact** |
+| `IPGT` | 357,500 | **0** | 0 | 0 | **bit-exact** |
+| `QSW` | 357,500 | 7.24792e-4 W/m2 | 6.36252e-5 | 0 | PASS (known UTM residual) |
+| `U-LEV/V-LEV/WFACE` (27) | 0 | - | - | - | not produced (P6D-owned; used as *input*) |
+| `T-LEV 2..9` | 0 | - | - | - | BLOCKED on `ZICONV` |
+| `USTAR`, `EL` | 0 | - | - | - | BLOCKED on `QH` |
+| `ZI` | 0 | - | - | - | BLOCKED on `USTAR`/`EL` |
+| `WSTAR` | 0 | - | - | - | BLOCKED on `ZICONV` |
+| `RMM`, `IPCODE` | - | - | - | - | absent (`NPSTA=0`) |
+
+Harness status **PASS**, `total_exceedances = 0`.
+
+**This closes the AVETMP question quantitatively**: E24/E25 measured `TEMPK`
+0.00128 K from the reference; with the real `AVETMP` applied it is **exactly
+0**, confirming that the whole residual was the AVETMP REAL*4 rounding. `RHO`
+benefited identically (6.32e-6 -> 0) because `airden` divides by the
+AVETMP-averaged `TEMP2D`. `IPGT` was produced for the first time and is
+**bit-exact** on 357,500 cells.
+
+### Exact remaining gap (39 fields)
+
+`QH` is the missing link: `HEATFX`'s land energy budget needs the per-land-use
+albedo, Bowen ratio and soil-heat parameters, which CALMET reads from
+`LU.DAT` (`geo/ctgproc/lu.dat`, CTGPROC `LU.DAT 2.1`). With `QH` available the
+chain continues through `ELUSTR` (`USTAR`, `EL`; `zm=zmid(1)=10 m`,
+`z0`/`landuse` from the statics, `ICC` from the observations), then `MIXHT`
+(`ZI`; `CMECH=100*CONSTB=141`, `FCORI` from the cell latitude, `IUPT=-1`,
+`NEARU=1`, soundings from `up_58424.dat`), then `WSTARR` (`WSTAR`) and
+`TEMP3D` (`T-LEV 2..9` from `ZICONV`). All five kernels already exist and are
+source-validated; the outstanding work is the `LU.DAT` land-use property
+table reader plus that wiring.
+
+**Status summary:** `P6E_TEMPK/TLEV1/IRH/RHO/IPGT_REAL_CASE=PASS_REAL_CASE`
+(bit-exact); `P6E_QSW_REAL_CASE=PASS_REAL_CASE`;
+`P6E_USTAR_EL_ZI_WSTAR_TLEV2_9_REAL_CASE=BLOCKED` on the `LU.DAT` tables;
+`P6E_U_V_W=P6D_OWNED`; `P6E_FULL=NOT_PASS`.
+
+## E27 GEO.DAT properties, the HEATFX -> ELUSTR chain, and `USTAR` passing
+
+### Anchored GEO.DAT reader
+
+`include/cteas/p6e/geo_landuse.hpp` reads the MAKEGEO `GEO.DAT 2.1` land-use
+file following the original `readge`/`fillgeo` sequence (calmet.for
+L27790-28380, `fillgeo` L6983-7030): the `IOPT(1)` marker, `NLU/IWAT1/IWAT2`,
+`ILUCAT(1..NLU)`, the `ILANDU` grid, the terrain factor, the `ELEV` grid, then
+one marker plus payload per parameter (`Z0`, `ALBEDO`, `BOWEN`, `HCG`, `QF`,
+`XLAI`) with `IOPT` 0 (built-in table), 1 (category table) or 2 (gridded
+field). The case file uses `IOPT=2` for all of them, so the property grids are
+read directly.
+
+Fail-closed: unsupported options, truncated payloads, a grid size that does
+not match the case, a category count that disagrees with `NLU`, and
+out-of-range values (albedo outside 0..1, Bowen outside (-1,100), soil-heat
+parameter outside 0..1, negative anthropogenic flux) all raise instead of
+falling back to a default. The parsed `ILANDU` is cross-checked against the
+reference file's own static record and the water range against the header.
+
+### Chain wiring
+
+With `--geo-file` (and a wind source) `emit-realcase` now runs, per hour, in
+the original COMP order: `SURFVAR` -> `AVETMP` -> **`HEATFX`** (L7999-8122 with
+the case's gridded albedo/Bowen/soil-heat/anthropogenic fields and
+`hc1=5.31e-13, hc2=60, hc3p1=1.12` from the case's own `met.lst`) ->
+`airden` -> `PGTSTB` -> **`ELUSTR`** (L6333-6579; per-cell branch selection:
+`QH<0` uses the stable kernel, `QH>=0` the daytime kernel with `IPSIFCN=0`
+because `ICOARE=10`, `zm=zmid(1)=10 m`, `z0`/`landuse` from the statics,
+`ICC` from the observations; cells of the other branch are marked as water so
+each kernel skips exactly the ones the original would).
+
+### Results, original wind driving (143 x 2500 = 357,500 per field)
+
+| field | denominator | max abs | max rel | exceedances | status |
+|---|---|---|---|---|---|
+| `TEMPK` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `T-LEV 1` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `IRH` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `RHO` | 357,500 | 0 | 0 | 0 | bit-exact |
+| `IPGT` | 357,500 | 0 | 0 | 0 | bit-exact |
+| **`USTAR`** | 357,500 | **5.51343e-7 m/s** | 5.07242e-6 | **0** | **PASS (new)** |
+| `QSW` | 357,500 | 7.24792e-4 W/m2 | 6.36252e-5 | 0 | PASS, known UTM residual |
+| **`EL`** | 357,500 | - | up to 3.2e-2 | **630 (0.18 %)** | **FAIL: confined to hours 8 and 32** |
+
+`USTAR` closing at 5.5e-7 m/s with zero exceedances validates the whole
+`GEO -> HEATFX -> ELUSTR` chain. The `EL` residual is **not** a branch error:
+it is confined to exactly two hours (8 and 32: 350 + 280 cells) with relative
+errors 5.4e-5 .. 3.2e-2; the other 141 hours pass. The mechanism is the known
+solar-geometry residual: `QSW` differs by 7.24792e-4 W/m2 because the local
+inverse-UTM series does not reproduce COORDLIB exactly, that difference enters
+`HEATFX`'s net radiation, hence `QH`, hence
+`EL = -253.8226*RHO*TSF*USTAR**3/QH`, and in those two hours the amplification
+is large enough to break the frozen 0.04 m + 5e-5 relative gate. Aligning the
+projection (a COORDLIB-equivalent transform) is the fix; it is recorded as a
+bounded residual, not as a pass.
+
+### Still open
+
+`ZI`, `WSTAR` and `T-LEV 2..9` remain unproduced: `MIXHT` and `TEMP3D` need the
+full 10-level AA/BB sounding profiles per hour, while the bridge CSV currently
+carries only the level-1 and face-2 temperatures. Extending the bridge with
+the complete profiles plus `ZICONV` is the next step, after which `MIXHT`
+(`CMECH=CONSTB/sqrt(FCORI)`, `FCORI=max(|2*(2*pi/86400)*sin(lat)|,0.25e-4)`
+computed per cell, `IUPT=-1`, `NEARU=1`, `THRESHL=0`, `IZICRLX=1`), `WSTARR`
+and `TEMP3D` plug in directly. The 27 `U-LEV/V-LEV/WFACE` fields stay P6D-owned.
+
+**Status summary:** five fields bit-exact; `USTAR` PASS; `QSW` PASS with a
+bounded residual; `EL` FAIL on 630 of 357,500 cells (two hours) traced to the
+solar-geometry residual; `ZI`/`WSTAR`/`T-LEV 2..9` BLOCKED on the sounding
+profiles; `U-LEV/V-LEV/WFACE` P6D-owned; `P6E_FULL=NOT_PASS`.

@@ -197,8 +197,9 @@ def main():
         # ---- 5b. real-input partial candidate mode ------------------------
         observations=root/"observations.csv"
         observations.write_text(
-            "hour_index,air_temperature_k,pressure_mb,humidity_pct,opaque_cloud_tenths\n"+
-            "1,279.25,1028.2,52,0\n2,281.75,1027.9,46,0\n3,276.50,1025.1,87,0\n")
+            "hour_index,air_temperature_k,pressure_mb,humidity_pct,opaque_cloud_tenths,"
+            "ceiling_hundreds_ft\n"+
+            "1,279.25,1028.2,52,0,722\n2,281.75,1027.9,46,0,999\n3,276.50,1025.1,87,0,999\n")
         candidate=root/"realcase-candidate.dat"
         emitted_real=run([tool,"emit-realcase","--reference",reference,
                           "--observations",observations,"--out",candidate])
@@ -220,7 +221,8 @@ def main():
         assert json.loads(partial_harness.stdout)["status"] in ("PASS","FAIL_NUMERIC")
         bad_observations=root/"short-observations.csv"
         bad_observations.write_text(
-            "hour_index,air_temperature_k,pressure_mb,humidity_pct,opaque_cloud_tenths\n1,279.0,1028.2,52,0\n")
+            "hour_index,air_temperature_k,pressure_mb,humidity_pct,opaque_cloud_tenths,"
+            "ceiling_hundreds_ft\n1,279.0,1028.2,52,0,999\n")
         assert run([tool,"emit-realcase","--reference",reference,
                     "--observations",bad_observations,
                     "--out",root/"no.dat"]).returncode!=0
