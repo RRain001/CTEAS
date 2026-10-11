@@ -21,6 +21,7 @@
 //        gates. Layout or unit mismatches fail closed.
 #include "cteas/p6e/calmet_dat21.hpp"
 #include "cteas/p6e/mixht_observed_mc.hpp"
+#include "cteas/p6e/solar.hpp"
 #include "cteas/p6e/surfvar_multistation.hpp"
 #include "cteas/p6e/temp3d_observed_land.hpp"
 
@@ -268,6 +269,7 @@ void emit_synthetic(const std::string& path,std::size_t hours,int nx,int ny,int 
 struct BridgeObservation {
     double air_temperature_k=9999.;
     double humidity_pct=9999.;
+    double opaque_cloud_tenths=9999.;
 };
 std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
     std::ifstream file(path);
@@ -287,6 +289,7 @@ std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
     };
     const auto temperature=column("air_temperature_k");
     const auto humidity=column("humidity_pct");
+    const auto cloud=column("opaque_cloud_tenths");
     std::vector<BridgeObservation> observations;
     while(std::getline(file,line)) {
         if(line.empty())continue;
@@ -294,19 +297,65 @@ std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
         std::string token;
         std::istringstream stream(line);
         while(std::getline(stream,token,','))fields.push_back(token);
-        if(fields.size()<=std::max(temperature,humidity))
+        if(fields.size()<=std::max(std::max(temperature,humidity),cloud))
             throw std::invalid_argument("bridge CSV short row");
         BridgeObservation observation;
         observation.air_temperature_k=std::stod(fields[temperature]);
         observation.humidity_pct=std::stod(fields[humidity]);
+        observation.opaque_cloud_tenths=std::stod(fields[cloud]);
         observations.push_back(observation);
     }
     if(observations.empty())throw std::invalid_argument("bridge CSV has no hours");
     return observations;
 }
 
+// Inverse UTM (WGS-84) for the case projection: zone 50N, central meridian
+// 117E, northern hemisphere. Series inverse accurate to ~1e-9 deg, far inside
+// the tolerance needed for the solar hour angle.
+void utm50n_to_latlon(double easting_m,double northing_m,
+                      double& lat_deg,double& lon_deg) {
+    constexpr double a=6378137.0,flattening=1.0/298.257223563;
+    constexpr double k0=0.9996,lon0=117.0,false_easting=500000.0;
+    const double e2=flattening*(2.0-flattening);
+    const double ep2=e2/(1.0-e2);
+    const double e1=(1.0-std::sqrt(1.0-e2))/(1.0+std::sqrt(1.0-e2));
+    const double x=(easting_m-false_easting)/k0;
+    const double y=northing_m/k0;
+    const double m=y;
+    const double mu=m/(a*(1.0-e2/4.0-3.0*e2*e2/64.0-5.0*e2*e2*e2/256.0));
+    const double phi1=mu+(3.0*e1/2.0-27.0*e1*e1*e1/32.0)*std::sin(2.0*mu)+
+        (21.0*e1*e1/16.0-55.0*e1*e1*e1*e1/32.0)*std::sin(4.0*mu)+
+        (151.0*e1*e1*e1/96.0)*std::sin(6.0*mu)+
+        (1097.0*e1*e1*e1*e1/512.0)*std::sin(8.0*mu);
+    const double sinphi=std::sin(phi1),cosphi=std::cos(phi1);
+    const double tanphi=std::tan(phi1);
+    const double n1=a/std::sqrt(1.0-e2*sinphi*sinphi);
+    const double r1=a*(1.0-e2)/std::pow(1.0-e2*sinphi*sinphi,1.5);
+    const double t1=tanphi*tanphi,c1=ep2*cosphi*cosphi;
+    const double d=x/n1;
+    const double lat=phi1-(n1*tanphi/r1)*(d*d/2.0-
+        (5.0+3.0*t1+10.0*c1-4.0*c1*c1-9.0*ep2)*d*d*d*d/24.0+
+        (61.0+90.0*t1+298.0*c1+45.0*t1*t1-252.0*ep2-3.0*c1*c1)*
+        d*d*d*d*d*d/720.0);
+    const double lon=(d-(1.0+2.0*t1+c1)*d*d*d/6.0+
+        (5.0-2.0*c1+28.0*t1-3.0*c1*c1+8.0*ep2+24.0*t1*t1)*
+        d*d*d*d*d/120.0)/cosphi;
+    lat_deg=lat*180.0/3.14159265358979323846;
+    lon_deg=lon0+lon*180.0/3.14159265358979323846;
+}
+int timezone_hours(const std::string& axtz) {
+    if(axtz.size()!=8U||axtz.compare(0U,3U,"UTC")!=0)
+        throw std::invalid_argument("unsupported AXTZ "+axtz);
+    const int sign=axtz[3]=='-'?-1:1;
+    if(axtz[3]!='+'&&axtz[3]!='-')throw std::invalid_argument("unsupported AXTZ "+axtz);
+    const int hours=std::stoi(axtz.substr(4U,2U));
+    const int minutes=std::stoi(axtz.substr(6U,2U));
+    return sign*(hours+(minutes>=30?1:0));
+}
+
 void emit_realcase(const std::string& reference_path,const std::string& observations_path,
-                   const std::string& out_path,const std::string& report_path) {
+                   const std::string& out_path,const std::string& report_path,
+                   float ha1,float ha2,float hb1,float hb2) {
     const auto reference=read_calmet_dat21(reference_path);
     const auto observations=read_bridge_csv(observations_path);
     const auto& h=reference.header;
@@ -324,14 +373,39 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     surf.irad=1;
     surf.numts=5;
     surf.stations.resize(1U);
-    surf.stations[0].x_m=reference.statics.surface_x_m[0]*1000.f;
-    surf.stations[0].y_m=reference.statics.surface_y_m[0]*1000.f;
+    // XSSTA/YSSTA are stored in metres relative to the SW corner of grid cell
+    // (1,1) - the same metres as the stored DGRID - so the source expression
+    // `r2=(xxx*dgridi-xc)**2+(yyy*dgridi-yc)**2` is reproduced exactly.
+    surf.stations[0].x_m=reference.statics.surface_x_m[0];
+    surf.stations[0].y_m=reference.statics.surface_y_m[0];
     CalmetDat21Header candidate_header=h;
     candidate_header.comments={"P6E partial CALMET.DAT 2.1 candidate for the real 2022 case",
         "Geometry, station coordinates and time labels are copied run inputs",
         "Only TEMPK, IRH and T-LEV1 are produced; every other field is 9999. missing"};
     candidate_header.run_hours=static_cast<int>(reference.intervals);
     const auto labels=calmet21_hourly_labels(h.nz,h.irtype,h.lcalgrd,h.npsta);
+    // Grid solar geometry: UTM zone 50N cell centres (XORIG/YORIG are the SW
+    // corner of cell (1,1)), then the original SOLAR 26-slot half-hour table
+    // and the COMP mid-timestep selection sinalpc = sinalp(nhrb+2).
+    const int base_timezone=timezone_hours(h.timezone);
+    Grid solar_grid;
+    solar_grid.nx=static_cast<std::size_t>(h.nx);
+    solar_grid.ny=static_cast<std::size_t>(h.ny);
+    solar_grid.lat.resize(cells);
+    solar_grid.lon_east.resize(cells);
+    for(int i=0;i<h.nx;++i)
+        for(int j=0;j<h.ny;++j) {
+            const double easting=static_cast<double>(h.xorigin_m)+
+                                 (static_cast<double>(i)+0.5)*h.dgrid_m;
+            const double northing=static_cast<double>(h.yorigin_m)+
+                                  (static_cast<double>(j)+0.5)*h.dgrid_m;
+            double lat=0.0,lon=0.0;
+            utm50n_to_latlon(easting,northing,lat,lon);
+            const auto k=static_cast<std::size_t>(j)*solar_grid.nx+
+                         static_cast<std::size_t>(i);
+            solar_grid.lat[k]=static_cast<float>(lat);
+            solar_grid.lon_east[k]=static_cast<float>(lon);
+        }
     std::vector<CalmetDat21Field> hourly;
     std::size_t produced_temperature=0U,missing_humidity=0U;
     for(std::size_t hour=0;hour<reference.intervals;++hour) {
@@ -343,6 +417,26 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         const auto surface=surfvar_multistation(surf);
         const auto& reference_first=
             reference.hourly[hour*reference.fields_per_hour];
+        if(observation.opaque_cloud_tenths<0.0||observation.opaque_cloud_tenths>10.0)
+            throw std::invalid_argument("station cloud cover outside 0..10 tenths");
+        const float cloud_fraction=0.1f*
+            static_cast<float>(observation.opaque_cloud_tenths);
+        const auto solar=calculate(solar_grid,reference_first.begin.julian_day,
+                                   base_timezone);
+        const auto slot=static_cast<std::size_t>(reference_first.begin.hour)+1U;
+        std::vector<float> shortwave(cells,0.f);
+        for(int i=0;i<h.nx;++i)
+            for(int j=0;j<h.ny;++j) {
+                const auto k=static_cast<std::size_t>(j)*solar_grid.nx+
+                             static_cast<std::size_t>(i);
+                const float sinalpc=solar.at(slot,static_cast<std::size_t>(i),
+                                             static_cast<std::size_t>(j));
+                // HEATFX L8066-8069, MCLOUD=1 station-cloud branch.
+                float value=(ha1*sinalpc+ha2)*
+                            (1.f+hb1*std::pow(cloud_fraction,hb2));
+                if(value<0.f)value=0.f;
+                shortwave[k]=value;
+            }
         for(const std::string& label:labels) {
             CalmetDat21Field field;
             field.label=label;
@@ -361,6 +455,9 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                 if(surface_temperature||layer_one)
                     for(std::size_t k=0;k<cells;++k)
                         field.real_values[k]=surface.temp2d_k[k];
+                if(label=="QSW")
+                    for(std::size_t k=0;k<cells;++k)
+                        field.real_values[k]=shortwave[k];
             }
             hourly.push_back(std::move(field));
         }
@@ -371,14 +468,17 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     report+="  \"reference\": "+json_string(reference_path)+",\n";
     report+="  \"observations\": "+json_string(observations_path)+",\n";
     report+="  \"intervals\": "+std::to_string(reference.intervals)+",\n";
-    report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\"],\n";
+    report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\",\"QSW\"],\n";
     report+="  \"produced_real_hours\": "+std::to_string(produced_temperature)+",\n";
     report+="  \"hours_with_missing_station_humidity\": "+std::to_string(missing_humidity)+",\n";
+    report+="  \"shortwave_constants\": {\"ha1\": "+json_number(ha1)+", \"ha2\": "+json_number(ha2)+
+            ", \"hb1\": "+json_number(hb1)+", \"hb2\": "+json_number(hb2)+"},\n";
+    report+="  \"base_timezone_hours\": "+std::to_string(base_timezone)+",\n";
     report+="  \"missing_sentinel_fields\": [";
     {
         bool first=true;
         for(const auto& label:labels) {
-            if(label=="TEMPK"||label=="IRH"||label=="T-LEV  1")continue;
+            if(label=="TEMPK"||label=="IRH"||label=="T-LEV  1"||label=="QSW")continue;
             report+=(first?"":", ")+json_string(label);
             first=false;
         }
@@ -699,7 +799,11 @@ int main(int argc,char** argv) {
                 throw std::invalid_argument(
                     "emit-realcase needs --reference, --observations and --out");
             emit_realcase(reference_file,observations,out,
-                          argument(argc,argv,"--report"));
+                          argument(argc,argv,"--report"),
+                          static_cast<float>(std::stod(argument(argc,argv,"--ha1","990."))),
+                          static_cast<float>(std::stod(argument(argc,argv,"--ha2","-30."))),
+                          static_cast<float>(std::stod(argument(argc,argv,"--hb1","-0.75"))),
+                          static_cast<float>(std::stod(argument(argc,argv,"--hb2","3.4"))));
             return 0;
         }
         if(mode=="check") {
