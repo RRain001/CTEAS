@@ -107,6 +107,17 @@ jobs:
             --cpp /tmp/p6c-up-build/cteas_p6_read_upper \
             --station 58424 \
             --out integration-evidence/p6c-upper-rdupn-reference
+      - name: P6C original VERbatim VERTAV layer winds vs C++ on 13 real 2022 soundings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_vertav.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --up project/current/met/upperair/final/up_58424.dat \
+            --cpp-level /tmp/p6c-up-build/cteas_p6_read_upper \
+            --cpp-vertav /tmp/p6c-up-build/cteas_p6_vertav \
+            --station 58424 \
+            --out integration-evidence/p6c-vertav-reference
       - name: P5 real 2022 ISD + Lite / two-stage wind / GENERIC
         shell: bash
         run: |
