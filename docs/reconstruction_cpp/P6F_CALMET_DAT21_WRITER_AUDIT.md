@@ -145,6 +145,12 @@ cteas_p6f_calmet_dat21_writer write-from-p6d \
   `--statics-from`), `missing_sentinel` (scalar), `hour_label` (`END` or `START`, so the interval
   begin is `label - 3600 s` or the label itself) and the hourly label list/count. Any other spelling
   is rejected with the value it found.
+- **Accepted variants**: `wind1_*`, `inter2_*`, `blend_*`, `slope_corrected_*`. The producer has
+  renamed one of them: the pre-tail INTER2 field was published as `blend_*` and is now `inter2_*`,
+  while `blend_*` holds the closed DIAGNO field (`INTER2 -> SMOOTH -> DIVCEL`); both names are
+  accepted and the metadata carries each verdict, so the case C run documented below consumed the
+  field that is now published as `inter2_*`. `windbc_*` is refused with an explicit message: those
+  planes are stitched lateral boundaries (`NZ*2*NY` / `NZ*2*NX`, level-major), not a gridded field.
 - **W faces**: `w_face_*.f32` holds `NZ+1` faces per column (face 1 is the ground face); CALMET.DAT
   writes W at the *top* face of each layer, so face `k+1` becomes `WFACE(k)` and the ground face is
   not written.
