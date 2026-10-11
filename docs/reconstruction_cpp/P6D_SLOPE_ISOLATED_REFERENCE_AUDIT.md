@@ -49,3 +49,10 @@ then DIAGNO step sequence including SLOPE+FRADJ, TOPOF2, smoothing and
 `MINIM/DIVCEL`. Freeze original first-hour, six-hour and 143-hour
 intermediate `U/V/W`, station masks and mass-consistency metrics before
 claiming complete P6D.
+
+## Executed CI evidence — 2026-10-11
+
+[Independent original-source SLOPE run #38113822845](https://github.com/RRain001/CTEAS/actions/runs/38113822845): **SUCCESS**, 14/14 scoped CTests PASS and six actual gfortran-vs-C++ tests PASS (270,000 component pairs; no nonfinite, ordering or tolerance mismatches). Original adjusted/active components included 15,000 downslope and 10,000 upslope component values (separate test cases). Global maximum absolute U difference **1.1923990e-7 m/s**, V **2.9806490e-8 m/s** against predeclared **2.0e-4 m/s** absolute threshold. [Machine report artifact](https://github.com/RRain001/CTEAS/actions/runs/38113822845/artifacts/11693065315).
+
+Validated status: **P6D_SLOPE_ISOLATED_ORIGINAL_FORTRAN_PARITY = PASS**.
+Unchanged: **P6D_FULL_DIAGNOSTIC_3D = NOT_IMPLEMENTED**, and **P6C_COMPLETE is not established by these P6D tests**.
