@@ -27,7 +27,7 @@ jobs:
           # Prefer already-installed Ubuntu 22.04 versioned packages.
           # Only use sudo non-interactively when compiler prerequisites are absent.
           find_cpp() {
-            for binary in g++-13 g++-12 g++-11 clang++-17 clang++-16 clang++-15; do
+            for binary in g++-13 g++-12 clang++-17 clang++-16 clang++-15; do
               if command -v "$binary" >/dev/null 2>&1; then
                 echo "$binary"
                 return 0
@@ -48,11 +48,11 @@ jobs:
           fort="$(find_fortran || true)"
           if [[ -z "$cpp" || -z "$fort" ]]; then
             if ! sudo -n true 2>/dev/null; then
-              echo "::error::Runner requires g++-11 and gfortran-11 (Ubuntu 22.04); sudo -n unavailable. Ask administrator to install them."
+              echo "::error::Runner requires g++-12 and gfortran-11 (Ubuntu 22.04); sudo -n unavailable. Ask administrator to install them."
               exit 1
             fi
             sudo -n apt-get update -qq
-            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-11 gfortran-11
+            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-12 gfortran-11
             cpp="$(find_cpp || true)"
             fort="$(find_fortran || true)"
           fi
@@ -63,6 +63,9 @@ jobs:
           command -v "$cpp"
           command -v "$fort"
           "$cpp" --version | head -1
+          # g++-11 supports -std=c++20 but lacks the required libstdc++
+          # calendar/sys_seconds API. Verify actual library support.
+          printf '#include <chrono>\nint main(){std::chrono::sys_seconds a{}; (void)a;}\n' | "$cpp" -std=c++20 -x c++ -fsyntax-only -
           "$fort" --version | head -1
           cmake --version | head -1
           python3 --version
