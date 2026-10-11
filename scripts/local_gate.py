@@ -203,6 +203,10 @@ def main() -> int:
         _write(args, evidence, started)
         return 2
     evidence["gated_sha"] = gated_sha = sha.strip()
+    # Per-run output directory: a re-run of the same ref must not collide with a
+    # previous run's staged inputs (steps are required to fail closed on overwrite).
+    out = GATE_ROOT / "evidence" / args.track / gated_sha[:12]
+    out.mkdir(parents=True, exist_ok=True)
 
     if wt.exists():
         sh(["git", "-C", str(repo), "worktree", "remove", "--force", str(wt)], repo, env)
