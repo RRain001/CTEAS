@@ -404,3 +404,21 @@ claiming original Fortran 143-hour field equivalence.
 `E16_SYNTHETIC_INTEGRATION` awaits CI and must not be confused
 with `P6E_REAL_2022_FULL_COMP_PARITY`, which remains blocked on
 actual full-scope meteorological/diagnostic inputs and P6D handoff.
+
+## E17 formatted 143h SURF.DAT + UP.DAT → P6E CLI test
+
+Additional file-backed integration test independently generates
+**synthetic but original P6C formatted** `SURF.DAT v2.1` with
+143 one-hour intervals, and `UP.DAT v2.1` with 13 upper-air
+soundings at 00/12 UTC, 10 valid levels per sounding in original
+fixed-width 29-char groups. It executes the new actual P6E
+`p6e_p6c_hourly_bridge` binary twice, asserts output SHA
+determinism and 143 rows, both inverted/normal physical AA/BB
+time-ordered mappings, correctly observed zero vs 9999 missing
+precipitation masks, gridded upper-air face temperature validity,
+and fail-closed wrong station IDs. The test has no numerical
+physical source claim: **the meteorological values are all synthetic**.
+
+`E17_FORMATTED_CLI` awaits CTest PASS; the true 2022 SURF/UP
+files remain external to the P6E sparse checkout, and the
+original-source full CALMET 143h parity gate remains pending.

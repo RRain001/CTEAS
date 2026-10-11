@@ -219,3 +219,10 @@ else()
  target_compile_options(p6e_p6c_143h_physics_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME p6e_p6c_143h_mixht_temp3d_sequential_invariants COMMAND p6e_p6c_143h_physics_tests)
+
+# E17 synthetic formatted SURF.DAT/UP.DAT to full 143h CLI end-to-end.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME p6e_p6c_143h_formatted_input_cli
+  COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_p6c_cli_formatted_143h.py"
+    --cpp "$<TARGET_FILE:p6e_p6c_hourly_bridge>")
