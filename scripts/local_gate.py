@@ -82,6 +82,16 @@ TRACKS: dict[str, dict] = {
             {"cmd": ["{build}/cteas_p7d_sigma_probe", "--audit",
                      "project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp"],
              "requires": ["project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp"]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/drydep_parity_tests.py",
+                     "--probe", "{build}/cteas_p7f_drydep_probe", "--repo-root", ".",
+                     "--require", "--require-case"]},
+            {"cmd": ["{build}/cteas_p7f_drydep_probe", "--audit", PUFF_INP],
+             "requires": [PUFF_INP]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/case_ledger_real_2023_tests.py",
+                     "--binary", "{build}/cteas_p7_2022_case_ledger",
+                     "--report", "{out}/p7-2022-ledger-refusal.json", "--require"],
+             "requires": ["project/cases/smoke5d_coldstart_20260701/run/met/met.dat",
+                          "project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp"]},
             # ---- real 2022 frozen reference-case gates ----
             {"cmd": ["python3", "-c",
                      "import hashlib,pathlib,sys;"

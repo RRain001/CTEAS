@@ -136,3 +136,33 @@ add_test(NAME cteas_p7d_sigma_source_parity
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/sigma_fortran_parity_tests.py"
           --probe "$<TARGET_FILE:cteas_p7d_sigma_probe>"
           --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+
+# P7F: CALPUFF 7.2.1 MDRY=1 dry deposition for the selected real-case species
+# methods (H-3 computed gas, HE-3 no removal).
+add_library(cteas_p7_dry_deposition STATIC src/dry_deposition.cpp)
+target_include_directories(cteas_p7_dry_deposition PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_dry_deposition PUBLIC cteas_p7_control)
+if(MSVC)
+  target_compile_options(cteas_p7_dry_deposition PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_dry_deposition PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7f_drydep_probe src/drydep_probe.cpp)
+target_link_libraries(cteas_p7f_drydep_probe PRIVATE cteas_p7_dry_deposition)
+add_executable(cteas_p7_dry_deposition_tests tests/dry_deposition_tests.cpp)
+target_link_libraries(cteas_p7_dry_deposition_tests PRIVATE cteas_p7_dry_deposition)
+if(MSVC)
+  target_compile_options(cteas_p7_dry_deposition_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_dry_deposition_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7f_dry_deposition_contract COMMAND cteas_p7_dry_deposition_tests)
+set(P7F_LOCKED_CASE_CONTROL "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp")
+if(EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7f_locked_case_dry_deposition
+    COMMAND cteas_p7_dry_deposition_tests --control "${P7F_LOCKED_CASE_CONTROL}")
+endif()
+add_test(NAME cteas_p7f_drydep_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/drydep_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7f_drydep_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
