@@ -32,7 +32,6 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -510,32 +509,14 @@ int main(int argc,char** argv){
             for(std::size_t k=0;k<9;++k){
                 const auto& surface_wind=station.surface_neutral_profile[k];
                 const auto& upper_wind=station.upper_observed_profile[k];
-                blend.station_component_mps[k]=component==0
+                // Original STDAT1(K,L) layout: level-major, station-minor.
+                blend.station_component_mps[k*2]=component==0
                     ? surface_wind.u_mps:surface_wind.v_mps;
-                blend.station_component_mps[9+k]=component==0
+                blend.station_component_mps[k*2+1]=component==0
                     ? upper_wind.u_mps:upper_wind.v_mps;
             }
             blend.step1_mps=component==0?corrected_u:corrected_v;
             station_values[component]=blend.station_component_mps;
-            if(component==0&&std::getenv("P6D_DUMP_INTER2")&&
-               hour_label(clock)==std::getenv("P6D_DUMP_INTER2")){
-                std::cerr<<"DUMP nstations="<<blend.nstations
-                         <<" radii="<<blend.rmin_km<<","<<blend.rmax1_km
-                         <<","<<blend.rmax2_km<<","<<blend.rmax3_km
-                         <<","<<blend.r1_km<<","<<blend.r2_km
-                         <<" lvary="<<blend.lvary<<" iprog="<<blend.iprog
-                         <<" noobs="<<blend.noobs<<" water="<<blend.water_first
-                         <<","<<blend.water_last
-                         <<" edit="<<blend.edit<<" editl="<<blend.editl
-                         <<" nintrp0="<<blend.nintrp_per_layer[0]
-                         <<" xst="<<blend.station_x_km[0]<<","<<blend.station_x_km[1]
-                         <<" landuse0="<<blend.landuse[0]
-                         <<" wo0="<<blend.observation_weight[0]
-                         <<" step1[0..2]="<<blend.step1_mps[0]<<","<<blend.step1_mps[1]<<","<<blend.step1_mps[2]
-                         <<" data=";
-                for(float v:blend.station_component_mps)std::cerr<<v<<",";
-                std::cerr<<"\n";
-            }
             const auto blended=original_inter2_selected(blend);
             if(component==0)blended_u=blended.component_mps;
             else blended_v=blended.component_mps;
@@ -606,8 +587,8 @@ int main(int argc,char** argv){
                 }
                 // Original driver reads one row of two station values per level.
                 for(std::size_t k=0;k<9;++k)
-                    inter2<<station_values[component][k]<<" "
-                          <<station_values[component][9+k]<<"\n";
+                    inter2<<station_values[component][k*2]<<" "
+                          <<station_values[component][k*2+1]<<"\n";
                 // Original driver reads the step-one field and the observation
                 // weights level by level, one grid row per record.
                 const std::vector<float>& guess=component==0?corrected_u:corrected_v;
