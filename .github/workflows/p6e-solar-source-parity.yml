@@ -115,21 +115,35 @@ jobs:
           ]
           if len(files) < 21:
               raise RuntimeError("Too few files in immutable P6E Git tree")
+          def blob_hash(data):
+              return hashlib.sha1(b"blob " + str(len(data)).encode()
+                                  + b"\x00" + data).hexdigest()
+          reused = 0
+          fetched = 0
           for item in files:
               p = Path(item["path"])
-              if p.is_absolute() or ".." in p.parts:
-                  raise RuntimeError("Unsafe Git path")
+              if p.is_absolute() or ".." in p.parts or p.is_symlink():
+                  raise RuntimeError("Unsafe Git path/symlink")
+              # Dedicated self-hosted workspace persists between jobs.
+              # Reuse ONLY exact Git-content-addressed blobs, never a
+              # stale or uncontrolled previous checkout. This prevents
+              # re-downloading ~80 unchanged files on every P6E commit.
+              if p.is_file() and blob_hash(p.read_bytes()) == item["sha"]:
+                  reused += 1
+                  continue
               blob = github("/git/blobs/" + item["sha"])
               if blob.get("encoding") != "base64":
                   raise RuntimeError("Expected canonical base64 Git blob")
               data = base64.b64decode(blob["content"])
-              checksum = hashlib.sha1(b"blob " + str(len(data)).encode()
-                                      + b"\x00" + data).hexdigest()
-              if checksum != item["sha"]:
+              if blob_hash(data) != item["sha"]:
                   raise RuntimeError("Immutable Git blob hash mismatch: " + item["path"])
               p.parent.mkdir(parents=True, exist_ok=True)
               p.write_bytes(data)
-          print("REST source bootstrap PASS: SHA=", sha, "verified blobs=", len(files))
+              fetched += 1
+          print("REST source bootstrap PASS: SHA=", sha,
+                "verified blobs=", len(files),
+                "reused verified local blobs=", reused,
+                "fetched missing/changed blobs=", fetched)
           PY
       - name: Require complete immutable source set
         shell: bash
