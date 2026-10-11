@@ -34,7 +34,10 @@ class P5SelectionTests(unittest.TestCase):
         self.raw = self.root / "raw"
 
     def execute(self, locations: list[d.Station], available: dict[str, int],
-                include_stack: bool = True):
+                include_stack: bool = True, years=(2022,)):
+        (self.root / "research_time").write_text(
+            f"BEGIN: {min(years)}0101-000000\nEND: {max(years)}1231-230000\n"
+        )
         argv = ["p5", "--center-file", str(self.root / "center"),
                 "--grid-file", str(self.root / "grid"),
                 "--research-time-file", str(self.root / "research_time"),
@@ -50,9 +53,11 @@ class P5SelectionTests(unittest.TestCase):
             (out / lite.filename(sid,year)).write_bytes(b"mock source")
             return True, "test", False
         def fake_lite_hours(file, year, station_id):
-            return available[station_id], d.expected_hours_in_year(year)
+            count = available.get((station_id, year), available.get(station_id, 0))
+            return count, d.expected_hours_in_year(year)
         def fake_hours(file, year, station_id=None):
-            return available[file.name.split("-")[0]], d.expected_hours_in_year(year)
+            sid = file.name.split("-")[0]
+            return available.get((sid,year),available.get(sid,0)), d.expected_hours_in_year(year)
         with patch.object(d, "parse_history_txt", return_value=locations), \
              patch.object(d, "download_one", side_effect=fake_download), \
              patch.object(d, "original_coverage", side_effect=fake_hours), \
@@ -60,7 +65,9 @@ class P5SelectionTests(unittest.TestCase):
              patch.object(lite, "lite_time_coverage", side_effect=fake_lite_hours), \
              patch.object(sys, "argv", argv):
             d.main()
-        return json.loads((self.raw / "station_selection_2022.json").read_text())
+        result = {year: json.loads((self.raw / f"station_selection_{year}.json").read_text())
+                  for year in years}
+        return result[years[0]] if len(years) == 1 else result
 
     def test_all_in_domain_and_real_positions(self):
         st = [station("58321099999", 31.94, 117.14),
@@ -69,6 +76,11 @@ class P5SelectionTests(unittest.TestCase):
         result = self.execute(st, {s.sid: 8000 for s in st})
         self.assertEqual(result["mode"], "OBSERVED")
         self.assertEqual(len(result["stations"]), 2)
+        self.assertEqual(result["station_selection_case"], "IN_DOMAIN_MULTIPLE")
+        self.assertEqual(sum(x["wind_treatment"] == "COMPLETE_FILL_AND_CALM_REPLACE"
+                             for x in result["stations"]), 1)
+        self.assertEqual(sum(x["wind_treatment"] == "RAW_SPARSE_STANDARDIZE_ONLY"
+                             for x in result["stations"]), 1)
         for row in result["stations"]:
             self.assertFalse(row["relocated"])
             self.assertEqual(row["lat"], row["source_lat"])
@@ -81,7 +93,7 @@ class P5SelectionTests(unittest.TestCase):
         st = [station("58321099999",31.98,116.97),
               station("58314099999",31.4,116.3),
               station("58345099999",30.0,115.0)]
-        result = self.execute(st, {"58321099999":7007,"58314099999":7008,"58345099999":8760})
+        result = self.execute(st, {"58321099999":7884,"58314099999":7885,"58345099999":8760})
         self.assertEqual(result["mode"],"VIRTUAL_RELOCATED")
         self.assertEqual(len(result["stations"]),1)
         entry=result["stations"][0]
@@ -94,7 +106,7 @@ class P5SelectionTests(unittest.TestCase):
 
     def test_single_fallback_at_boundary(self):
         st=[station("58321099999",31.98,116.97)]
-        r=self.execute(st,{"58321099999":7008})
+        r=self.execute(st,{"58321099999":7885})
         self.assertEqual(len(r["stations"]),1)
 
     def test_fallback_requires_stack_not_area_center(self):
@@ -102,9 +114,58 @@ class P5SelectionTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.execute(st,{"58321099999":8760},include_stack=False)
 
-    def test_leap_80pct(self):
+    def test_leap_strict_gt90pct(self):
         self.assertEqual(d.expected_hours_in_year(2024),8784)
-        self.assertEqual(math.ceil(8784*0.8),7028)
+        self.assertFalse(7905 * 10 > 9 * 8784)
+        self.assertTrue(7906 * 10 > 9 * 8784)
+        self.assertFalse(7884 * 10 > 9 * 8760)
+        self.assertTrue(7885 * 10 > 9 * 8760)
+
+    def test_one_in_domain_station_even_extremely_low_coverage(self):
+        st = [station("58321099999", 31.94, 117.14)]
+        result = self.execute(st, {"58321099999": 15})
+        self.assertEqual(result["station_selection_case"], "IN_DOMAIN_SINGLE")
+        self.assertEqual(result["primary_sid"], "58321099999")
+        self.assertEqual(result["stations"][0]["wind_treatment"],
+                         "COMPLETE_FILL_AND_CALM_REPLACE")
+        self.assertAlmostEqual(result["stations"][0]["isd_lite_coverage"], 15/8760)
+
+    def test_multiple_in_domain_highest_lite_coverage_is_only_primary(self):
+        st = [station("58321099999",31.94,117.14),
+              station("58314099999",31.945,117.145),
+              station("58345099999",31.946,117.146)]
+        counts = {"58321099999":7600,"58314099999":8200,"58345099999":600}
+        result = self.execute(st,counts)
+        self.assertEqual(result["station_selection_case"],"IN_DOMAIN_MULTIPLE")
+        self.assertEqual(result["primary_sid"],"58314099999")
+        roles={r["sid"]:r["wind_treatment"] for r in result["stations"]}
+        self.assertEqual(roles["58314099999"],"COMPLETE_FILL_AND_CALM_REPLACE")
+        self.assertEqual(roles["58345099999"],"RAW_SPARSE_STANDARDIZE_ONLY")
+
+    def test_reselection_each_calendar_year_no_sticky_primary(self):
+        st = [station("58321099999",31.94,117.14),
+              station("58314099999",31.945,117.145)]
+        data = {
+           ("58321099999",2021): 8100, ("58314099999",2021): 3000,
+           ("58321099999",2022): 3000, ("58314099999",2022): 8100,
+        }
+        outputs=self.execute(st,data,years=(2021,2022))
+        self.assertEqual(outputs[2021]["primary_sid"],"58321099999")
+        self.assertEqual(outputs[2022]["primary_sid"],"58314099999")
+        self.assertEqual(len(outputs[2021]["stations"]),2)
+        self.assertEqual(len(outputs[2022]["stations"]),2)
+
+    def test_external_one_station_reselected_each_year_and_strict_above(self):
+        st = [station("58321099999",31.98,116.97),
+              station("58314099999",31.40,116.33)]
+        data = {
+           ("58321099999",2021): 7900, ("58314099999",2021): 8500,
+           ("58321099999",2022): 7600, ("58314099999",2022): 8200,
+        }
+        outputs=self.execute(st,data,years=(2021,2022))
+        self.assertEqual(outputs[2021]["primary_sid"],"58321099999")
+        self.assertEqual(outputs[2022]["primary_sid"],"58314099999")
+        self.assertTrue(all(len(x["stations"]) == 1 for x in outputs.values()))
 
     def test_numeric_identity_aliases_and_duplicates(self):
         ids=numeric_station_ids(["A12345ABCDE","58321099999","58321000000"])
