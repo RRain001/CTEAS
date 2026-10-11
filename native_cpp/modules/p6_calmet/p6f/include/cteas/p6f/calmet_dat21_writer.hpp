@@ -157,8 +157,11 @@ struct Calmet21Header {
     std::vector<std::string> comments;  // NCOM records of at most 132 bytes
 
     // IBYRN..IESECN: the run clock words declared by the original controls.
-    // They are explicit calendar dates (year, month, day, hour, second), not
-    // the packed YYYYJJJHH of the field records.
+    // They are explicit calendar dates (year, month, day, hour) plus a seconds
+    // word holding the offset inside that hour (0..3600, the original's
+    // sub-hourly step support), not the packed YYYYJJJHH of the field records
+    // and not a clock second. The frozen case starts and ends on the hour, so
+    // its seconds words are zero.
     int begin_year = 0, begin_month = 0, begin_day = 0, begin_hour = 0, begin_second = 0;
     int end_year = 0, end_month = 0, end_day = 0, end_hour = 0, end_second = 0;
 

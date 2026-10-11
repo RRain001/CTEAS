@@ -33,8 +33,10 @@ the record layout the unmodified CALPUFF reads.
 3. **Explicit semantics**, all enforced fail-closed:
    - *time*: packed `YYYYJJJHH` + explicit seconds; every interval exactly 3600 s; the original writes
      the end clock as the same packed hour with seconds advanced by 3600; intervals are contiguous;
-     `AXTZ` is an 8-character zone label; the declared run window (`IBYRN..IESECN`) must equal the
-     first interval begin and the last interval end as instants.
+     `AXTZ` is an 8-character zone label; the declared run window (`IBYRN..IESECN`, written as
+     year/month/day/hour plus seconds *inside* that hour — the frozen case is on the hour, so its
+     seconds words are zero) must equal the first interval begin and the last interval end as
+     instants.
    - *units*: every field carries its SI unit and its OUTHR/OUTHD mask condition
      (`hourly_field_specs`, `static_field_specs`); `check` prints them next to the denominators.
    - *masks*: the field set is exactly a function of `IRTYPE`/`LCALGRD`/`NPSTA`. `RMM`/`IPCODE` with
@@ -100,7 +102,7 @@ four CTest targets:
 | CTest | What it proves |
 |---|---|
 | `p6f_calmet_dat21_writer_unit` | explicit arrays → records → read back, per-field bit equality, the calendar/time helpers over 1600–2400, XMISS preservation, and the ~50-case fail-closed matrix |
-| `p6f_calmet_dat21_synthetic_cli_roundtrip` | CLI end to end on four synthetic variants (including `NSSTA=0` and `NPSTA=3`), with an independent Python walk of every emitted record plus CLI-level fail-closed options |
+| `p6f_calmet_dat21_synthetic_cli_roundtrip` | CLI end to end on four synthetic variants (including `NSSTA=0` and `NPSTA=3`) plus a sub-hourly (`00:30`) start, with an independent Python walk of every emitted record and the CLI-level fail-closed options |
 | `p6f_calmet_dat21_real_reference_round_trip` | the frozen byte identity + SHA-256 pin + independent inventory agreement + P7 decoder cross-read + six fail-closed negatives |
 | `p6f_calmet_dat21_e22_contract_cross_read` | E22 reader on the re-serialised frozen case (6,435 records) and P6F reading an E22-written file |
 

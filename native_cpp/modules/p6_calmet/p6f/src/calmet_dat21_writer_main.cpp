@@ -196,16 +196,18 @@ Calmet21File build_fixture(int nx, int ny, int nz, int hours, int nssta,
     const cteas::p6f::Calmet21Calendar end =
         cteas::p6f::calendar_from_instant(
             start_instant + static_cast<std::int64_t>(hours) * 3600);
+    // The OUTHD clock words are (year, month, day, hour) plus seconds inside
+    // that hour, so a sub-hourly start such as 00:30 is hour 0 + 1800 s.
     header.begin_year = begin.year;
     header.begin_month = begin.month;
     header.begin_day = begin.day;
     header.begin_hour = begin.hour;
-    header.begin_second = begin.second;
+    header.begin_second = begin.minute * 60 + begin.second;
     header.end_year = end.year;
     header.end_month = end.month;
     header.end_day = end.day;
     header.end_hour = end.hour;
-    header.end_second = end.second;
+    header.end_second = end.minute * 60 + end.second;
     header.timezone = "UTC+0000";
     header.irlg = hours;
     header.irtype = 1;

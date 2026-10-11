@@ -298,6 +298,32 @@ void standard_tests() {
     same_dataset(source, reopened);
     std::filesystem::remove(path);
 
+    // Sub-hourly start: the declared run clock is (year, month, day, hour) plus
+    // seconds inside that hour, exactly as the original writes it.
+    {
+        Calmet21File offset = make_dataset(3, 2, 1, 2, 0, 0, 0, false);
+        const std::int64_t start =
+            days_from_civil(2022, 1U, 1U) * 86400 + 1800;
+        offset.header.begin_second = 1800;
+        offset.header.end_hour = 2;
+        offset.header.end_second = 1800;
+        const std::size_t per = fields_per_interval(offset.header);
+        for(std::size_t index = 0; index < offset.hourly.size(); ++index) {
+            Calmet21Time begin = instant_to_time(
+                start + static_cast<std::int64_t>(index / per) * 3600);
+            Calmet21Time end = begin;
+            end.seconds += 3600;
+            offset.hourly[index].begin = begin;
+            offset.hourly[index].end = end;
+        }
+        const Calmet21File back =
+            parse_calmet_dat21(serialize_calmet_dat21(offset));
+        same_dataset(offset, back);
+        assert(interval_count(back) == 2U);
+        assert(back.header.begin_second == 1800 && back.header.end_second == 1800);
+        assert(back.hourly[0].begin.hour == 0 && back.hourly[0].begin.seconds == 1800);
+    }
+
     // XMISS sentinels survive bit-exactly and are counted, not treated as data.
     const Calmet21File missing = make_dataset(4, 3, 2, 2, 1, 1, 0, true);
     const Calmet21File round = parse_calmet_dat21(serialize_calmet_dat21(missing));

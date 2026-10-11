@@ -251,6 +251,46 @@ def verify_variant(variant, tool: str, work: pathlib.Path) -> dict:
             "missing_total": sum(missing.values())}
 
 
+def verify_subhourly_start(tool: str, work: pathlib.Path) -> dict:
+    """The OUTHD run clock is (year, month, day, hour) + seconds in that hour.
+
+    A 00:30 start must be written as hour 0 with a 1800 s word, and the field
+    records must still carry the original 3600 s interval labels.
+    """
+    emitted = work / "fixture-subhourly.dat"
+    result = run([tool, "emit-fixture", "--out", emitted, "--hours", "2",
+                  "--nx", "3", "--ny", "3", "--nz", "2",
+                  "--nssta", "0", "--nusta", "0", "--npsta", "0",
+                  "--start", "2022-01-01T00:30:00"])
+    if result.returncode != 0 or "P6F_FIXTURE_WRITTEN" not in result.stdout:
+        print(result.stdout + result.stderr)
+        fail("emit-fixture rejected a sub-hourly start")
+    result = run([tool, "roundtrip", "--file", emitted])
+    if result.returncode != 0 or "P6F_ROUNDTRIP_BYTE_IDENTICAL" not in result.stdout:
+        fail("a sub-hourly fixture did not round trip")
+    data = emitted.read_bytes()
+    records = walk(data)
+    (ncom,) = struct.unpack_from("<i", data, records[1][2])
+    controls = records[2 + ncom][2]
+    begin = struct.unpack_from("<5i", data, controls)
+    end = struct.unpack_from("<5i", data, controls + 20)
+    if begin != (2022, 1, 1, 0, 1800) or end != (2022, 1, 1, 2, 1800):
+        fail(f"sub-hourly run clock is {begin} .. {end}, expected the "
+             "hour + seconds-in-hour form")
+    labels = expected_labels(2, 0)
+    first = records[3 + ncom + 5][2]          # five static records, no stations
+    second = records[3 + ncom + 5 + len(labels)][2]
+    first_words = struct.unpack_from("<4i", data, first + 8)
+    second_words = struct.unpack_from("<4i", data, second + 8)
+    if first_words != (202200100, 1800, 202200100, 5400):
+        fail(f"the first sub-hourly field label is {first_words}")
+    if second_words != (202200101, 1800, 202200101, 5400):
+        fail(f"the second sub-hourly field label is {second_words}")
+    return {"start": "2022-01-01T00:30:00", "records": len(records),
+            "first_record_time_words": list(first_words),
+            "second_record_time_words": list(second_words)}
+
+
 def fail_closed_options(tool: str, work: pathlib.Path) -> dict:
     """The CLI must reject an impossible request instead of writing a file."""
     cases = {
@@ -281,14 +321,15 @@ def main() -> int:
         for variant in VARIANTS:
             evidence["variants"].append(verify_variant(variant, args.tool, root))
         evidence["fail_closed_options"] = fail_closed_options(args.tool, root)
+        evidence["subhourly_start"] = verify_subhourly_start(args.tool, root)
     evidence["status"] = "PASS"
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(evidence, indent=2) + "\n")
     total_missing = sum(v["missing_total"] for v in evidence["variants"])
-    print(f"P6F_SYNTHETIC_CLI_ROUNDTRIP_PASS variants={len(VARIANTS)} "
+    print(f"P6F_SYNTHETIC_CLI_ROUNDTRIP_PASS variants={len(VARIANTS) + 1} "
           f"records={sum(v['records'] for v in evidence['variants'])} "
-          f"xmix_values={total_missing}")
+          f"xmix_values={total_missing} subhourly_start=ok")
     return 0
 
 
