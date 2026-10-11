@@ -111,7 +111,10 @@ jobs:
               raise RuntimeError("Required C++/original Fortran sources missing from immutable tree")
           for root in (cpp_prefix, original_prefix):
               shutil.rmtree(root.rstrip("/"), ignore_errors=True)
-          for item in blobs:
+          # Parallel requests are bounded and every source blob remains verified
+          # against the immutable Git tree SHA prior to use.
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          def download_verified(item):
               path = Path(item["path"])
               if path.is_absolute() or ".." in path.parts:
                   raise RuntimeError("Unsafe Git path")
@@ -126,6 +129,13 @@ jobs:
                   raise RuntimeError("Git blob SHA mismatch for " + item["path"])
               path.parent.mkdir(parents=True, exist_ok=True)
               path.write_bytes(data)
+              return item["path"]
+          with ThreadPoolExecutor(max_workers=6) as pool:
+              jobs = [pool.submit(download_verified, item) for item in blobs]
+              for n, future in enumerate(as_completed(jobs), 1):
+                  future.result()
+                  if n % 20 == 0 or n == len(jobs):
+                      print(f"Verified immutable blobs {n}/{len(jobs)}", flush=True)
           print(f"P6D REST bootstrap PASS: commit={commit_sha}, C++={cpp_count}, "
                 f"original={len(vendor_names)}, blobs={len(blobs)}")
           PY
