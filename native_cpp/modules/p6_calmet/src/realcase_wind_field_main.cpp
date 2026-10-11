@@ -15,6 +15,7 @@
 // for stages whose real-case inputs are not available in this branch
 // (SURFVAR TEMP2D, ISFCMET QH), so those stages are reported as not applied
 // rather than silently substituted.
+#include <iomanip>
 #include "cteas/p6/read_geo.hpp"
 #include "cteas/p6/read_surface.hpp"
 #include "cteas/p6/read_upper.hpp"
@@ -796,7 +797,11 @@ int main(int argc,char** argv){
             std::ofstream fixture(args.fixture_dir/
                 ("wind1_driver_"+hour_label(clock)+".inp"));
             if(!fixture)throw std::runtime_error("cannot write WIND1 driver fixture");
-            fixture<<(surface_x_km*1000.)<<" "<<(surface_y_km*1000.)<<" "
+            // Full precision: the driver consumes these positions verbatim, and
+            // a rounded coordinate shifts the inverse-distance weights enough
+            // to exceed the step-one tolerance.
+            fixture<<std::setprecision(17)
+                   <<(surface_x_km*1000.)<<" "<<(surface_y_km*1000.)<<" "
                    <<(upper_x_km*1000.)<<" "<<(upper_y_km*1000.)<<" "
                    <<surface_u<<" "<<surface_v<<" "<<roughness<<" "
                    <<station_lat_deg<<" "<<"10.0 "<<icalm<<"\n";
