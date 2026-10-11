@@ -1,0 +1,27 @@
+name: P6C original COMP source-state audit (read-only)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/p6c-comp-source-inspection.yml'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/comp_buffered_timeline.hpp'
+      - 'native_cpp/modules/p6_calmet/reference/check_joint_observation_2022.py'
+  workflow_dispatch:
+jobs:
+  comp-source-audit:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record immutable original COMP Fortran AA-BB scheduler and constraints
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC=engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for
+          test -s "$SRC"
+          sha256sum "$SRC"
+          echo '==== CALMET 6.5 original COMP source lines 4118-4412 ===='
+          sed -n '4118,4412p' "$SRC" | nl -ba -v 4118
+          echo '==== end original COMP (no vendor source modifications) ===='
