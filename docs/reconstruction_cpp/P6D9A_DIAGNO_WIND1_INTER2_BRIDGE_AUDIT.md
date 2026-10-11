@@ -42,6 +42,17 @@ The two real-case verdicts are not yet inside `scripts/local_gate.py`'s `p6d` st
 
 Both comparators compile the unchanged original routines with gfortran and are fail-closed, so they belong in the gate rather than only in local evidence.
 
+### IEXTRP = -4 / RMIN2 = -1.0 real-path semantics
+
+The deck sets `IEXTRP = -4` (met.inp L528) and `RMIN2 = -1.0` (L559), and both were previously unmodelled on the C++ side.
+
+- `IEXTRP <= 0` means *"do not use level 1 data from UA winds"* (calmet.for L5778) and is implemented in PREPDI as `IF (IEXTRP .LE. 0) I1=2` (L14099 in the buffered-sounding branch, L14005 in the direct branch), i.e. the upper station's lowest level is left at the original missing value. `reference/probe_original_prepdi_iextrp_level1.py` extracts the literal block L14099-L14107 (sha256 `9dba46c137d7635bc53113a70d2b91c110bc897a5a43f563be43bc787d41d8e5`, exclusion line sha256 `5d69804ebe7f8dee7bd49e09c3c984ce9b6f7d080cd2b0ab3bf882dfa37e09a9`), compiles it unchanged and asserts: with `IEXTRP=-4` level 1 stays `999999.` while level 2 is filled, and with `IEXTRP=+4` level 1 is filled -> `PASS_PREPDI_IEXTRP_LEVEL1_EXCLUSION`. The producer now applies the same rule (level 1 -> original sentinel plus an invalid validity mask), and the measured effect is exactly confined to the lowest level: the first-guess field changes by up to **0.45 m/s** at level 1 while levels 2-9 stay bit-identical, with both real-case verdicts still passing.
+- `RMIN2 = -1.0`: the original skips a surface station's vertical extrapolation only when its nearest upper station is closer than `RMIN2` (`IF(FMIN.LT.RMIN2) GO TO 70`, L5831). A negative `RMIN2` can never exceed the non-negative `FMIN`, so no station is skipped; with this case's single surface station the rule is satisfied but inert, and multi-surface-station cases would need it modelled. The metadata records this explicitly instead of leaving a silent gap.
+
+### Real-case windows and levels
+
+Both real-case comparators now report `1h` / `6h` / `143h` windows and per-level maxima on top of the per-hour table, each with its own PASS/FAIL against the frozen 2e-4 m/s tolerance: step one `PASS_REALCASE_STEP_ONE_ORIGINAL_WIND1_PLUS_SIMILT` (6,435,000 components, worst 2.53e-05 m/s, worst relative 1.10e-03) and blend `PASS_REALCASE_BLEND_ORIGINAL_INTER2` (6,435,000 components, worst 4.22e-05 m/s, worst relative 9.37e-04), re-verified after the PREPDI exclusion was applied.
+
 ### Machine-readable metadata contract
 
 `grid.layout` = `i_fastest` (with `grid.layout_note` giving `index = i + nx*(j + ny*k)`), `grid.dtype` = `float32`, `grid.byte_order` = `little`, `missing_sentinel` = the scalar `9999.0`, `hour_label` = `END` (interval end in UTC) and `levels.zface_m/thickness_m/center_m` from the deck: exact literals the P6F CALMET.DAT 2.1 writer keys on instead of hardcoding.

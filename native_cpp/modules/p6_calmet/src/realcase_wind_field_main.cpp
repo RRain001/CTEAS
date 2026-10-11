@@ -350,6 +350,7 @@ int main(int argc,char** argv){
         speed_max=std::max(speed_max,speed);
 
         Wind1SelectedStationHour station;
+        bool settings_upper_layer_one_valid=true;
         station.hour_end=clock;
         station.surface_station_id=surface.station_id;
         station.upper_station_id=upper.station_id;
@@ -373,6 +374,14 @@ int main(int argc,char** argv){
             throw std::runtime_error(
                 "hourly upper profile is not nine layers at "+hour_label(clock));
         for(std::size_t k=0;k<9;++k)station.upper_observed_profile[k]=hour.winds[k];
+        // Original PREPDI leaves the upper-air first level unset when
+        // IEXTRP<=0 (`IF (IEXTRP .LE. 0) I1=2`, calmet.for L14005 and L14099);
+        // the deck sets IEXTRP=-4, so level 1 carries the original missing
+        // sentinel and is masked out of the first guess.
+        if(iextrp<=0){
+            station.upper_observed_profile[0]=LayerWind{999999.f,999999.f};
+            settings_upper_layer_one_valid=false;
+        }
 
         Wind1FirstGuessSelectedControls settings;
         settings.nx=nx;settings.ny=ny;settings.nz=nz;
@@ -381,6 +390,7 @@ int main(int argc,char** argv){
         settings.icalm=icalm;settings.iextrp=iextrp;
         for(std::size_t k=0;k<9;++k)
             settings.upper_layer_valid[k]=true;
+        if(!settings_upper_layer_one_valid)settings.upper_layer_valid[0]=false;
         const auto first=wind1_firstguess_selected(station,settings);
         write_f32(args.out()/("wind1_u_"+hour_label(clock)+".f32"),first.ug_mps);
         write_f32(args.out()/("wind1_v_"+hour_label(clock)+".f32"),first.vg_mps);
@@ -630,6 +640,11 @@ int main(int argc,char** argv){
           " \"terset_hmax.f32\": \"m\", \"terset_hmin.f32\": \"m\","
           " \"terset_disthmax.f32\": \"m\", \"terset_disthmin.f32\": \"m\"},\n";
     meta<<"  \"missing_sentinel\": "<<MISSING<<",\n";
+    meta<<"  \"iextrp_rmin2\": {\"IEXTRP\": "<<iextrp
+        <<", \"level1_exclusion_applied\": "<<(iextrp<=0?"true":"false")
+        <<", \"level1_exclusion_source\": \"PREPDI calmet.for L14099 IF (IEXTRP .LE. 0) I1=2; probe reference/probe_original_prepdi_iextrp_level1.py, literal block sha256 9dba46c137d7635bc53113a70d2b91c110bc897a5a43f563be43bc787d41d8e5\", "
+          "\"effect_measured\": \"level 1 of the first-guess field changes by up to 0.45 m/s against a run without the exclusion while levels 2-9 stay bit-identical\", "
+          "\"RMIN2\": \"-1.0 in the deck; original PREPDI L5831 skips a surface station only when FMIN < RMIN2, which cannot happen for a negative RMIN2, so with RMIN2=-1.0 no surface station is ever skipped. This case has one surface station, so the rule is satisfied but inert; multi-surface-station cases would need it modelled\"},\n";
     meta<<"  \"hourly_labels\": "<<written<<",\n";
     meta<<"  \"hour_label\": \"END\", \"hour_label_note\": \"YYYY-MM-DD_HH in UTC; the label is the hourly interval end\",\n";
     meta<<"  \"surface_wind_speed_range_mps\": ["<<speed_min<<", "<<speed_max<<"],\n";
