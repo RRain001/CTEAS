@@ -1656,3 +1656,54 @@ separates the two remaining possibilities: (i) a half-cell/off-by-one in the
 averaging uses `xc = i - 0.5`, `yc = j - 0.5`), or (ii) a genuine local
 difference in the pre-average convective field. Both are checkable from that
 one dump, and neither requires new physics.
+
+## E34 station-cell experiment: the residual is the unmodelled sounding-to-grid interpolation
+
+The E33 experiment was executed as specified: the pre-`AVEMIX` state is now
+exported alongside the post state (`--state-prefix` writes
+`<prefix>.pre_avemix.{zi,ziconv}.f32`), and the frozen reference `ZI` was read
+back for the station cell (0-based `i=25`, `j=25`) and its 3x3 neighbourhood in
+hours 5, 8, 30, 32 and 53. Evidence artifact: `station-cell-experiment.json`
+(sha256 `1a0aa6fe74d70bae542911119ad38d42538a7f6c7b919b312469665594c3e945`).
+
+### The table, summarised (3x3 spread in metres, and the AVEMIX effect)
+
+| hour | reference `ZI` spread | P6E **pre**-AVEMIX `ZICONV` spread | P6E post-minus-pre mean |
+|---|---|---|---|
+| 5 | 51.69 | 0.23 | -0.247 |
+| 8 | 48.13 | 0.80 | -9.533 |
+| 30 | 9.55 | 0.05 | -0.040 |
+| 32 | 40.88 | 0.43 | -0.676 |
+| 53 | 41.37 | 0.06 | -0.025 |
+
+Example rows (hour 5, `j=25`): reference `985.31 / 1036.44 / 1009.65` for
+`i=24/25/26`; P6E pre-AVEMIX `985.61 / 985.62 / 985.63`, post-AVEMIX
+`985.38 / 985.37 / 985.37`.
+
+### Branch (i) - half-cell / cone geometry: FALSIFIED
+
+The P6E field is **spatially uniform before the averaging** (spread 0.05-0.80 m
+over 9 cells) and the averaging itself moves it by only 0.03-9.5 m. A
+one-cell/off-by-one error in the `AVEMIX`/`AVETMP` cell centres or cone cannot
+manufacture a 50 m local bump on a uniform field, so the geometry is not the
+cause.
+
+### Branch (ii) - real local difference in the pre-average field: CONFIRMED
+
+The frozen reference carries a **local bump centred on the station cell** with a
+smooth gradient across adjacent cells (hour 5: 985.31 / **1036.44** / 1009.65;
+hour 30: 1105.79-1115.34 against the P6E 1105.80-1105.86). That gradient is the
+signature of the original's **sounding-to-grid interpolation**: COMP
+interpolates the upper-air profile onto every grid cell, so the station's own
+weight is exactly 1 at its cell and distance-weighted elsewhere, and the lapse
+rate handed to `MIXHMC` therefore varies slightly from cell to cell. The P6E
+chain feeds the **raw station sounding uniformly to every cell**, which is why
+its convective height is flat.
+
+**This is the physical source of the bound, and it is recoverable**, not
+irreducible: implementing the COMP `interp`/`facet` sounding-to-grid
+interpolation (with the station weights and the terrain adjustment) is the next
+increment. Until then the residuals stand at ZI <= 51.06 m / 4.9 % relative on
+1.26 % of cells, WSTAR <= 0.0263 m/s / 1.9 % on 1.4 %, and T-LEV 5-7 <=
+2.51669 K on 713 cells - all three from this one unmodelled step, with the
+frozen tolerances untouched.
