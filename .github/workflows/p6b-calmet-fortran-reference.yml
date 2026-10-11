@@ -185,6 +185,9 @@ jobs:
           python3 native_cpp/modules/p6_calmet/reference/audit_calmet_records.py \
             project/current/run/met/met.dat \
             --manifest integration-evidence/p6b-original-binary-records.json
+          python3 native_cpp/modules/p6_calmet/reference/decode_calmet_hourly.py \
+            project/current/run/met/met.dat \
+            --report integration-evidence/p6b-original-hourly-layout.json
           sha256sum \
             project/current/geo/makegeo/geo.dat \
             project/current/met/upperair/final/up_58424.dat \
