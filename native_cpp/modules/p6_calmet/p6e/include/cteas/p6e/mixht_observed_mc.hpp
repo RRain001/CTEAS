@@ -37,12 +37,18 @@ struct MixhtObservedMcInput {
     // the over-water scheme, so magnitude is what matters on land.
     int imixh=1;
     // COMP calls WATER/WATERP (L4616-4622) immediately before MIXHT
-    // (L4692), and both call MIXHMC with the /tjump/ DPTT array as the
-    // actual argument, so the land DPTT the growth sees is the current
-    // hour's own DPTTP1. With this flag the composed real-case path
-    // reproduces that refresh; without it DPTT is carried across hours
-    // (the behaviour of the standalone MIXHT harness).
+    // (L4692) and ELUSTR2 calls MIXHTST/MIXHT2ST (L6881/6884) for the single
+    // surface-station cell (ist,jst). That cell is therefore processed twice
+    // per hour, so when the grid pass enters it the /tjump/ DPTT already
+    // holds the current hour's own DPTTP1. Instrumented-dump evidence over
+    // 143 h x 2500 cells: the entering DPTT equals the previous hour's
+    // output everywhere except that one cell, where it equals the value the
+    // hour leaves - and the station cell's whole ZI/WSTAR/T-LEV residual
+    // (and its AVEMIX halo) is exactly this. 0 disables the refresh,
+    // reproducing the standalone MIXHT harness.
     int dptt_refresh=0;
+    std::size_t refresh_i=static_cast<std::size_t>(-1);
+    std::size_t refresh_j=static_cast<std::size_t>(-1);
     int izicrlx=0,timestep_s=3600;
     float constn=2400.f,zimin=20.f,zimax=2500.f;
     float threshl=0.02f,dptmin=0.001f,dzzi=200.f;
@@ -161,7 +167,7 @@ inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
             m.threshold_wm2perm=a.threshl;
             m.zimax_m=a.zimax;m.htold_m=htold;
             m.dptt_k=r.dptt[k];
-            if(a.dptt_refresh) {
+            if(a.dptt_refresh&&i==a.refresh_i&&j==a.refresh_j) {
                 // Original pre-MIXHT refresh of the /tjump/ DPTT: the value
                 // handed to the growth is the current hour's DPTTP1.
                 constexpr float wto_rho=1.2f,wto_cp=996.f;
