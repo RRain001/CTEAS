@@ -145,12 +145,21 @@ cteas_p6f_calmet_dat21_writer write-from-p6d \
   `--statics-from`), `missing_sentinel` (scalar), `hour_label` (`END` or `START`, so the interval
   begin is `label - 3600 s` or the label itself) and the hourly label list/count. Any other spelling
   is rejected with the value it found.
-- **Accepted variants**: `wind1_*`, `inter2_*`, `blend_*`, `slope_corrected_*`. The producer has
-  renamed one of them: the pre-tail INTER2 field was published as `blend_*` and is now `inter2_*`,
-  while `blend_*` holds the closed DIAGNO field (`INTER2 -> SMOOTH -> DIVCEL`); both names are
-  accepted and the metadata carries each verdict, so the case C run documented below consumed the
-  field that is now published as `inter2_*`. `windbc_*` is refused with an explicit message: those
-  planes are stitched lateral boundaries (`NZ*2*NY` / `NZ*2*NX`, level-major), not a gridded field.
+- **Accepted variants**: `wind1_*`, `inter2_*`, `blend_*`, `slope_corrected_*`. The producer renamed
+  the pre-tail INTER2 field from `blend_*` to `inter2_*` and reused `blend_*` for the closed DIAGNO
+  field (`INTER2 -> SMOOTH -> DIVCEL`), which is the variant P6D recommends for a full wind product;
+  `inter2_*` stays available as the diagnostic stage whose verdict is anchored by the unchanged
+  original comparator. Each name carries its own verdict in `metadata.json` (`blend.verification`,
+  `inter2.verification`), and the adapter records whichever it finds verbatim. `windbc_*` is refused
+  with an explicit message: those planes are stitched lateral boundaries (`NZ*2*NY` / `NZ*2*NX`,
+  level-major), not a gridded field.
+- **What the verdict does and does not do**: the adapter refuses a variant only when the producer
+  marks it with the `NOT_SOURCE_VERIFIED` prefix (a "do not use" marker, observed on the earlier
+  `rw11` blend). Any other verdict string - including a partial one such as
+  `PARTIAL_LEVELS_8_9_PASS_LEVELS_1_7_NEUTRAL_SIMILT_GAP` or a degraded
+  `MIXING_HEIGHT_NOT_SUPPLIED_ALL_LEVELS_NEUTRAL_SIMILT` - is written and recorded verbatim in the
+  CLI report (`blend_verification`, `variant_source_verified`, `product_partial`, `product_status`);
+  the writer never upgrades a producer's caveat into a pass of its own.
 - **W faces**: `w_face_*.f32` holds `NZ+1` faces per column (face 1 is the ground face); CALMET.DAT
   writes W at the *top* face of each layer, so face `k+1` becomes `WFACE(k)` and the ground face is
   not written.
@@ -199,7 +208,7 @@ CALPUFF 7.2.1** from the tracked vendor sources with the repository's own refere
 |---|---|---|
 | A | the writer's re-serialisation of the frozen `met.dat` (byte-identical, pinned SHA-256) | 143 hours; `puff.con` **byte-identical** to the tracked original reference output and `puff.lst` identical beyond its two wall-clock lines; the listing echoes our header (`metfm=1`, `irlg=143`, `nsecdt=3600`, `abtz=UTC+0000`, `ibdathr=202200100`, `iedathr=202200623`, `zface = 0.00000000 … 3000.000`) and ends at `Year: 2022 Month: 1 Day: 6 Julian day: 6 Hour: 23 Second: 0` |
 | B | the same file with **changed values** from `cteas_p6f_calmet_dat21_perturb` (wind x1.25, ZI x1.5, TEMPK +5 K; structure, masks, units and time labels untouched) | 143 hours, no fatal marker, identical time-window echo, and different finite non-negative concentrations (mean 0.032848 → 0.029406, max 5.1697 → 4.6693, non-zero cells 42,685 → 42,670) - legal *and* read, not merely hash-equal |
-| C | `write-from-p6d --variant blend` on the **real P6D** product `/home/lhy/build/p6d/rw12` (producer head `84ca905e8`, directory tree sha256 `5bffb9882534d7726b4d0e9f4799d82f46f521ccf91b2b20a7ec4dff411606f7`, `metadata.json` sha256 `d75bde1f387abe9ed2fee55f62e6b826139565becdb4edc2f2cc272a155788c2`, 143 labels, 1,293 files; U/V verdicts `PASS_REALCASE_BLEND_ORIGINAL_INTER2` / `PASS_REALCASE_STEP_ONE_ORIGINAL_WIND1_PLUS_SIMILT`; `w_face_*` FRADJ-pending) plus the case's 2-D fields | 143 hours, no fatal marker, finite non-negative concentrations (mean 0.030696, max 7.5911, 52,403 non-zero cells) on a 64,762,556-byte composed file |
+| C | `write-from-p6d --variant blend` on the **real P6D** product `/home/lhy/build/p6d/rw17` (the recommended closed-DIAGNO blend, 1,865 files, 143 labels, tree sha256 `7d34bcc9525f19dd1d207a48a40b5aff87501b2ac26315d11db7152e9cc23cfd`, `metadata.json` sha256 `a36acd862174f2837c28eb1be482447e942eb996ec6984d2213ae10e882d6b6a`, `blend.verification = PARTIAL_LEVELS_8_9_PASS_LEVELS_1_7_NEUTRAL_SIMILT_GAP: …`, `inter2.verification = PASS_REALCASE_BLEND_ORIGINAL_INTER2`, `w_face_*` FRADJ-pending) plus the case's 2-D fields | 143 hours, no fatal marker, finite non-negative concentrations (mean 0.030236, max 5.2611, 31,701 non-zero cells) on a 64,762,556-byte composed file |
 | D | a structurally broken file (the frozen file truncated by 10 bytes) | **rejected**: the original aborts (`Error termination. Backtrace:`, return code 2) instead of producing a clean successful run |
 
 The build is pinned in the report: GNU Fortran 11.4.0, the SHA-256 values of the unchanged
