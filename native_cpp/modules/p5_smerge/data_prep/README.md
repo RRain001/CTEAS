@@ -72,3 +72,7 @@ Primary SMERGE GENERIC wind speeds preserve valid source or preceding-hour-held 
 The previous 0.5 m/s category survives as an audit-only low-wind flag, distinct from original CALMET's computational 0.0001, 0.001, stable 0.5 m/s, and ICALM=0 controls. The CTEAS original SMERGE and CALMET are unchanged and perform their own solver-specific calm handling. The legacy wind-audit column wind_speed_calculation_m_s is now equal to the unclamped GENERIC wind speed; new explicit wind_speed_generic_m_s and summary.wind_policy=P5_C_SOURCE_WIND_V1 avoid ambiguity.
 
 Review the detailed source-provenance and constraints in CALM_POLICY_C_VENDOR_AUDIT.md. No Fortran numerical parity is claimed until comparing reference runs using *identical new inputs*.
+
+## Hybrid wind source update (2026-10-11)
+
+**Approved policy**: P5 wind direction/speed are read ONLY from the same-station/year NOAA ISD-Lite archive, with no C/V/N wind-type import and no fallback to full-ISD WND. Temperature, pressure, humidity and all other weather variables still originate from the full ISD CSV. Source data join by UTC hour, keep calm 0/0 versus north 360 distinct, use per-field previous noncalm-WD/previous-WS when source wind missing, never assign calm WD=0 to a later moving wind. Each component's original/held source and age is audited. Details: [ISD_LITE_HYBRID_WIND_POLICY.md](ISD_LITE_HYBRID_WIND_POLICY.md). Old sections above describe historic single-source design and are superseded for wind. This is not a claim of full Fortran numerical parity.
