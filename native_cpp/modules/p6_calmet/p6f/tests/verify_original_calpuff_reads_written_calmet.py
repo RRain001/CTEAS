@@ -231,9 +231,11 @@ def listing_evidence(listing: pathlib.Path) -> dict:
     if last is None:
         fail("the listing has no last-period echo")
     evidence["last_period"] = " ".join(last.group(1).split())
-    if "Day:  6" not in evidence["last_period"] or \
-            "Hour: 23" not in evidence["last_period"]:
-        fail("the last-period echo is not the frozen run window")
+    if not all(token in evidence["last_period"]
+               for token in ("Year: 2022", "Month: 1", "Day: 6", "Hour: 23",
+                             "Second: 0")):
+        fail("the last-period echo is not the frozen run window: " +
+             evidence["last_period"])
     evidence["last_period_anchor"] = evidence["last_period"][
         evidence["last_period"].find("Year:"):][:64]
     return evidence
