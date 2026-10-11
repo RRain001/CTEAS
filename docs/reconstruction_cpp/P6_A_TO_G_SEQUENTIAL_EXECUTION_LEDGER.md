@@ -16,7 +16,7 @@
 |---|---|---|---|
 | **P6A** 程序架构/输入与时间契约 | **PASS_SOFTWARE_CONTRACTS** | C++20 `-Werror` CTest，50×50/100m/9 层、显式观测有效性、时区和输入源门槛；旧样例 `CALMET.INP` 拒绝 | 保持回归，接口不得静默变化 |
 | **P6B** 原版实算基准 | **PASS_ORIGINAL_REFERENCE_DRY_MICROMET** | [源 SHA 锁定独立原版 CI](https://github.com/RRain001/CTEAS/actions/runs/38107162904)；`MET.DAT` 64,762,556 bytes、SHA256 `968b2dd24f0eb4ad428709b52a154d9022e8c7e37a4be3fb9498e3d7e756d04e`；7,562 顺序记录、143 时段×45 字段 | 来源冻结、输出格式解码持续 PASS；降水基准另列，不要求用虚构雨量冒充 |
-| **P6C** 几何、观测预处理 | **IN_PROGRESS / NOT_COMPLETE** | `TERSET` 60,000 字段 PASS；`DIAGI` 378 原版片段字段 PASS；实际 2022 `GEO.DAT` 20,000 数值 PASS；2022 `SURF.DAT` 1,144 数值 + 429 站点/时次字段 PASS；**2022 `UP.DAT v2.1` 经 `RDHDU→RDUPN` 的 13 个探空、785 层、6,280 原生 Fortran 数值 PASS（U/V 最大差 5e-8/4e-8 m/s）**。 | 仍欠原版 `COMP` 逐小时 AA/BB 探空调度、时间/垂直插值、完整原版 `READGE/RDSN/RDUPN` 状态及观测场比对。降水仍全部缺测。**上述各项未验收前不得标 P6C COMPLETE**。 |
+| **P6C** 几何、观测预处理 | **IN_PROGRESS / NOT_COMPLETE** | `TERSET` 60,000 字段 PASS；`DIAGI` 378 原版片段字段 PASS；2022 `GEO.DAT` 20,000 数值 PASS；2022 `SURF.DAT` 1,144 气象值 +429 站时值 PASS；2022 `UP.DAT` 13探空/785层、6,280 原版数值 PASS；**源码原样 `VERTAV` 13×9×U/V=234 PASS；原版 `PREPDI` 143h×9×U/V=2,574 PASS；源码原样 `FACET+INTP` 13×10=130 PASS**。2022 降水代码 143/143 缺测。 | 仍欠完整原版 `COMP` AA/BB 缓冲状态、逐时 `PREPDI` 站点风场与温度/缺测状态集成、完整 `READGE/RDSN/RDUPN` 调用状态，所有真实数据的 1h→6h→143h 原版观测场逐值对比。**未验收前不得标 P6C COMPLETE**。 |
 | **P6D** 三维诊断风场 | **NOT_STARTED_INTEGRATION / FRADJ_ISOLATED_PASS** | 旧已实现 `TERSET+FRADJ` 独立源码数值对照：7 案例 315,000 U/V 字段 PASS，稳定弱风山峰有 5,657 个原版风分量真实调整 | P6C 完成后：`SLOPE`、`WIND1`、`SIMILT`、`DIAGNO`、`TOPOF2`、平滑/客观分析、`DIVCEL/MINIM`，原版首小时→6 h→143 时段逐层 `U/V/W`、散度与正确值掩码 PASS |
 | **P6E** 地表与边界层 | **NOT_STARTED** | P6B 原版包含微气象字段格式，不代表 C++ 物理 PASS | `SOLAR`、`HEATFX`、`ELUSTR`、`MIXHT`、`TEMP3D`、`SURFVAR`、云量/RH/稳定度/混合层高度/地表参数全字段独立对照；白天、夜间、低风与稳/不稳定 |
 | **P6F** `CALMET.DAT` 写出 | **NOT_STARTED_CPP_WRITER** | 原版二进制 v2.1 记录框架、字段名、时间标签、顺序和维度的独立读取解码 PASS | C++ 完整合法输出 v2.1，原版 P7 读取，物理值正确；不能仅以文件可读取作为科学数值通过 |
@@ -33,7 +33,7 @@
 
 ## 3. P6C 下一验收工作包（顺序）
 
-已通过 `C-READGE` 的 8 字段选定格式原生 Fortran 逐值对照；`C-MET-READ` 中 **2022 SURF.DAT 及 2022 UP.DAT v2.1 对应原版 RDSN/RDUPN 的选定格式和逐层 U/V 转换均已 PASS**；但 **完整原版 `COMP` 的 AA/BB 逐小时观测选择及真正时次插值仍未通过**；接下来依次推进 `C-HEIGHT-TIME`（`ZFACE`、`ZMID`、站高、探空层与时区端点一致性）再做 `C-INTEGRATION`（同一份原版输入的观测场比较和缺测统计）。**只有四项齐备且经独立 Fortran 片段或完整执行验证，才由 P6C → P6D。**
+已通过 `C-READGE` 的 8 字段选定格式原生 Fortran 逐值对照；`C-MET-READ` 中 **2022 SURF.DAT 及 2022 UP.DAT v2.1 对应原版 RDSN/RDUPN 的选定格式和逐层 U/V 转换均已 PASS**；但 **原版 `PREPDI` 的选定 143h 时间插值数值已 PASS，但完整原版 `COMP` AA/BB 逐小时状态机仍未通过**；接下来依次推进 `C-HEIGHT-TIME`（`ZFACE`、`ZMID`、站高、探空层与时区端点一致性）再做 `C-INTEGRATION`（同一份原版输入的观测场比较和缺测统计）。**只有四项齐备且经独立 Fortran 片段或完整执行验证，才由 P6C → P6D。**
 
 **最终门槛声明：`P6A=PASS`, `P6B=PASS`, `P6C=PARTIAL`, `P6D=INTEGRATION_HOLD`, `P6E=HOLD`, `P6F=HOLD`, `P6G=HOLD`, `P6_CALPUFF_READY=FALSE`。**
 
@@ -44,3 +44,7 @@
 ### 2022 探空 RDHDU→RDUPN 路径纠正及实测对照
 
 [探空读取独立审计](P6C_UPDAT_RDUPN_2022_AUDIT.md)；[真实 2022 Fortran/C++ 13 sounding / 785 levels / 6,280 numeric fields PASS](https://github.com/RRain001/CTEAS/actions/runs/38110557735)。原版 `calmet.for` 的 `COMP` 分派表明 v2.1 使用 **`RDUPN`**，而旧版 `RDUP` 不适用此案例。实际标记：`UPDAT_SELECTED_FORMAT_PASS`，`UPDAT_ORIGINAL_CONVERSION_PASS`，`UPDAT_AA_BB_TIME_INTERPOLATION_NOT_READY`；仍然不允许跳至 P6D 整阶段实现。
+
+### P6C 实测 VERTAV / PREPDI / FACET 温度层面最新结果
+
+[原始 CALMET Fortran 2022 单元对照 CI](https://github.com/RRain001/CTEAS/actions/runs/38111692047) 对 `VERTAV` 的 234 个层平均 U/V（原版完整子程序提取），`PREPDI` 的 2,574 个分层逐时 U/V（原版指定时间插值源码片段与独立时次索引），`FACET+INTP` 的 130 个模型层界面温度（原版两个完整子程序提取）均 PASS。详见 [P6C_VERTAV_PREPDI_FACET_2022_AUDIT.md](P6C_VERTAV_PREPDI_FACET_2022_AUDIT.md)。注意：这并不证明 `COMP` 的全部状态机，也不能取代微气象模块和 P6D 诊断风场。正式标记维持 `P6C_PARTIAL`、`P6D–G_HOLD`。
