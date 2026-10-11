@@ -51,12 +51,26 @@ def run(case_root: Path, expected_hours: int = 144) -> dict:
     audit = prepared / f"{prefix}_filled_wind_audit.csv"
     metadata = audit.with_suffix(".json")
     ready = base / "isd2smerge_ready" / f"{station['sid'][:6]}-{station['sid'][6:]}.csv"
-    for path in (cleaned, interpolated, audit, metadata, ready):
+    final_full = prepared / f"{prefix}_filled.csv"
+    for path in (cleaned, interpolated, audit, metadata, ready, final_full):
         if not path.is_file():
             raise FileNotFoundError(f"missing P5 v2 mandatory stage: {path}")
     c_head, c_rows = _read_generic(cleaned)
     i_head, i_rows = _read_generic(interpolated)
+    f_head, f_rows = _read_generic(final_full)
     r_head, r_rows = _read_generic(ready)
+    if i_rows != f_rows:
+        raise ValueError("full-year downstream *_filled differs from calm-interpolated stage")
+    for path, expected_stage, expected_status in (
+        (cleaned, "cleaned", "数据清洗和缺测处理完毕"),
+        (interpolated, "calm_interpolated", "静风插值处理完毕"),
+    ):
+        status_path = path.with_suffix(".stage.json")
+        if not status_path.is_file():
+            raise FileNotFoundError(f"missing scientific-stage status: {status_path}")
+        marker = json.loads(status_path.read_text(encoding="utf-8"))
+        if marker.get("stage") != expected_stage or marker.get("status") != expected_status:
+            raise ValueError(f"wrong scientific-stage marker: {marker}")
     if int(r_head[1].split(",")[3]) != int(station["ifstn"]):
         raise ValueError("station identity changed")
     if len(r_rows) != expected_hours:
