@@ -306,6 +306,20 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/tests/p7h_parity_tests.py \
             --probe "$scratch/build/cteas_p7e_probe" \
             --repo-root "$GITHUB_WORKSPACE" --require
+      - name: P7K CTSG kernel unit location (call-site anchor)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p7_calpuff/reference/p7k_source_anchor.py \
+            --check native_cpp/modules/p7_calpuff/reference/p7k_source_anchor.json
+      - name: P7I CTSG support blocks (QATR/TFAC) source parity (required)
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 native_cpp/modules/p7_calpuff/tests/p7i_parity_tests.py \
+            --probe "$scratch/build/cteas_p7i_tests" \
+            --repo-root "$GITHUB_WORKSPACE" --require
       - name: P7H real receptor-grid coupling run (physical chain only)
         shell: bash
         run: |

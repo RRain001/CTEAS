@@ -749,3 +749,98 @@ verbatim in the anchored text. Vendor source
    split/merge, plume rise, `SIGMA()`/`HEFTRAN` restart, terrain interaction)
    and the CONC.DAT writer emits only the CTEAS header subset, so the frozen
    `puff.con` values still cannot be reproduced or compared.
+
+## 2026-10-11 P7I CTSG blocks: QATR and TFAC closed; the rest scoped
+
+Status of the CTSG dependency closure, with the locked deck's own values as the
+evidence for what is and is not the real-case path
+(`MSLUG=0`, `MSHEAR=0`, `MPDF=0`, `NHILL=0`, `NINT=9`, `AVET=PGTIME=60`,
+`MCTADJ=2`, `MTILT=0`):
+
+| block | status |
+|---|---|
+| `QATR` Romberg integrator (L25406-25520) | **implemented and parity-checked** (`P7I_QATR_ORACLE_PARITY=PASS CASES=80 MAX_REL=2.980e-07`, status flags match) |
+| `TFAC` terrain distortion interpolation (L25765-25813) | **implemented and parity-checked** (`P7I_TFAC_ORACLE_PARITY=PASS CASES=14 MAX_REL=1.366e-07`) |
+| `FCTZ`/`FCTY` + `CTSGDAT` hill arrays | not the real-case path: `NHILL=0`, so no hill/terrain-following factors exist for this deck; the routines are neither ported nor needed |
+| slug sampling `SLUGINT`/`SLUGAVE`/`SLUGSNP` | not the real-case path: `MSLUG=0`; `ERFDIF` is already ported and parity-checked in P7E |
+| wind shear / PDF options | not the real-case path: `MSHEAR=0`, `MPDF=0` |
+| `AVET` receptor averaging | not effective for this case: `AVET=PGTIME=60`, so the averaging factor is exactly 1 (already recorded in the P7D section) |
+| `CTSG`/`CTREC`/`CTPAR`/`MUNU`/`LOWER`/`UPPER` + `BI`/`BJIL`/`FLOPUFF` | still missing: the remaining real-case kernel. `CTSG` L22923-23112 calls `ctpar`/`ctrec`/`lower`/`puffc`/`upper`; `CTREC` L22841-22921 calls `munu`/`rotate`; `LOWER` L24657-24863 calls `bi`/`bjil`/`munu`; `UPPER` L25815-26001 calls `bi`/`bji`/`flopuff`/`qatr`. With `NHILL=0` and a puff inside the mixed layer the reachable kernel is the lower-segment one, but it still needs the `/CTPASS/` state (`Hd`, `zi`, `ppcoef`, the plume/slug geometry), the `BI`/`BJIL` reflection helpers and the `MUNU` vertical distribution index |
+
+`reference/p7i_source_anchor.py` pins `BLOCK DATA` (L1999-2424), `QATR` and
+`TFAC` spans plus every vendor `*.puf` include, and 12 quoted statements are
+asserted verbatim; the oracle sets the `/CONST/` values that the vendor BLOCK
+DATA would otherwise provide.
+
+Incomparability causes remain two: the CTSG kernel above, and the still
+unfaithful puff model plus the CTEAS-only CONC.DAT header.
+
+## 2026-10-11 P7J CTSG kernel round: ROTATE closed, kernel still open
+
+This round closed one more CTSG-closure block and re-verified the earlier ones;
+the core kernel itself is **not** done and is listed precisely below.
+
+| block | status |
+|---|---|
+| `ROTATE` (L25522-25549, used by CTREC/CTPAR) | **implemented + parity**: `P7I_ROTATE_ORACLE_PARITY=PASS CASES=45 MAX_REL=5.059e-07` |
+| `QATR` (L25406-25520) | implemented + parity (80 cases, `MAX_REL=2.980e-07`, status flags match) |
+| `TFAC` (L25765-25813) | implemented + parity (14 cases, `MAX_REL=1.366e-07`) |
+| `MUNU` | **not done**: the vertical distribution index; the vendor name is not a plain `function munu`/`subroutine munu` under the anchor patterns used so far, so the span must be located by its call sites (`CTREC` L22841-22921 calls it) before it can be extracted and ported |
+| `CTREC` (L22841-22921) | **not done**: needs `MUNU` plus the receptor/puff geometry state it rotates |
+| `CTSG` (L22923-23112) | **not done**: calls `ctpar`/`ctrec`/`lower`/`puffc`/`upper`; the real-case branch selection (`MCTADJ=2`, `NHILL=0`, `MSLUG=0`, `MSHEAR=0`, `MPDF=0`) resolves to the lower-segment kernel, but the routine itself, its slug/puff dispatch and the `PUFfC` path are not ported |
+| `CTPAR` | **not done**: puff geometry/parameter preparation for CTSG |
+| `LOWER` (L24657-24863) | **not done**: needs `BI`/`BJIL` (the reflection-series helpers), `MUNU` and the `/CTPASS/` state (`Hd`, `zi`, `ppcoef`, plume/slug geometry) |
+| `UPPER` (L25815-26001) | **not done**: needs `BI`/`BJI`, `FLOPUFF` and `QATR` (the integrator is now available) |
+| `BI`/`BJIL`/`BJI` | **not done**: the reflection-series helper functions; their spans must be located by call sites before extraction |
+| `FLOPUFF` | **not done**: the flow-splitting routine that provides `Hd` |
+
+Consequence: the `F1` chain is still `VCBAR` (P7H) for the *vertical coupling*,
+but the concentration kernel that consumes it (`CTSG`/`LOWER`) does not exist
+yet, so no receptor concentration can be produced for a real puff and the
+incomparability list stays at two causes (the CTSG kernel above; the
+still-prototype puff model plus the CTEAS-only CONC.DAT header).
+
+Honest status of this round: the acceptance target "CTSG plus CTREC/MUNU with
+original-source parity" was **not reached**; only the support blocks (`ROTATE`,
+re-verified `QATR`/`TFAC`) carry parity evidence. The next round should start by
+locating `MUNU`, `BI`, `BJIL`, `BJI`, `FLOPUFF`, `CTPAR` and `PUFfC` spans by
+their call sites, then port `CTSG` with the lower-segment branch.
+
+## 2026-10-11 P7K CTSG kernel units located by call site
+
+The plain-name anchor patterns used for `QATR`/`TFAC`/`ROTATE` did not match the
+remaining CTSG kernel units, so they are now located by scanning every vendor
+routine header (any `function`/`subroutine` declaration, optional type prefix,
+flexible indentation). `reference/p7k_source_anchor.py` records the exact span,
+SHA-256 and call closure of each unit and `--check` fails on any drift; the gate
+and the workflow run that check.
+
+| unit | span | lines | sha256 prefix | calls |
+|---|---|---|---|---|
+| `bi` | L22229-22263 | 35 | `917e2da3b8b2547a` | - |
+| `bji` | L22265-22316 | 52 | `53e3010313a89e13` | - |
+| `bjil` | L22318-22363 | 46 | `e34ab5ac71fdd8c4` | - |
+| `ctpar` | L22505-22839 | 335 | `00dee71ee0419be6` | `axis`, `hilrot`, `munu`, `path`, `rotate` |
+| `ctrec` | L22841-22921 | 81 | `279397a1d0f7ad5e` | `munu`, `rotate` |
+| `ctsg` | L22923-23112 | 190 | `3f1011394e50` (P7H anchor) | `ctpar`, `ctrec`, `lower`, `puffc`, `upper` |
+| `flopuff` | L23178-23656 | 479 | `5dccb500891d` | (own closure, not yet scanned) |
+| `lower` | L24657-24863 | 207 | `688c6978246d` | `bi`, `bjil`, `munu` |
+| `munu` | L24865-24967 | 103 | `348cec20d84b` | - |
+| `puffc` | L25286-25404 | 119 | `b739807ef741` | - |
+| `upper` | L25815-26001 | 187 | `9e24496fb8da` | `bi`, `bji`, `flopuff`, `qatr`, `to` |
+| `rotate` | L25522-25549 | 28 | `ce0f8fc51d2c` | - (ported, parity 45 cases) |
+| `qatr` | L25406-25520 | 115 | `2cded8ebe7da` | - (ported, parity 80 cases) |
+| `tfac` | L25765-25813 | 49 | `fe35527fd872` | - (ported, parity 14 cases) |
+
+`munu` (vertical distribution index) and `puffc` are self-contained; `bi`,
+`bji` and `bjil` are the reflection-series helpers; `ctrec` is `munu` + a
+rotation; `ctsg` dispatches to `ctpar`/`lower`/`upper`/`puffc`. The real-case
+branch selection (`MCTADJ=2`, `NHILL=0`, `MSLUG=0`, `MSHEAR=0`, `MPDF=0`)
+resolves to the lower-segment kernel, whose remaining inputs are the
+`/CTPASS/` state (`Hd`, `zi`, `ppcoef`, plume/slug geometry) and `BI`/`BJIL`.
+
+Status of the round: **`CTSG`/`CTREC`/`MUNU` are located and pinned but not yet
+ported**, so the F1 chain still ends at `VCBAR` and the incomparability list
+stays at two causes. The next round's port order is now mechanical: `munu` ->
+`bi`/`bjil` -> `lower` -> `puffc` -> `ctrec` -> `ctsg` (lower branch), then wire
+`VCBAR -> CTSG` and re-run the real receptor grid.
