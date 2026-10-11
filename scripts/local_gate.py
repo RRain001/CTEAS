@@ -109,7 +109,7 @@ TRACKS: dict[str, dict] = {
                      "--report", "{out}/p7-2022-ledger.json"],
              "requires": [MET_DAT, PUFF_INP]},
             {"cmd": ["python3", "native_cpp/modules/p7_calpuff/reference/run_original_calpuff_reference.py",
-                     "--control", PUFF_INP, "--met", MET_DAT, "--out", "{out}/p7-original-calpuff"],
+                     "--control", PUFF_INP, "--met", MET_DAT, "--out", "{build}/p7-original-calpuff"],
              "requires": [PUFF_INP]},
         ],
     },
