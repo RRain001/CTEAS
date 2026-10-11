@@ -125,11 +125,11 @@ PUFF_LOCKED_OPTIONS = {
 }
 
 VENDOR_SOURCES = {
-    "terrel": "engine/vendor/src/TERREL_v7.0.0_L141010/TERREL.FOR",
+    "terrel": "engine/vendor/src/TERREL_v7.0.0_L141010/terrel.for",
     "ctgproc": "engine/vendor/src/CTGPROC_v7.0.0_L150211/ctgproc.for",
     "makegeo": "engine/vendor/src/MAKEGEO_V3.2_L110401/makegeo.for",
-    "read62": "engine/vendor/src/READ62_v5.661_L110225/read62.for",
-    "smerge": "engine/vendor/src/SMERGE_v5.7.0_L121203/smerge.for",
+    "read62": "engine/vendor/src/READ62_v5.661_L110225/READ62.FOR",
+    "smerge": "engine/vendor/src/SMERGE_v5.7.0_L121203/SMERGE.FOR",
     "calmet": "engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for",
     "calmet_calutils": "engine/vendor/src/CALMET_v6.5.0_L150223/calutils.for",
     "calpuff_modules": "engine/vendor/src/CALPUFF_v7.2.1_L150618/modules.for",
