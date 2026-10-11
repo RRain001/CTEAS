@@ -323,6 +323,7 @@ def process_one_station(file_path, strict=False):
             df_cleaned[int_col] = df_cleaned[int_col].astype(int)
 
     df_out.attrs["stage1_cleaned_df"] = df_cleaned
+    df_out.attrs["p5_policy_summary"] = summary
     return header_lines, df_out, audit, summary
 
 
@@ -344,6 +345,24 @@ def save_station_csv(file_path, header_lines, df_out):
             for header in header_lines:
                 out.write(header + "\n")
             data.to_csv(out, index=False, header=False)
+        # GENERIC's fixed 3-line header cannot contain arbitrary stage labels.
+        # Explicit UTF-8 JSON sidecar declares the exact scientific stage.
+        status = ("数据清洗和缺测处理完毕" if role == "cleaned"
+                  else "静风插值处理完毕")
+        summary = df_out.attrs.get("p5_policy_summary", {})
+        sidecar = paths[role].replace(".csv", ".stage.json")
+        with open(sidecar, "w", encoding="utf-8") as meta:
+            json.dump({
+                "status": status,
+                "stage": role,
+                "file_name": os.path.basename(paths[role]),
+                "wind_policy": summary.get("policy"),
+                "original_calm_hours": summary.get("original_calm_hours"),
+                "raw_absent_hours": summary.get("raw_absent_hours"),
+                "year": summary.get("year"),
+                "calendar_hours": summary.get("expected_calendar_hours"),
+            }, meta, ensure_ascii=False, indent=2)
+            meta.write("\n")
     return paths["final"]
 
 
