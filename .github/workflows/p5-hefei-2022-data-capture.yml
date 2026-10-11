@@ -69,7 +69,7 @@ jobs:
           python -m native_cpp.modules.p5_smerge.data_prep.validate_scheme_c_capture \
             --case-root project/current --expected-hours 144 \
             --report run-evidence/p5-scheme-c-audit.json
-      - name: Independently reconcile all 2022 hourly wind fields against ISD-Lite
+      - name: Independently reconcile all 2022 decoded wind-source hours against ISD-Lite
         shell: bash
         run: |
           set -euo pipefail
@@ -84,13 +84,12 @@ jobs:
           sid=ids[0]["sid"]
           lite=base/"isd_raw/isd_lite"/f"{sid[:6]}-{sid[6:]}-2022.gz"
           wind=parse_lite_winds(lite,2022,sid)
-          processed=base/"isd2smerge_and_fill"/f"{sid[:6]}-{sid[6:]}-2022.csv"
+          processed=base/"isd2smerge_and_fill"/f"{sid[:6]}-{sid[6:]}-2022_isd_lite_source_audit.csv"
           with processed.open(newline="") as file:
-              for _ in range(3): next(file)
-              rows=list(csv.reader(file))
+              rows=list(csv.DictReader(file))
           bytime={}
           for row in rows:
-              t=datetime(int(row[2]),int(row[0]),int(row[1]),int(row[3])//100)
+              t=datetime.fromisoformat(row["at_utc"].rstrip("Z"))
               assert t not in bytime
               bytime[t]=row
           assert len(wind)>=7008,len(wind)
@@ -99,8 +98,8 @@ jobs:
               row=bytime[t]
               expected_speed=record.speed_mps if record.speed_mps is not None else 9999.
               expected_dir=record.direction_deg if record.direction_deg is not None else 9999.
-              assert abs(float(row[9])-expected_speed)<1e-6,(t,row[9],expected_speed)
-              assert abs(float(row[8])-expected_dir)<1e-6,(t,row[8],expected_dir)
+              assert abs(float(row['wind_speed_mps'])-expected_speed)<1e-6,(t,row['wind_speed_mps'],expected_speed)
+              assert abs(float(row['wind_direction_deg'])-expected_dir)<1e-6,(t,row['wind_direction_deg'],expected_dir)
               checks+=1
           result={"wind_source":"NOAA_ISD_LITE","original_hours_checked":checks,
                   "unmatched_hours":0,"silent_full_isd_wnd_fallback":False,
