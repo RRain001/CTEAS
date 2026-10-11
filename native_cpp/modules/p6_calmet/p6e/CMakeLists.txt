@@ -326,6 +326,25 @@ else()
   message(STATUS "P6E real CALMET.DAT 2.1 reference test: not registered (reference case not in this checkout)")
 endif()
 
+# E42 acceptance, gate-visible: the frozen 143 h real case driven by the
+# original CALMET.DAT wind (regime B) must give `dQSW == 0` for every hour and
+# a `compare_calmet_dat21.py` PASS with 0 total exceedances over the 18
+# P6E-owned fields.  Registered unconditionally so a missing frozen case is a
+# BLOCKED failure rather than a silent skip (the local gate checks out the full
+# tree, so the case is always present there).
+set(P6E_REAL_CASE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../../project/cases/hefei5km_2022_reference_case_20261011")
+add_test(NAME p6e_calmet_dat21_real_full_field_reference
+  COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_real_2022_full_field_reference.py"
+    --case "${P6E_REAL_CASE}"
+    --bridge "$<TARGET_FILE:p6e_p6c_hourly_bridge>"
+    --tool "$<TARGET_FILE:p6e_calmet_dat21>"
+    --work "${CMAKE_CURRENT_BINARY_DIR}/e42-real-full-field")
+set_tests_properties(p6e_calmet_dat21_real_full_field_reference
+  PROPERTIES TIMEOUT 900)
+message(STATUS "P6E real full-field reference test: REGISTERED (dQSW==0 + 0 exceedances)")
+
 # E25 AVETMP upwind spatial averaging (IAVET=1) and airden surface density.
 add_executable(p6e_avetmp_tests tests/avetmp_tests.cpp)
 add_executable(p6e_avetmp_reference src/avetmp_reference_main.cpp)
