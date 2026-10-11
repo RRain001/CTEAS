@@ -1,6 +1,6 @@
 # P6C real 2022 COMP AA/BB buffers and GEO–SURF–UP joint observation audit
 
-Date: 2026-10-11. Repository: RRain001/CTEAS; branch `codex/cteas-p6-calmet-hefei-100m`; draft PR #8. Keep official P6A=PASS, P6B=PASS, **P6C=PARTIAL**, P6D–G=HOLD pending complete original COMP and CGAMMA audit.
+Date: 2026-10-11. Repository: RRain001/CTEAS; branch `codex/cteas-p6-calmet-hefei-100m`; draft PR #8. **This file records the earlier COMP-focused milestone. Latest independent RDSN/CGAMMA acceptance now advances the supported 2022 observation stage to P6C=PASS_SCOPED_HEFEI_2022_OBSERVATIONS**; P6D integrated remains NOT PASS, P6E–G NOT STARTED. See [P6C_RDSN_CGAMMA_2022_AUDIT.md](P6C_RDSN_CGAMMA_2022_AUDIT.md) and [complete CI #38113874913](https://github.com/RRain001/CTEAS/actions/runs/38113874913).
 
 ## Original source controls: reviewed independently
 
