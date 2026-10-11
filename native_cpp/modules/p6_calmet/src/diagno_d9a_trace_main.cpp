@@ -77,6 +77,13 @@ int main(int argc,char** argv){
         for(float& observed:p->station_component_mps)
             if(!(f>>observed))throw std::runtime_error("D9A station U/V missing");
     }
+    int obrien=0;
+    if(!(f>>in.cellzb_origin_m>>obrien>>in.minim_iterations>>
+         in.minim_divergence_limit_per_s))
+        throw std::runtime_error("D9A IOBR/CELLZB/MINIM controls missing");
+    if(obrien!=0&&obrien!=1)
+        throw std::runtime_error("D9A IOBR flag must be 0 or 1");
+    in.obrien_adjustment=obrien==1;
     std::string extra;
     if(f>>extra)throw std::runtime_error("D9A input trailing data");
     auto out=integrate_diagno_d9_selected(in);

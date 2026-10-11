@@ -3,7 +3,8 @@
 //
 // Source call order: WIND1 [L5590], WINDBC [L5599], then optional kinetic,
 // Froude, radiative/heat, slope corrections and final WINDBC [L5748];
-// INTER2 U/V [L6055-6061]; SMOOTH+DIVCEL+W [L6119-6148].
+// INTER2 U/V [L6055-6061]; SMOOTH+DIVCEL+W [L6119-6148]; optional IOBR=1
+// O'Brien W adjustment [L6153-6159] and MINIM [L6180].
 //
 // D9A deliberately DOES NOT simulate the intervening heat/terrain physics.
 // It requires the caller to explicitly designate a synthetic-identity
@@ -12,6 +13,7 @@
 #include "cteas/p6/wind1_selected_firstguess.hpp"
 #include "cteas/p6/inter2_selected.hpp"
 #include "cteas/p6/diagno_segment.hpp"
+#include "cteas/p6/diagno_obrien_minim.hpp"
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -36,7 +38,13 @@ struct DiagnoD9SelectedInput {
     // the caller's terrain/heat/slope-corrected UG/VG. Size 50*50*9.
     std::vector<float> corrected_first_guess_u_mps,corrected_first_guess_v_mps;
     bool lake_breeze=false;
+    // Original IOBR=1 tail: O'Brien W adjustment L6153-L6159 then MINIM
+    // L6180. CELLZB(1) is the original lowest face height, NITER and DIVLIM
+    // are the original namelist MINIM controls.
     bool obrien_adjustment=false;
+    float cellzb_origin_m=0.f;
+    int minim_iterations=0;
+    float minim_divergence_limit_per_s=0.f;
 };
 struct DiagnoD9SelectedOutput {
     Wind1FirstGuessSelectedFields raw_first_guess;
@@ -49,8 +57,8 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
     const DiagnoD9SelectedInput& request) {
     if(request.upstream_mode==DiagnoD9UpstreamMode::Missing)
         throw std::invalid_argument("D9 upstream terrain/radiative/slope stage not provided");
-    if(request.lake_breeze||request.obrien_adjustment)
-        throw std::invalid_argument("D9 lake breeze or IOBR branch not verified");
+    if(request.lake_breeze)
+        throw std::invalid_argument("D9 lake breeze branch not verified");
     if(request.first_guess.nx!=50||request.first_guess.ny!=50||
        request.first_guess.nz!=9)
         throw std::invalid_argument("D9 only supports frozen 50x50x9 case");
@@ -126,6 +134,14 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
     smooth.vb_south_north_mps=std::move(vb);
     auto final=original_smooth_divcel_w(
         std::move(smooth),100.f,100.f,request.layer_thickness_m,false);
+    if(request.obrien_adjustment) {
+        DiagnoObrienControls controls;
+        controls.cellzb_origin_m=request.cellzb_origin_m;
+        controls.minim_iterations=request.minim_iterations;
+        controls.minim_divergence_limit_per_s=request.minim_divergence_limit_per_s;
+        final=original_diagno_obrien_minim(
+            std::move(final),request.layer_thickness_m,100.f,100.f,controls);
+    }
     DiagnoD9SelectedOutput output;
     output.raw_first_guess=first;
     output.prepared_ug=std::move(u);

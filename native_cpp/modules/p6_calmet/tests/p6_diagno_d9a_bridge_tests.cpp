@@ -101,6 +101,49 @@ int main(){
     input.lake_breeze=true;
     rejected([&]{(void)integrate_diagno_d9_selected(input);},
              "D9A unsupported lake breeze accepted");
+    input.lake_breeze=false;
+    // Original IOBR=1 tail: O'Brien L6153-L6159 then MINIM L6180, reached
+    // only through the explicit optional flag.
+    input.upstream_mode=DiagnoD9UpstreamMode::SyntheticIdentityForSourceAudit;
+    input.corrected_first_guess_u_mps.clear();
+    input.corrected_first_guess_v_mps.clear();
+    const auto baseline=integrate_diagno_d9_selected(input);
+    bool baseline_top_nonzero=false;
+    for(std::size_t p=0;p<2500;++p)
+        baseline_top_nonzero|=std::abs(
+            baseline.final_fields.w_face_mps[9*2500+p])>1e-9f;
+    require(baseline_top_nonzero,
+            "D9A IOBR=0 baseline needs a nonzero top face");
+    input.obrien_adjustment=true;
+    input.cellzb_origin_m=0.f;
+    input.minim_iterations=3;
+    input.minim_divergence_limit_per_s=0.f;
+    const auto obrien=integrate_diagno_d9_selected(input);
+    for(std::size_t p=0;p<2500;++p)
+        require(obrien.final_fields.w_face_mps[9*2500+p]==0.f,
+                "D9A original IOBR=1 must cancel the top W face exactly");
+    require(obrien.final_fields.w_face_mps!=baseline.final_fields.w_face_mps,
+            "D9A IOBR=1 must adjust W");
+    std::size_t nonzero_divergence=0,relaxed=0;
+    for(std::size_t p=0;p<22500;++p){
+        if(baseline.final_fields.divergence_per_s[p]!=0.f)++nonzero_divergence;
+        if(obrien.final_fields.u_mps[p]!=baseline.final_fields.u_mps[p]||
+           obrien.final_fields.v_mps[p]!=baseline.final_fields.v_mps[p])
+            ++relaxed;
+    }
+    require(nonzero_divergence>0,
+            "D9A IOBR=1 baseline needs a divergent field for MINIM");
+    require(relaxed>0,"D9A original MINIM must relax U/V");
+    input.minim_iterations=-1;
+    rejected([&]{(void)integrate_diagno_d9_selected(input);},
+             "D9A invalid NITER silently accepted");
+    input.minim_iterations=3;
+    input.cellzb_origin_m=-1.f;
+    rejected([&]{(void)integrate_diagno_d9_selected(input);},
+             "D9A negative original CELLZB origin silently accepted");
+    input.cellzb_origin_m=0.f;
+    input.obrien_adjustment=false;
+    input.minim_iterations=0;
     std::cout<<"PASS_P6D9A_SELECTED_WIND1_INTER2_FINAL_SEGMENT_SOFTWARE_ONLY\n";
     return 0;
  }catch(const std::exception& e){

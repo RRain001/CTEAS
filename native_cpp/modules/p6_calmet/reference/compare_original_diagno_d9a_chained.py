@@ -3,6 +3,8 @@
 
 Independently compiles frozen original routines, explicitly transmits
 intermediate arrays through text fixtures and compares one-call C++ bridge.
+The same chain is additionally replayed with the original IOBR=1 tail
+(O'Brien W adjustment L6153-L6159 then MINIM L6180) enabled.
 This is a SYNTHETIC IDENTITY bypass of full FRADJ/heat/slope physics; no
 actual Hefei 2022 U/V/W equivalence is inferred.
 """
@@ -17,6 +19,7 @@ from pathlib import Path
 import compare_original_wind1_firstguess as wind1
 import compare_original_inter2 as inter2
 import compare_original_diagno_final_segment as diag
+import compare_original_diagno_obrien_minim as obr
 
 SOURCE_BLOB="437f43bb7f0e51a1919e56664663e1a046986ed0"
 NX=NY=50
@@ -26,6 +29,11 @@ COMP_TOL=2e-4
 DZ=(20.,20.,40.,80.,160.,320.,560.,800.,1000.)
 SMOOTH=(0,1,2,0,1,2,0,1,0)
 RADIUS=(.05,12.,12.,12.,.6,1.5)
+# Original CELLZB(1)=ZFACE(1) (m) and the original namelist MINIM controls
+# NITER/DIVLIM used for the IOBR=1 replay of the same chain.
+ZFACE1_M=0.
+MINIM_ITERATIONS=3
+MINIM_DIVLIM=0.
 
 def run(args):
     p=subprocess.run([str(x) for x in args],capture_output=True,text=True,timeout=180)
@@ -54,10 +62,12 @@ def compile_references(vendor,out):
     drv_d=out/"d9_original_final_driver.for"
     drv_d.write_text(diag.DRIVER_HEAD+block+diag.DRIVER_TAIL)
     run(base+[s for s,_ in seg_src]+[drv_d,"-o",orig_d])
-    return (orig_w,orig_i,orig_d),dict(
+    orig_o,obrien_meta=obr.compile_reference(vendor,out,base)
+    return (orig_w,orig_i,orig_d,orig_o),dict(
         wind1_original_sha=SOURCE_BLOB,
         inter2_original=[s for _,s in interp_src],
-        final_original=meta)
+        final_original=meta,
+        obrien_original=obrien_meta)
 
 def generate_synthetic(scene):
     name=scene["name"]
@@ -77,7 +87,7 @@ def generate_synthetic(scene):
     ]
     return land,observation_weight,station_u,station_v
 
-def write_bridge(path,scene,land,weights,sta_u,sta_v):
+def write_bridge(path,scene,land,weights,sta_u,sta_v,obrien=False):
     with path.open("w") as f:
         def line(values):
             f.write(" ".join(map(str,values))+"\n")
@@ -96,6 +106,8 @@ def write_bridge(path,scene,land,weights,sta_u,sta_v):
         for row in range(0,len(weights),NX):line(weights[row:row+NX])
         for k in range(NZ):line(sta_u[k*2:k*2+2])
         for k in range(NZ):line(sta_v[k*2:k*2+2])
+        # Original IOBR, CELLZB(1)=ZFACE(1), NITER and DIVLIM controls.
+        line([ZFACE1_M,1 if obrien else 0,MINIM_ITERATIONS,MINIM_DIVLIM])
 
 def read_original_wind(path):
     rows=[line.split() for line in path.read_text().splitlines()]
@@ -170,7 +182,8 @@ def main():
     raw=(args.vendor/"calmet.for").read_bytes()
     sha=hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()
     if sha!=SOURCE_BLOB:raise RuntimeError("Original vendor CALMET source changed")
-    (original_wind,original_inter,original_final),meta=compile_references(args.vendor,args.out)
+    (original_wind,original_inter,original_final,original_obrien),meta=(
+        compile_references(args.vendor,args.out))
     results={}
     # Independent original first guess, then two independent INTER2
     # components, then actual original final DIAGNO SMOOTH/DIVCEL/W block.
@@ -211,14 +224,42 @@ def main():
             observed["u"],observed["v"],bc_u,bc_v])
         run([original_final,original_d_in,original_d,original_bc])
         comparison_final=diag.compare(original_d,cpp_final,original_bc,cpp_bc)
+        # Same chain replayed with the original IOBR=1 tail (O'Brien W
+        # adjustment L6153-L6159 then MINIM L6180). The C++ side must reach
+        # the identical final U/V/DIV/W and WINDBC boundaries.
+        obrien_inp=folder/"bridge.obrien.in"
+        write_bridge(obrien_inp,scene,land,weights,station_u,station_v,True)
+        cpp_final_obrien=folder/"final.obrien.cpp.csv"
+        cpp_bc_obrien=folder/"boundary.obrien.cpp"
+        run([args.cpp,obrien_inp,folder/"wind1.obrien.cpp",
+             folder/"blend.obrien.cpp.csv",cpp_final_obrien,cpp_bc_obrien])
+        obrien_in=folder/"obrien.original.inp"
+        obrien_out=folder/"obrien.original"
+        obrien_bc=folder/"obrien.boundary.original"
+        obr.write_case(obrien_in,list(SMOOTH),
+                       [observed["u"],observed["v"],bc_u,bc_v],
+                       ZFACE1_M,1,MINIM_ITERATIONS,MINIM_DIVLIM)
+        run([original_obrien,obrien_in,obrien_out,obrien_bc])
+        comparison_obrien=diag.compare(obrien_out,cpp_final_obrien,
+                                       obrien_bc,cpp_bc_obrien)
+        # Original IOBR=1 must cancel every top W face; the IOBR=0 replay of
+        # the same scene must keep at least one.
+        comparison_obrien["original_iobr1_top_face_nonzero_cells"]=(
+            obr.top_face_nonzero(obrien_out))
+        comparison_obrien["original_iobr0_top_face_nonzero_cells"]=(
+            obr.top_face_nonzero(original_d))
         results[name]=dict(first_guess=comparison_first,
-                           inter2=comparison_blend,final=comparison_final)
+                           inter2=comparison_blend,final=comparison_final,
+                           obrien=comparison_obrien)
 
     complete=(len(results)==len(selected) and
         all(
           r["first_guess"]["status"]=="PASS" and
           r["inter2"]["status"]=="PASS" and
-          r["final"]["status"]=="PASS"
+          r["final"]["status"]=="PASS" and
+          r["obrien"]["status"]=="PASS" and
+          r["obrien"]["original_iobr1_top_face_nonzero_cells"]==0 and
+          r["obrien"]["original_iobr0_top_face_nonzero_cells"]>0
           for r in results.values()))
     counters=dict(
         firstguess_components=sum(r["first_guess"]["components_compared"]
@@ -228,12 +269,19 @@ def main():
         final_uv_div_w_components=sum(r["final"]["uv_div_w_comparisons"]
                                       for r in results.values()),
         boundary_components=sum(r["final"]["boundary_comparisons"]
-                                for r in results.values())
+                                for r in results.values()),
+        obrien_uv_div_w_components=sum(r["obrien"]["uv_div_w_comparisons"]
+                                       for r in results.values()),
+        obrien_boundary_components=sum(r["obrien"]["boundary_comparisons"]
+                                       for r in results.values()),
+        obrien_cancelled_top_faces=NC*len(results)
     )
     report=dict(
         status="PASS_D9A_SELECTED_CHAINED_ORIGINAL_SOURCES" if complete else "FAIL",
-        scope="synthetic identity upstream WIND1 original -> original INTER2 U/V -> original SMOOTH/DIVCEL/W; no FRADJ/heat/slope, not real 2022 full DIAGNO",
+        scope="synthetic identity upstream WIND1 original -> original INTER2 U/V -> original SMOOTH/DIVCEL/W, replayed with and without the original IOBR=1 O'Brien/ MINIM tail; no FRADJ/heat/slope, not real 2022 full DIAGNO",
         vendor_blob=sha,original_reference=meta,
+        obrien_controls=dict(cellzb_origin_m=ZFACE1_M,minim_iterations=MINIM_ITERATIONS,
+                             minim_divergence_limit_per_s=MINIM_DIVLIM,iobr=1),
         tolerance_wind_mps=COMP_TOL,summary=counters,scenes=results)
     (args.out/"p6d9a-original-chained-source-parity.json").write_text(
         json.dumps(report,indent=2)+"\n")
