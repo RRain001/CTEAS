@@ -216,7 +216,19 @@ int main(int argc,char** argv){
 
     const auto geo=read_geo_50(args.geo.string(),origin_x_km,origin_y_km);
     const auto surface=read_surface_2022(args.surface.string());
-    const auto upper=read_upper_2022(args.upper.string(),-1);
+    // UP.DAT carries the upper station ID in its 6201 record tags; the case
+    // convention names the file up_<station>.dat.
+    int upper_station=0;
+    {
+        const std::string stem=args.upper.stem().string();
+        const auto underscore=stem.rfind('_');
+        if(underscore==std::string::npos)
+            throw std::runtime_error("upper-air file name must be up_<station>.dat");
+        upper_station=std::stoi(stem.substr(underscore+1));
+        if(upper_station<=0)
+            throw std::runtime_error("upper-air station ID must be positive");
+    }
+    const auto upper=read_upper_2022(args.upper.string(),upper_station);
 
     const auto start=std::chrono::sys_days{std::chrono::year{2022}/1/1};
     std::vector<std::chrono::sys_seconds> labels;
