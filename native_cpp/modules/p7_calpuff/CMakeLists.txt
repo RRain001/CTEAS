@@ -474,3 +474,34 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7r_probe --deck-terrain "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
             0 513.3846439571 3533.7689269678 70.8 89.152 0.9 1.396 0.02)
 endif()
+
+# P7S: the terrain-state producers (TERAVG strip average, TRELIEF relief and
+# GETELEV elevation interpolation).
+add_library(cteas_p7_terrain_state STATIC src/terrain_relief.cpp)
+target_include_directories(cteas_p7_terrain_state PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_terrain_state PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_terrain_state PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7s_tests tests/p7s_tests.cpp)
+target_link_libraries(cteas_p7s_tests PRIVATE cteas_p7_terrain_state)
+if(MSVC)
+  target_compile_options(cteas_p7s_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7s_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7s_terrain_state_contract COMMAND cteas_p7s_tests)
+
+add_executable(cteas_p7s_probe src/terrain_state_probe.cpp)
+target_link_libraries(cteas_p7s_probe PRIVATE cteas_p7_terrain_state cteas_p7_terrain
+  cteas_p7_calmet21 cteas_p7_control)
+add_test(NAME cteas_p7s_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7s_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7s_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7s_locked_case_relief
+    COMMAND cteas_p7s_probe --deck-relief "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
+            0 513.3846439571 3533.7689269678 70.8 89.152 0.9 1.396 0.02)
+endif()
