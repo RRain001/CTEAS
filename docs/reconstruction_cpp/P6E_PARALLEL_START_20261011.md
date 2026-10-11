@@ -326,3 +326,31 @@ This does not qualify `ITPROG` prognostic temperature, water
 temperature gradients, observation interpolation across day/year,
 source 2022 real COMP selected hourly vertical geometry or full
 P6E. E14 CI pending.
+
+## E15 P6C COMP/RDSN to P6E selected-hour read-only bridge
+
+Provides first real typed consumer of **existing P6C headers** from a
+P6E-only file `p6c_hourly_bridge.hpp`. It does not mutate P6C
+timelines or P6D diagnostic wind. A `CompBufferedHour` from the
+buffered P6C COMP and `RdsnHourlyState` from original RDSN source
+are joined by exact hour-end identity. The bridge explicitly maps
+P6C's chronological `aa_profile/bb_profile` onto original CALMET
+*physical* AA/BB slots using `jorder`: when JUSTA=-1, the
+P6C `aa_profile` field stores chronological older but original
+physical **BB** is older. The resulting physical source temperatures,
+original sounding heights, missing masks, precipitation-code observed
+status and gap seconds are made available to P6E; the bridge cannot
+silently reinterpret `IPCODE=9999` as observed dry `0`.
+
+Synthetic 143-hour P6C `CompBufferedTimeline`+
+`RdsnBufferedTimeline` test verifies all transitions through twelve
+12-hour soundings (including inverted AA/BB), input time continuity,
+and a sampled `MixhtObservedMcInput` assembly. Synthetic fixture
+deliberately includes 142 missing precipitation codes and one
+**observed zero** to detect accidental conflation.
+
+This is **software integration contract** only, not original Fortran
+per-hour COMP/2022 HTO wet forcing/meteorology and not claim of P6D
+completion. Dedicated runner now retrieves seven pinned P6C headers
+via sparse-checkout or SHA-verified GitHub REST bootstrap; never
+changes any P6C/P6D source. E15 PASS awaits CTest on runner.
