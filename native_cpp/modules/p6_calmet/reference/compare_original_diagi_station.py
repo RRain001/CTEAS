@@ -88,10 +88,13 @@ OUT=r"""      open(11,file=trim(out),status='replace')
 def build_source(vendor:Path,output:Path):
     source=vendor/"calmet.for"
     lines=source.read_text().splitlines()
-    one=cut(lines,"      if(idiopt(2).eq.0 .and. noobs.eq.0)then",
+    first=next(i for i,l in enumerate(lines) if l.startswith("      subroutine diagi("))
+    last=next(i for i,l in enumerate(lines) if l.startswith("      subroutine diagno("))
+    diagi=lines[first:last]
+    one=cut(diagi,"      if(idiopt(2).eq.0 .and. noobs.eq.0)then",
             "       endif",24)
-    two=cut(lines,"      if (noobs.lt.2) then","      end if",32)
-    three=cut(lines,"      do n=1,nssta","      end do",24)
+    two=cut(diagi,"      if (noobs.lt.2) then","      end if",32)
+    three=cut(diagi,"      do n=1,nssta","      end do",24)
     midpoint=[(i,l) for i,l in enumerate(lines)
               if l.rstrip()=="      zmid(i)=0.5*(zface(i+1)+zface(i))"]
     if len(midpoint)!=1:raise RuntimeError("original midpoint formula not uniquely identified")
@@ -99,9 +102,9 @@ def build_source(vendor:Path,output:Path):
     body=HEADER+midpoint[0][1]+"\n"+FOOTER+one[2]+two[2]+three[2]+OUT
     output.write_text(body)
     return {"vendor_sha256":sha(source),
-            "original_DIAGI_upper_lines":[one[0],one[1]],
-            "original_DIAGI_station_lines":[two[0],two[1]],
-            "original_DIAGI_roughness_lines":[three[0],three[1]],
+            "original_DIAGI_upper_lines":[first+one[0],first+one[1]],
+            "original_DIAGI_station_lines":[first+two[0],first+two[1]],
+            "original_DIAGI_roughness_lines":[first+three[0],first+three[1]],
             "original_ZMID_source_line":midpoint[0][0]+1,
             "compiled_source_sha256":sha(output)}
 
