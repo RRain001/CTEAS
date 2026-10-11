@@ -109,3 +109,31 @@ This is **only** the QH<0 nighttime stable branch. The QH>=0
 daytime unstable pathway uses PSIUD/PSIUC and needs separate original
 source-backed numerical testing. No claim of full ELUSTR, MIXHT or P6E
 acceptance until coupled 2022 source comparison.
+
+## 2026-10-11: switched P6E CI to lhy-desktop
+
+The GitHub-hosted `ubuntu-24.04` runner exhausted private-repository
+hosted-job availability; the P6E workflow now requests `self-hosted`
+and **fails closed** unless `RUNNER_NAME=lhy-desktop`, OS is Linux,
+and CMake/C++, Fortran, Python, Git are installed. GitHub connector
+cannot access the administration-gated runner inventory endpoint, so
+the actual online state of the registered runner must be established
+from the workflow job `runner_name` and executed step logs.
+The first redirected runs 38118603445 / 38118601535 entered the
+**queued / runner unassigned** state. Do not claim source-parity
+acceptance for E5 without actual completed numerical comparison.
+
+## E6 WSTARR (source validation pending)
+
+Implemented isolated CALMET WSTARR convective velocity scale from
+unmodified `calmet.for` L36884–36949:
+ `w*=pow(9.81*QH*ZICONV/(TEMP2D*RHO*996),0.3333333)`
+for positive sensible heat flux, and exactly zero for stable/nonpositive
+flux, while leaving overwater WSTAR untouched. The original-source
+harness includes 30 synthetic grids of 5x4 cells = 600 outputs,
+day/night and water masks, frozen absolute limit 2e-5 m/s and
+relative 3e-5; runs independently from unresolved MIXHT and P6D.
+No E6 PASS claim until self-hosted numeric workflow completes.
+
+Pending major physics: full daytime unstable ELUSTR; daytime and
+nighttime MIXHT; TEMP3D and full 2022 hourly coupled comparison.
