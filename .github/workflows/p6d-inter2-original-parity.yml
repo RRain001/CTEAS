@@ -2,8 +2,13 @@ name: P6D original INTER2 selected 3D obs blend parity
 on:
   pull_request:
     paths:
-      - 'native_cpp/modules/p6_calmet/**'
+      - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/inter2_selected.hpp'
+      - 'native_cpp/modules/p6_calmet/src/inter2_selected_main.cpp'
+      - 'native_cpp/modules/p6_calmet/tests/p6_inter2_selected_tests.cpp'
+      - 'native_cpp/modules/p6_calmet/reference/compare_original_inter2.py'
       - '.github/workflows/p6d-inter2-original-parity.yml'
+      - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
   workflow_dispatch:
 permissions:
   contents: read
