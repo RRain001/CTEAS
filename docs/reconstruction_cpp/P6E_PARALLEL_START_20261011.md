@@ -202,3 +202,34 @@ comparison fixes 32 cases x 20 cells = 640 scalar values across RH
 not acceptance of MCLOUD3/4 selected hourly 2022 COMP, nor a
 substitute for diagnosed station cloud observations.
 No claim of E9 PASS until original CI finishes.
+
+## E8–E9 source-backed selection (2026-10-11)
+
+- [E8 dedicated CI PASS #38121765658](https://github.com/RRain001/CTEAS/actions/runs/38121765658):
+  8/8 CTest, 2,160/2,160 original source
+  `ELUSTR` daytime/neutral scalar parity, both original
+  `PSIUD` and `PSIUC` correction forms, 0 exceedances.
+  Nighttime ELUSTR accepted separately at E5.
+- [E9 dedicated CI PASS #38121943909](https://github.com/RRain001/CTEAS/actions/runs/38121943909):
+  9/9 CTest, 640/640 unchanged original CLOUD3 RH-to-cloud values,
+  128 RH>=99% saturated grid cells, max abs error 4.37e-13,
+  0 mismatches.
+
+## E10 observed multistation SURFVAR (verification pending)
+
+New source-aligned all-land, 4 observed stations, `NPSTA=0`,
+`NOOBS=0`, `ITPROG=0`, `IRHPROG=0`, `IALL=1`, `IAVET=0`
+multistation temperature and humidity interpolation.
+This expands E3 one-station validation to original `IRAD=1/2`
+inverse-distance/exponent weighting, `TRAD` radius, `NUMTS` site
+limits, stable distance sorting, station temperature/RH gaps, 80%
+RH land default and original integer truncation. Numerical comparator
+compiles **unchanged full CALMET SURFVAR**, fixed 48 cases x
+5x4 cells x three outputs = **2880 scalar checks**, absolute
+T tolerance 0.0003K and exact integer RH/IPCODE. This does
+**NOT** simulate measured 2022 hourly COMP or independently validate
+IPCODE precipitation; no rain data for 143/143 hours.
+
+State E10 implementation SUBMITTED, NOT PASS until runner CI returns
+source evidence. P6E_FULL remains NOT PASS: actual 2022 one/six/143h,
+upper-air sounding-based daytime MIXHT, TEMP3D and water paths pending.
