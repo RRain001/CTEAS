@@ -414,11 +414,14 @@ int main(int argc,char** argv){
                     "surface temperature observation missing at "+hour_label(clock));
             surface_state=cteas::p6e::surfvar_one_station(observed);
         }
+        // SOLAR takes the day of year (1..366) of the interval start.
         const int julian_day=[&]{
             const auto day=std::chrono::floor<std::chrono::days>(clock-
                 std::chrono::hours(1));
-            return static_cast<int>(std::chrono::duration_cast<
-                std::chrono::hours>(day.time_since_epoch()).count()/24)+2440588;
+            const std::chrono::year_month_day ymd{day};
+            const std::chrono::sys_days first{ymd.year()/
+                std::chrono::January/1};
+            return static_cast<int>((day-first).count())+1;
         }();
         const int begin_hour=[&]{
             const auto day=std::chrono::floor<std::chrono::days>(clock-
