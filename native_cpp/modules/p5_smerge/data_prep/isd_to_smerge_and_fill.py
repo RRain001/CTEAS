@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 from collections import defaultdict
+from .isd_lite_wind import parse_lite_winds, filename as lite_filename, sha256_file
 
 from engine.core.paths import current_project_path, engine_path
 
@@ -193,20 +194,42 @@ def convert_one_isd_csv(path, output_dir):
                 continue
             grouped[rounded].append(row)
 
-    if not grouped:
-        return None
+    # Wind values MUST come exclusively from same-station/year ISD-Lite.
+    # Never reuse the complete-ISD WND, even if an hour is missing in Lite.
+    lite_path = INPUT_DIR / "isd_lite" / lite_filename(expected_sid, int(expected_year))
+    if not lite_path.is_file():
+        raise ValueError(f"mandatory ISD-Lite wind source missing: {lite_path}")
+    lite_wind = parse_lite_winds(lite_path, int(expected_year), expected_sid)
+    all_hours = sorted(set(grouped) | set(lite_wind))
+    if not all_hours:
+        raise ValueError(f"neither NOAA source has observations: {expected_sid}/{expected_year}")
+    wind_source_audit = []
 
     out_rows = []
-    for t in sorted(grouped):
-        best = max(grouped[t], key=lambda rr: score_row(rr, t))
+    for t in all_hours:
+        best = max(grouped[t], key=lambda rr: score_row(rr, t)) if grouped.get(t) else {}
         temp = parse_tmp_c(best.get("TMP", ""))
         dew = parse_tmp_c(best.get("DEW", ""))
         slp = parse_slp_mb(best.get("SLP", ""))
-        wdir, wspd = parse_wind(best.get("WND", ""))
+        wind = lite_wind.get(t)
+        # No implicit fallback to ISD WND; wind source is exclusively ISD-Lite.
+        wdir = wind.direction_deg if wind is not None else None
+        wspd = wind.speed_mps if wind is not None else None
         precip = parse_precip_mm_1h(best)
         ccover = parse_cloud_tenths_from_gf1(best.get("GF1", ""))
         cheight = parse_cheight_hundreds_ft_from_cig(best.get("CIG", ""))
         rh = calc_rh(temp, dew)
+        wind_source_audit.append({
+            "at_utc": t.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "NOAA_ISD_LITE",
+            "lite_report_present": wind is not None,
+            "full_isd_report_present": bool(best),
+            "wind_direction_code": wind.source_direction_code if wind else -9999,
+            "wind_speed_code_tenths": wind.source_speed_code if wind else -9999,
+            "wind_direction_deg": wdir if wdir is not None else 9999,
+            "wind_speed_mps": wspd if wspd is not None else 9999,
+            "flags": "|".join(wind.flags) if wind else "LITE_WHOLE_HOUR_MISSING",
+        })
 
         y, m, d, h = t.year, t.month, t.day, t.hour * 100
         out_rows.append(
@@ -251,6 +274,28 @@ def convert_one_isd_csv(path, output_dir):
         for r in out_rows:
             w.writerow(r)
 
+    # Separate, source-level audit; do not alter the 3-header-line
+    # SMERGE GENERIC format. Keep raw ISD-Lite hash for reproducibility.
+    wind_audit_path = Path(output_dir) / f"{usaf}-{wban}-{year}_isd_lite_source_audit.csv"
+    if wind_source_audit:
+        with wind_audit_path.open("w", encoding="utf-8", newline="") as dest:
+            writer = csv.DictWriter(dest, fieldnames=list(wind_source_audit[0]))
+            writer.writeheader()
+            writer.writerows(wind_source_audit)
+    (Path(output_dir) / f"{usaf}-{wban}-{year}_isd_lite_source.json").write_text(
+        __import__("json").dumps({
+            "station": station,
+            "year": int(year),
+            "wind_source": "NOAA_ISD_LITE",
+            "source_file": str(lite_path),
+            "source_sha256": sha256_file(lite_path),
+            "original_lite_hour_count": len(lite_wind),
+            "original_full_isd_hour_count": len(grouped),
+            "union_hour_count": len(all_hours),
+            "wind_variables_only": True,
+            "do_not_use_isd_wnd_fallback": True,
+        }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     return out_path, len(out_rows)
 
 
