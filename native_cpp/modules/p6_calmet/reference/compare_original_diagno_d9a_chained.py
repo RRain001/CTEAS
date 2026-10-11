@@ -476,7 +476,7 @@ def main():
                                      ["compared_faces"]
                                      for r in results.values()),
         kinematic_step_one_components=sum(r["kinematic"]["step_one"]
-                                          ["compared_components"]
+                                          ["components"]
                                           for r in results.values()),
         kinematic_final_uv_div_w_components=sum(r["kinematic"]["final"]
                                                 ["uv_div_w_comparisons"]
