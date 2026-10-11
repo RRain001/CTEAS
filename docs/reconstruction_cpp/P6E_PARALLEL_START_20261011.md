@@ -377,3 +377,30 @@ The first E15 CI job #38125910348 exposed default self-hosted
 `GNU 9.5.0` incompatible with P6C's `std::chrono::sys_seconds`.
 P6E-only CI now selects **GCC >=11** and invalidates the stale CMake
 build cache; this is a toolchain correction, not a physics relaxation.
+
+## E16 synthetic 143h P6C→MIXHT→TEMP3D sequential integration
+
+E15 [successful original source CI #38126277567](https://github.com/RRain001/CTEAS/actions/runs/38126277567)
+used dedicated `lhy-desktop-2`, selected GCC **12.3.0**
+instead of the incompatible host GCC 9.5.0, passed 15/15
+software CTests and the existing E1–E14 Fortran source parity suite.
+The E15 143-hour P6C buffered/observed **typed boundary test PASS**.
+Actual 2022 source `SURF.DAT` and `UP.DAT` were not checked out
+into this P6E CI; CLI's real-file behavior is not yet case certified.
+
+New E16 introduces **a one-grid-cell, 143 consecutive hourly
+physics flow test**. It consumes P6C's pre-existing COMP AA/BB
+buffered observations and RDSN hourly state, reorders original
+physical AA/BB using the E15 adapter, then invokes the selected
+E13 `MIXHT + MIXDT + MIXHMC` kernel, propagates prior `ZICONV`
+and `DPTT` across all hours, and drives E14 `TEMP3D` using
+the *offset within each 12-hour sounding bracket*, including at
+the 12Z switches. It exercises positive/zero/negative heat flux
+and explicitly checks stable convective-memory resets, inverted
+AA/BB buffers, surface temperature preservation and finite
+3D temperature columns. It uses **synthetic profile and heat
+flux inputs** and checks structural/physical invariants rather than
+claiming original Fortran 143-hour field equivalence.
+`E16_SYNTHETIC_INTEGRATION` awaits CI and must not be confused
+with `P6E_REAL_2022_FULL_COMP_PARITY`, which remains blocked on
+actual full-scope meteorological/diagnostic inputs and P6D handoff.
