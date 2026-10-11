@@ -53,3 +53,7 @@ target_link_libraries(cteas_p7_calmet21_inspect PRIVATE cteas_p7_calmet21)
 add_executable(cteas_p7_calmet21_tests tests/calmet21_tests.cpp)
 target_link_libraries(cteas_p7_calmet21_tests PRIVATE cteas_p7_calmet21)
 add_test(NAME cteas_p7_calmet21_typed_field_contract COMMAND cteas_p7_calmet21_tests)
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME cteas_p7_original_case_stage_contract
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/original_reference_staging_tests.py")

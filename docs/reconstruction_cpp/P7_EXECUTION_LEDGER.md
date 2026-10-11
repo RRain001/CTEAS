@@ -130,3 +130,19 @@ after function declaration. Build flag corrected to explicit
 `-ffixed-line-length-72`. This is compilation behavior correction,
 **NOT a change to the original Fortran source** and not a claim of
 successful numerical/reference validation.
+
+## P7A original 2022 reference execution gate scaffold
+
+`reference/run_original_calpuff_reference.py` stages independently supplied
+2022 CALPUFF controls + untouched original CALMET.DAT inside a case-private
+working tree. It refuses invalid wet mode, mismatched study geometry/date,
+paths escaping scratch, overwrites, and unpinned source hashes before any
+original numerical run. Original Fortran `--execute` must be explicitly
+requested with *two* frozen SHA256 inputs and the independently compiled
+unchanged binary. It saves original binary/control/met SHA256, runtime log,
+listing and concentration file identities; original execution success is
+NOT C++ CALPUFF physics parity. Even if reference run is successful,
+P7A source/physics fidelity is limited to the supplied, audited control.
+Synthetic staging/unit test is not an original model run.
+
+Pending actual source files from 2022; the old 2023 case is excluded.
