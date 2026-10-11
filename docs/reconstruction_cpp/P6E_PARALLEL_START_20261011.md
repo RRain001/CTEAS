@@ -1707,3 +1707,68 @@ increment. Until then the residuals stand at ZI <= 51.06 m / 4.9 % relative on
 1.26 % of cells, WSTAR <= 0.0263 m/s / 1.9 % on 1.4 %, and T-LEV 5-7 <=
 2.51669 K on 713 cells - all three from this one unmodelled step, with the
 frozen tolerances untouched.
+
+## E35 term-by-term station-cell table: the sounding-interpolation hypothesis is falsified
+
+### New diagnostics
+
+`--state-prefix` now also writes the per-hour `q_flux`, `ustar` and `el` fields
+alongside the pre/post-`AVEMIX` `zi`/`ziconv`, so the station-cell table can be
+filled term by term.
+
+### The table (station cell and 3x3, failing hours)
+
+Taking hour 5 as the example, over the nine cells:
+
+| term | source | values across the 3x3 |
+|---|---|---|
+| reference `USTAR` | frozen `met.dat` | 0.43687 (all nine, **uniform**) |
+| P6E `USTAR` | this chain | 0.43687 (identical to 5 decimals) |
+| reference `EL` | frozen `met.dat` | -59.74 (all nine, uniform) |
+| P6E `EL` | this chain | -59.74 (identical) |
+| P6E `QH` | this chain | 126.3-126.4 (uniform) |
+| P6E pre-`AVEMIX` `ZICONV` | this chain | 985.51-985.74 (spread 0.23 m) |
+| **reference `ZI`** | frozen `met.dat` | 984.75 .. **1036.44** (spread 51.69 m) |
+
+Same picture in hours 8, 30, 32 and 53 (reference `ZI` spread 9.55-51.69 m
+against P6E spreads of 0.05-0.80 m).
+
+### The decisive datum: the reference's sounding is uniform
+
+`T-LEV 8` and `T-LEV 9` are - in this chain - **bit-exact** against the
+reference (0 exceedances). They are also the levels above the mixing height,
+i.e. pure averages of the two soundings' face temperatures. Across the same
+3x3 in the same five failing hours their **reference spread is 0.0000 K and
+mine matches to 0.000000 K** (hour 5 level 9: 269.218 for all nine cells; hour
+30: 271.475; hour 53: 274.521).
+
+**Consequence: the reference's upper-air face temperatures are spatially
+uniform in those hours.** A per-cell sounding-to-grid interpolation - the E34
+branch (ii) hypothesis - would necessarily show up as a variation in exactly
+these levels. It does not. The interpolation hypothesis is therefore
+**falsified**, and implementing it (task 1 of this round) would have been
+*wrong*: no such code was written.
+
+### Where the residual must live
+
+Every term that the frozen file exposes is uniform in the failing hours -
+`TEMPK` (bit-exact), `T-LEV 2/8/9` (bit-exact), `USTAR`/`EL` (identical to this
+chain to five decimals) - and this chain's own `QH`, `RHO`, pre-`AVEMIX`
+`ZICONV` and `ZI` are uniform too, yet the reference's `ZI` varies by up to
+51 m. The variation must therefore originate in a **state the CALMET.DAT does
+not record**: the reference's own `MIXHT` memory (`ZICONV`, `DPTT`) or its
+`QH`, neither of which is a file field. The case's `met.dat.aux` was inspected
+for it and is only the CALMET control-file echo (no hourly fields), so this
+state is not recoverable from the case artifacts.
+
+**Bounds, tolerances untouched:** `ZI` <= 51.06 m / 4.9 % relative (1.26 % of
+cells, 42 hours); `WSTAR` <= 0.0263 m/s / 1.9 % (1.4 %, 48 hours); `T-LEV 5-7`
+<= 2.51669 K (713 cells); `EL` <= 630 cells in two hours.
+
+**Next minimal experiment (specified):** dump the reference's internal
+`ZICONV`/`DPTT` (or `QH`) by re-running the original CALMET with the debug
+output enabled (`LDBHR`/`out`), which belongs to the tracks that own the
+original executable; with that single array the remaining questions are
+decidable term by term. Without it, `ZI`/`WSTAR`/`T-LEV 5-7` cannot be
+validated bit-exactly against this file, and the bounds above are the honest
+statement.
