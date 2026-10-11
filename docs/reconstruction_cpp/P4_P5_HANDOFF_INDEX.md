@@ -3,7 +3,7 @@
 本文件是**跨分支索引**，不是第二份可冲突的技术规范。功能完成程度以对应阶段状态文档为准：
 
 - **[P4 READ62 详细清单（P4 独立分支）](https://github.com/RRain001/CTEAS/blob/codex/cteas-p4-read62-reference/docs/reconstruction_cpp/P4_READ62_IMPLEMENTATION_STATUS.md)**：原版 Python/Fortran 模块映射、已实现功能、未支持控制项、原版数值等价证据。
-- **[P5 SMERGE 详细清单（P5 独立分支）](P5_SMERGE_IMPLEMENTATION_STATUS.md)**：原始地面气象数据下载和筛选、主站/次站处理、GENERIC 输入接口、原版多站 SMERGE/CALMET 验证、C++ 输出写入器缺口。
+- **[P5 SMERGE 详细清单（P5 独立分支）](P5_SMERGE_IMPLEMENTATION_STATUS.md)**：原始地面气象数据下载和筛选、主站/次站处理、GENERIC 输入接口、**原生 C++20 SURF.DAT 写出器及字节等价证据**、原版 CALMET 验证和非目标格式差距。
 - [P5 气象资料和静风政策](../../native_cpp/modules/p5_smerge/data_prep/ISD_LITE_HYBRID_WIND_POLICY.md)。
 - [原始主计划](PROGRAM_MASTER_PLAN.md)只记录 P1–P7 的长期任务边界；不要将早期日期和状态当作最新阶段资格。
 
@@ -12,7 +12,7 @@
 | 阶段 | 已经通过的独立验收 | 不可错误宣称 |
 | --- | --- | --- |
 | P4 | 限定 `JDAT=2, IFMT=1, PSTOP=500` 的 C++20 `UP.DAT` 全年与原版 READ62 **212,885 个数值字段和文件字节等价**；逐年 IGRA 站点选择/ FSL/最终 CALMET 输入连通 | 不能说完全复制 READ62 的所有 `JDAT/IFMT`、替代探空、缺测层剔除、顶底层修正及各种控制组合 |
-| P5 | 独立 C++20 `JDAT=8 GENERIC` 输入与 UTC 逐时组装契约通过；Python NOAA 源数据+站点策略已实现；**原版** SMERGE/CALMET 六日单站和稀疏双站流程 PASS | 不能说原生 C++ 已生成 `SURF.DAT`，也不能把原版程序跑通当作 C++/Fortran `SURF.DAT` 数值等价 |
+| P5 | 独立 C++20 `JDAT=8 GENERIC` 输入、**IOFORM=2 格式化 SURF.DAT 写出**，合肥六日真实输入 **13,841/13,841 字节与原版完全相同**；原版 CALMET 已实际读取原生输出 PASS | 不可声称 IOFORM=1、IOPACK=1、LPREV=T 或其他 JDAT 已实现；不等于诊断风场物理独立验证 |
 | P4+P5 → 原 CALMET | 2022年合肥六日、100 m、50×50 原版 CALMET 兼容性 smoke PASS | 不等于 C++ P6 的诊断风场、原版 CALMET 的完整气象物理精度验证 |
 
 ## 责任边界：原代码 → 当前实现
@@ -26,8 +26,8 @@
 | 主站缺测、静风，次站稀疏规范 | `engine/preprocess/smerge_surf_data/interpolate.py`；原 SMERGE `RDWRITS JDAT=8` | P5 `wind_policy_v2.py`, `sparse_station_policy.py`, `interpolate.py`；符合最新用户规则 |
 | 研究时段拼接，站点别名/控制文件 | `engine/preprocess/smerge_surf_data/{clean_merge_filled_by_research_time,generate_smerge_input_sections}.py` | P5 同名 scoped Python + `station_identity.py` |
 | C++ SMERGE 输入读取 | `engine/vendor/src/SMERGE_v5.7.0_L121203/SMERGE.FOR` (`RDWRITS`) | P5 `native_cpp/include/cteas/met_input/p5_smerge.hpp` 仅解析与逐时合并 |
-| `SURF.DAT` 与原版运行日志 | `SMERGE.FOR` (`RDWRITS/WRS/WRHD/RDS/PACKS`) | **仍由未改动的原版 Fortran 运行**；P5 无 C++ SURF.DAT writer |
-| `MET.DAT` | `engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for` | 本阶段只调用原版做兼容性测试；原生 P6 属另一分支 |
+| `SURF.DAT` 与原版运行日志 | `SMERGE.FOR` (`RDWRITS/WRS/WRHD/RDS/PACKS`) | **由原生 C++20 `native_cpp/modules/p5_smerge/p5_surf_main.cpp` 独立写出**，限定 JDAT8/IOFORM2 逐字节等价；原版 Fortran 只作为独立参考 |
+| `MET.DAT` | `engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for` | 已通过原版 CALMET 直接消费原生 C++ SURF.DAT 的兼容性测试；独立 P6 属另一分支 |
 
 ## 必须持续执行的规则
 
@@ -44,4 +44,4 @@
 - [P5 C++/Python 单元及规范检查](https://github.com/RRain001/CTEAS/actions/runs/38109473510)（新增任意长度间隔测试）
 - [P4+P5 经原版 SMERGE/CALMET 运行](https://github.com/RRain001/CTEAS/actions/runs/38108309198)
 
-**下一阶段工作归属：** P4 若扩展未支持控制项，应从原版 `READ62.FOR` 指定路径建立新参考案例；P5 优先补齐真正的 C++ `SURF.DAT` writer，再验证真实多站跨年以及每个时刻、每个站点、每个气象字段的数值和缺测掩码。
+**下一阶段工作归属：** P4 其他控制项需建立独立参考；P5 实际使用的原生 C++ `SURF.DAT` writer 已按原版字节等价验收，下一步优先完成真实多站跨年、更广覆盖率/气象条件的比对。未支持的原版二进制打包/LPREV/其他 JDAT 控制项须单独实现与验收。
