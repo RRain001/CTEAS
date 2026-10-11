@@ -1,3 +1,5 @@
+> **HISTORICAL SOURCE AUDIT ONLY.** As of 2026-10-11 the P5 active source-wind policy is v2 whole-vector hold + user-prescribed calm replacement. This Fortran audit remains valid as a line-level source comparison but its Scheme C numerical input policy is not used. See ISD_LITE_HYBRID_WIND_POLICY.md.
+
 # Scheme C: scoped P5 wind input and original SMERGE/CALMET Fortran audit
 
 Date: 2026-10-10. Source files remain read-only.
