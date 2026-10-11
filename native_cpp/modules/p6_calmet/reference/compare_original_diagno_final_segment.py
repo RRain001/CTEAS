@@ -202,7 +202,7 @@ def compare(fwind,cwind,fb,cb):
         for field,pos in (("u",3),("v",4),("div",5),("w_below",6),("w_above",7)):
             orig,cand=float(r[pos]),float(c[field])
             if not (math.isfinite(orig) and math.isfinite(cand)):
-                raise ValueError("nonfinite DIAGNO source field")
+                raise ValueError(f"nonfinite DIAGNO source field {field} at {idx}: original={orig!r}, cpp={cand!r}")
             tol=TOL_DIV_PER_S if field=="div" else TOL_WIND_MPS
             err=abs(orig-cand)
             max_errors[field]=max(max_errors[field],err)
