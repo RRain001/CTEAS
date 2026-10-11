@@ -441,13 +441,13 @@ int main(int argc,char** argv){
             // Without a certified mixing height the profile is left missing
             // above level 1 rather than invented.
             float mixing_height_m=-1.f;
-            if(!ziconv_hours.empty()){
+            if(!zi_hours.empty()){
                 const std::size_t cell=std::size_t(ny/2)*std::size_t(nx)+
                                        std::size_t(nx/2);
                 const std::size_t offset=h*std::size_t(nx)*std::size_t(ny)+cell;
-                if(offset>=ziconv_hours.size())
-                    throw std::runtime_error("ZICONV file has no block for "+hour_label(clock));
-                mixing_height_m=ziconv_hours[offset];
+                if(offset>=zi_hours.size())
+                    throw std::runtime_error("ZI file has no block for "+hour_label(clock));
+                mixing_height_m=zi_hours[offset];
             }
             // The DIAGI-built station column that INTER2 consumes is the one
             // the mixing height caps (calmet.for L6894 passes
@@ -825,8 +825,8 @@ int main(int argc,char** argv){
           "\"station_local_km\": ["<<centre_x_km<<", "<<centre_y_km<<"], "
           "\"station_local_km_source\": \"case.yaml grid centre equals stations.csv lat/lon\", "
           "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\", "
-          "\"verification\": \""<<(ziconv_hours.empty()
-            ? "MIXING_HEIGHT_NOT_SUPPLIED_ALL_LEVELS_NEUTRAL_SIMILT: with no --ziconv the DIAGI/INTER2 surface column is the uncapped neutral SIMILT at all nine levels, which is the measured cause of the height-growing error (against the frozen met.dat: U-LEV 9 13.5074 and U-LEV 8 10.0186 worst over 143 hours, both FAIL)"
+          "\"verification\": \""<<(zi_hours.empty()
+            ? "MIXING_HEIGHT_NOT_SUPPLIED_ALL_LEVELS_NEUTRAL_SIMILT: with no --zi/--el the DIAGI/INTER2 surface column is the uncapped neutral SIMILT at all nine levels, which is the measured cause of the height-growing error (against the frozen met.dat: U-LEV 9 13.5074 and U-LEV 8 10.0186 worst over 143 hours, both FAIL)"
             : "PARTIAL_LEVELS_8_9_PASS_LEVELS_1_7_NEUTRAL_SIMILT_GAP: against the frozen met.dat through P6F+P6E (143 hours, 357500 cells per level, tolerance 1e-4+1e-5*|ref|) U-LEV 9 4.00543e-05 and V-LEV 9 2.09808e-05 pass with zero exceedances, U-LEV 8 2.90871e-05 and V-LEV 8 2.09808e-05 pass with zero exceedances; levels 1-7 still exceed (U-LEV 2 2.47476, U-LEV 5 4.8366 worst over 143 hours) because the levels inside the mixing height carry the neutral SIMILT instead of the original STHEOR profile; report /home/lhy/build/p6d/e2e/work/p6g_report.json")
             <<"\"},\n";
     meta<<"  \"inter2\": {\"product\": \"inter2_u/v_*.f32 = the pre-tail INTER2 stage\", "
