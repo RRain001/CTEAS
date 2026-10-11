@@ -15,12 +15,20 @@ permissions:
 jobs:
   original-inter2:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, lhy-desktop]
     timeout-minutes: 15
     concurrency:
       group: p6d-inter2-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
+      - name: Verify dedicated P6D runner
+        shell: bash
+        run: |
+          echo "P6D runner=$RUNNER_NAME os=$RUNNER_OS arch=$RUNNER_ARCH"
+          if [[ "$RUNNER_NAME" != "lhy-desktop" || "$RUNNER_OS" != "Linux" ]]; then
+            echo "::error::P6D must run on the Linux lhy-desktop runner"
+            exit 1
+          fi
       - name: Check GitHub HTTPS before checkout
         shell: bash
         run: |
