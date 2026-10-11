@@ -274,6 +274,12 @@ jobs:
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
             --cpp build/p6e/p6e_mixhmc_reference \
             --out build/p6e/mixhmc-original-parity.json
+      - name: Original unmodified Batchvarova-Gryning MIXHBG convective height source parity
+        run: |
+          python3 native_cpp/modules/p6_calmet/p6e/reference/compare_original_mixhbg.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --cpp build/p6e/p6e_mixhbg_reference \
+            --out build/p6e/mixhbg-original-parity.json
       - name: Original unchanged MIXDT observed sounding lapse-rate numerical parity
         run: |
           python3 native_cpp/modules/p6_calmet/p6e/reference/compare_original_mixdt.py \
@@ -315,6 +321,7 @@ jobs:
             build/p6e/cloud3-original-parity.json
             build/p6e/surfvar-multistation-original-parity.json
             build/p6e/mixhmc-original-parity.json
+            build/p6e/mixhbg-original-parity.json
             build/p6e/mixdt-original-parity.json
             build/p6e/mixht-observed-mc-original-parity.json
             build/p6e/temp3d-observed-land-original-parity.json

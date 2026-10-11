@@ -234,3 +234,17 @@ add_test(NAME p6e_e18_real_2022_p6c_observed_temp3d_smoke
   --fixture "${CMAKE_CURRENT_SOURCE_DIR}/reference/data/hefei_2022_p6c_original_obs.zlib.b64"
   --cpp "$<TARGET_FILE:p6e_temp3d_observed_land_reference>"
   --out "${CMAKE_CURRENT_BINARY_DIR}/e18-real2022-observed-replay.json")
+
+# E19 Batchvarova-Gryning convective mixing height (original IMIXH=2 MIXHBG).
+add_executable(p6e_mixhbg_tests tests/mixhbg_tests.cpp)
+add_executable(p6e_mixhbg_reference src/mixhbg_reference_main.cpp)
+target_link_libraries(p6e_mixhbg_tests PRIVATE p6e_solar)
+target_link_libraries(p6e_mixhbg_reference PRIVATE p6e_solar)
+if(MSVC)
+ target_compile_options(p6e_mixhbg_tests PRIVATE /W4 /WX)
+ target_compile_options(p6e_mixhbg_reference PRIVATE /W4 /WX)
+else()
+ target_compile_options(p6e_mixhbg_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+ target_compile_options(p6e_mixhbg_reference PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6e_mixhbg_software COMMAND p6e_mixhbg_tests)

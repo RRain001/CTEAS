@@ -457,3 +457,83 @@ No P6D or real original CALMET 2022 P6E full field equivalence is
 asserted. **The only actual physical 2022 inputs here are archived
 P6C observations; ZICONV is a clearly labeled test parameter.**
 E18 remains pending CI until accepted.
+
+## 2026-10-11 local re-verification of the full selected parity suite
+
+Independent local reproduction on the dedicated build host (not a GitHub
+job), GCC **12.3.0** + gfortran 11 shim, commit `db14738`/`ad963d3`:
+
+- `cmake -S native_cpp/modules/p6_calmet/p6e -B … -DCMAKE_CXX_COMPILER=$g++-12`
+  and `ctest`: **19/19 PASS** (0.25 s) with the new E19 target.
+- All **15** source-locked unchanged-Fortran comparators PASS with zero
+  exceedances, plus the E18 actual-observation replay PASS.
+
+Explicit E5–E7 numerical verdicts re-confirmed in this reproduction
+(these replace the earlier "verdict withheld" state):
+
+- **E5 ELUSTR stable night (`QH<0`)** — `compare_original_elustr_stable.py`,
+  30 cases x 600 cells = **1,800 scalars PASS**, 0 mismatches. Cells: 535
+  stable land, 65 water. Max absolute errors `QH = 5.000e-11 W/m²`,
+  `USTAR = 4.910e-12 m/s`, `L = 5.000e-8 m`; frozen limits 0.001 / 3e-5 /
+  0.04 absolute and 5e-5 relative. Water `QH=-0.1` print precision 5e-12;
+  water USTAR/L sentinels exact.
+- **E6 WSTARR** — `compare_original_wstarr.py`, 30 cases x 20 cells =
+  **600 values PASS**, 0 mismatches, max absolute `w*` error
+  **4.920064355928844e-12 m/s**; frozen limits 2e-5 m/s absolute and 3e-5
+  relative. 411 land positive-heat, 114 land nonpositive, 75 water.
+- **E7 MIXHT stable (`QH<0`)** — `compare_original_mixht_stable.py`,
+  30 cases x 600 cells x 2 fields = **1,200 scalars PASS**, 0 mismatches,
+  514 land / 86 water; max absolute `ZI` error 3.800e-9 m, `ZICONV` exactly
+  0.0; frozen limits 0.06 m absolute and 4e-5 relative.
+
+All three still carry the same scope caveats (stable/night branch and
+standalone source comparison only; no 2022 COMP coupling).
+
+## E19 original MIXHBG Batchvarova–Gryning convective mixing height
+
+`E18` fixed the convective height to three synthetic values. The remaining
+documented gap "unsupported BG `IMIXH=2` path" needed the *other* legal
+CALMET convective-growth closure. E19 adds it as an isolated C++20 kernel
+`include/cteas/p6e/mixhbg.hpp` derived from **unmodified** CALMET 6.5.0
+`calmet.for` L11304–11545 (`Subroutine MIXHBG` + `function fbg`):
+
+- original analytical "false images" pseudo-steady solution with the
+  Newton/secant iteration, the `|f| <= 1 s` early exits, the 10-iteration
+  cap and the non-positive-argument fallback that averages the last two
+  guesses;
+- original REAL*4 constants `g=9.81`, `rho=1.2`, `cp=1005`, `vonk=0.4`,
+  `ca=0.2`, `cb=2.5`, `cc=8`;
+- the threshold flux `WTO = THRESH*H0/(RHO*CP)` and the `IZICRLX` switch:
+  full collapse to zero when positive `L` or negative net buoyancy, exact
+  previous-height retention when the net buoyancy flux is exactly zero, or
+  relaxation `ZICEQ + (H0-ZICEQ)*exp(-NSECDT/TZICRLX)` toward the
+  equilibrium height when `0 < WT < WTO`;
+- the `GAMMA = max(GAMMA, DPTMIN)` lapse floor and both encroachment limits
+  (`EL > -500 m` square-root form, `EL <= -500 m` cube-root form);
+- the original trailing clamp `ZICBG = min(h, ZIMAX)` then
+  `ZICBG = max(h, ZIMIN)`, both using `h`, reproduced verbatim.
+
+`ILAPSE=2` only: the lapse rate above the previous mixing height is supplied
+by the caller (selected AA/BB sounding). The MM5 `MIXDT2` search used by
+`ILAPSE=1` is deliberately not implemented and is a fail-stop stub in the
+comparison driver.
+
+`reference/compare_original_mixhbg.py` compiles the verbatim original
+`MIXHBG` + `FBG` with the real vendor `ZIPARM.MET`/`GEN.MET` includes and
+compares **240 cases x 2 fields = 480 scalars**. Coverage gate (fail-closed,
+no run starts if unmet): 72 collapse, 5 exact zero-net-buoyancy retention,
+24 relaxation, 139 growth, of which **48 deep-limit `EL <= -500 m`** cases;
+both `IZICRLX` modes and all `NSECDT` 600/1800/3600 s steps.
+
+Local result on the dedicated host: `status=PASS`, 0 exceedances, max
+absolute `ZICBG` difference **2.564e-3 m** (limit 0.07 m + 8e-5 relative),
+max absolute `GAMMA` difference **4.90e-15 K/m** (limit 2e-7 K/m).
+
+**Scope / NOT claimed:** this is the standalone BG convective-height kernel
+with a *provided* lapse. It does **not** wire `IMIXH=2` selection into the
+composed E13 `MIXHT + MIXDT + MIXHMC` grid path (that path still selects the
+Maul-Carson closure), does not reproduce the `ILAPSE=1` MM5 `MIXDT2` lapse
+search, does not run the `WATER`/`MIXHT2` prognostic callers, and does not
+compare 2022 hourly COMP fields. `P6E_FULL` remains **NOT PASS**; 2022
+precipitation `IPCODE` is still missing 143/143, so wet forcing stays
+unqualified.
