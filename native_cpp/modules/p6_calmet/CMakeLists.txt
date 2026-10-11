@@ -318,6 +318,17 @@ else()
   target_compile_options(cteas_p6_realcase_wind_field PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+# Fail-closed contract run of the real-case producer on the frozen 5 km case
+# tree (read-only inputs; outputs go to the build tree). The producer throws on
+# any missing or invalid case input, so exit status plus the emitted hour count
+# is the whole assertion.
+add_test(NAME p6d_realcase_wind_producer_case_contract
+         COMMAND cteas_p6_realcase_wind_field
+                 --case ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011
+                 --out ${CMAKE_CURRENT_BINARY_DIR}/realcase_wind_ctest)
+set_tests_properties(p6d_realcase_wind_producer_case_contract PROPERTIES
+                     PASS_REGULAR_EXPRESSION "hours=143")
+
 # P6D9A composed trace for chained unmodified original Fortran comparisons.
 add_executable(cteas_p6_d9a_source_trace src/diagno_d9a_trace_main.cpp)
 target_link_libraries(cteas_p6_d9a_source_trace PRIVATE cteas_p6a_contracts)
