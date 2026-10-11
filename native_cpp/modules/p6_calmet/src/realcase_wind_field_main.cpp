@@ -134,7 +134,7 @@ std::string hour_label(std::chrono::sys_seconds clock){
 }
 
 struct Arguments {
-    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir;
+    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir;
     int hours=143;
     fs::path out()const{return out_dir;}
 };
@@ -156,6 +156,7 @@ int main(int argc,char** argv){
         else if(flag=="--surface")args.surface=next();
         else if(flag=="--upper")args.upper=next();
         else if(flag=="--fixtures")args.fixture_dir=next();
+        else if(flag=="--gamma")args.gamma_dir=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
         else throw std::invalid_argument("unknown argument "+flag);
     }
@@ -291,6 +292,8 @@ int main(int argc,char** argv){
 
     // Original INTER2 controls from the deck: radii in km, RVARY off and the
     // per-layer station limit. WO is not read here: RDWT sets 1.0 for IPROG=0.
+    const float critfn=deck_scalar(controls,"CRITFN",1.f);
+    const float fradj_tinf_k=285.f;  // unused for ISURFT<0 (TEMP2D is used)
     const float rmin_km=deck_scalar(controls,"RMIN",0.1f);
     const float rmax1_km=deck_scalar(controls,"RMAX1",100.f);
     const float rmax2_km=deck_scalar(controls,"RMAX2",200.f);
@@ -488,6 +491,33 @@ int main(int argc,char** argv){
                 corrected_v[n]+=flow.v_mps[n];
             }
         }
+        // Original FRADJ (L5643-L5644) runs BEFORE SLOPE and is enabled only
+        // when a gridded GAMMA is available. The real case derives GAMMA in
+        // PREPDI via CGAMMA (calmet.for L3340-L3395), which consumes ZICONV;
+        // until that array is wired in, GAMMA is caller-supplied and the stage
+        // stays off so no unfounded correction is applied.
+        bool fradj_applied=false;
+        if(!args.gamma_dir.empty()){
+            const fs::path gamma_file=args.gamma_dir/
+                ("gamma_"+hour_label(clock)+".f32");
+            std::ifstream gamma_in(gamma_file,std::ios::binary);
+            if(!gamma_in)
+                throw std::runtime_error("missing gridded GAMMA "+gamma_file.string());
+            std::vector<float> gamma_grid(2500);
+            gamma_in.read(reinterpret_cast<char*>(gamma_grid.data()),2500*4);
+            if(!gamma_in)
+                throw std::runtime_error("truncated gridded GAMMA "+gamma_file.string());
+            const auto adjusted=froude_adjust(
+                nx,ny,nz,grid_m,grid_m,geo.terrain_m,envelope.maximum_m,
+                gamma_grid,surface_state.temp_k,-1,fradj_tinf_k,critfn,
+                std::vector<float>(zface.begin(),zface.end()),
+                WindUV{corrected_u,corrected_v});
+            corrected_u=adjusted.u;corrected_v=adjusted.v;
+            fradj_applied=true;
+        }
+        if(fradj_applied)
+            write_f32(args.out()/("fradj_corrected_u_"+hour_label(clock)+".f32"),
+                      corrected_u);
         write_f32(args.out()/("slope_corrected_u_"+hour_label(clock)+".f32"),
                   corrected_u);
         write_f32(args.out()/("slope_corrected_v_"+hour_label(clock)+".f32"),
@@ -677,8 +707,9 @@ int main(int argc,char** argv){
           " \"product\": \"slope_corrected_u/v_*.f32\","
           " \"note\": \"chain-computed QH, TEMP2D and TERSET envelope; the corrected step one feeds the blend and the W tail\"},";
     meta<<"\n";
-    meta<<"    {\"stage\": \"FRADJ (L5643-L5644)\", \"status\": \"PENDING_GAMMA\","
-          " \"missing\": [\"GAMMA grid: CGAMMA needs ZICONV from the traced convective forcing (P6E MIXHT/WSTARR family)\"],"
+    meta<<"    {\"stage\": \"FRADJ (L5643-L5644)\", \"status\": \""<<(args.gamma_dir.empty()?"PENDING_GAMMA":"APPLIED_WITH_CALLER_GAMMA")<<"\","
+          " \"gamma_source\": \""<<(args.gamma_dir.empty()?"none":args.gamma_dir.string())<<"\",""
+          " \"missing_when_pending\": [\"GAMMA grid: the real case derives it in PREPDI via CGAMMA (calmet.for L3340-L3395) whose convective branch consumes ZICONV; P6E E29 exports that array as <prefix>.ziconv.f32 with the accuracy caveat GAMMA_SOURCE: P6E_CHAIN_INTERNAL_UNCALIBRATED\"],"
           " \"note\": \"therefore the emitted W faces are SLOPE-compensated but not FRADJ-compensated\"},\n";
     meta<<"    {\"stage\": \"SMOOTH/DIVCEL/W tail (DIAGNO L6119-L6148)\", \"status\": \"APPLIED_SLOPE_COMPENSATED_FRADJ_PENDING\","
           " \"product\": \"w_face_*.f32 (10 faces per column)\","
