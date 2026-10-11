@@ -438,7 +438,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    float ha1,float ha2,float hb1,float hb2,
                    const std::string& wind_path,int mnmdav,float hafang,
                    const std::string& geo_path,float hc1,float hc2,float hc3,
-                   const std::string& state_prefix,float fcoriol) {
+                   const std::string& state_prefix,float fcoriol,
+                   bool skip_avemix) {
     const auto reference=read_calmet_dat21(reference_path);
     // Optional wind source: the frozen original U/V/W for the same intervals.
     std::optional<WindLevels> wind;
@@ -668,7 +669,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             ziconv=mixing.ziconv;
             // COMP L4715: IAVEZI=1 averages ZI and ZICONV upwind with the
             // ILEVZI=1 wind level before WSTARR and the output write.
-            {
+            if(!skip_avemix) {
                 AvetmpInput av;
                 av.nx=static_cast<std::size_t>(h.nx);
                 av.ny=static_cast<std::size_t>(h.ny);
@@ -1188,7 +1189,8 @@ int main(int argc,char** argv) {
                           static_cast<float>(std::stod(argument(argc,argv,"--hc3","0.12"))),
                           argument(argc,argv,"--state-prefix"),
                           static_cast<float>(std::stod(
-                              argument(argc,argv,"--fcoriol","1.0e-4"))));
+                              argument(argc,argv,"--fcoriol","1.0e-4"))),
+                          std::stoi(argument(argc,argv,"--skip-avemix","0"))!=0);
             return 0;
         }
         if(mode=="check") {
