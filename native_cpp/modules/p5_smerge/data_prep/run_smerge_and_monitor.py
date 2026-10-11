@@ -8,6 +8,7 @@ Purpose:
 
 from __future__ import annotations
 
+import argparse
 import csv
 import os
 import re
@@ -236,13 +237,24 @@ def find_keywords(text: str, keywords: list[str]) -> list[str]:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser(description="Run scoped C++ native or original SMERGE backend")
+    ap.add_argument("--native-cpp-bin", type=Path, default=None,
+                    help="Use independent C++20 SURF.DAT writer. Never calls original Fortran.")
+    args = ap.parse_args()
     case_name = current_case_name()
     set_case_paths(case_name)
-    try:
-        resolve_executable("smerge")
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"[ERROR] {exc}")
-        return 1
+    native_binary = args.native_cpp_bin
+    if native_binary is not None:
+        native_binary = native_binary.resolve()
+        if not native_binary.is_file():
+            print(f"[ERROR] Native C++ SMERGE executable not found: {native_binary}")
+            return 1
+    else:
+        try:
+            resolve_executable("smerge")
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"[ERROR] {exc}")
+            return 1
     if not SMERGE_INP.exists():
         print(f"[ERROR] smerge.inp not found: {SMERGE_INP}")
         return 1
@@ -262,23 +274,23 @@ def main() -> int:
     start_time = datetime.now()
 
     with RUNTIME_LOG.open("w", encoding="utf-8") as logf:
-        proc = run_binary(
-            "smerge",
-            str(SMERGE_INP),
-            cwd=WORK_DIR,
-            stdout=logf,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bin_root=BIN_ROOT,
-            legacy_bin_root=VENDOR_BIN_DIR,
-        )
+        if native_binary is None:
+            proc = run_binary(
+                "smerge", str(SMERGE_INP), cwd=WORK_DIR, stdout=logf,
+                stderr=subprocess.STDOUT, text=True, bin_root=BIN_ROOT,
+                legacy_bin_root=VENDOR_BIN_DIR)
+        else:
+            proc = subprocess.run(
+                [str(native_binary), str(SMERGE_INP)], cwd=WORK_DIR,
+                stdout=logf, stderr=subprocess.STDOUT, text=True, check=False)
 
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
 
     # Load logs for checks
     runtime_text = RUNTIME_LOG.read_text(encoding="utf-8", errors="ignore") if RUNTIME_LOG.exists() else ""
-    runlst_text = runlst.read_text(encoding="utf-8", errors="ignore") if runlst.exists() else ""
+    runlst_text = (runlst.read_text(encoding="utf-8", errors="ignore")
+                   if native_binary is None and runlst.exists() else "")
     combined = runtime_text + "\n" + runlst_text
 
     err_keywords = ["fatal", "error", "abort", "segmentation fault", "forrtl", "cannot open"]
@@ -297,7 +309,7 @@ def main() -> int:
         final_dat, final_csv = publish_final_surface_outputs(inp_text, surfdat)
         fixed_values, fixed_hours = fill_missing_cloud_cover_in_surfdat(final_dat)
         _ = (end_time, duration, runlst, runlst_size, final_csv, fixed_values, fixed_hours)
-        print("数据结构处理完成")
+        print("P5_SURFDAT_PUBLISHED=PASS backend=" + ("NATIVE_CPP20" if native_binary else "ORIGINAL_FORTRAN"))
         return 0
 
     print("[RESULT] SMERGE run failed or is suspicious. Check logs:")
