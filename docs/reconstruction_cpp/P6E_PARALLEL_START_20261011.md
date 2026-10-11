@@ -137,3 +137,22 @@ No E6 PASS claim until self-hosted numeric workflow completes.
 
 Pending major physics: full daytime unstable ELUSTR; daytime and
 nighttime MIXHT; TEMP3D and full 2022 hourly coupled comparison.
+
+## E7 MIXHT nighttime mechanical mixing (pending source parity)
+
+Added original CALMET `MIXHT` stable `QH<0` path: Venkatram
+`constn*ustar**1.5` and Zilitinkevich
+`0.4*sqrt(ustar*EL/FCORI)`, taking their minimum then enforcing
+original user `ZIMIN`/`ZIMAX`; `ZICONV=0` on nocturnal land
+while **all water fields remain unchanged**. The standalone compiled
+Fortran harness preserves the *entire unmodified* original MIXHT
+subroutine and actual vendor ZIPARM/UPMET includes. Unsupported
+daytime MIXDT/MIXHMC/MIXHBG and debug OUT call stubs terminate if
+mistakenly executed. Frozen 30 configs x 20 grid cells x 2 fields
+= **1200 scalar values**, absolute 0.06 m / relative 4e-5 limits.
+
+Neither E7 nor earlier E5/E6 is accepted until the self-hosted
+lhy-desktop actually executes and returns original Fortran parity
+logs/artifacts. This selected path does not qualify daytime mixing
+heights, mixed-layer convective growth, or real AA/BB sounding
+time-slicing. **Full P6E remains NOT PASS**.
