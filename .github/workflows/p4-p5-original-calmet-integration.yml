@@ -3,7 +3,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/p4-p5-original-calmet-integration.yml'
-      - 'native_cpp/modules/p5_smerge/data_prep/**'
+      - 'native_cpp/**'
+      - 'project/cases/**'
 jobs:
   original-calmet:
     if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
@@ -15,22 +16,30 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Use isolated P4 and P3 implementations without merging branches
+      - name: Verify integrated P1-P5 HEAD (no cross-branch overlays)
         shell: bash
         run: |
           set -euo pipefail
+          # After merging PR #4/#3/#5/#6/#7 into the foundation,
+          # each scoped implementation MUST come from exactly the
+          # checked-out integrated commit, not an old branch overlay.
+          for source in \
+            native_cpp/src/geo/terrain_grid.cpp \
+            native_cpp/src/geo/landuse_fraction.cpp \
+            native_cpp/reference/capture_p3_makegeo.py \
+            native_cpp/modules/p4_read62/data_prep/run_cpp_pipeline.py \
+            native_cpp/modules/p5_smerge/p5_surf_main.cpp; do
+            git cat-file -e "HEAD:$source"
+            test -s "$source"
+          done
+          # Reuse only the ORIGINAL reference-case YAML; never rewrite
+          # scoped P1-P5 implementation code from another branch.
           git fetch --no-tags origin main
           git restore --source=FETCH_HEAD -- project/cases/smoke5d_coldstart_20260701/case.yaml
-          git fetch --no-tags origin codex/cteas-p4-read62-reference
-          git restore --source=FETCH_HEAD -- native_cpp/modules/p4_read62 native_cpp/tests/p4_read62_tests.cpp native_cpp/include/cteas/met_input/p4_read62.hpp native_cpp/include/cteas/met_input/p4_updat.hpp
-          git fetch --no-tags origin codex/cteas-p3-makegeo-100m
-          git restore --source=FETCH_HEAD -- native_cpp/reference/capture_p3_makegeo.py
-          test -s native_cpp/modules/p4_read62/data_prep/run_cpp_pipeline.py
-          test -s native_cpp/reference/capture_p3_makegeo.py
           mkdir -p integration-evidence
-          git rev-parse HEAD > integration-evidence/p5-head.sha
-          git rev-parse origin/codex/cteas-p4-read62-reference > integration-evidence/p4-source.sha
-          git rev-parse origin/codex/cteas-p3-makegeo-100m > integration-evidence/p3-source.sha
+          git rev-parse HEAD > integration-evidence/integrated-p1-p5-head.sha
+          git status --short > integration-evidence/worktree-after-reference-case.txt
+          printf 'P1_P5_INTEGRATED_HEAD_NO_BRANCH_OVERLAY=PASS\n'
       - name: Toolchains
         shell: bash
         run: |
