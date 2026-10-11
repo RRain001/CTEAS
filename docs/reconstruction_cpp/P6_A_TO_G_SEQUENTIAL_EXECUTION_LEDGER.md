@@ -2,7 +2,7 @@
 
 日期：2026-10-11。适用范围：合肥 2022-01-01 00:00 UTC 至 2022-01-06 23:00 UTC **144 个时间标签/143 个实际一小时时段**；5×5 km、50×50、100 m、9 层、UTM50N/WGS84。原版 CALMET 6.5.0 Level 150223。用户指令：**严格 P6A → P6B → P6C → P6D → P6E → P6F → P6G，先验收当前完整阶段，再进入下一阶段。**
 
-**截至本轮原版独立验收（2026-10-11）最新有效门槛：P6A PASS；P6B PASS；P6C PASS_SCOPED_HEFEI_2022_OBSERVATIONS；P6D IN_PROGRESS / SOURCE_KERNELS_AND_SELECTED_DIAGNO_W_SEGMENT_PASS / FULL_2022_UVW_NOT_PASS；P6E/P6F/P6G 未通过整阶段验收；P6_CALPUFF_READY=FALSE。** 前文分期记录中标注的 P6C PARTIAL/HOLD 均为此前阶段的历史状态，不再代表最新结论。降水输入另行保持不合格，不能据此宣称湿沉降可用。详见 [P6C RDSN/CGAMMA 原版运行时最终审计](P6C_RDSN_CGAMMA_2022_AUDIT.md) 和 [CI #38113874913](https://github.com/RRain001/CTEAS/actions/runs/38113874913)。
+**截至本轮原版独立验收（2026-10-11）最新有效门槛：P6A PASS；P6B PASS；P6C PASS_SCOPED_HEFEI_2022_OBSERVATIONS；P6D IN_PROGRESS / SOURCE_KERNELS_AND_SELECTED_DIAGNO_W_SEGMENT_PASS / FULL_2022_UVW_NOT_PASS；P6E/P6F/P6G 未通过整阶段验收（**P6F 写出器子项已实现：对 2022 冻结参考逐字节等价、E22/P7 双解码器交叉可读；字段物理数值仍未验收**）；P6_CALPUFF_READY=FALSE。** 前文分期记录中标注的 P6C PARTIAL/HOLD 均为此前阶段的历史状态，不再代表最新结论。降水输入另行保持不合格，不能据此宣称湿沉降可用。详见 [P6C RDSN/CGAMMA 原版运行时最终审计](P6C_RDSN_CGAMMA_2022_AUDIT.md) 和 [CI #38113874913](https://github.com/RRain001/CTEAS/actions/runs/38113874913)。
 
 
 
@@ -45,8 +45,18 @@ DIAGNO L6119–6148 的选定片段完整通过 SMOOTH→全层 DIVCEL→由下�
 | **P6C** 几何、观测预处理 | **PASS_SCOPED_HEFEI_2022_OBSERVATIONS** | 既有 TERSET/DIAGI、GEO 20,000、SURF 1,144、UP 6,280、VERTAV 234、PREPDI 2,574、FACET 130；[COMP+RDSN 143h 真实运行时](https://github.com/RRain001/CTEAS/actions/runs/38113500059) AA/BB 286 个时次、RDSN 1,144 个输入值、858 时间字段、0 差异；[CGAMMA 143h 原版实时调用](https://github.com/RRain001/CTEAS/actions/runs/38113874913) 86/51/6 三分支 PASS，最大误差 5.0E-11 K/m；原版 MET.DAT 插桩前后 SHA 相同 | 本阶段**仅**验收固定 2022 一地面虚拟站、一探空站、GEO/SURF/UP 与 143h 观测输入的选定配置；其他格式、多站与缺测回填分支未纳入支持范围。雨量另列不合格，不妨碍无雨诊断风场开发 |
 | **P6D** 三维诊断风场 | **IN_PROGRESS / VERIFIED_KERNELS_AND_SELECTED_W_SEGMENT / FULL_NOT_PASS** | 原版 FRADJ（既有）；[SLOPE PR #9](https://github.com/RRain001/CTEAS/pull/9) 270,000 U/V；[DIVCEL PR #12](https://github.com/RRain001/CTEAS/pull/12) 90,000 散度+36 峰值；[MINIM/WINDBC PR #13](https://github.com/RRain001/CTEAS/pull/13) 270,000 U/V/DIV+7,200 边界；[SMOOTH PR #14](https://github.com/RRain001/CTEAS/pull/14) 180,000 U/V；[DIAGNO W 片段 PR #15](https://github.com/RRain001/CTEAS/pull/15) 450,000 U/V/DIV/W+7,200 边界；全部合并到 P6 开发分支，仅证明指定原版源码片段的人工场景数值等价 | 尚缺真实 2022 观测驱动 WIND1/SIMILT/INTER2、FRADJ/SLOPE 和 DIAGNO 全路径集成，以及原版 1h、6h、143h 逐层 U/V/W、掩码和散度对照；不得宣称 P6D 完成 |
 | **P6E** 地表与边界层 | **NOT_STARTED** | P6B 原版包含微气象字段格式，不代表 C++ 物理 PASS | `SOLAR`、`HEATFX`、`ELUSTR`、`MIXHT`、`TEMP3D`、`SURFVAR`、云量/RH/稳定度/混合层高度/地表参数全字段独立对照；白天、夜间、低风与稳/不稳定 |
-| **P6F** `CALMET.DAT` 写出 | **NOT_STARTED_CPP_WRITER** | 原版二进制 v2.1 记录框架、字段名、时间标签、顺序和维度的独立读取解码 PASS | C++ 完整合法输出 v2.1，原版 P7 读取，物理值正确；不能仅以文件可读取作为科学数值通过 |
+| **P6F** `CALMET.DAT` 写出 | **WRITER_IMPLEMENTED / BYTE_IDENTITY_2022_PASS / FIELD_VALUES_NOT_ACCEPTED** | 独立 C++ 写出器新子模块 `native_cpp/modules/p6_calmet/p6f`（库 + CLI `roundtrip`/`check`/`emit-fixture`）：冻结 2022 `met.dat` 重写后逐字节相同、SHA-256 仍为 `b1823cda…`；E22 契约读取器 6,435 个字段记录逐格一致；P7 独立解码器对重写文件报告与原始文件完全相同；见 [P6F 审计](P6F_CALMET_DAT21_WRITER_AUDIT.md) | 用重建后的 P6D/P6E 场逐值对照原版（P6G）；写出合法文件/逐字节自证不等于数值正确，`IRTYPE=0`、`NPSTA=-1` 仍不支持 |
 | **P6G** 全链条科研验收 | **NOT_STARTED** | 已有原版固定对照；需等待 P6C→F | 同源同控制的 143 个完整时段、逐网格逐高度逐场对照及独立审计；按预注册误差门槛和质量分母给出 PASS/FAIL；站点代表性/雨量/扩散结果分别报告 |
+
+### 2026-10-11 P6F `CALMET.DAT` 2.1 C++ 写出器：布局与逐字节证据 PASS（字段数值门槛仍开放）
+
+- 新子模块 `native_cpp/modules/p6_calmet/p6f/`（分支 `codex/p6f-calmet-dat21-writer-20261011`）：库 `cteas::p6f` + CLI `cteas_p6f_calmet_dat21_writer`（`roundtrip` / `check` / `emit-fixture`）。布局依据未改动原版 `OUTHD` L12448–L12537、`OUTHR` L13067–L13237、`WRTR1D/WRTR2D/WRTI2D` L36734–L36881、`map.met` L5–L7，与 P7 读取器、P6E E22 契约互不共享代码。
+- **逐字节自证**：读取 2022 冻结 `met.dat`（64,762,556 B、SHA-256 `b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30`、7,562 条记录、1,114 条注释、143 时段×45 字段）→ 以显式字段数组重新序列化 → 与冻结文件逐字节相同、输出 SHA-256 不变。该 CTest fail-closed 注册：冻结参考或 P7 解码器缺失时 CMake configure 直接失败，不会静默跳过。
+- **交叉可读**：① E22 契约读取器 `cteas::p6e::read_calmet_dat21` 重读重写后的真实案例，6,435 个字段记录逐格逐位一致（并反向验证 P6F 可读 E22 写出的文件）；② P7 独立解码器 `original_decode_calmet_hourly.py` 对重写文件报告 `PASS_ORIGINAL_CALMET_EXPLICIT_TIME_AND_FIELD_LAYOUT`，且报告与冻结原始文件完全相同（含其自算 SHA-256）。
+- **独立清点**：CTest 内 Python 记录遍历（记录框架、1,114×132 B 注释、176 B 控制块、十条静态记录的零时钟字、OUTHR 顺序、时间标签与 3600 s 区间、XMISS 对齐计数）与写出器 `check` 报告的逐字段分母/缺测数完全一致；冻结文件的小时字段不含 `XMISS`（0/16,087,500 单元），缺测路径由合成夹具覆盖。
+- **fail-closed**：维数/站点数/静态记录长度不符、OUTHR 顺序错位、整数-实数类别不符、区间≠3600 s、时间不连续、声明运行窗口与正文不符、`NPSTA=0` 时出现 `RMM/IPCODE`、缺字段、非有限值、`ZICONV/DPTT/QH/USTAROLD` 等无文件表示的内部量，一律报错而非静默修补；负例（截断、记录标记损坏、标签损坏、静态时钟非零、区间秒数损坏）在 CTest 中必须失败。
+- **未达成**：写出器只保证布局、时间语义、单位、掩码与“数值逐字节不丢失”，**不保证重建 2022 场的物理数值正确**；P6F 整阶段门槛中的“物理值正确”仍需 P6G 用 P6D/P6E 场与原版逐值对照。支持模式仅 `IRTYPE=1`/`IWFCOD=1`/`NPSTA>=0`；`IRTYPE=0` 与 `NPSTA=-1` 不支持（fail-closed）。
+- **交付与门槛**：[PR #26](https://github.com/RRain001/CTEAS/pull/26)（base `main`）；权威本地门 `python3 scripts/local_gate.py --track p6f` → `LOCAL_GATE_P6F=PASS`（4/4 CTest，g++-12 Debug）。
 
 ## 2. 新增 P6C 站点几何子模块：原版真实源码依据
 

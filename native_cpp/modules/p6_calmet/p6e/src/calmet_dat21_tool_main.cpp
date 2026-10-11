@@ -21,6 +21,8 @@
 //        gates. Layout or unit mismatches fail closed.
 #include "cteas/p6e/calmet_dat21.hpp"
 #include "cteas/p6e/mixht_observed_mc.hpp"
+#include "cteas/p6e/solar.hpp"
+#include "cteas/p6e/surface_solar.hpp"
 #include "cteas/p6e/surfvar_multistation.hpp"
 #include "cteas/p6e/temp3d_observed_land.hpp"
 
@@ -268,6 +270,8 @@ void emit_synthetic(const std::string& path,std::size_t hours,int nx,int ny,int 
 struct BridgeObservation {
     double air_temperature_k=9999.;
     double humidity_pct=9999.;
+    double opaque_cloud_tenths=9999.;
+    double pressure_mb=9999.;
 };
 std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
     std::ifstream file(path);
@@ -287,6 +291,8 @@ std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
     };
     const auto temperature=column("air_temperature_k");
     const auto humidity=column("humidity_pct");
+    const auto cloud=column("opaque_cloud_tenths");
+    const auto pressure=column("pressure_mb");
     std::vector<BridgeObservation> observations;
     while(std::getline(file,line)) {
         if(line.empty())continue;
@@ -294,11 +300,14 @@ std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
         std::string token;
         std::istringstream stream(line);
         while(std::getline(stream,token,','))fields.push_back(token);
-        if(fields.size()<=std::max(temperature,humidity))
+        if(fields.size()<=std::max(std::max(temperature,humidity),
+                                     std::max(cloud,pressure)))
             throw std::invalid_argument("bridge CSV short row");
         BridgeObservation observation;
         observation.air_temperature_k=std::stod(fields[temperature]);
         observation.humidity_pct=std::stod(fields[humidity]);
+        observation.opaque_cloud_tenths=std::stod(fields[cloud]);
+        observation.pressure_mb=std::stod(fields[pressure]);
         observations.push_back(observation);
     }
     if(observations.empty())throw std::invalid_argument("bridge CSV has no hours");
@@ -306,7 +315,8 @@ std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
 }
 
 void emit_realcase(const std::string& reference_path,const std::string& observations_path,
-                   const std::string& out_path,const std::string& report_path) {
+                   const std::string& out_path,const std::string& report_path,
+                   float ha1,float ha2,float hb1,float hb2) {
     const auto reference=read_calmet_dat21(reference_path);
     const auto observations=read_bridge_csv(observations_path);
     const auto& h=reference.header;
@@ -324,14 +334,23 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     surf.irad=1;
     surf.numts=5;
     surf.stations.resize(1U);
-    surf.stations[0].x_m=reference.statics.surface_x_m[0]*1000.f;
-    surf.stations[0].y_m=reference.statics.surface_y_m[0]*1000.f;
+    // XSSTA/YSSTA are stored in metres relative to the SW corner of grid cell
+    // (1,1) - the same metres as the stored DGRID - so the source expression
+    // `r2=(xxx*dgridi-xc)**2+(yyy*dgridi-yc)**2` is reproduced exactly.
+    surf.stations[0].x_m=reference.statics.surface_x_m[0];
+    surf.stations[0].y_m=reference.statics.surface_y_m[0];
     CalmetDat21Header candidate_header=h;
     candidate_header.comments={"P6E partial CALMET.DAT 2.1 candidate for the real 2022 case",
         "Geometry, station coordinates and time labels are copied run inputs",
         "Only TEMPK, IRH and T-LEV1 are produced; every other field is 9999. missing"};
     candidate_header.run_hours=static_cast<int>(reference.intervals);
     const auto labels=calmet21_hourly_labels(h.nz,h.irtype,h.lcalgrd,h.npsta);
+    const int base_timezone=timezone_hours_from_axtz(h.timezone);
+    // Grid solar geometry through the documented interface
+    // cteas/p6e/surface_solar.hpp: UTM zone 50N / WGS-84 cell centres.
+    const auto solar_grid=surface_solar_grid(
+        static_cast<std::size_t>(h.nx),static_cast<std::size_t>(h.ny),50,
+        h.xorigin_m,h.yorigin_m,h.dgrid_m);
     std::vector<CalmetDat21Field> hourly;
     std::size_t produced_temperature=0U,missing_humidity=0U;
     for(std::size_t hour=0;hour<reference.intervals;++hour) {
@@ -343,6 +362,22 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         const auto surface=surfvar_multistation(surf);
         const auto& reference_first=
             reference.hourly[hour*reference.fields_per_hour];
+        // Documented interface: cteas/p6e/surface_solar.hpp.
+        const float cloud_fraction=heatfx_cloud_fraction(
+            static_cast<int>(observation.opaque_cloud_tenths));
+        const auto sinalpc=sinalpc_grid(solar_grid,reference_first.begin.julian_day,
+                                        reference_first.begin.hour,base_timezone);
+        // airden() L2085: RHO(i,j) = 0.3484321 * PRES(nears(i,j)) / TEMP2D(i,j)
+        if(!(observation.pressure_mb>0.0)||observation.pressure_mb>=9998.0)
+            throw std::invalid_argument(
+                "station surface pressure missing or out of range for airden");
+        const float station_pressure_mb=static_cast<float>(observation.pressure_mb);
+        std::vector<float> density(cells,0.f);
+        for(std::size_t k=0;k<cells;++k)
+            density[k]=0.3484321f*station_pressure_mb/surface.temp2d_k[k];
+        std::vector<float> shortwave(cells,0.f);
+        for(std::size_t k=0;k<cells;++k)
+            shortwave[k]=heatfx_shortwave(sinalpc[k],cloud_fraction,ha1,ha2,hb1,hb2);
         for(const std::string& label:labels) {
             CalmetDat21Field field;
             field.label=label;
@@ -361,6 +396,12 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                 if(surface_temperature||layer_one)
                     for(std::size_t k=0;k<cells;++k)
                         field.real_values[k]=surface.temp2d_k[k];
+                if(label=="QSW")
+                    for(std::size_t k=0;k<cells;++k)
+                        field.real_values[k]=shortwave[k];
+                if(label=="RHO")
+                    for(std::size_t k=0;k<cells;++k)
+                        field.real_values[k]=density[k];
             }
             hourly.push_back(std::move(field));
         }
@@ -371,14 +412,18 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     report+="  \"reference\": "+json_string(reference_path)+",\n";
     report+="  \"observations\": "+json_string(observations_path)+",\n";
     report+="  \"intervals\": "+std::to_string(reference.intervals)+",\n";
-    report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\"],\n";
+    report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\",\"QSW\",\"RHO\"],\n";
     report+="  \"produced_real_hours\": "+std::to_string(produced_temperature)+",\n";
     report+="  \"hours_with_missing_station_humidity\": "+std::to_string(missing_humidity)+",\n";
+    report+="  \"shortwave_constants\": {\"ha1\": "+json_number(ha1)+", \"ha2\": "+json_number(ha2)+
+            ", \"hb1\": "+json_number(hb1)+", \"hb2\": "+json_number(hb2)+"},\n";
+    report+="  \"base_timezone_hours\": "+std::to_string(base_timezone)+",\n";
     report+="  \"missing_sentinel_fields\": [";
     {
         bool first=true;
         for(const auto& label:labels) {
-            if(label=="TEMPK"||label=="IRH"||label=="T-LEV  1")continue;
+            if(label=="TEMPK"||label=="IRH"||label=="T-LEV  1"||label=="QSW"||
+               label=="RHO")continue;
             report+=(first?"":", ")+json_string(label);
             first=false;
         }
@@ -699,7 +744,11 @@ int main(int argc,char** argv) {
                 throw std::invalid_argument(
                     "emit-realcase needs --reference, --observations and --out");
             emit_realcase(reference_file,observations,out,
-                          argument(argc,argv,"--report"));
+                          argument(argc,argv,"--report"),
+                          static_cast<float>(std::stod(argument(argc,argv,"--ha1","990."))),
+                          static_cast<float>(std::stod(argument(argc,argv,"--ha2","-30."))),
+                          static_cast<float>(std::stod(argument(argc,argv,"--hb1","-0.75"))),
+                          static_cast<float>(std::stod(argument(argc,argv,"--hb2","3.4"))));
             return 0;
         }
         if(mode=="check") {

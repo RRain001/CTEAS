@@ -24,10 +24,28 @@ struct Calmet21Field {
     std::vector<float> real_values;
     std::vector<std::int32_t> integer_values;
 };
+// Static header fields of the original CALMET.DAT 2.1 OUTHD section, written
+// before the first hourly field (CALMET calmet.for L12482-12536): ZFACE
+// (nz+1 reals), station coordinates, then the per-cell grids Z0, ILANDU
+// (written as INTEGER by WRTI2D), ELEV, XLAI and NEARS (INTEGER). P7G decodes
+// them because the dry-deposition and terrain/shear paths need per-cell
+// roughness, land use and leaf area index.
+struct Calmet21Static {
+    bool present = false;
+    std::vector<float> cell_face_m;              // ZFACE, nz+1
+    std::vector<float> roughness_m;              // Z0, nx*ny
+    std::vector<std::int32_t> land_use;          // ILANDU, nx*ny integers
+    std::vector<float> elevation_m;              // ELEV, nx*ny
+    std::vector<float> leaf_area_index;          // XLAI, nx*ny
+    std::vector<std::int32_t> nearest_station;   // NEARS, nx*ny integers (optional)
+    std::size_t decoded_records = 0;
+};
+
 struct Calmet21Summary {
     Calmet21Header header;
     std::size_t intervals = 0, hourly_fields = 0, metadata_records = 0;
     Calmet21Time first_begin, final_end;
+    Calmet21Static statics;
 };
 
 // Original CALMET 6.5.0 CALMET.DAT 2.1, IRTYPE=1, IWFCOD=1.

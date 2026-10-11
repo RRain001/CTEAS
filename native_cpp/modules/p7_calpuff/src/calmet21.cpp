@@ -84,6 +84,83 @@ std::vector<std::string> expected_labels(int nz) {
         labels.emplace_back(label);
     return labels;
 }
+
+// Original OUTHD static records (CALMET calmet.for L12482-12536). Labels are
+// exact and the payload length must match the documented field, otherwise the
+// record is malformed and must not be ignored silently.
+bool decode_static_record(const std::string& label, const std::vector<std::uint8_t>& record,
+                          int nx, int ny, int nz, Calmet21Static& statics) {
+    const std::size_t cells = std::size_t(nx) * std::size_t(ny);
+    const auto grid_reals = [&record](std::size_t count, const std::string& name) {
+        check(record.size() == 24U + 4U * count, "malformed " + name + " static grid");
+        std::vector<float> values;
+        values.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            const float value = real32(record, 24U + 4U * i);
+            check(std::isfinite(value), "nonfinite " + name + " value");
+            values.push_back(value);
+        }
+        return values;
+    };
+    const auto grid_integers = [&record](std::size_t count, const std::string& name) {
+        check(record.size() == 24U + 4U * count, "malformed " + name + " static grid");
+        std::vector<std::int32_t> values;
+        values.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            values.push_back(integer32(record, 24U + 4U * i));
+        }
+        return values;
+    };
+    const auto check_range = [&label](const std::vector<float>& values, float low, float high) {
+        for (const float value : values) {
+            check(value >= low && value <= high, "out-of-range " + label + " value");
+        }
+    };
+    if (label == "ZFACE") {
+        statics.cell_face_m = grid_reals(std::size_t(nz) + 1U, label);
+        statics.present = true;
+        ++statics.decoded_records;
+        return true;
+    }
+    if (label == "Z0") {
+        statics.roughness_m = grid_reals(cells, label);
+        check_range(statics.roughness_m, 0.0F, 100.0F);
+        statics.present = true;
+        ++statics.decoded_records;
+        return true;
+    }
+    if (label == "ILANDU") {
+        statics.land_use = grid_integers(cells, label);
+        for (const auto value : statics.land_use) {
+            check(value >= 0 && value <= 1000, "out-of-range ILANDU category");
+        }
+        statics.present = true;
+        ++statics.decoded_records;
+        return true;
+    }
+    if (label == "ELEV") {
+        statics.elevation_m = grid_reals(cells, label);
+        check_range(statics.elevation_m, -1000.0F, 10000.0F);
+        statics.present = true;
+        ++statics.decoded_records;
+        return true;
+    }
+    if (label == "XLAI") {
+        statics.leaf_area_index = grid_reals(cells, label);
+        check_range(statics.leaf_area_index, 0.0F, 20.0F);
+        statics.present = true;
+        ++statics.decoded_records;
+        return true;
+    }
+    if (label == "NEARS") {
+        statics.nearest_station = grid_integers(cells, label);
+        statics.present = true;
+        ++statics.decoded_records;
+        return true;
+    }
+    return false;
+}
+
 Calmet21Header header(const std::vector<std::uint8_t>& v, int ncom) {
     check(v.size()>=100U, "missing original control header");
     Calmet21Header h;
@@ -146,6 +223,7 @@ Calmet21Summary Calmet21Reader::read(const std::string& path,
         const bool no_time=(integer32(r,8)==0 && integer32(r,16)==0);
         if (no_time && result.hourly_fields==0) {
             check(label!=labels.at(0), "missing timestamp on first U field");
+            if (decode_static_record(label, r, h.nx, h.ny, h.nz, result.statics)) continue;
             ++result.metadata_records;
             continue;
         }

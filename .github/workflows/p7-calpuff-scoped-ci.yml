@@ -267,6 +267,52 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/tests/drydep_parity_tests.py \
             --probe "$scratch/build/cteas_p7f_drydep_probe" \
             --repo-root "$GITHUB_WORKSPACE" --require
+      - name: P7E receptor geometry, sampling and CONC.DAT source parity (required)
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 native_cpp/modules/p7_calpuff/tests/p7e_parity_tests.py \
+            --probe "$scratch/build/cteas_p7e_probe" \
+            --repo-root "$GITHUB_WORKSPACE" --require
+      - name: P7G CALMET static fields (Z0/ILANDU/ELEV/XLAI) decoded from the locked case
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          met=project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
+          if [ ! -f "$met" ]; then
+            echo "P7G_LOCKED_CASE_STATICS=SKIPPED_NOT_IN_SPARSE_CHECKOUT"
+            exit 0
+          fi
+          "$scratch/build/cteas_p7_calmet21_tests" --met "$met"
+      - name: P7G real-cell dry deposition velocity on locked case inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          case_dir=project/cases/hefei5km_2022_reference_case_20261011/run
+          if [ ! -f "$case_dir/met/met.dat" ]; then
+            echo "P7G_REAL_CELL_VD=SKIPPED_NOT_IN_SPARSE_CHECKOUT"
+            exit 0
+          fi
+          "$scratch/build/cteas_p7f_drydep_probe" --real-cell \
+            "$case_dir/met/met.dat" "$case_dir/puff/puff.inp" 25 25 0
+      - name: P7E locked case receptors and frozen CONC.DAT structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          control=project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+          conc=project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con
+          if [ ! -f "$control" ]; then
+            echo "P7E_LOCKED_CASE=SKIPPED_NOT_IN_SPARSE_CHECKOUT"
+            exit 0
+          fi
+          "$scratch/build/cteas_p7e_probe" --receptors "$control"
+          if [ -f "$conc" ]; then
+            "$scratch/build/cteas_p7e_probe" --structure "$conc"
+          fi
       - name: P7F locked Hefei 2022 deck dry deposition audit
         shell: bash
         run: |

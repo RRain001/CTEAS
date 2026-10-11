@@ -53,6 +53,11 @@ target_link_libraries(cteas_p7_calmet21_inspect PRIVATE cteas_p7_calmet21)
 add_executable(cteas_p7_calmet21_tests tests/calmet21_tests.cpp)
 target_link_libraries(cteas_p7_calmet21_tests PRIVATE cteas_p7_calmet21)
 add_test(NAME cteas_p7_calmet21_typed_field_contract COMMAND cteas_p7_calmet21_tests)
+set(P7G_LOCKED_CASE_MET "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat")
+if(EXISTS "${P7G_LOCKED_CASE_MET}")
+  add_test(NAME cteas_p7g_locked_case_static_decode
+    COMMAND cteas_p7_calmet21_tests --met "${P7G_LOCKED_CASE_MET}")
+endif()
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME cteas_p7_original_case_stage_contract
@@ -148,7 +153,7 @@ else()
   target_compile_options(cteas_p7_dry_deposition PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_executable(cteas_p7f_drydep_probe src/drydep_probe.cpp)
-target_link_libraries(cteas_p7f_drydep_probe PRIVATE cteas_p7_dry_deposition)
+target_link_libraries(cteas_p7f_drydep_probe PRIVATE cteas_p7_dry_deposition cteas_p7_calmet21)
 add_executable(cteas_p7_dry_deposition_tests tests/dry_deposition_tests.cpp)
 target_link_libraries(cteas_p7_dry_deposition_tests PRIVATE cteas_p7_dry_deposition)
 if(MSVC)
@@ -162,6 +167,36 @@ if(EXISTS "${P7F_LOCKED_CASE_CONTROL}")
   add_test(NAME cteas_p7f_locked_case_dry_deposition
     COMMAND cteas_p7_dry_deposition_tests --control "${P7F_LOCKED_CASE_CONTROL}")
 endif()
+# P7E: receptor geometry, puff-to-receptor sampling and CONC.DAT framing.
+add_library(cteas_p7_receptors STATIC src/receptors.cpp src/conc_file.cpp)
+target_include_directories(cteas_p7_receptors PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_receptors PUBLIC cteas_p7_control cteas_p7_records)
+if(MSVC)
+  target_compile_options(cteas_p7_receptors PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_receptors PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7e_probe src/p7e_probe.cpp)
+target_link_libraries(cteas_p7e_probe PRIVATE cteas_p7_receptors)
+add_executable(cteas_p7e_tests tests/p7e_tests.cpp)
+target_link_libraries(cteas_p7e_tests PRIVATE cteas_p7_receptors)
+if(MSVC)
+  target_compile_options(cteas_p7e_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7e_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+set(P7E_LOCKED_CASE_CONC "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con")
+if(EXISTS "${P7E_LOCKED_CASE_CONC}")
+  add_test(NAME cteas_p7e_receptor_sampling_conc_contract
+    COMMAND cteas_p7e_tests --control "${P7F_LOCKED_CASE_CONTROL}" --frozen-conc "${P7E_LOCKED_CASE_CONC}")
+else()
+  add_test(NAME cteas_p7e_receptor_sampling_conc_contract COMMAND cteas_p7e_tests)
+endif()
+add_test(NAME cteas_p7e_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7e_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7e_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+
 add_test(NAME cteas_p7f_drydep_source_parity
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/drydep_parity_tests.py"
           --probe "$<TARGET_FILE:cteas_p7f_drydep_probe>"

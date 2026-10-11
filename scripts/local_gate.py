@@ -96,6 +96,18 @@ TRACKS: dict[str, dict] = {
             {"cmd": ["{build}/cteas_p7d_sigma_probe", "--audit",
                      "project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp"],
              "requires": ["project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp"]},
+            {"cmd": ["{build}/cteas_p7_calmet21_tests", "--met", MET_DAT],
+             "requires": [MET_DAT]},
+            {"cmd": ["{build}/cteas_p7f_drydep_probe", "--real-cell", MET_DAT, PUFF_INP, "25", "25",
+                     "0"],
+             "requires": [MET_DAT, PUFF_INP]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/p7e_parity_tests.py",
+                     "--probe", "{build}/cteas_p7e_probe", "--repo-root", ".",
+                     "--require", "--require-case"]},
+            {"cmd": ["{build}/cteas_p7e_probe", "--receptors", PUFF_INP],
+             "requires": [PUFF_INP]},
+            {"cmd": ["{build}/cteas_p7e_probe", "--structure", CASE_2022 + "/run/puff/puff.con"],
+             "requires": [CASE_2022 + "/run/puff/puff.con"]},
             {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/drydep_parity_tests.py",
                      "--probe", "{build}/cteas_p7f_drydep_probe", "--repo-root", ".",
                      "--require", "--require-case"]},
@@ -190,8 +202,16 @@ def main() -> int:
     rc, driver_sha = sh(["git", "-C", str(repo), "rev-parse", "HEAD"], repo, env)
     evidence["driver_sha"] = driver_sha.strip() if rc == 0 else None
 
-    rc, log = sh(["git", "-C", str(repo), "fetch", "--prune", "--quiet", "origin",
-                  "+refs/heads/*:refs/remotes/origin/*"], repo, env)
+    # Retry: a concurrent fetch (e.g. an agent's own `git fetch` in the same
+    # driver checkout) updates the same remote-tracking refs and can make this
+    # fail with a ref-lock error.  Never report BLOCKED for that.
+    for attempt in range(1, 4):
+        rc, log = sh(["git", "-C", str(repo), "fetch", "--prune", "--quiet", "origin",
+                      "+refs/heads/*:refs/remotes/origin/*"], repo, env)
+        if rc == 0:
+            break
+        print(f"fetch attempt {attempt} failed (rc={rc}); retrying")
+        time.sleep(2 * attempt)
     if rc != 0:
         print(f"BLOCKED: git fetch failed (rc={rc}): {log.strip()[:300]}")
         _write(args, evidence, started)

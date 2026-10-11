@@ -528,3 +528,155 @@ What is comparable and now compared: the deposition velocity and the
 time-invariant parameters for the real species configuration, against the
 unmodified vendor routines (above), which is the strongest available
 original-reference check at this stage.
+
+## 2026-10-11 P7E receptors, puff-to-receptor sampling and CONC.DAT framing
+
+The locked deck uses gridded receptors (`LSAMP=T`, `IBSAMP/JBSAMP=1`,
+`IESAMP/JESAMP=50`, `MESHDN=1`) with an empty discrete-receptor subgroup, i.e.
+**2500 receptors at 100 m spacing** (first at 510.935/3531.320 km, last at
+515.835/3536.220 km).
+
+New native module (`include/cteas/puff/receptors.hpp`,
+`include/cteas/puff/conc_file.hpp`, `src/receptors.cpp`, `src/conc_file.cpp`,
+probe `src/p7e_probe.cpp`):
+
+- Receptor geometry from the sampling grid using the vendor cell-centre
+  convention (`(IBSAMP-0.5)*DGRID + i*DELSAM` with `DELSAM = DGRID/MESHDN`) plus
+  discrete receptors from subgroup 17b (`! N = X, Y, ZELEV [, ZRCT] !`).
+  Fail closed on indices outside the met or computational grid, `MESHDN < 1`,
+  receptors outside the met grid, malformed rows, and a deck that enables
+  neither gridded nor discrete receptors.
+- PFSAMP equivalent (the two sampling integrals, including the `A < 1e-4`
+  low-wind branch) and ERFDIF equivalent, both in REAL*4 like the originals.
+- CALCPF gridded-receptor accumulation
+  `conc += VDPVD*F1*TFRACT*(QOLD*T1 + QNEW*T2)` with
+  `dinv = ASDF/(2*pi*sigma_y**2)`, `T2 = I2*dinv`, `T1 = I1*dinv - T2`. The
+  vertical coupling factor F1 (VCBar) and VDPVD are explicit inputs because
+  those layers are not reconstructed; ASDF defaults to 1.0.
+- CONC.DAT writer and reader with the **measured** record layout of the frozen
+  artifact: version record (96 B), comment count (4 B), 132-byte comments,
+  32-byte sampling-period records `(year, julian, hour, seconds) x2`, 32-byte
+  grid descriptors (`nrec, group index, 'TOTAL' 16 chars, XORIGKM, YORIGKM`)
+  and species fields `label(8) + 7-byte index + nx*ny REAL*4` (10015 B for
+  50x50). Fail closed on label length, date/second ranges, non-finite values,
+  field dimension/species-count mismatches and period inconsistencies.
+- Not reconstructed (and refused or explicitly supplied): CTSG (terrain
+  factors, upper/lower splits, slugs, wind shear, PDF), VCBar, the WROUT1
+  header beyond the version and comment records, area/line/volume source
+  sampling, and the AVET averaging machinery of the original output stage.
+
+### Source anchor
+
+`reference/p7e_source_anchor.py` slices the exact spans out of the unmodified
+`calpuff.for` and pins them in `reference/p7e_source_anchor.json`: `PFSAMP`
+L4683-4751, `ERFDIF` L54910-54965, `WRTI1D` L64706-64739, `WRTR1D`
+L64741-64774, `WRTR2D` L64776-64826, plus every vendor `*.puf` include.
+Vendor source `sha256 da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568`.
+The PFSAMP/ERFDIF constants and 8 quoted statements are asserted to still be
+present verbatim in the anchored text.
+
+### CTest evidence
+
+- `cteas_p7e_receptor_sampling_conc_contract`: receptor geometry (2500
+  receptors, `MESHDN=2` refinement to 99x99, discrete receptors, five
+  fail-closed cases), PFSAMP invariants (low-wind branch closed form, invariance
+  under trajectory reversal, closer approach samples more mass), the ERFDIF
+  branches, the accumulation closed form, writer/reader round trip, and
+  **structure parity with the frozen artifact**: identical period/grid/field
+  counts (143/143/143), identical field record sizes (10015 B) and identical
+  period times, with this module's own values.
+- `cteas_p7e_source_parity`: anchors + 8 quoted statements +
+  `P7E_PFSAMP_ORACLE_PARITY=PASS CASES=182 MAX_REL=4.121e-06` (tolerance
+  `1e-5`) against the compiled unmodified PFSAMP + vendor framing readback
+  (records written by the unmodified `WRTI1D`/`WRTR1D` are parsed by this
+  module's reader) + locked-deck receptor geometry +
+  `P7E_FROZEN_CONC_STRUCTURE=PASS RECORDS=3655 PERIOD_RECORDS=143
+  GRID_RECORDS=143 SPECIES_FIELDS=143 FIRST_BEGIN=2022001 LAST_END=2022006`.
+
+### Real-case comparability statement (no fabricated numbers)
+
+**Structure is compared and matches; values are NOT compared.**
+`run/puff/puff.con` (1,896,056 B, 3,655 records) contains 143 sampling-period
+records, 143 grid descriptors and 143 species fields labelled `H-3`
+(10015 B each, i.e. the 50x50 grid) covering 2022 julian days 1-6. This module
+reproduces that data-record structure exactly for the same configuration, but
+its field values are its own. Verified gaps before a value comparison is
+possible:
+
+1. CTSG (the concentration kernel) and the VCBar vertical coupling factor are
+   not reconstructed, so no receptor concentration can be produced for a real
+   puff yet.
+2. Puff advection is still the P7C prototype: no CALPUFF release cadence,
+   split/merge, plume rise, sigma restart (`SIGMA()`/`HEFTRAN`) or terrain
+   interaction.
+3. Per-cell dry-deposition inputs (`Z0`, land use, `XLAI`) live in CALMET
+   static records that the CALMET.DAT reader does not decode yet.
+4. The writer emits the CTEAS header subset (version + comments), so the
+   original post-processing toolchain cannot read these files yet.
+
+## 2026-10-11 P7G CALMET static fields decoded (Z0 / ILANDU / ELEV / XLAI / NEARS)
+
+Closes the "per-cell dry-deposition inputs missing" gap of the P7E round. The
+original CALMET.DAT 2.1 OUTHD static section is written before the first hourly
+field (CALMET `calmet.for` L12482-12536, anchored):
+
+| record | label | contents |
+|---|---|---|
+| NCOM+4 | `ZFACE` | `nz+1` REAL*4 cell face heights |
+| NCOM+5/6 | `XSSTA`/`YSSTA` | surface station coordinates (when `nssta >= 1`) |
+| NCOM+7/8 | `XUSTA`/`YUSTA` | upper air station coordinates |
+| NCOM+9/10 | `XPSTA`/`YPSTA` | precipitation station coordinates |
+| NCOM+11 | `Z0` | `nx*ny` REAL*4 roughness lengths |
+| NCOM+12 | `ILANDU` | `nx*ny` **INTEGER** land use categories (`WRTI2D`) |
+| NCOM+13 | `ELEV` | `nx*ny` REAL*4 elevations |
+| NCOM+14 | `XLAI` | `nx*ny` REAL*4 leaf area indices |
+| NCOM+15 | `NEARS` | `nx*ny` **INTEGER** nearest station indices |
+
+`Calmet21Reader` now decodes these records instead of skipping them
+(`Calmet21Static` in `calmet21.hpp`): the label must be exact and the payload
+length must match the documented field, otherwise the file is malformed and the
+read fails; `Z0`, `ELEV` and `XLAI` must be finite and within physical bounds
+(0-100 m, -1000-10000 m, 0-20), `ILANDU` categories within 0-1000, and
+`ILANDU`/`NEARS` are read as INTEGER exactly as `WRTI2D` writes them.
+
+Locked-case evidence (`project/cases/hefei5km_2022_reference_case_20261011`,
+`met.dat` sha256 `b1823cda...`), CTest
+`cteas_p7g_locked_case_static_decode` with pinned digests:
+
+```
+P7G_STATIC Z0   COUNT=2500 MIN=0.25  MAX=0.25  MEAN=0.25    DIGEST=7401557581232649795
+P7G_STATIC XLAI COUNT=2500 MIN=3     MAX=3     MEAN=3       DIGEST=14015295161301286211
+P7G_STATIC ELEV COUNT=2500 MIN=25    MAX=59.5  MEAN=42.9157 DIGEST=16152187619603912443
+P7G_STATIC_LAND_USE_DIGEST=3196964006486516483 NEAREST_DIGEST=14033661785612014883
+P7G_REAL_MET_STATIC_DECODE=PASS INTERVALS=143 HOURLY_FIELDS=6435
+```
+
+The decoded fields immediately feed the dry-deposition path: the probe mode
+`cteas_p7f_drydep_probe --real-cell MET.DAT PUFF.INP 25 25 0` builds the
+VDCOMP environment from the real file (land use, `Z0`, `XLAI`, `USTAR`, `EL`,
+`QSW`, `TEMPK`, `ZI`, `WSTAR`) and reports, for the locked case:
+
+```
+P7G_REAL_CELL_VD=PASS CELL=25,25 HOUR=0 LAND_USE=20 Z0_M=0.25 XLAI=3 USTAR=0.246525
+  EL=-49.495 QSW=194.594 TEMPK=279.15 ZI=230.977 WSTAR=0.484167 RA=29.5576 DIFFK=11.1832
+  H-3_VD=0.00198035 H-3_FRACDRY=0.970734 HE-3_VD=0 HE-3_FRACDRY=1 NOT_A_MODEL_RUN=true
+```
+
+i.e. H-3 deposits at 0.198 cm/s with 2.9 % removed per 3600 s step at that cell
+and hour, while HE-3 (flagged with no dry removal in the deck) stays at zero.
+This is a coefficient evaluation on real inputs, not a model run: it still uses
+the caller-supplied vertical factor and does not advance any puff.
+
+Remaining incomparability causes after this round (was four, now two):
+
+1. CTSG (the concentration kernel) and `VCBar` are still missing, so no
+   receptor concentration exists for a real puff. `VCBar` is scoped as
+   `function vcbar(ip,mfact0,hlid,ppcoef,lcalm)` at `calpuff.for`
+   L53866-54088 (223 lines, span sha256 prefix `4c6aa6584979`) and it calls
+   `ctadj`, `getelev` and `hlidmax` plus the `/PUFF/`, `/GRID/`, `/CURRENT/`
+   and `/FLAGS/` state; CTSG additionally needs terrain factors, upper/lower
+   layer splits, slug and shear/PDF paths.
+2. Puff advection is still the P7C prototype (no release cadence, split/merge,
+   plume rise, `SIGMA()`/`HEFTRAN` restart or terrain interaction), and the
+   writer emits only the CTEAS header subset, so the frozen `puff.con` values
+   still cannot be reproduced or compared.

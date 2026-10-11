@@ -24,6 +24,7 @@ struct P6CObservedHour {
     int past_seconds=0,to_go_seconds=0,gap_seconds=0;
     std::size_t surface_row=0;
     float surface_temp_k=0.f;
+    float surface_pressure_mb=9999.f;
     int surface_humidity_pct=9999,opaque_cloud_tenths=9999;
     int precipitation_code=9999;
     bool precipitation_code_observed=false;
@@ -82,6 +83,9 @@ inline P6CObservedHour p6c_observed_hour(
         s.record->obs.humidity_pct:9999;
     x.opaque_cloud_tenths=s.record->obs.cloud_valid?
         s.record->obs.opaque_cloud_tenths:9999;
+    // Surface pressure feeds the original airden(): RHO = 0.3484321*PRES/TEMP2D.
+    x.surface_pressure_mb=s.record->obs.pressure_valid?
+        s.record->obs.pressure_mb:9999.f;
     x.precipitation_code_observed=s.record->obs.precipitation_code_valid;
     // Missing 9999 MUST NOT be interpreted as observed dry (0).
     x.precipitation_code=x.precipitation_code_observed?
