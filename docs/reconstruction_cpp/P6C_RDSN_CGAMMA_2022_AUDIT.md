@@ -20,10 +20,10 @@ Original `CGAMMA` L3031–3250 is called from PREPDI for the diagnostic branch (
 2. Otherwise, interpolate raw upper-air surface and `ZUPT` temperature (original `INTP`) between AA/BB in `JORDER` direction.
 3. If the previous convective time falls strictly within the bracket and precedes the present hour, use the original last-convective correction.
 
-**The separate numerical CGAMMA gate must PASS before P6C stage-wide signoff.** A previous CI failure was solely CSV CRLF header incompatibility before numeric comparison, corrected in Python output and C++ input. No numerical equivalence is claimed without passing current full CI.
+**CGAMMA original real-runtime numerical gate: PASS.** [P6B original + P6C COMP/RDSN/CGAMMA 143-hour CI #38113874913](https://github.com/RRain001/CTEAS/actions/runs/38113874913) completed successfully after fixing the independent forcing CSV CRLF/LF schema mismatch. All **143/143 original live CGAMMA calls** compared within the frozen `3.0e-6 K/m` tolerance; max absolute error **5.00000007e-11 K/m**, zero failures. Branches exercised: **86** ordinary soundings, **51** current-hour adiabatic, **6** last-convective retained. The original temporary write-only instrumentation preserved the untouched `MET.DAT` byte hash. This verifies the CGAMMA vertical-temperature process driven by real original `ZICONV`, **not** the P6E mixing-height physics producing `ZICONV`.
 
 ## Independent scientific limits
 
 - P6C selected-case observation scope: 50×50×9, 100 m, one surface virtual station, one `UP.DAT v2.1` upper station, 143 actual one-hour periods, source-validated GEO/UP/SURF. Not a general CALMET multi-station/alternative-format implementation.
 - Original `IPCODE=9999` **143/143 hours**, `NPSTA=0`: wet forcing remains **unqualified**, regardless of any successful dry-air diagnostic wind benchmark.
-- `P6A/P6B=PASS`; while CGAMMA independent source gate is pending, `P6C=PARTIAL`; P6D–G whole-stage integration **HOLD**, P6 CALPUFF-ready **FALSE**.
+- **P6C selected-case observation subsystem PASS:** original 2022 one-surface/one-upper station, real 143-hour `GEO/SURF/UP` and original `COMP/RDSN/PREPDI/VERTAV/FACET/CGAMMA` scalar-state acceptance is complete. `P6A/P6B=PASS`, `P6C=PASS_SCOPED_HEFEI_2022_OBSERVATIONS`; **P6D may begin integrated implementation but is NOT PASS**, P6E–G remain unimplemented/untested; P6 CALPUFF-ready **FALSE**.
