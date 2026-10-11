@@ -985,6 +985,22 @@ rotated onto the real flow) so that the lower-segment branch is actually
 exercised, and reports the `VCBAR` standard-path sum next to the CTSG sum for
 orientation only. **It is not a comparison with the frozen `puff.con`.**
 
+### `VCBAR -> CTSG` is not a vendor call edge (machine-checked)
+
+The CTSG kernel does **not** consume `VCBAR`. The anchored call lists show
+`ctsg -> ctpar, ctrec, lower, puffc, upper` and none of the ported units
+references `VCBAR`; the only caller of `VCBAR` in the whole vendor source is
+`DRY` (`f1=vcbar(jp,mfact0,hlid,ppcoef,lcalmf)`, calpuff.for L26267, the
+Gaussian-puff dry-removal branch that P7F listed as not reconstructed). The
+anchor manifest therefore records the function-reference callers of `VCBAR` and
+`VCOUP` separately from the `call` closure (a `call` scan cannot see
+`f=vcbar(...)`), and the parity test asserts
+`P7M_VCBAR_CLOSURE=PASS VCBAR_FUNCTION_REFERENCE_CALLERS=dry
+CTSG_CONSUMES_VCBAR=false`. What is wired into the F1 chain this round is
+therefore: the standard puff path keeps its P7H `VCBAR` vertical factor, and the
+terrain path gets the reconstructed CTSG kernel - the two are exercised side by
+side on the same real receptor grid below.
+
 ### `flopuff` closure scan and case-path verdict
 
 The closure scan is machine-checked by the anchor manifest and asserted by the
