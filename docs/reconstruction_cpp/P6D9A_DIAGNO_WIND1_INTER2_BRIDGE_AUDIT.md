@@ -42,6 +42,12 @@ The two real-case verdicts are not yet inside `scripts/local_gate.py`'s `p6d` st
 
 Both comparators compile the unchanged original routines with gfortran and are fail-closed, so they belong in the gate rather than only in local evidence.
 
+### Product verification labels (round 11, final)
+
+`metadata.json` now labels each stage with the verdict that belongs to it: `blend.verification` is the **closed field's** own verdict (`PARTIAL_LEVELS_8_9_PASS_LEVELS_1_7_NEUTRAL_SIMILT_GAP` with the frozen-reference numbers when `--ziconv` is given, `MIXING_HEIGHT_NOT_SUPPLIED_ALL_LEVELS_NEUTRAL_SIMILT` with the measured 13.5074/10.0186 m/s levels 9/8 errors when it is not), and the unchanged-original INTER2 verdict moved to `inter2.verification` because it describes `inter2_u/v_*.f32`. The closed-field verdict never over-claims for the uncapped variant.
+
+Recorded directory for downstream consumption (capped variant): `/home/lhy/build/p6d/rw17`, 1865 files, tree SHA-256 (sorted `basename || content`) `7d34bcc9525f19dd1d207a48a40b5aff87501b2ac26315d11db7152e9cc23cfd`, `metadata.json` `a36acd862174f2837c28eb1be482447e942eb996ec6984d2213ae10e882d6b6a`, `blend_u_2022-01-01_01.f32` `5b197b84d13237dcff4b4f9368f5eb9bd43bcabaff34a99f22bb355989ca41b9`.
+
 ### The height-growing U/V error was the uncapped SIMILT surface profile (round 11)
 
 The P6G end-to-end run showed the reconstructed wind's error growing monotonically with height (level 1 `1.518e-03` m/s -> level 9 `13.507` m/s) and attributed it to the missing `SMOOTH`/`DIVCEL`/`WINDBC`. **Measured first, that attribution is wrong**: enabling the closed field changes the product by at most `5.9e-05` m/s (level 9 of hour 1), four orders below the reported error, so the tail is not the cause.
