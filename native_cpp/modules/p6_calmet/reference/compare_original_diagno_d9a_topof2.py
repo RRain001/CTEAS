@@ -182,13 +182,17 @@ def original_source(vendor, out):
 def compile_reference(vendor, out, base_flags):
     import compare_original_diagno_final_segment as diag
     topof2, minim, driver, meta = original_source(vendor, out)
-    # WINDBC is needed by the literal L5598-L5600 snapshot and by MINIM's own
-    # refresh; the literal DIAGNO segment extraction writes it unchanged.
+    # DIVCEL is called by MINIM; WINDBC is needed by the literal L5598-L5600
+    # boundary snapshot and by MINIM's own refresh. Both come from the literal
+    # DIAGNO segment extraction, unchanged.
     routines, _, _ = diag.original_source(vendor, out)
-    windbc = next(path for path, ref in routines if ref["name"] == "windbc")
+    helpers = [path for path, ref in routines
+               if ref["name"] in ("divcel", "windbc")]
+    if len(helpers) != 2:
+        raise RuntimeError("kinematic route DIVCEL/WINDBC extraction missing")
     binary = out / "original_d9a_kinematic"
-    fradj_module.run(list(base_flags) + [topof2, minim, windbc, driver,
-                                         "-o", binary], timeout=120)
+    fradj_module.run(list(base_flags) + [topof2, minim] + helpers +
+                     [driver, "-o", binary], timeout=120)
     return binary, meta
 
 def write_case(path, zface1_m, dz_m, terrain, lapse, temperature, alpha,
