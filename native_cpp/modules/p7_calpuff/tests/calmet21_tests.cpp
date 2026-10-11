@@ -1,5 +1,5 @@
 #include "cteas/puff/calmet21.hpp"
-#include <bit>
+#include <cstring>
 #include <cassert>
 #include <cstdint>
 #include <filesystem>
@@ -16,10 +16,17 @@ void put32(std::vector<std::uint8_t>& b,std::uint32_t v,std::size_t p) {
     for (int j=0;j<4;++j) b[p+j]=std::uint8_t(v>>(j*8));
 }
 void putint(std::vector<std::uint8_t>& b,int x,std::size_t p) {
-    put32(b,std::bit_cast<std::uint32_t>(static_cast<std::int32_t>(x)),p);
+    const std::int32_t i = static_cast<std::int32_t>(x);
+    std::uint32_t bits = 0;
+    static_assert(sizeof(i) == sizeof(bits));
+    std::memcpy(&bits, &i, sizeof(bits));
+    put32(b,bits,p);
 }
 void putfloat(std::vector<std::uint8_t>& b,float x,std::size_t p) {
-    put32(b,std::bit_cast<std::uint32_t>(x),p);
+    std::uint32_t bits = 0;
+    static_assert(sizeof(x) == sizeof(bits));
+    std::memcpy(&bits, &x, sizeof(bits));
+    put32(b,bits,p);
 }
 void record(std::ofstream& f,const std::vector<std::uint8_t>& bytes) {
     const auto size=static_cast<std::uint32_t>(bytes.size());

@@ -2,8 +2,8 @@
 #include "cteas/puff/fortran_records.hpp"
 
 #include <algorithm>
-#include <bit>
-#include <chrono>
+#include <cstring>
+#include <cstdint>
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
@@ -19,10 +19,18 @@ std::uint32_t raw32(const std::vector<std::uint8_t>& v, std::size_t p) {
            (std::uint32_t(v[p+2]) << 16U) | (std::uint32_t(v[p+3]) << 24U);
 }
 std::int32_t integer32(const std::vector<std::uint8_t>& v, std::size_t p) {
-    return std::bit_cast<std::int32_t>(raw32(v,p));
+    const std::uint32_t bits = raw32(v,p);
+    std::int32_t decoded = 0;
+    static_assert(sizeof(decoded) == sizeof(bits));
+    std::memcpy(&decoded, &bits, sizeof(bits));
+    return decoded;
 }
 float real32(const std::vector<std::uint8_t>& v, std::size_t p) {
-    return std::bit_cast<float>(raw32(v,p));
+    const std::uint32_t bits = raw32(v,p);
+    float decoded = 0.0F;
+    static_assert(sizeof(decoded) == sizeof(bits));
+    std::memcpy(&decoded, &bits, sizeof(bits));
+    return decoded;
 }
 std::string ascii(const std::vector<std::uint8_t>& v, std::size_t p, std::size_t size) {
     if (p > v.size() || size > v.size()-p)
@@ -39,8 +47,18 @@ std::string ascii(const std::vector<std::uint8_t>& v, std::size_t p, std::size_t
 void check(bool valid, const std::string& message) {
     if (!valid) throw std::runtime_error("P7B CALMET21 " + message);
 }
+// Gregorian date to days since 1970-01-01, with leap-century correctness.
+// The selected CALMET 2.1 date range is 1900–2100.
+std::int64_t days_from_civil(int year, unsigned month, unsigned day) {
+    year -= (month <= 2U) ? 1 : 0;
+    const int era = (year >= 0 ? year : year - 399) / 400;
+    const unsigned yoe = static_cast<unsigned>(year - era * 400);
+    const unsigned month_shifted = month > 2U ? month - 3U : month + 9U;
+    const unsigned doy = (153U * month_shifted + 2U) / 5U + day - 1U;
+    const unsigned doe = yoe * 365U + yoe / 4U - yoe / 100U + doy;
+    return static_cast<std::int64_t>(era) * 146097 + static_cast<int>(doe) - 719468;
+}
 Calmet21Time timestamp(std::int32_t packed, std::int32_t seconds) {
-    using namespace std::chrono;
     Calmet21Time t;
     t.year = packed / 100000;
     t.julian_day = (packed % 100000) / 100;
@@ -51,10 +69,9 @@ Calmet21Time timestamp(std::int32_t packed, std::int32_t seconds) {
           t.julian_day <= (leap ? 366 : 365) &&
           t.hour >= 0 && t.hour <= 23 && seconds >= 0 && seconds <= 3600,
           "invalid original Julian timestamp");
-    const auto date = sys_days{year{t.year}/January/1};
-    const auto absolute = date + days{t.julian_day-1} +
-                          hours{t.hour} + std::chrono::seconds{seconds};
-    t.unix_seconds = duration_cast<std::chrono::seconds>(absolute.time_since_epoch()).count();
+    t.unix_seconds = (days_from_civil(t.year, 1U, 1U) +
+                      static_cast<std::int64_t>(t.julian_day - 1)) * 86400 +
+                     static_cast<std::int64_t>(t.hour) * 3600 + seconds;
     return t;
 }
 std::vector<std::string> expected_labels(int nz) {

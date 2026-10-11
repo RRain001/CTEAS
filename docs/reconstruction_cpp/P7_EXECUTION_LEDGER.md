@@ -86,3 +86,14 @@ is missing; wet deposition cannot be validated.
   MET.DAT structure and timestamps against new C++ CALMET21 reader. Does NOT
   certify wind physics or CALPUFF original full-case concentration parity.
 - No baseline data is fabricated or read from the historical 2023 case.
+
+## 2026-10-11 P7B Runner-3 build failure corrective patch
+
+Observed: Runner `lhy-desktop-3` was assigned (P7 CI 38121776970,
+38121935433, 38122015862); first two failed while default compiler
+GNU 9.5.0 lacked std::bit_cast and std::chrono calendar. Latest CI
+38122015862 did not reach C++ due to github.com:443 transient timeout.
+P7B replaces bit_cast with standards-conforming memcpy and chrono calendar
+with integer Gregorian-to-epoch conversion; CI selects newer installed
+g++-12/g++-11 when available and retries HTTPS preflight. These corrections
+are **not accepted** until a new job builds and all CTests run successfully.

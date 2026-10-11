@@ -33,10 +33,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! curl --connect-timeout 8 --max-time 15 -fsSI https://github.com/ >/dev/null; then
-            echo "::error::Host cannot reach github.com:443; checkout/CI blocked by runner network, not C++ physics."
-            exit 1
-          fi
+          for attempt in 1 2 3; do
+            if curl --connect-timeout 8 --max-time 15 -fsSI https://github.com/ >/dev/null; then
+              echo "P7_GITHUB_TRANSPORT=PASS attempt=$attempt"
+              exit 0
+            fi
+            echo "::warning::github.com:443 transient failure, attempt=$attempt"
+            sleep 3
+          done
+          echo "::error::Host cannot reach github.com:443 after 3 tries; checkout/network blocked, not physical-model parity."
+          exit 1
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -52,7 +58,16 @@ jobs:
         run: |
           set -euo pipefail
           build="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/build"
+          if command -v g++-12 >/dev/null 2>&1; then
+            compiler="$(command -v g++-12)"
+          elif command -v g++-11 >/dev/null 2>&1; then
+            compiler="$(command -v g++-11)"
+          else
+            compiler="$(command -v c++)"
+          fi
+          "$compiler" --version | head -n 1
           cmake -S native_cpp/modules/p7_calpuff -B "$build" \
+            -DCMAKE_CXX_COMPILER="$compiler" \
             -DCMAKE_BUILD_TYPE=Debug \
             -DP7_ORIGINAL_CONTROL="${GITHUB_WORKSPACE}/engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.inp"
           cmake --build "$build" --parallel 2
