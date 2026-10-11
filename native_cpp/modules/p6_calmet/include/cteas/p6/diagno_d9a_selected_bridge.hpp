@@ -102,9 +102,9 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
         if(request.upstream_mode!=DiagnoD9UpstreamMode::SyntheticIdentityForSourceAudit)
             throw std::invalid_argument("D9 Froude stage cannot re-adjust an external corrected field");
         const auto& f=request.froude;
-        if(f.terrain_m.size()!=22500||f.maximum_terrain_m.size()!=22500||
-           f.lapse_rate_k_per_m.size()!=22500||
-           f.surface_temperature_k.size()!=22500)
+        if(f.terrain_m.size()!=2500||f.maximum_terrain_m.size()!=2500||
+           f.lapse_rate_k_per_m.size()!=2500||
+           f.surface_temperature_k.size()!=2500)
             throw std::invalid_argument("D9 missing original FRADJ 50x50 fields");
         std::vector<float> zface(10);
         zface[0]=request.cellzb_origin_m;
