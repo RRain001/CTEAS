@@ -187,10 +187,58 @@ else()
 endif()
 set(P7E_LOCKED_CASE_CONC "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con")
 if(EXISTS "${P7E_LOCKED_CASE_CONC}")
-  add_test(NAME cteas_p7e_receptor_sampling_conc_contract
+  # P7H: vertical coupling coefficients (VCOUP/VCBAR/CTADJ) of the concentration path.
+add_library(cteas_p7_coupling STATIC src/coupling.cpp)
+target_include_directories(cteas_p7_coupling PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_coupling PUBLIC cteas_p7_control)
+if(MSVC)
+  target_compile_options(cteas_p7_coupling PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_coupling PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+target_link_libraries(cteas_p7_receptors PUBLIC cteas_p7_coupling)
+target_link_libraries(cteas_p7e_probe PRIVATE cteas_p7_coupling cteas_p7_calmet21 cteas_p7_dispersion)
+add_executable(cteas_p7h_tests tests/p7h_tests.cpp)
+target_link_libraries(cteas_p7h_tests PRIVATE cteas_p7_coupling cteas_p7_receptors)
+if(MSVC)
+  target_compile_options(cteas_p7h_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7h_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7h_vertical_coupling_contract COMMAND cteas_p7h_tests)
+add_test(NAME cteas_p7h_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7h_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7e_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+
+add_test(NAME cteas_p7e_receptor_sampling_conc_contract
     COMMAND cteas_p7e_tests --control "${P7F_LOCKED_CASE_CONTROL}" --frozen-conc "${P7E_LOCKED_CASE_CONC}")
 else()
-  add_test(NAME cteas_p7e_receptor_sampling_conc_contract COMMAND cteas_p7e_tests)
+  # P7H: vertical coupling coefficients (VCOUP/VCBAR/CTADJ) of the concentration path.
+add_library(cteas_p7_coupling STATIC src/coupling.cpp)
+target_include_directories(cteas_p7_coupling PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_coupling PUBLIC cteas_p7_control)
+if(MSVC)
+  target_compile_options(cteas_p7_coupling PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_coupling PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+target_link_libraries(cteas_p7_receptors PUBLIC cteas_p7_coupling)
+target_link_libraries(cteas_p7e_probe PRIVATE cteas_p7_coupling cteas_p7_calmet21 cteas_p7_dispersion)
+add_executable(cteas_p7h_tests tests/p7h_tests.cpp)
+target_link_libraries(cteas_p7h_tests PRIVATE cteas_p7_coupling cteas_p7_receptors)
+if(MSVC)
+  target_compile_options(cteas_p7h_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7h_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7h_vertical_coupling_contract COMMAND cteas_p7h_tests)
+add_test(NAME cteas_p7h_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7h_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7e_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+
+add_test(NAME cteas_p7e_receptor_sampling_conc_contract COMMAND cteas_p7e_tests)
 endif()
 add_test(NAME cteas_p7e_source_parity
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7e_parity_tests.py"

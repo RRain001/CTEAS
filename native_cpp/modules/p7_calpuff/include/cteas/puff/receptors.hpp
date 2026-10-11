@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cteas/puff/control.hpp"
+#include "cteas/puff/coupling.hpp"
 
 #include <cstddef>
 #include <string>
@@ -80,6 +81,12 @@ struct ReceptorAccumulationInputs {
 
 [[nodiscard]] double receptor_concentration_increment(
     const SamplingIntegrals& integrals, const ReceptorAccumulationInputs& inputs);
+
+// Coupling-aware accumulation: the vertical factor F1 is taken from the
+// reconstructed VCBAR instead of being supplied by the caller.
+[[nodiscard]] double receptor_concentration_increment_with_coupling(
+    const SamplingIntegrals& integrals, const ReceptorAccumulationInputs& inputs,
+    const VcbarInputs& coupling);
 
 // PFSAMP's ERFDIF dependency, exposed for the source-parity test.
 [[nodiscard]] double erf_difference(double x1, double x2);
