@@ -136,8 +136,19 @@ def fill_wind_forward_calm(df, dir_col, spd_col, strict=False):
                 "end_utc_inclusive": index[count - 1],
                 "hours": count,
             })
-        if count < len(missing) and missing[count:].any():
-            raise ValueError("interior missing after forward fill")
+        # After leading CALM hours, an unseeded positive-speed WD may be
+        # missing in the interior: calm WD=0 is not a valid historical
+        # direction. Retain missing; SMERGE will invalidate the incomplete
+        # wind pair. Do not manufacture a northerly wind.
+    unseeded_noncalm = direction_generic.isna() & speed_generic.gt(0)
+    if unseeded_noncalm.any():
+        first_bad = index[int(np.flatnonzero(unseeded_noncalm.to_numpy())[0])]
+        leading.append({
+            "field": "wind_direction_unseeded_noncalm",
+            "start_utc": first_bad,
+            "end_utc_inclusive": index[-1],
+            "hours": int(unseeded_noncalm.sum()),
+        })
 
     # 0.5 m/s is ONLY a historical P5 diagnostic category, not a clamp.
     low_wind = speed_filled.lt(CALM_LIMIT_M_S).fillna(False)
@@ -162,6 +173,7 @@ def fill_wind_forward_calm(df, dir_col, spd_col, strict=False):
         "wind_direction_raw_deg": direction,
         "wind_speed_raw_m_s": speed,
         "observation_case": observation_case,
+        "unseeded_noncalm_direction": unseeded_noncalm,
         "wind_direction_filled_deg": direction_filled,
         "wind_direction_was_filled": direction_seed.isna() & direction_filled.notna(),
         "wind_direction_fill_source_utc": dir_src,
@@ -193,6 +205,7 @@ def fill_wind_forward_calm(df, dir_col, spd_col, strict=False):
         "observed_speed_only_hours": int((observation_case == "SPEED_ONLY").sum()),
         "observed_direction_only_hours": int((observation_case == "DIRECTION_ONLY").sum()),
         "observed_both_missing_hours": int((observation_case == "BOTH_MISSING").sum()),
+        "unseeded_noncalm_direction_hours": int(unseeded_noncalm.sum()),
         "statistics_speed_field": "wind_speed_filled_m_s",
         "calculation_speed_field": "wind_speed_generic_m_s (NO P5 MINIMUM)",
         "main_table_speed_field": "wind_speed_generic_m_s (zero and low wind retained)",
