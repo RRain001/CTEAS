@@ -6,6 +6,12 @@
 
 
 
+### 2026-10-11 P6D6 INTER2 selected-path 原版对照 PASS（新增）
+
+[独立原版 CI #38121613553](https://github.com/RRain001/CTEAS/actions/runs/38121613553) 在专用 Linux/X64 self-hosted Runner 上成功运行：C++20 / Fortran 11.4 独立编译，**19/19 CTests、4 组 50×50×9 原版 INTER2 U-component 90,000 次数值比较 PASS**，最大绝对差 `9.536745997351659e-7 m/s`（预设门槛 `2e-4 m/s`），没有超容差项；原始 vendor Fortran SHA 不变。支持范围仅原版 `IWFCOD=1, IPROG=0, NBAR=0, NOOBS=0` 下的 `INTER2` 观测-初始场融合，包括显式 LVARY 选项。来源：[专项审计](P6D_INTER2_SELECTED_ORIGINAL_AUDIT.md) / [PR #16](https://github.com/RRain001/CTEAS/pull/16)。
+
+**P6D D6 原版内核已验收，但尚欠 WIND1/SIMILT、完整 DIAGNO 与 1h/6h/143h 2022 真实 U/V/W 对照，故 P6D_FULL_2022_UVW 仍为 NOT_PASS。** 本段覆盖下文仅涉及 INTER2 尚未验收的历史描述。
+
 ### 2026-10-11 P6D 原版数值验收：内核与选定连续计算片段（最新）
 
 独立原版 Fortran 数值 CI：[SLOPE](https://github.com/RRain001/CTEAS/actions/runs/38113822845)、[DIVCEL](https://github.com/RRain001/CTEAS/actions/runs/38115350648)、[MINIM/WINDBC](https://github.com/RRain001/CTEAS/actions/runs/38115632414)、[SMOOTH](https://github.com/RRain001/CTEAS/actions/runs/38115873780)、[DIAGNO 最终风场片段](https://github.com/RRain001/CTEAS/actions/runs/38116193083)。固定原版 CALMET 6.5.0 的源 blob 437f43bb7f0e51a1919e56664663e1a046986ed0，原版源文件未被修改。独立源码提取、编译和验证均通过；已核对非零风场、原版边界、分层记录顺序以及预设容差。
