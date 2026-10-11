@@ -844,3 +844,43 @@ ported**, so the F1 chain still ends at `VCBAR` and the incomparability list
 stays at two causes. The next round's port order is now mechanical: `munu` ->
 `bi`/`bjil` -> `lower` -> `puffc` -> `ctrec` -> `ctsg` (lower branch), then wire
 `VCBAR -> CTSG` and re-run the real receptor grid.
+
+## 2026-10-11 P7L CTSG kernel port: not started; input contract pinned
+
+Round status, stated plainly: the CTSG kernel port (the P7K port order
+`munu -> bi/bjil -> lower -> puffc -> ctrec -> ctsg`) was **not started** - the
+session budget was consumed by the preceding rounds, so no new code, no parity
+evidence and no partial port exist for it. Nothing is approximated or
+substituted; the entry point stays exactly as P7K left it.
+
+To make the next round mechanical, the `/CTPASS/` input contract the kernel
+needs is recorded here from the vendor declaration
+(`engine/vendor/src/CALPUFF_v7.2.1_L150618/ctpass.puf`, real/logical fields):
+
+- timestep and geometry: `sz1, sy1, sz2, sy2, szr, syr` (puff sigmas at the
+  start/end of the step and at the receptor), `frac` (fraction of the step from
+  the start to the receptor), `twokz, twoky` (diffusivities over the step),
+  `t12p, t12rl, t12ru, tstep, tstart, timpg, szimpg, syimpg, szesq, szosq,
+  szpsq, szsq`
+- puff/receptor positions: `xp, yp, xpf, ypf, zpuff, isc` (puff, in metres
+  relative to the met-grid origin), `xr, yr, xrf, yrf, xre, yre, zrec`
+  (receptor), `x12f, x23f, xob`
+- flow state: `q` (emission), `u` (transport speed), `hd` (dividing-streamline
+  height), `ubyn`, `zlid` (lid), `thetaw`, `rotflo`, `rotang`, `alfw, beta,
+  cbeta, d, h, baxi, r`, plus the vertical profiles `z(mxlev), ws(mxlev),
+  abvf(mxlev)` and `nlev`
+- terrain/hill state (unused for this deck, `NHILL=0`): `relief`, `expo`,
+  `scale`, `axmax`, `xc`, `yc`, `thetah`, `zgrid`, `hda`, `ubyna`, `ih`, `ip`,
+  `ir`, `iregl, iregu`, `mhillt`, `nzh`, `zh`, `majaxw`, `minaxw`, `at`,
+  `ntpts`, `xbegin, xend, xspace`
+- receptor arrays: `xrctm(mxrect), yrctm(mxrect)`
+- diagnostics: `ldb, idebug`
+
+The same discipline as P7H applies: these must become **explicit inputs** of the
+ported routines (no hidden common state), and any missing field must fail
+closed. `flopuff` (479 lines) belongs to the upper-segment path, which this deck
+does not use (`NHILL=0`, puff inside the mixed layer); its call closure still
+has to be scanned before deciding whether it is needed at all.
+
+Incomparability causes remain two: the CTSG kernel (not ported), and the
+still-prototype puff model plus the CTEAS-only CONC.DAT header.
