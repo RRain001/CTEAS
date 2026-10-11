@@ -535,3 +535,32 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7t_probe --deck-valley "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
             0 513.3846439571 3533.7689269678 70.8)
 endif()
+
+# P7V: the advection units (ZFIND, ADVWND, ADVECT, PUFFDZ).
+add_library(cteas_p7_advection STATIC src/advection.cpp)
+target_include_directories(cteas_p7_advection PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_advection PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_advection PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7v_tests tests/p7v_tests.cpp)
+target_link_libraries(cteas_p7v_tests PRIVATE cteas_p7_advection)
+if(MSVC)
+  target_compile_options(cteas_p7v_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7v_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7v_advection_contract COMMAND cteas_p7v_tests)
+
+add_executable(cteas_p7v_probe src/advection_probe.cpp)
+target_link_libraries(cteas_p7v_probe PRIVATE cteas_p7_advection cteas_p7_calmet21 cteas_p7_control)
+add_test(NAME cteas_p7v_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7v_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7v_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7v_locked_case_advection
+    COMMAND cteas_p7v_probe --deck-advection "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
+            0 513.3846439571 3533.7689269678 70.8 89.152)
+endif()
