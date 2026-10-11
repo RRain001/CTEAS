@@ -53,11 +53,15 @@ class P5SelectionTests(unittest.TestCase):
             (out / lite.filename(sid,year)).write_bytes(b"mock source")
             return True, "test", False
         def fake_lite_hours(file, year, station_id):
-            count = available.get((station_id, year), available.get(station_id, 0))
+            count = available.get((station_id, year, "lite"),
+                                  available.get((station_id, year),
+                                                available.get(station_id, 0)))
             return count, d.expected_hours_in_year(year)
         def fake_hours(file, year, station_id=None):
             sid = file.name.split("-")[0]
-            return available.get((sid,year),available.get(sid,0)), d.expected_hours_in_year(year)
+            count = available.get((sid,year,"full"),
+                                  available.get((sid,year),available.get(sid,0)))
+            return count, d.expected_hours_in_year(year)
         with patch.object(d, "parse_history_txt", return_value=locations), \
              patch.object(d, "download_one", side_effect=fake_download), \
              patch.object(d, "original_coverage", side_effect=fake_hours), \
@@ -113,6 +117,31 @@ class P5SelectionTests(unittest.TestCase):
         st=[station("58321099999",31.98,116.97)]
         with self.assertRaises(SystemExit):
             self.execute(st,{"58321099999":8760},include_stack=False)
+
+    def test_external_requires_both_full_and_lite_strict_over_90(self):
+        st=[station("58321099999",31.98,116.97),
+            station("58314099999",31.4,116.3)]
+        counts={
+            ("58321099999",2022,"lite"):8400,
+            ("58321099999",2022,"full"):7884,  # exactly 90%, FAIL
+            ("58314099999",2022,"lite"):8000,
+            ("58314099999",2022,"full"):8000,
+        }
+        result=self.execute(st,counts)
+        self.assertEqual(result["primary_sid"],"58314099999")
+        self.assertEqual(result["station_selection_case"],"EXTERNAL_SINGLE_VIRTUAL")
+
+    def test_equal_lite_coverage_tie_breaks_with_full_then_sid(self):
+        st=[station("58321099999",31.94,117.14),
+            station("58314099999",31.945,117.145)]
+        counts={
+            ("58321099999",2022,"lite"):8000,
+            ("58314099999",2022,"lite"):8000,
+            ("58321099999",2022,"full"):8100,
+            ("58314099999",2022,"full"):7900,
+        }
+        result=self.execute(st,counts)
+        self.assertEqual(result["primary_sid"],"58321099999")
 
     def test_leap_strict_gt90pct(self):
         self.assertEqual(d.expected_hours_in_year(2024),8784)
