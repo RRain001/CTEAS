@@ -54,3 +54,21 @@ comparisons are required before any P7 PASS_REFERENCE/PASS_REAL_CASE status.
 3. Execute original CALPUFF 7.2.1 on frozen original 2022 MET.DAT in job-private
    scratch, record original compiler, hashes, log, 1/6/all-143-hour CONC.DAT.
 4. Implement original MET.DAT record-level read/parity before adding puff physics.
+
+## 2026-10-11 P7B second increment — MET.DAT v2.1 field reader
+
+An isolated C++20 Calmet21Reader now handles the original selected
+unformatted CALMET.DAT 2.1 OUTHD/OUTHR, WRTR2D and WRTI2D fields.
+It parses run metadata (time zone, 50x50x9 geometry, spacing, station counts),
+the 4-byte Fortran field prefix (8 ASCII + 4 ints), all 4*Nx*Ny float/int
+grids per field, expected 4*Nz+9 label ordering, exact 3600-second intervals,
+cross-field time consistency, contiguous intervals, and an optional frozen
+Hefei 2022 gate demanding 143 intervals. Integer fields IPGT and IRH are
+explicitly separated from float fields. The callback is streaming and bounded
+to a single field in memory. Synthetic corruption/time/NaN fail-closed tests
+were added; P7 CI still must run before a PASS_SOFTWARE claim.
+
+This is a decoded field I/O contract, not a scientific demonstration of
+CALMET/CALPUFF numerical equivalence. Full raw real-2022 comparison and
+original CALPUFF reference runs remain PENDING. Original 2022 precipitation
+is missing; wet deposition cannot be validated.
