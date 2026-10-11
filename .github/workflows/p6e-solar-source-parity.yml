@@ -158,16 +158,40 @@ jobs:
             echo "::error::The selected CALMET GNU source-parity harness requires a Linux runner"
             exit 1
           fi
-          for tool in cmake c++ gfortran python3 git; do
+          for tool in cmake gfortran python3 git; do
             if ! command -v "${tool}" >/dev/null 2>&1; then
               echo "::error::Missing tool ${tool} on lhy-desktop-2; install it on the runner host"
               exit 1
             fi
             command -v "${tool}"
           done
+          # P6C C++20 chrono sys_seconds/year_month_day needs modern libstdc++.
+          # Default /usr/bin/c++ on this host was GNU 9.5.0, which compiled
+          # E1-E14 but cannot compile E15's existing typed P6C interfaces.
+          selected=""
+          for candidate in g++-14 g++-13 g++-12 g++-11 g++; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              candidate_path="$(command -v "$candidate")"
+              major="$("$candidate_path" -dumpfullversion -dumpversion | cut -d. -f1)"
+              if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 11 )); then
+                selected="$candidate_path"
+                echo "Selected C++20 date/calendar compiler: $selected"
+                "$selected" --version | head -n 1
+                break
+              fi
+            fi
+          done
+          if [[ -z "$selected" ]]; then
+            echo "::error::P6E E15 requires GCC >=11 (C++20 chrono calendar). The runner default GCC 9.5.0 is too old. Install g++-11 or newer on lhy-desktop-2."
+            exit 1
+          fi
+          echo "P6E_CXX=$selected" >> "$GITHUB_ENV"
       - name: C++20 Werror and software CTest
         run: |
-          cmake -S native_cpp/modules/p6_calmet/p6e -B build/p6e -DCMAKE_BUILD_TYPE=Debug
+          # CMake may cache the old GNU 9.5 compiler in this persistent runner.
+          rm -rf build/p6e
+          cmake -S native_cpp/modules/p6_calmet/p6e -B build/p6e \
+            -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER="$P6E_CXX"
           cmake --build build/p6e --parallel 2
           ctest --test-dir build/p6e --output-on-failure
       - name: Source-locked unchanged Fortran SOLAR comparison
