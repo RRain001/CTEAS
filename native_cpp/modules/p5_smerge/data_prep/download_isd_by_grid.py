@@ -365,6 +365,7 @@ def main() -> int:
                                     sha256_file)
         lite_dir = args.out_dir / "isd_lite"
         accepted_lite: dict[str, dict] = {}
+        coverage: dict[str, tuple[int, int, int]] = {}
         for st in ordered:
             success = False
             detail = ""
@@ -372,13 +373,19 @@ def main() -> int:
                 success, detail, _ = download_one(year, st.sid, args.out_dir, args.timeout)
                 if success:
                     break
+            full_count, expected = (0, expected_hours_in_year(year))
             if success:
-                good, msg = validate_time_completeness(
-                    args.out_dir / f"{st.sid}-{year}.csv", year, st.sid)
+                try:
+                    full_count, expected = original_coverage(
+                        args.out_dir / f"{st.sid}-{year}.csv", year, st.sid)
+                    msg = f"full_ISD_source_hours={full_count}/{expected}; coverage={full_count/expected:.4%}"
+                except (ValueError, OSError) as exc:
+                    success = False
+                    msg = f"invalid full ISD source: {exc}"
             else:
-                good, msg = False, f"full ISD download failed: {detail}"
-            lite_ok, lite_msg = False, "ISD-Lite not attempted"
-            if success and (good or mode == "OBSERVED"):
+                msg = f"full ISD download failed: {detail}"
+            lite_ok, lite_msg, lite_count = False, "ISD-Lite not attempted", 0
+            if success:
                 for attempt in range(args.retries):
                     lite_ok, lite_msg, _ = download_lite_one(
                         year, st.sid, lite_dir, args.timeout)
@@ -387,45 +394,72 @@ def main() -> int:
                 if lite_ok:
                     lite_file = lite_dir / lite_filename(st.sid, year)
                     try:
-                        lite_count, expected = lite_time_coverage(lite_file, year, st.sid)
-                        lite_eligible = lite_count >= math.ceil(expected * 0.8 - 1e-10)
+                        lite_count, lite_expected = lite_time_coverage(lite_file, year, st.sid)
+                        if lite_expected != expected:
+                            raise ValueError("full ISD and ISD-Lite calendar denominators disagree")
                         lite_msg = (f"original_ISD_Lite_hours={lite_count}/{expected}; "
-                                    f"coverage={lite_count / expected:.4%}; "
-                                    f">=80%={'PASS' if lite_eligible else 'FAIL'}")
-                        lite_ok = lite_eligible if mode == "VIRTUAL_RELOCATED" else True
+                                    f"coverage={lite_count/expected:.4%}")
                     except (ValueError, OSError, EOFError) as exc:
                         lite_ok, lite_msg = False, f"invalid ISD-Lite source: {exc}"
-                if lite_ok:
-                    accepted_lite[st.sid] = {
-                        "url": lite_source_url(st.sid, year),
-                        "filename": lite_filename(st.sid, year),
-                        "sha256": sha256_file(lite_dir / lite_filename(st.sid, year)),
-                        "coverage": lite_msg,
-                    }
+            # No in-domain observations: strict > 90% for BOTH source files
+            # in the exact calendar year. 90.000% is NOT sufficient.
+            strict_external_pass = (
+                full_count * 10 > 9 * expected and
+                lite_count * 10 > 9 * expected)
+            selected = success and lite_ok and (
+                mode == "OBSERVED" or strict_external_pass)
             distance = haversine_km(stack[0], stack[1], st.lat, st.lon) if stack else None
-            selected = success and lite_ok and (good or mode == "OBSERVED")
             decisions.append({
                 "sid": st.sid, "distance_to_stack_km": distance,
-                "download_success": success, "raw_annual_coverage": msg,
+                "full_isd_download_success": success, "raw_annual_coverage": msg,
                 "isd_lite_wind_download_success": lite_ok,
                 "isd_lite_wind_original_hour_coverage": lite_msg,
+                "full_isd_source_hours": full_count,
+                "isd_lite_source_hours": lite_count,
+                "expected_calendar_hours": expected,
+                "strict_external_gt90_both_sources": strict_external_pass,
                 "selected": selected,
             })
             print(f"candidate year={year} sid={st.sid} mode={mode} "
-                  f"full_ISD={msg} wind_ISD_Lite={lite_msg}", flush=True)
+                  f"full_ISD={msg} wind_ISD_Lite={lite_msg} "
+                  f"external_gt90_both={strict_external_pass}", flush=True)
             if selected:
                 accepted.append(st)
+                coverage[st.sid] = (lite_count, full_count, expected)
+                accepted_lite[st.sid] = {
+                    "url": lite_source_url(st.sid, year),
+                    "filename": lite_filename(st.sid, year),
+                    "sha256": sha256_file(lite_dir / lite_filename(st.sid, year)),
+                    "original_hours": lite_count,
+                    "expected_hours": expected,
+                    "coverage_fraction": lite_count / expected,
+                }
                 if mode == "VIRTUAL_RELOCATED":
                     break
             elif mode == "OBSERVED":
-                # All eligible in-domain stations must provide BOTH sources.
+                # One or more physical stations must have both raw NOAA
+                # products, but NO raw-hour threshold is imposed.
                 print(f"ERROR in-domain station {st.sid}: raw={msg}, lite={lite_msg}")
 
+        # Only ONE reference station receives complete fill and calm
+        # replacement. With >=2 physical stations, choose the highest raw
+        # ISD-Lite annual coverage; tie-break full-ISD coverage, then station
+        # ID for deterministic outcomes. Redo selection every calendar year.
+        primary = (sorted(accepted, key=lambda st: (
+            -coverage[st.sid][0], -coverage[st.sid][1], st.sid))[0]
+            if accepted else None)
+        station_selection_case = (
+            "EXTERNAL_SINGLE_VIRTUAL" if mode == "VIRTUAL_RELOCATED" else
+            "IN_DOMAIN_SINGLE" if len(in_domain) == 1 else
+            "IN_DOMAIN_MULTIPLE")
         report = args.out_dir / f"download_report_{year}.json"
         report.write_text(json.dumps({
             "year": year, "mode": mode, "research_bbox": bbox,
             "stack_latlon": stack, "candidates": decisions,
-            "source_coverage_rule": "external fallback requires >=80% original unique hours in BOTH full ISD and ISD-Lite wind source; in-domain stations require both files"
+            "source_coverage_rule": "no in-domain: nearest station with >90% unique original UTC hours in BOTH ISD and ISD-Lite, per calendar year; any in-domain station: no coverage threshold",
+            "station_selection_case": station_selection_case,
+            "primary_sid": primary.sid if primary else None,
+            "primary_selection_metric": "ISD_LITE_UNIQUE_ORIGINAL_HOURS_THEN_FULL_ISD",
         }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         if not accepted or (mode == "OBSERVED" and len(accepted) != len(in_domain)):
             raise SystemExit(f"P5 source selection failed for {year}; see {report}")
@@ -433,21 +467,32 @@ def main() -> int:
         manifest_rows = []
         for st in accepted:
             lat, lon = (st.lat, st.lon) if mode == "OBSERVED" else stack
-            good, msg = validate_time_completeness(
-                args.out_dir / f"{st.sid}-{year}.csv", year, st.sid)
+            lc, fc, expected = coverage[st.sid]
+            treatment = ("COMPLETE_FILL_AND_CALM_REPLACE" if st.sid == primary.sid
+                         else "RAW_SPARSE_STANDARDIZE_ONLY")
             manifest_rows.append({
                 "sid": st.sid, "name": st.name, "country": st.country,
                 "begin": st.begin, "end": st.end, "lat": lat, "lon": lon,
                 "elev": st.elev, "source_lat": st.lat, "source_lon": st.lon,
                 "source_elev": st.elev, "ifstn": aliases[st.sid],
                 "relocated": mode == "VIRTUAL_RELOCATED",
-                "raw_annual_coverage": msg,
+                "raw_annual_coverage": f"{fc}/{expected}={fc/expected:.4%}",
+                "full_isd_raw_hours": fc,
+                "isd_lite_raw_hours": lc,
+                "expected_hours": expected,
+                "full_isd_coverage": fc / expected,
+                "isd_lite_coverage": lc / expected,
+                "wind_treatment": treatment,
                 "wind_data_source": "NOAA_ISD_LITE",
                 "wind_isd_lite": accepted_lite[st.sid]
             })
         manifest = args.out_dir / f"station_selection_{year}.json"
         manifest.write_text(json.dumps({
-            "year": year, "mode": mode, "stations": manifest_rows
+            "year": year, "mode": mode,
+            "station_selection_case": station_selection_case,
+            "primary_sid": primary.sid,
+            "external_raw_coverage_rule": "STRICT_GREATER_THAN_90_PERCENT_BOTH_SOURCES",
+            "stations": manifest_rows
         }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         listing = args.out_dir / f"surf_station_list_{year}.txt"
         with listing.open("w", encoding="utf-8", newline="") as stream:
