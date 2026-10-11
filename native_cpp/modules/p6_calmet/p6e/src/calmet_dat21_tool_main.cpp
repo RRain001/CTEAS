@@ -439,7 +439,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    const std::string& wind_path,int mnmdav,float hafang,
                    const std::string& geo_path,float hc1,float hc2,float hc3,
                    const std::string& state_prefix,float fcoriol,
-                   bool skip_avemix,int imixh) {
+                   bool skip_avemix,int imixh,const std::string& trace_path) {
     const auto reference=read_calmet_dat21(reference_path);
     // Optional wind source: the frozen original U/V/W for the same intervals.
     std::optional<WindLevels> wind;
@@ -495,6 +495,19 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     std::vector<float> exported_ziconv,exported_zi;
     std::vector<float> exported_pre_ziconv,exported_pre_zi;
     std::vector<float> exported_qh,exported_ustar,exported_el;
+    // Optional per-hour MIXHT term trace for the cell carrying the surface
+    // station (XSSTA/YSSTA are metres from the SW corner of cell (1,1)).
+    std::ofstream trace_out;
+    std::size_t trace_i=static_cast<std::size_t>(-1),trace_j=static_cast<std::size_t>(-1);
+    if(!trace_path.empty()) {
+        trace_i=static_cast<std::size_t>(reference.statics.surface_x_m[0]/h.dgrid_m);
+        trace_j=static_cast<std::size_t>(reference.statics.surface_y_m[0]/h.dgrid_m);
+        trace_out.open(trace_path);
+        if(!trace_out)throw std::invalid_argument("cannot open MIXHT trace output");
+        trace_out<<"hour_index,trace_i,trace_j,branch,htold_m,wt_mks,gamma_mixdt,"
+                   "dptt_in,gamma_used,dpttp1_k,ziconv_m,zi_m,dptt_out,tht_k,"
+                   "thtp_k,tave_k,bvf,hmech_m,mean_k\n";
+    }
     for(std::size_t hour=0;hour<reference.intervals;++hour) {
         const auto& observation=observations[hour];
         surf.stations[0].temp_k=static_cast<float>(observation.air_temperature_k);
@@ -666,7 +679,23 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             mh.initial_zi.assign(cells,-7777.f);
             mh.initial_ziconv=previous_ziconv;
             mh.initial_dptt=previous_dptt;
+            MixhtObservedMcTrace trace_row;
+            if(!trace_path.empty()) {
+                mh.trace=&trace_row;mh.trace_i=trace_i;mh.trace_j=trace_j;
+            }
             const auto mixing=mixht_observed_mc(mh);
+            if(!trace_path.empty()) {
+                const auto tk=trace_j*static_cast<std::size_t>(h.nx)+trace_i;
+                trace_out<<(hour+1)<<','<<trace_i<<','<<trace_j<<','<<trace_row.branch
+                         <<','<<trace_row.htold_m<<','<<trace_row.wt_mks
+                         <<','<<trace_row.gamma_mixdt<<','<<trace_row.dptt_in
+                         <<','<<trace_row.gamma_used<<','<<trace_row.dpttp1_k
+                         <<','<<trace_row.ziconv_m<<','<<trace_row.zi_m
+                         <<','<<trace_row.dptt_out<<','<<trace_row.tht_k
+                         <<','<<trace_row.thtp_k<<','<<trace_row.tave_k
+                         <<','<<trace_row.bvf<<','<<trace_row.hmech_m<<','
+                         <<surface.temp2d_k[tk]<<'\n';
+            }
             zi_height=mixing.zi;
             ziconv=mixing.ziconv;
             if(!state_prefix.empty()) {
@@ -1210,7 +1239,8 @@ int main(int argc,char** argv) {
                           static_cast<float>(std::stod(
                               argument(argc,argv,"--fcoriol","1.0e-4"))),
                           std::stoi(argument(argc,argv,"--skip-avemix","0"))!=0,
-                          std::stoi(argument(argc,argv,"--imixh","1")));
+                          std::stoi(argument(argc,argv,"--imixh","1")),
+                          argument(argc,argv,"--mixht-trace"));
             return 0;
         }
         if(mode=="check") {

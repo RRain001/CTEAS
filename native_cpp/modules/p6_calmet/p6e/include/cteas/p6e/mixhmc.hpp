@@ -16,6 +16,12 @@ struct MixhmcInput {
 };
 struct MixhmcResult {
     float ziconv_m,dptt_k,gamma_kperm,tht_k,thtp_k;
+    // Trace only, not part of the source contract: which of the three
+    // original exits produced the result. 0 = return without growth
+    // (collapse / zero net buoyancy), 1 = IZICRLX relaxation to ZICEQ,
+    // 2 = convective growth (the only exit that writes DPTT).
+    int branch=0;
+    float dpttp1_k=0.f;
 };
 inline MixhmcResult mixhmc_lapse2(const MixhmcInput& a){
     if(!std::isfinite(a.wt_mks)||!std::isfinite(a.gamma_kperm)||
@@ -42,6 +48,7 @@ inline MixhmcResult mixhmc_lapse2(const MixhmcInput& a){
         if(buoy<=0.f) {
             // THRESH>0 is guaranteed here since WT>0 and WT-WTO<=0.
             const float ziceq=rho*cp*a.wt_mks/a.threshold_wm2perm;
+            result.branch=1;
             result.ziconv_m=ziceq+(a.htold_m-ziceq)*
                 std::exp(-static_cast<float>(a.timestep_s)/a.tzicrlx_s);
             return result;
@@ -54,6 +61,8 @@ inline MixhmcResult mixhmc_lapse2(const MixhmcInput& a){
         2.f*(buoy*a.onedte_s-a.dptt_k*a.htold_m)/result.gamma_kperm;
     unsqrt=std::max(unsqrt,0.f);
     result.dptt_k=dpttp1;
+    result.branch=2;
+    result.dpttp1_k=dpttp1;
     result.ziconv_m=std::sqrt(unsqrt)+dpttp1/result.gamma_kperm;
     result.ziconv_m=std::max(result.ziconv_m,0.f);
     if(result.ziconv_m>=a.zimax_m)result.ziconv_m=a.zimax_m;
