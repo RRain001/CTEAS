@@ -25,6 +25,7 @@ if str(_ROOT) not in sys.path:
 
 import compare_original_fradj as fradj_module
 import compare_original_slope as slope_module
+import compare_original_diagno_d9a_fradj as chain_fradj
 
 NX = NY = 50
 NZ = 9
@@ -202,8 +203,8 @@ def write_case(path, zface1_m, dz_m, terrain, lapse, temperature, alpha,
     if any(len(field) != size for field, size in shapes):
         raise ValueError("kinematic route input shape")
     with path.open("w") as handle:
-        handle.write(f"{zface1_m:.9f} {fradj_module.ISURFT} "
-                     f"{fradj_module.TINF_K:.9f} {alpha:.9f} {niter} "
+        handle.write(f"{zface1_m:.9f} {chain_fradj.ISURFT} "
+                     f"{chain_fradj.TINF_K:.9f} {alpha:.9f} {niter} "
                      f"{divlim_per_s:.9f}\n")
         handle.write(" ".join(f"{value:.9f}" for value in dz_m) + "\n")
         for field in (terrain, lapse, temperature, u, v):
