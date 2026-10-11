@@ -1,15 +1,15 @@
 # P5 SMERGE v5.7.0 L121203 — implementation status, original-code mapping and remaining gaps
 
 **Audit date:** 2026-10-11.
-**Status:** \`PASS_SCOPED_CPP_GENERIC_INPUT\` / \`PASS_PYTHON_NOAA_PREPROCESS_AND_ANNUAL_SELECTION\` / \`PASS_ORIGINAL_SMERGE_CALMET_SMOKE\` / \`CPP_NATIVE_SURFDAT_WRITER_NOT_IMPLEMENTED\` / \`MULTIYEAR_REAL_MULTISTATION_REFERENCE_OPEN\`.
+**Status:** \`PASS_SCOPED_CPP_GENERIC_INPUT\` / \`PASS_PYTHON_NOAA_PREPROCESS_AND_ANNUAL_SELECTION\` / \`PASS_ORIGINAL_SMERGE_CALMET_SMOKE\` / \`PASS_NATIVE_CPP_SURFDAT_JDAT8_IOFORM2_BYTE_PARITY_AND_CALMET_SMOKE\` / \`MULTIYEAR_REAL_MULTISTATION_REFERENCE_OPEN\`.
 
-PR [#7](https://github.com/RRain001/CTEAS/pull/7) on \`codex/cteas-p5-smerge-reference\` is **Open / Ready for Review**, not merged. Audited implementation baseline before this documentation update: \`50cdb93e92ddebe794018fab52e1548fba9e246a\`.
+PR [#7](https://github.com/RRain001/CTEAS/pull/7) on \`codex/cteas-p5-smerge-reference\` is **Open / Ready for Review**, not merged. Native writer validated by immutable reference CI at \`3f4f0a8d218161a5b07f983b5bad79c652ada93a\`; subsequent tests follow new changes.
 
 ## 1. Three distinct levels of completion
 
 1. **P5 station selection and weather preparation (Python): implemented** as isolated copies/extensions under \`native_cpp/modules/p5_smerge/data_prep/\`. This prepares SMERGE GENERIC data from original NOAA **complete ISD nonwind** and **ISD-Lite wind**. It is not C++.
-2. **P5 C++20 input contracts (C++): implemented and unit-tested.** \`native_cpp/include/cteas/met_input/p5_smerge.hpp\` decodes the scoped \`JDAT=8\` \`GENERIC 2.0\` 12-column input, masks \`9999\`, checks station identities/UTC time/units, supports deterministic multi-station hourly assembly and missing-hour counts. It **does NOT write** an original \`SURF.DAT\`.
-3. **Actual SMERGE/CALMET run: integration PASS using UNCHANGED vendor Fortran.** The end-to-end test uses the original SMERGE v5.7.0 source to produce \`SURF.DAT\`, then original CALMET v6.5.0 to produce \`MET.DAT\`. Running the originals successfully is **NOT** an independent C++ \`SURF.DAT\` numerical/byte-equivalence test.
+2. **P5 C++20 input contracts (C++): implemented and unit-tested.** \`native_cpp/include/cteas/met_input/p5_smerge.hpp\` decodes the scoped \`JDAT=8\` \`GENERIC 2.0\` 12-column input, masks \`9999\`, checks station identities/UTC time/units, supports deterministic multi-station hourly assembly and missing-hour counts. The independent C++20 executable \`native_cpp/modules/p5_smerge/p5_surf_main.cpp\` **NOW writes** a complete formatted original-compatible \`SURF.DAT\` for the real-case restricted controls \`JDAT=8, IOFORM=2, IOPACK=0, LPREV=F, LPCALC=F, UTC+0000\`. It reads the existing real \`smerge.inp\` and all model-time GENERIC records directly, with NO Fortran dependency.
+3. **Independent SURF.DAT reference PASS:** original SMERGE v5.7.0 and independent C++20 both write SURF.DAT from the EXACT SAME input/control; synthetic 2-station records **721/721 bytes equal**, real Hefei 2022-01-01..06 **13,841/13,841 bytes equal** and all 293 lines equal. The unmodified CALMET v6.5.0 then successfully reads the **native C++ SURF.DAT**. The isolated post-SMERGE cloud fallback is retained separately, unchanged.
 
 The original \`engine/preprocess/smerge_surf_data/\`, \`engine/vendor/src/SMERGE_v5.7.0_L121203/\`, and \`engine/vendor/src/CALMET_v6.5.0_L150223/\` remain unchanged.
 
@@ -65,13 +65,64 @@ See [current detailed P5 source and wind policy](../../native_cpp/modules/p5_sme
 | Run original unchanged SMERGE, surface file publication | \`data_prep/run_smerge_and_monitor.py\` | Original \`engine/preprocess/smerge_surf_data/run_smerge_and_monitor.py\`, \`engine/vendor/src/SMERGE_v5.7.0_L121203/SMERGE.FOR\` \`COMP/RDWRITS/WRS\` | Original Fortran PASS_REAL_CASE; postprocesses cloud-cover gaps in copied final SURF.DAT; **not a native C++ substitute** |
 | Test on original CALMET | \`.github/workflows/p4-p5-original-calmet-integration.yml\` | \`engine/run_met/prepare_met.py\`, \`engine/run_met/run_met.py\`, \`engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for\` | PASS 100m 2022-01-01..06 original-model compatibility, NOT CALMET physics parity |
 | Original Python complete surface pipeline | Scoped \`data_prep/prepare_inputs.py\` and original SMERGE runner | \`engine/preprocess/smerge_surf_data/run_isd_surface_pipeline.py\` | Python stages implemented in scoped copy, original unchanged |
-| Original \`SURF.DAT\` writer, packed/unpacked data layout, records/stats | **No independent C++ writer yet** | \`SMERGE.FOR\` \`RDWRITS\`, \`WRS\`, \`WRHD\`, \`RDS\`, \`PACKS/UNPCKS\`, \`IOFORM/IOPACK\`; \`PARAMS.SMG\` | **NOT_IMPLEMENTED_IN_CPP** |
+| **Native formatted SURF.DAT writer** | \`native_cpp/modules/p5_smerge/p5_surf_main.cpp\`, \`--native-cpp-bin\` in scoped \`run_smerge_and_monitor.py\` | Original \`SMERGE.FOR\` \`RDWRITS/WRHD/WRS\` \`JDAT=8, IOFORM=2, IOPACK=0, LPREV=F, LPCALC=F\` | **PASS_CPP_REFERENCE** for synthetic two-station + real Hefei single station complete-file byte parity; output read by unmodified CALMET. Other IOFORM/IOPACK modes remain unsupported |
+
+## 3A. New independent native SURF.DAT implementation (2026-10-11)
+
+**Writer:** [p5_surf_main.cpp](../../native_cpp/modules/p5_smerge/p5_surf_main.cpp) is compiled by
+\`native_cpp/modules/p5_smerge/CMakeLists.txt\` as executable \`cteas_p5_smerge\`.
+It consumes the SAME \`smerge.inp\` controlling the original Fortran reader and
+the SAME NOAA-derived GENERIC source files. The source contains no Fortran calls,
+no shell-outs to SMERGE and no frozen/snapshotted SURF.DAT data. The independent
+C++ module implements actual WRS and WRHD output formatting and correctly
+applies original SMERGE 2.1 explicit beginning-time-to-hour-ending conversion.
+It honors station IFSTN order, all eight output fields, source masks and actual
+timestamps; sparse auxiliary original-hour gaps are mapped to 9999 directly.
+
+**Command (from checkout root, with configured project/current):**
+
+\`\`\`bash
+cmake -S native_cpp/modules/p5_smerge -B /tmp/p5-native -DCMAKE_BUILD_TYPE=Debug
+cmake --build /tmp/p5-native -j2
+ctest --test-dir /tmp/p5-native --output-on-failure
+python3 -m native_cpp.modules.p5_smerge.data_prep.run_smerge_and_monitor \
+  --native-cpp-bin /tmp/p5-native/cteas_p5_smerge
+\`\`\`
+
+The Python publishing wrapper runs the C++ binary, checks exit code, publishes
+actual native output into \`met/surface/final/surf.dat\`, writes effective station
+metadata, and applies the existing original cloud-cover missing-data fallback
+to the published copy. Without the \`--native-cpp-bin\` flag the original Fortran
+backend is still available as a reference; do not conflate it with native.
+
+**Independent reference evidence:**
+
+- [P5 synthetic 2-station original-vs-native byte parity](https://github.com/RRain001/CTEAS/actions/runs/38110709094):
+  3 time records, two input stations, intentional missing whole hour, calm,
+  no temperature, precipitation and RH/cloud decimal conversion;
+  **721 bytes each, 17 lines each, zero differences**.
+- [P5 real Hefei 2022, original-vs-native byte parity AND original CALMET](https://github.com/RRain001/CTEAS/actions/runs/38110709086):
+  **13,841 bytes** original and native, **293 lines**, byte-identical;
+  unmodified original CALMET consumes published NATIVE SURF.DAT and produces
+  MET.DAT 64,762,556 bytes with zero detected fatal patterns.
+  Reference-only original-SMERGE 2-station sparse auxiliary test passed as a
+  separate step. A separate true-native/no-sentinel sparse-secondary byte-
+  parity + original-CALMET test is tracked in the updated integration CI.
+
+**Explicitly REJECTED by native writer:** IOFORM=1 (Fortran unformatted),
+IOPACK!=0, LPREV=T (previous SURF.DAT continuation), LPCALC=T
+(empirical station-pressure reconstruction), JDAT other than 8, any
+ASTZ/ABTZ nonzero UTC offset, or nonhourly seconds. These are not
+replaced by guessed formats or silently passed to legacy Fortran.
+Output is the full **formatted** active production-case SURF.DAT, not a
+generic replacement for every vendor SMERGE configuration.
+
 
 ## 4. Unimplemented functionality / remaining reference gates
 
 | Gap or deferred capability | Original code / control of record | Minimum validation before claiming it complete |
 | --- | --- | --- |
-| **Actual native C++ SMERGE computation and \`SURF.DAT\` output** | \`SMERGE.FOR\`: \`COMP\`, \`RDWRITS\`, \`WRS\`, \`WRHD\`, \`RDS\`, \`PACKS/UNPCKS\` | Reconstruct selected \`JDAT=8\`, \`IOFORM/IOPACK\` paths; compare each per-hour/per-station field and validity flags with same-input unmodified Fortran. File byte equivalence if format permits |
+| **Non-target binary/packed SURF.DAT output and previous-SURF continuation** | \`SMERGE.FOR\`: \`WRHD/WRS/PACKS/UNPCKS/RDS\`, \`IOFORM=1\`, \`IOPACK=1\`, \`LPREV=T\` | Formatted \`IOFORM=2, IOPACK=0, LPREV=F\` is implemented and byte-verified. Binary/packed and continuation branches NOT implemented; require their own frozen Fortran references |
 | Other original surface inputs beyond \`JDAT=8\` GENERIC | \`SMERGE.FOR\` \`RDWRITS\`, \`READCF\`, \`JDAT\` switches; original \`smerge.inp\` | Explicit original-format input vectors, reference snapshots and parser/writer tests |
 | Alternative original time-zone offsets and daylight-time control variants | \`smerge.inp\` \`ASTZ/ABTZ/XSTZ\`; \`READCF\` and \`RDWRITS\` | Offset and day-boundary original comparisons; current path accepts UTC only |
 | Legacy accumulated/previous-year and derived meteorology branches | \`smerge.inp\` \`LPREV/LPCALC\`, related original \`SMERGE.FOR\` routines | Freeze corresponding cases and independent numerical references, not implied from hourly GENERIC success |
@@ -89,13 +140,13 @@ See [current detailed P5 source and wind policy](../../native_cpp/modules/p5_sme
 - **20 NOAA station-years**: five station identities × four calendar years 2021–2024; raw codes audited, full source rows 147,503 across station-years; rule replay and source time denominators checked. [Multistation data audit](https://github.com/RRain001/CTEAS/actions/runs/38108309197) — PASS.
 - **P5 scoped Python/C++ tests**, including annual reselect, strict external coverage and synthetic sparse stations with arbitrary time gaps: [P5 C++20 CI](https://github.com/RRain001/CTEAS/actions/runs/38108309196) — PASS at pre-documentation baseline.
 - **Unchanged ORIGINAL SMERGE v5.7.0 → unchanged ORIGINAL CALMET v6.5.0**: six-day Hefei 2022 50×50, 100m grid, P4 real IGRA UP.DAT, P5 real NOAA main site. First stage original \`met.dat\` **64,762,556 bytes**. Synthetic 48-original-row sparse auxiliary added; original SMERGE+CALMET both PASS with runtime-only EOF sentinel, \`met.dat\` **64,762,844 bytes**. [Head-locked full integration CI](https://github.com/RRain001/CTEAS/actions/runs/38108309198) — PASS. Synthetic station validates **I/O compatibility**, not real observed wind at that location.
-- **P5 is NOT complete as a native SMERGE reimplementation.** Numerical/byte-for-byte C++ vs vendor \`SURF.DAT\` parity: **NOT PERFORMED**. No evidence justifies claiming it.
+- **Validated C++ output scope:** independent formatted \`JDAT=8/IOFORM=2/IOPACK=0/LPREV=F/LPCALC=F\` SURF.DAT is **complete and verified byte-for-byte against untouched Fortran**. Full legacy mode coverage (binary/packed, continuation, other JDAT) is deliberately UNSUPPORTED and must not be claimed. Scientific fidelity of filled wind forcing remains an independent question.
 - Original scripts \`engine/preprocess/smerge_surf_data/\`, original Fortran \`engine/vendor/src/SMERGE_v5.7.0_L121203/\` and original CALMET code remain authoritative, unchanged. No base/main merge was performed in this checkpoint.
 
 ### 6. Acceptance gate before calling P5 “complete”
 
-1. Implement full \`JDAT=8\` native C++ original-compatible \`SURF.DAT\` writer with original QA/time/source masks, station order, output formatting, and provenance.
-2. Pin reference \`smerge.inp\`, source GENERIC files and original Fortran \`SURF.DAT\` hashes; compare all per-time/per-station fields (including \`9999\`, real zeros, calm and nonwind).
+1. **DONE for frozen case**: native C++20 formatted \`JDAT=8/IOFORM=2/IOPACK=0/LPREV=F/LPCALC=F/UTC\` writer; checks original WRHD/WRS header, UTC hour-ending shift, 9999 sentinel, station order, missing type conversions, temperature/rain/cloud code and the full file byte comparison.
+2. **DONE for synthetic and Hefei 2022 six-day case**: independently compiled original Fortran and C++ read identical smerge.inp and GENERIC sources, compare all output bytes before publishing C++ output to unchanged CALMET.
 3. Execute actual **real** multi-station NOAA data, strict multi-year annual reselection (including differing station membership), and a run across time zones/year boundaries where supported.
 4. Audit changes to CALMET diagnostics and resulting fields separately from P5 data-format correctness; do not replace scientific comparisons with “process exited zero.”
 
