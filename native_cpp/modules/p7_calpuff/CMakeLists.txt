@@ -382,3 +382,34 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7o_probe --deck-release "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
             0 513.3846439571 3533.7689269678 70.8 1.6 17.26 298.15 8.34e5)
 endif()
+
+# P7P: SETPUF's per-step bookkeeping (distance/travel time/calm, settling and the
+# step counters) plus SETCSIG's /CSIGMA/ selection state.
+add_library(cteas_p7_step STATIC src/step.cpp)
+target_include_directories(cteas_p7_step PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_step PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_step PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7p_tests tests/p7p_tests.cpp)
+target_link_libraries(cteas_p7p_tests PRIVATE cteas_p7_step)
+if(MSVC)
+  target_compile_options(cteas_p7p_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7p_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7p_step_bookkeeping_contract COMMAND cteas_p7p_tests)
+
+add_executable(cteas_p7p_probe src/step_probe.cpp)
+target_link_libraries(cteas_p7p_probe PRIVATE cteas_p7_step cteas_p7_calmet21
+  cteas_p7_control cteas_p7_dispersion)
+add_test(NAME cteas_p7p_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7p_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7p_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7p_locked_case_step
+    COMMAND cteas_p7p_probe --deck-step "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
+            0 513.3846439571 3533.7689269678 70.8)
+endif()
