@@ -1862,3 +1862,11 @@ plus the CTEAS-only `CONC.DAT` header. The terrain path (P7R/P7S/P7T) is complet
 on real inputs, and the release scheduler (P7O), plume rise (P7N), step
 bookkeeping and `/CSIGMA/` (P7P), the sigma update (P7Q) and CTSG (P7M, off this
 deck) all carry original-source parity.
+
+### DGM 第三轮：原版 CALPUFF 步进/平流内部状态导出（2026-10-12）
+
+详见 [DGM_P7_PUFF_STEP_DUMP_20261012.md](DGM_P7_PUFF_STEP_DUMP_20261012.md)。按 P7U 的 8 行插桩请求逐条实现：**只写**插桩（`subroutine comp` 内 8 个点 + 文件末尾 9 个子程序，vendor `calpuff.for` sha256 `da40372c…` 未变），同一编译器同一组 flag（含 `-ffixed-line-length-72`）编译两份二进制，用冻结输入各跑完 **143 小时**：**插桩前后 `puff.con` SHA256 同为 `0d51bdb6…`，且等于冻结参考**（未插桩那份不产生任何 dump，否则 fail-closed）。
+
+产物 `dgm_puffstep.bin`（sha256 `cbbdaa29…`，89,649,824 字节 = **254,687 条 × 352 字节**：`int32[24]` 头 + `float32[64]`），逐条覆盖 P7U 的 8 项：起始位置/`icode`、网格单元与 `istab/dpbl/el/z0m`、`PUFFDZ` 返回的 `ztop/zbot`、`ADVECT` 返回的 `uadv/vadv`、抬升风与静风调整后的 `ws/uadv/vadv`、采样节奏（`nsam/nsstr/xsami/tsamp`）、`SETPUF` 入/出状态（`xtotb/tmtotb/sigyb/sigzb` 与 `/CURRENT/` 各量）、以及步末位置（`xnew/ynew`、`xpb/ypb/zpb`）。143 个小时标签、puff 1…11,985；每小时记录数、首末 puff 与字节偏移在 `dgm_puffstep.json`，可据此切出任意小时；入库切片为第 1 小时（1,275 条，sha256 `b51d20d3…`）。
+
+自查：238,908 组相邻子步连接中位置/行程/`sigyb` **0 处不一致**（`sigzb` 只增不减——垂直散度因子）；`distm == ws × tsamp_effective` 最大相对差 5.8e-08；`zold` 恒在 `PUFFDZ` 的 `[zbot,ztop]` 内；`tsamp_effective` 18.56–3600 s（子步切分被实际触发）。坐标单位为**最外层气象网格格数**（1 格 = 100 m，源在 25.0 格 = 2.5 km，与烟囱位置一致），不是 km。本节只记录证据，不改变既有阶段结论。
