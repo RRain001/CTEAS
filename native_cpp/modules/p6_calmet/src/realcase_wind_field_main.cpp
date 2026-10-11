@@ -19,6 +19,7 @@
 #include "cteas/p6/read_surface.hpp"
 #include "cteas/p6/read_upper.hpp"
 #include "cteas/p6/diagno_segment.hpp"
+#include "cteas/p6/froude_adjust.hpp"
 #include "cteas/p6/slope_flow.hpp"
 #include "cteas/p6e/heatfx.hpp"
 #include "cteas/p6e/surface_solar.hpp"
@@ -708,9 +709,11 @@ int main(int argc,char** argv){
           " \"note\": \"chain-computed QH, TEMP2D and TERSET envelope; the corrected step one feeds the blend and the W tail\"},";
     meta<<"\n";
     meta<<"    {\"stage\": \"FRADJ (L5643-L5644)\", \"status\": \""<<(args.gamma_dir.empty()?"PENDING_GAMMA":"APPLIED_WITH_CALLER_GAMMA")<<"\","
-          " \"gamma_source\": \""<<(args.gamma_dir.empty()?"none":args.gamma_dir.string())<<"\",""
+          " \"gamma_source\": \""<<(args.gamma_dir.empty()?"none":args.gamma_dir.string())<<"\","
           " \"missing_when_pending\": [\"GAMMA grid: the real case derives it in PREPDI via CGAMMA (calmet.for L3340-L3395) whose convective branch consumes ZICONV; P6E E29 exports that array as <prefix>.ziconv.f32 with the accuracy caveat GAMMA_SOURCE: P6E_CHAIN_INTERNAL_UNCALIBRATED\"],"
-          " \"note\": \"therefore the emitted W faces are SLOPE-compensated but not FRADJ-compensated\"},\n";
+          " \"note\": \"W faces are SLOPE-compensated" << (args.gamma_dir.empty()
+             ? " but not FRADJ-compensated (GAMMA pending)"
+             : " and FRADJ-compensated with a caller-supplied GAMMA whose accuracy is not verified here") << "\"},\n";
     meta<<"    {\"stage\": \"SMOOTH/DIVCEL/W tail (DIAGNO L6119-L6148)\", \"status\": \"APPLIED_SLOPE_COMPENSATED_FRADJ_PENDING\","
           " \"product\": \"w_face_*.f32 (10 faces per column)\","
           " \"note\": \"run on the SLOPE-corrected blended field with the deck NSMTH, so the boundaries are the L5748 snapshot except for the still-pending FRADJ (GAMMA) correction\"},\n";
