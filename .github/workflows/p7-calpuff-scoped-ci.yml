@@ -1,0 +1,67 @@
+name: P7A P7B isolated CALPUFF source and control contracts
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p7_calpuff/**'
+      - '.github/workflows/p7-calpuff-scoped-ci.yml'
+      - 'docs/reconstruction_cpp/P7_*'
+  push:
+    branches:
+      - 'codex/cteas-p7-calpuff-20261011'
+    paths:
+      - 'native_cpp/modules/p7_calpuff/**'
+      - '.github/workflows/p7-calpuff-scoped-ci.yml'
+      - 'docs/reconstruction_cpp/P7_*'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p7-scoped-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  p7-scoped:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, lhy-desktop-3]
+    timeout-minutes: 25
+    steps:
+      - name: Verify dedicated runner and toolchain (not P6 hosts)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${RUNNER_NAME:-}" = "lhy-desktop-3" || {
+            echo "::error::Wrong physical runner; P7 requires lhy-desktop-3."
+            exit 1
+          }
+          for tool in git cmake c++ python3; do command -v "$tool"; done
+          c++ --version | head -n 1
+          cmake --version | head -n 1
+          echo "P7_RUNNER_ISOLATED=lhy-desktop-3"
+      - name: Check GitHub checkout transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! curl --connect-timeout 8 --max-time 15 -fsSI https://github.com/ >/dev/null; then
+            echo "::error::Host cannot reach github.com:443; checkout/CI blocked by runner network, not C++ physics."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Assert immutable source identity and option inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/source-audit.json"
+          python3 native_cpp/modules/p7_calpuff/reference/source_audit.py --report "$report"
+          test -s "$report"
+      - name: Build isolated C++20 P7B control reader and CTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/build"
+          cmake -S native_cpp/modules/p7_calpuff -B "$build" \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DP7_ORIGINAL_CONTROL="${GITHUB_WORKSPACE}/engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.inp"
+          cmake --build "$build" --parallel 2
+          ctest --test-dir "$build" --output-on-failure
+          echo "P7B_CONTROL_PARSER_CTEST=PASS"
