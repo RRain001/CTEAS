@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
+#include <sstream>
 #include <string>
 #include <vector>
 namespace cteas::puff {
@@ -25,7 +26,16 @@ ReplaySummary replay_calmet_winds(const std::string& met_file,
             metadata.first_begin.julian_day!=1 || metadata.first_begin.hour!=0 ||
             metadata.final_end.year!=2023 ||
             metadata.final_end.julian_day!=5 || metadata.final_end.hour!=23)
-            throw std::invalid_argument("P7C real 2023 original reference gate mismatch");
+            {
+                std::ostringstream details;
+                details<<"P7C original 2023 gate mismatch: dx="<<metadata.header.dx_m
+                       <<" intervals="<<metadata.intervals
+                       <<" begin="<<metadata.first_begin.year<<"/"<<metadata.first_begin.julian_day
+                       <<"/"<<metadata.first_begin.hour
+                       <<" end="<<metadata.final_end.year<<"/"<<metadata.final_end.julian_day
+                       <<"/"<<metadata.final_end.hour;
+                throw std::invalid_argument(details.str());
+            }
     }
     WindField wind;
     wind.nx=metadata.header.nx;
