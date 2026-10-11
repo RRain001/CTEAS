@@ -1,0 +1,193 @@
+name: P4 P5 against ORIGINAL CTEAS CALMET 100m
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/p4-p5-original-calmet-integration.yml'
+      - 'native_cpp/modules/p5_smerge/data_prep/**'
+jobs:
+  original-calmet:
+    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Use isolated P4 and P3 implementations without merging branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin codex/cteas-p4-read62-reference
+          git restore --source=FETCH_HEAD -- native_cpp/modules/p4_read62
+          git fetch --no-tags origin codex/cteas-p3-makegeo-100m
+          git restore --source=FETCH_HEAD -- native_cpp/reference/capture_p3_makegeo.py
+          test -s native_cpp/modules/p4_read62/data_prep/run_cpp_pipeline.py
+          test -s native_cpp/reference/capture_p3_makegeo.py
+          mkdir -p integration-evidence
+          git rev-parse HEAD > integration-evidence/p5-head.sha
+          git rev-parse origin/codex/cteas-p4-read62-reference > integration-evidence/p4-source.sha
+          git rev-parse origin/codex/cteas-p3-makegeo-100m > integration-evidence/p3-source.sha
+      - name: Toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gfortran libgdal-dev
+          python3 -m pip install --disable-pip-version-check PyYAML numpy pandas
+          gfortran --version | head -1 | tee integration-evidence/compiler.txt
+      - name: Original unchanged P1-P2-P3 100m GEO.DAT
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/reference/capture_p1_p2.py --output /tmp/p4p5-original-geo
+          python3 native_cpp/reference/capture_p3_makegeo.py --output /tmp/p4p5-original-geo
+          test -s /tmp/p4p5-original-geo/p3/geo.dat
+          sha256sum /tmp/p4p5-original-geo/p3/geo.dat | tee integration-evidence/geo.sha256
+      - name: New isolated 2022 case with ORIGINAL CTEAS control renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import yaml,shutil
+          from engine.core.case_manager import set_current_case
+          case="ci_original_calmet_p4_p5_2022"
+          path=Path("project/cases")/case
+          (path/"grid").mkdir(parents=True,exist_ok=True)
+          (path/"geo/makegeo").mkdir(parents=True,exist_ok=True)
+          (path/"run/smerge").mkdir(parents=True,exist_ok=True)
+          cfg=yaml.safe_load(Path("project/cases/smoke5d_coldstart_20260701/case.yaml").read_text())
+          cfg["case_name"]=case
+          cfg["preprocess"]["grid"]["domain"]={"length_km":5,"width_km":5}
+          cfg["preprocess"]["grid"]["resolution_km"]=0.1
+          cfg["preprocess"]["research_time"]={"begin":"20220101-000000","end":"20220106-230000"}
+          (path/"case.yaml").write_text(yaml.safe_dump(cfg,sort_keys=False))
+          set_current_case(case)
+          shutil.copy2("/tmp/p4p5-original-geo/grid.cmn",path/"grid/grid.cmn")
+          shutil.copy2("/tmp/p4p5-original-geo/p3/geo.dat",path/"geo/makegeo/geo.dat")
+          (path/"grid/center_location").write_text("latitude: 31.939774444\nlongitude: 117.141610855\n")
+          (path/"grid/stack_location").write_text("latitude: 31.939774444\nlongitude: 117.141610855\n")
+          (path/"grid/research_time").write_text("BEGIN: 20220101-000000\nEND: 20220106-230000\n")
+          shutil.copy2("engine/templates/smerge.inp",path/"run/smerge/smerge.inp")
+          print("INTEGRATION_CASE",path.resolve())
+          PY
+      - name: P4 C++ build / real 2022 IGRA FSL / final UP.DAT
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p4_read62 -B /tmp/p4p5-p4-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/p4p5-p4-build -j2
+          ctest --test-dir /tmp/p4p5-p4-build --output-on-failure
+          python3 -m native_cpp.modules.p4_read62.data_prep.prepare_inputs --year 2022 --pstop 500 --execute
+          python3 -m native_cpp.modules.p4_read62.data_prep.run_cpp_pipeline \
+            --cpp-bin /tmp/p4p5-p4-build/cteas_p4_read62 \
+            --year 2022 --pstop 500 --skip-inputs --merge-final --execute \
+            2>&1 | tee integration-evidence/p4-run.log
+          test -s project/current/met/upperair/final/up_58424.dat
+          cp project/current/met/upperair/final/stations.csv integration-evidence/p4-stations.csv
+      - name: P5 real 2022 ISD + Lite / two-stage wind / GENERIC
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m native_cpp.modules.p5_smerge.data_prep.prepare_inputs \
+            --expected-year 2022 --stack-lat 31.939774444 --stack-lon 117.141610855 \
+            --write-legacy-control --execute 2>&1 | tee integration-evidence/p5-run.log
+          python3 -m native_cpp.modules.p5_smerge.data_prep.validate_scheme_c_capture \
+            --case-root project/current --expected-hours 144 \
+            --report integration-evidence/p5-v2-source-calm-evidence.json
+          test -s project/current/run/smerge/smerge.inp
+          test -s project/current/met/surface/isd2smerge_ready/583210-99999.csv
+      - name: Build UNCHANGED original SMERGE and CALMET Fortran on Linux
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p bin/linux-x86_64 /tmp/p4p5-smerge-include /tmp/p4p5-calmet-include
+          for item in engine/vendor/src/SMERGE_v5.7.0_L121203/*; do
+            test -f "$item" || continue
+            name=$(basename "$item" | tr '[:upper:]' '[:lower:]')
+            if [ ! -e "/tmp/p4p5-smerge-include/$name" ]; then
+              ln -s "$GITHUB_WORKSPACE/$item" "/tmp/p4p5-smerge-include/$name"
+            fi
+          done
+          for item in engine/vendor/src/CALMET_v6.5.0_L150223/*; do
+            test -f "$item" || continue
+            name=$(basename "$item" | tr '[:upper:]' '[:lower:]')
+            if [ ! -e "/tmp/p4p5-calmet-include/$name" ]; then
+              ln -s "$GITHUB_WORKSPACE/$item" "/tmp/p4p5-calmet-include/$name"
+            fi
+          done
+          flags="-O0 -std=legacy -fno-automatic -fno-align-commons -fallow-argument-mismatch -ffixed-line-length-none"
+          gfortran $flags -I/tmp/p4p5-smerge-include \
+            engine/vendor/src/SMERGE_v5.7.0_L121203/SMERGE.FOR \
+            -o bin/linux-x86_64/smerge.x 2>&1 | tee integration-evidence/smerge-build.log
+          gfortran $flags -I/tmp/p4p5-calmet-include \
+            engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            -o bin/linux-x86_64/met.x 2>&1 | tee integration-evidence/calmet-build.log
+          test -x bin/linux-x86_64/smerge.x
+          test -x bin/linux-x86_64/met.x
+          sha256sum engine/vendor/src/SMERGE_v5.7.0_L121203/SMERGE.FOR \
+            engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            > integration-evidence/untouched-fortran-source.sha256
+      - name: Execute untouched original SMERGE on NEW P5 GENERIC
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m native_cpp.modules.p5_smerge.data_prep.run_smerge_and_monitor \
+            2>&1 | tee integration-evidence/original-smerge-wrapper.log
+          test -s project/current/met/surface/final/surf.dat
+          test -s project/current/met/surface/final/stations.csv
+          sha256sum project/current/met/surface/final/surf.dat > integration-evidence/surf.sha256
+          cp project/current/run/smerge/smerge.lst integration-evidence/original-smerge.lst
+      - name: Execute UNCHANGED original CTEAS CALMET Python flow and original Fortran binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m engine.run_met.run_met --case ci_original_calmet_p4_p5_2022 \
+            2>&1 | tee integration-evidence/cteas-original-calmet-run.log
+          test -s project/current/run/met/met.lst
+          test -s project/current/run/met/met.dat
+          cp project/current/run/met/met.inp integration-evidence/original-rendered-met.inp
+          cp project/current/run/met/met_runtime.log integration-evidence/met-runtime.log
+          cp project/current/run/met/met.lst integration-evidence/met.lst
+          sha256sum project/current/run/met/met.dat > integration-evidence/calmet-output.sha256
+          python3 - <<'PY'
+          import json,pathlib,re
+          root=pathlib.Path("project/current")
+          lst=(root/"run/met/met.lst").read_text(errors="replace")
+          runtime=(root/"run/met/met_runtime.log").read_text(errors="replace")
+          errors=re.findall(r'(?im)^\s*ERROR IN SUBR\.|\bFATAL\b|\bABORT\b|segmentation fault|forrtl:\s*severe|cannot open',lst+"\n"+runtime)
+          met=root/"run/met/met.dat"
+          if errors or not met.is_file() or met.stat().st_size==0:
+              raise SystemExit(f"Original CALMET failed: errors={errors} output={met}")
+          result={"status":"ORIGINAL_CALMET_PIPELINE_PASS",
+                  "case":"ci_original_calmet_p4_p5_2022",
+                  "start":"2022-01-01T00:00Z","end":"2022-01-06T23:00Z",
+                  "grid":[50,50],"spacing_m":100,
+                  "original_fortran_versions":["SMERGE_v5.7.0_L121203","CALMET_v6.5.0_L150223"],
+                  "met_dat_bytes":met.stat().st_size,
+                  "met_lst_bytes":len(lst.encode()),"error_keywords":errors}
+          pathlib.Path("integration-evidence/final-status.json").write_text(json.dumps(result,indent=2)+"\n")
+          print("P4_P5_ORIGINAL_CALMET_END_TO_END=PASS",json.dumps(result))
+          PY
+      - name: Retain diagnostics even on failure
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p integration-evidence
+          for pair in \
+            "project/current/run/smerge/smerge.lst original-smerge.lst" \
+            "project/current/run/smerge/smerge_runtime.log original-smerge-runtime.log" \
+            "project/current/run/met/met.lst original-calmet.lst" \
+            "project/current/run/met/met_runtime.log original-calmet-runtime.log"; do
+            set -- $pair
+            if [ -f "$1" ]; then cp "$1" "integration-evidence/$2"; fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p4-p5-original-calmet-hefei-2022-100m
+          path: integration-evidence/
+          retention-days: 7
+          if-no-files-found: warn
