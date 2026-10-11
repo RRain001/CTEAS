@@ -36,7 +36,7 @@ int main(int argc,char** argv) {
               "chronological_old_index,chronological_new_index,"
               "physical_aa_index,physical_bb_index,justa,aa_slot,bb_slot,"
               "past_s,to_go_s,gap_s,air_temperature_k,pressure_mb,humidity_pct,"
-              "opaque_cloud_tenths,precipitation_code,precipitation_observed,"
+              "opaque_cloud_tenths,ceiling_hundreds_ft,precipitation_code,precipitation_observed,"
               "physical_aa_face2_k,physical_bb_face2_k,"
               "physical_aa_sounding_level1_k,physical_bb_sounding_level1_k\n";
         out<<std::fixed<<std::setprecision(7);
@@ -68,6 +68,7 @@ int main(int argc,char** argv) {
                <<row.surface_pressure_mb<<','
                <<row.surface_humidity_pct<<','
                <<row.opaque_cloud_tenths<<','
+               <<row.ceiling_hundreds_ft<<','
                <<row.precipitation_code<<','
                <<static_cast<int>(row.precipitation_code_observed)<<','
                <<row.physical_aa_face_t_k[1]<<','

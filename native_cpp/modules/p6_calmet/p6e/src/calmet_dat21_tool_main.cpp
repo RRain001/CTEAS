@@ -20,7 +20,9 @@
 //        statistics with the frozen tolerances of the corresponding source
 //        gates. Layout or unit mismatches fail closed.
 #include "cteas/p6e/calmet_dat21.hpp"
+#include "cteas/p6e/avetmp.hpp"
 #include "cteas/p6e/mixht_observed_mc.hpp"
+#include "cteas/p6e/pgtstb.hpp"
 #include "cteas/p6e/solar.hpp"
 #include "cteas/p6e/surface_solar.hpp"
 #include "cteas/p6e/surfvar_multistation.hpp"
@@ -36,6 +38,7 @@
 #include <limits>
 #include <sstream>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -272,6 +275,7 @@ struct BridgeObservation {
     double humidity_pct=9999.;
     double opaque_cloud_tenths=9999.;
     double pressure_mb=9999.;
+    int ceiling_hundreds_ft=9999;
 };
 std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
     std::ifstream file(path);
@@ -293,6 +297,7 @@ std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
     const auto humidity=column("humidity_pct");
     const auto cloud=column("opaque_cloud_tenths");
     const auto pressure=column("pressure_mb");
+    const auto ceiling=column("ceiling_hundreds_ft");
     std::vector<BridgeObservation> observations;
     while(std::getline(file,line)) {
         if(line.empty())continue;
@@ -300,24 +305,89 @@ std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
         std::string token;
         std::istringstream stream(line);
         while(std::getline(stream,token,','))fields.push_back(token);
-        if(fields.size()<=std::max(std::max(temperature,humidity),
-                                     std::max(cloud,pressure)))
+        if(fields.size()<=std::max(std::max(std::max(temperature,humidity),
+                                           std::max(cloud,pressure)),ceiling))
             throw std::invalid_argument("bridge CSV short row");
         BridgeObservation observation;
         observation.air_temperature_k=std::stod(fields[temperature]);
         observation.humidity_pct=std::stod(fields[humidity]);
         observation.opaque_cloud_tenths=std::stod(fields[cloud]);
         observation.pressure_mb=std::stod(fields[pressure]);
+        observation.ceiling_hundreds_ft=std::stoi(fields[ceiling]);
         observations.push_back(observation);
     }
     if(observations.empty())throw std::invalid_argument("bridge CSV has no hours");
     return observations;
 }
 
+// U/V/W of a CALMET.DAT 2.1 wind source for the same intervals. Missing
+// (9999.) values are rejected instead of being silently interpolated.
+struct WindLevels {
+    std::vector<std::vector<float>> u,v,w;
+};
+WindLevels read_wind_levels(const std::string& path,
+                            const CalmetDat21Dataset& reference) {
+    const auto wind=read_calmet_dat21(path);
+    const auto& h=wind.header;
+    const auto& r=reference.header;
+    const auto same=[&](bool condition,const char* message) {
+        if(!condition)throw std::invalid_argument(
+            std::string("wind source incompatible: ")+message);
+    };
+    same(h.nx==r.nx&&h.ny==r.ny&&h.nz==r.nz,"grid extent differs");
+    same(h.timezone==r.timezone,"time zone differs");
+    same(h.lcalgrd==r.lcalgrd&&h.npsta==r.npsta,"output mode differs");
+    same(wind.intervals==reference.intervals,"interval count differs");
+    same(wind.fields_per_hour==reference.fields_per_hour,"field count differs");
+    for(std::size_t hour=0;hour<reference.intervals;++hour) {
+        const auto& a=wind.hourly[hour*wind.fields_per_hour].begin;
+        const auto& b=reference.hourly[hour*reference.fields_per_hour].begin;
+        same(calmet21_pack(a)==calmet21_pack(b)&&a.seconds==b.seconds,
+             "hourly time labels differ");
+    }
+    const auto cells=static_cast<std::size_t>(h.nx)*static_cast<std::size_t>(h.ny);
+    WindLevels out;
+    out.u.resize(static_cast<std::size_t>(h.nz));
+    out.v.resize(static_cast<std::size_t>(h.nz));
+    out.w.resize(static_cast<std::size_t>(h.nz));
+    for(auto& level:out.u)level.assign(reference.intervals*cells,0.f);
+    for(auto& level:out.v)level.assign(reference.intervals*cells,0.f);
+    for(auto& level:out.w)level.assign(reference.intervals*cells,0.f);
+    for(std::size_t hour=0;hour<wind.intervals;++hour)
+        for(std::size_t j=0;j<wind.fields_per_hour;++j) {
+            const auto& field=wind.hourly[hour*wind.fields_per_hour+j];
+            const auto level=[&]() -> int {
+                if(field.label.rfind("U-LEV",0)==0||field.label.rfind("V-LEV",0)==0||
+                   field.label.rfind("WFACE",0)==0)
+                    return std::stoi(field.label.substr(5U));
+                return 0;
+            }();
+            if(level<1||level>h.nz)continue;
+            const auto index=static_cast<std::size_t>(level-1);
+            for(std::size_t k=0;k<cells;++k) {
+                const float value=field.real_values[k];
+                if(value==calmet21_missing)
+                    throw std::invalid_argument(
+                        "wind source has missing values in "+field.label);
+                if(!std::isfinite(value))
+                    throw std::invalid_argument("wind source nonfinite "+field.label);
+                const auto target=hour*cells+k;
+                if(field.label.rfind("U-LEV",0)==0)out.u[index][target]=value;
+                else if(field.label.rfind("V-LEV",0)==0)out.v[index][target]=value;
+                else out.w[index][target]=value;
+            }
+        }
+    return out;
+}
+
 void emit_realcase(const std::string& reference_path,const std::string& observations_path,
                    const std::string& out_path,const std::string& report_path,
-                   float ha1,float ha2,float hb1,float hb2) {
+                   float ha1,float ha2,float hb1,float hb2,
+                   const std::string& wind_path,int mnmdav,float hafang) {
     const auto reference=read_calmet_dat21(reference_path);
+    // Optional wind source: the frozen original U/V/W for the same intervals.
+    std::optional<WindLevels> wind;
+    if(!wind_path.empty())wind=read_wind_levels(wind_path,reference);
     const auto observations=read_bridge_csv(observations_path);
     const auto& h=reference.header;
     if(observations.size()!=reference.intervals)
@@ -359,9 +429,24 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         surf.stations[0].rh_pct=observation.humidity_pct>=9999.0
             ?9999:static_cast<int>(observation.humidity_pct);
         if(surf.stations[0].rh_pct==9999)++missing_humidity; else ++produced_temperature;
-        const auto surface=surfvar_multistation(surf);
+        auto surface=surfvar_multistation(surf);
         const auto& reference_first=
             reference.hourly[hour*reference.fields_per_hour];
+        if(wind) {
+            // SURFVAR L12878-12881: IAVET=1 averages TEMP2D with the
+            // first-level diagnostic wind before anything else uses it.
+            AvetmpInput a;
+            a.nx=static_cast<std::size_t>(h.nx);
+            a.ny=static_cast<std::size_t>(h.ny);
+            a.mnmdav=mnmdav;a.hafang_deg=hafang;a.dgrid_m=h.dgrid_m;
+            a.u_ms.resize(cells);a.v_ms.resize(cells);
+            for(std::size_t k=0;k<cells;++k) {
+                a.u_ms[k]=wind->u[0][hour*cells+k];
+                a.v_ms[k]=wind->v[0][hour*cells+k];
+            }
+            a.temperature_k=surface.temp2d_k;
+            surface.temp2d_k=avetmp(a);
+        }
         // Documented interface: cteas/p6e/surface_solar.hpp.
         const float cloud_fraction=heatfx_cloud_fraction(
             static_cast<int>(observation.opaque_cloud_tenths));
@@ -372,6 +457,28 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             throw std::invalid_argument(
                 "station surface pressure missing or out of range for airden");
         const float station_pressure_mb=static_cast<float>(observation.pressure_mb);
+        std::vector<int> stability;
+        if(wind) {
+            // PGTSTB L13295-13498 with the first-level wind, MCLOUD=1 station
+            // cloud/ceiling and the case land-use grid.
+            PgtInput p;
+            p.nx=static_cast<std::size_t>(h.nx);
+            p.ny=static_cast<std::size_t>(h.ny);
+            p.mcloud=1;p.water_first=h.iwat1;p.water_last=h.iwat2;
+            p.u10.resize(cells);p.v10.resize(cells);
+            p.sinalp=sinalpc;
+            p.ccgrid.assign(cells,0.f);
+            p.ceilgrid.assign(cells,0);
+            p.landuse=reference.statics.ilandu;
+            p.nearest.assign(cells,1);
+            p.station_cloud={static_cast<int>(observation.opaque_cloud_tenths)};
+            p.station_ceil={observation.ceiling_hundreds_ft};
+            for(std::size_t k=0;k<cells;++k) {
+                p.u10[k]=wind->u[0][hour*cells+k];
+                p.v10[k]=wind->v[0][hour*cells+k];
+            }
+            stability=pgtstb(p);
+        }
         std::vector<float> density(cells,0.f);
         for(std::size_t k=0;k<cells;++k)
             density[k]=0.3484321f*station_pressure_mb/surface.temp2d_k[k];
@@ -391,6 +498,9 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                 if(label=="IRH")
                     for(std::size_t k=0;k<cells;++k)
                         field.integer_values[k]=surface.rh2d_pct[k];
+                if(label=="IPGT"&&wind)
+                    for(std::size_t k=0;k<cells;++k)
+                        field.integer_values[k]=stability[k];
             } else {
                 field.real_values.assign(cells,calmet21_missing);
                 if(surface_temperature||layer_one)
@@ -412,7 +522,12 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     report+="  \"reference\": "+json_string(reference_path)+",\n";
     report+="  \"observations\": "+json_string(observations_path)+",\n";
     report+="  \"intervals\": "+std::to_string(reference.intervals)+",\n";
-    report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\",\"QSW\",\"RHO\"],\n";
+    report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\",\"QSW\",\"RHO\"";
+    if(wind)report+=",\"IPGT\"";
+    report+="],\n";
+    report+="  \"wind_source\": "+json_string(wind_path)+",\n";
+    report+="  \"avetmp_mnmdav\": "+std::to_string(mnmdav)+
+            ", \"avetmp_hafang_deg\": "+json_number(hafang)+",\n";
     report+="  \"produced_real_hours\": "+std::to_string(produced_temperature)+",\n";
     report+="  \"hours_with_missing_station_humidity\": "+std::to_string(missing_humidity)+",\n";
     report+="  \"shortwave_constants\": {\"ha1\": "+json_number(ha1)+", \"ha2\": "+json_number(ha2)+
@@ -424,6 +539,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         for(const auto& label:labels) {
             if(label=="TEMPK"||label=="IRH"||label=="T-LEV  1"||label=="QSW"||
                label=="RHO")continue;
+            if(label=="IPGT"&&wind)continue;
             report+=(first?"":", ")+json_string(label);
             first=false;
         }
@@ -748,7 +864,10 @@ int main(int argc,char** argv) {
                           static_cast<float>(std::stod(argument(argc,argv,"--ha1","990."))),
                           static_cast<float>(std::stod(argument(argc,argv,"--ha2","-30."))),
                           static_cast<float>(std::stod(argument(argc,argv,"--hb1","-0.75"))),
-                          static_cast<float>(std::stod(argument(argc,argv,"--hb2","3.4"))));
+                          static_cast<float>(std::stod(argument(argc,argv,"--hb2","3.4"))),
+                          argument(argc,argv,"--wind-file"),
+                          number_argument(argc,argv,"--mnmdav",1),
+                          static_cast<float>(std::stod(argument(argc,argv,"--hafang","30."))));
             return 0;
         }
         if(mode=="check") {
