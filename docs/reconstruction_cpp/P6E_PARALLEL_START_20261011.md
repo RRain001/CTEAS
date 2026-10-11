@@ -1354,3 +1354,47 @@ real hours need the 12Z -> next-day-00Z bracket, so it needs the original's
 `ZI`/`WSTAR` produced but **FAIL** (not accepted); `T-LEV 2..9` BLOCKED on the
 TEMP3D time-bracket generalisation; `U-LEV/V-LEV/WFACE` P6D-owned;
 `P6E_FULL=NOT_PASS`.
+
+## E29 exported chain state for P6D's `FRADJ` (ZICONV / ZI, 143 hours)
+
+P6D's `FRADJ` (COMP L5643) consumes `GAMMA` from `CGAMMA` (L3031), which reads
+the `ZICONV` state that `MIXHT` writes. P6D correctly refused to substitute the
+reference file's `ZI` field for it, so the P6E chain now exports the state it
+already computes.
+
+**Entry point** (the same command that produces the candidate):
+
+```
+p6e_calmet_dat21 emit-realcase --reference <met.dat> \
+    --observations <hourly.csv> --wind-file <CALMET.DAT 2.1> \
+    --geo-file <GEO.DAT> --out <candidate.dat> \
+    --state-prefix /path/prefix
+```
+
+writes
+
+| file | contents |
+|---|---|
+| `<prefix>.ziconv.f32` | 143 x 2500 `float32` little-endian, hour-major, i fastest |
+| `<prefix>.zi.f32` | same layout for `ZI` |
+| `<prefix>.state.json` | metadata: shape `[143,50,50]`, units m, dtype, layout, water sentinel `-7777`, missing sentinel `9999`, per-hour time labels (packed `YYYYJJJHH` + seconds + year/julian/hour), wind and GEO provenance, and the difference from the `met.dat` `ZI` field |
+
+Measured on the real case (original wind driving): `ziconv` 0.0000 .. 1162.2113 m,
+`zi` 49.9999 .. 1162.2113 m, 357,500 values per file, 143 hour labels from
+`202200100` to `202200622`.
+
+**Provenance, stated in the metadata and here**: these arrays are
+**chain-internal `MIXHT` state advanced hour by hour**, not fields copied from
+the reference file. They are *not* the same quantity as the `met.dat` `ZI`
+field: `ZI` is the maximum of the convective and mechanical heights *after*
+the `AVEMIX` averaging (`IAVEZI=1`), while `ZICONV` is the internal convective
+height that `CGAMMA` consumes. Artifacts: `ziconv` sha256
+`8f03d2e86ce30453cf96e6fdbba1d303ad4a2e5a748576f9d014cf5bf56b65b1`, `zi`
+sha256 `6d354a69a3dfb0da034450dd41b189d5e67e143292d8090611193d84bb3f275d`,
+metadata sha256 `9de625adc5f826d1a1697e9cdfc4e5ad6be51e143a0646eb8f60024efd45afa8`.
+
+**Accuracy caveat carried in the metadata**: the `ZI` field produced by this
+chain still disagrees with the frozen reference on 62 % of cells (the E28 audit
+is open), so P6D should treat the export as the correct *interface* with a
+pending accuracy question rather than a validated field. `ZICONV` has no
+reference column in `CALMET.DAT` and therefore no independent verdict yet.
