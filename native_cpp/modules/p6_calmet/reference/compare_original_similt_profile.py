@@ -120,7 +120,7 @@ def original_sources(vendor,out):
     similt=block("similt","slope",30097,30372)
     a=next(i for i,s in enumerate(lines) if s.lower().startswith("      function psiud("))
     end=next(i for i,s in enumerate(lines) if s.lower().startswith("      function psitd("))
-    if a+1!=35629 or end+1!=35673:
+    if a+1!=35629 or end+1!=35674:
         raise ValueError(f"original psiud source location drift {a+1}/{end+1}")
     psiud=out/"psiud_original.for"
     psiud.write_text("".join(lines[a:end]))
