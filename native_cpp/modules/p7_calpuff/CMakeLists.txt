@@ -351,3 +351,34 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7n_probe --deck-rise "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
             0 513.3846439571 3533.7689269678 70.8 1.6 17.26 298.15)
 endif()
+
+# P7O: the release scheduler (INJECT + the verbatim POINTS1 cadence and
+# release-state statements + the vendor puff-age rule).
+add_library(cteas_p7_release STATIC src/release.cpp)
+target_include_directories(cteas_p7_release PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_release PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_release PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7o_tests tests/p7o_tests.cpp)
+target_link_libraries(cteas_p7o_tests PRIVATE cteas_p7_release)
+if(MSVC)
+  target_compile_options(cteas_p7o_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7o_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7o_release_scheduler_contract COMMAND cteas_p7o_tests)
+
+add_executable(cteas_p7o_probe src/release_probe.cpp)
+target_link_libraries(cteas_p7o_probe PRIVATE cteas_p7_release cteas_p7_plume_rise
+  cteas_p7_calmet21 cteas_p7_control)
+add_test(NAME cteas_p7o_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7o_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7o_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7o_locked_case_release
+    COMMAND cteas_p7o_probe --deck-release "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
+            0 513.3846439571 3533.7689269678 70.8 1.6 17.26 298.15 8.34e5)
+endif()

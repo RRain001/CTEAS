@@ -1194,3 +1194,113 @@ for the locked deck: its gradual-rise path (`MTRANS=1`/`MTIP=1`/`MRISE=1`/
 stands (no hill in this deck, so CTSG is never invoked). Explicitly out of scope
 and off this case's path: `MSHEAR=1`, `MSPLIT=1`, `MHFTSZ=1`, building downwash
 and the numerical rise.
+
+## 2026-10-12 P7O release scheduler: the second cut of the advection prototype
+
+Round status: the release scheduler of the locked deck's constant point source is
+reconstructed and parity-checked against the compiled **unmodified** vendor
+source. The slice is the "release time / age / mass / initial rise state" chain
+that P7N named as its entry point.
+
+### Ported units and parity evidence
+
+| unit | vendor span | ported | parity |
+|---|---|---|---|
+| `INJECT` (release mass split + puff code) | L18561-18696 | yes | 2592 cases x 10 columns, `MAX_REL=0` (bit-exact) |
+| POINTS1 release cadence (inline) | L15975-16002 | yes | 108 cases x 3 columns, `MAX_REL=0` (bit-exact) |
+| POINTS1 release-time state (inline) | L16120-16176 | yes | 32 cases x 46 columns, `MAX_REL=4.3e-08` |
+| puff-age rule | SWAP L19366 + SETPUF L48718 | yes | pinned statements, machine-checked |
+
+`P7O_ORACLE_PARITY_TOTAL_CASES=2732`, `MISMATCHES=0`. The two inline blocks are
+extracted **verbatim** (19 and 46 statements) and staged inside generated harness
+subroutines that add only declarations and the argument transfer; the anchor
+records their spans and SHA-256. `ROLLDN` (array roll-down) is a hard-failing stub
+in the oracle, and the port refuses the unported paths instead of guessing.
+
+### What the vendor actually does (findings from the anchor)
+
+1. **Release cadence**: `NPUFFS = min(max(INT(WSNEW*XTMP1(MD)) + 1, 1), MXNEW)` and
+   each puff is emitted over `DT = DHR/NPUFFS` seconds. With the deck's stack and
+   the sampled hour (`WSNEW` = 1.396 m/s, `XTMP1` = 1.0 because `NSPT1 = 0`) this
+   is **2 puffs per hour, each carrying 1800 s of emission** - not the "one puff
+   per step" of the P7C prototype. `WSNEW` is `max(WS, W at the final rise)` from
+   `RLSMET`; `RLSMET` is not reconstructed, so the port takes the release wind as
+   an explicit input and the run reports that it used the stack-height wind.
+2. **Puff age**: for a constant point source `TMTOTB` is *not* assigned in
+   POINTS1. `SWAP(i,0)` zeroes it when the puff is created (L19366) and `SETPUF`
+   adds `TSAMP` every step (L48718), so a puff released during the current step
+   has age 0 and grows by the sampling step. The age rule is ported and pinned;
+   `SETPUF`'s per-step state update is the next round's entry point.
+3. **Release mass**: `INJECT` puts `Q*DT` into the mixed layer, into the layer
+   above, or splits it by `FMIX` for partial penetration, and sets the puff code
+   (`1/2` Gaussian/uniform in the mixed layer, `3/4` above, `5/6` split, plus
+   `MFACT0` for the slug forms; a stable source above the lid is treated as
+   unlimited mixing with `ZIMAX = ZIOLD = 10 000 m`).
+
+### Locked-case release run (physical chain only)
+
+`cteas_p7o_probe --deck-release MET.DAT puff.inp 0 513.3846439571 3533.7689269678
+70.8 1.6 17.26 298.15 8.34e5` runs the reconstructed rise (P7N) and release (P7O)
+chains for the deck's stack and the sampled hour:
+
+```
+P7O_DECK_RELEASE_RUN=PASS HOUR=0 STABILITY=4 SPEED_MS=1.39612 ZI_M=230.977
+  PLUME_HEIGHT_M=136.158 PUFFS_PER_HOUR=2 EMISSION_DURATION_S=1800 MGAUSS=1
+  PUFF_CODE=1 ZIMAX_M=230.977 ZIOLD_M=230.977 QM_H3_BQ=1501200000 QU_H3_BQ=0
+  QM_HE3_BQ=0 QU_HE3_BQ=0 STEP_S=3600 AGE_AFTER_ONE_STEP_S=3600
+  RELEASE_WIND_IS_STACK_WIND=true RLSMET_NOT_RECONSTRUCTED=true
+  PHYSICAL_CHAIN_ONLY=true NOT_A_PUFF_CON_COMPARISON=true
+```
+
+i.e. the deck releases 2 puffs per hour, each carrying 1800 s of emission =
+1.5012e9 Bq of H-3 (and none of HE-3, matching the deck's `0.000E+00` second
+emission rate), entirely within the mixed layer (code 1), from a plume that has
+risen to 136.16 m, with the first step advancing the puff age from 0 to 3600 s.
+
+### Gate evidence (Linux, lhy-desktop, g++-12 + gfortran-11)
+
+`LOCAL_GATE_P7=PASS sha=3b26812cc ok=27 blocked=0 failed=0` with the
+authoritative local gate, `100% tests passed, 0 tests failed out of 29`
+(including the three new P7O CTest entries). The same matrices against the
+compiled unmodified vendor source with `GNU Fortran (Ubuntu 11.4.0) 11.4.0` are
+identical to macOS: `INJECT` 2592 cases `MAX_REL=0` (bit-exact), cadence 108 cases
+`MAX_REL=0` (bit-exact), release-time state 32 cases x 46 columns
+`MAX_REL=4.310e-08` - 2732 cases, `MISMATCHES=0`.
+
+### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
+
+- `cteas_p7o_release_scheduler_contract`: cadence closed forms (including the
+  calm hour, the `MXNEW` cap and the interval scaling), all five `INJECT`
+  branches and codes, the release-time state field mapping, the age rule and every
+  fail-closed path. PASS.
+- `cteas_p7o_source_parity`: anchor + two inline blocks + the age pins + 27 quoted
+  statements + the three matrices. PASS (2732 cases).
+- `cteas_p7o_locked_case_release`: the deck run above. PASS.
+- Local `ctest` 28/29 PASS; the only failure remains the pre-existing macOS
+  case-insensitive-filesystem failure of `cteas_p7_original_case_stage_contract`
+  (PASS on Linux).
+
+### Precise gaps and the next-round entry point
+
+1. **`SETPUF`** (L48198-48757, 560 lines) is the per-step puff update: distances
+   and travel times, the receptor-independent sigma update (`SETCSIG`), the rise
+   table / `WAKE_TAB` handling, the `MCTADJ=2` height adjustment, gravitational
+   settling and the `TMTOTB` increment. This is now the single largest missing
+   piece of the puff model and the natural next slice; the release-time state it
+   consumes is already ported and pinned.
+2. **`RLSMET`** (L18172-18379) supplies `WSNEW` (the wind at the final rise) and
+   the `MFACT0` determination for `METFM=1/4/5`; without it the release wind is a
+   caller input (as the deck run states).
+3. **`PTLAPS`/`LCALGRD`** (L18421-18559) is still needed before the stable rise
+   branches (`ISTAB >= 5`) and the met-based `PTGINV` can be exercised.
+4. **`SWAP`/`ROLLDN`** (L19217-19433 / L19110-19216) manage the puff arrays; the
+   port models a single release set and leaves array management to the caller.
+
+### Incomparability list after this round
+
+**Still one cause, narrowed again**: the puff model is still the P7C prototype -
+now reduced to `SETPUF`'s per-step state update (and the advection step around it)
+plus the CTEAS-only `CONC.DAT` header. Both the plume-rise path (P7N) and the
+release scheduler (P7O) of the locked deck are reconstructed with original-source
+parity. Explicitly out of scope and off this case's path: `MSHEAR=1`, `MSPLIT=1`,
+`MHFTSZ=1`, building downwash, the numerical rise and (for the locked deck) CTSG.
