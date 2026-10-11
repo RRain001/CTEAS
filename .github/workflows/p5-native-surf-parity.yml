@@ -121,6 +121,28 @@ jobs:
           if a!=b:raise SystemExit("P5 synthetic native SURF.DAT does not match original")
           print("P5_NATIVE_SURFDAT_SYNTHETIC_BYTE_PARITY=PASS")
           PY
+      - name: Native writer fail-closed for unsupported legacy control modes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess,re
+          from pathlib import Path
+          root=Path("/tmp/cteas-p5-synthetic")
+          original=(root/"native.inp").read_text()
+          executable="/tmp/cteas-p5-build/cteas_p5_smerge"
+          for key,value in (("JDAT","5"),("IOFORM","1"),("IOPACK","1"),
+                            ("LPREV","T"),("LPCALC","T"),("ABTZ","UTC+0900")):
+              changed,count=re.subn(r"(!\s*"+key+r"\s*=\s*)[^!]+!",
+                                    lambda m:m.group(1)+value+" !",original,count=1)
+              assert count==1,key
+              path=root/f"reject_{key}.inp"
+              path.write_text(changed)
+              proc=subprocess.run([executable,str(path)],capture_output=True,text=True)
+              if proc.returncode==0 or "P5_CPP_SURFDAT_ERROR" not in proc.stderr:
+                  raise AssertionError(f"unsupported {key}={value} wrongly accepted: {proc.stderr}")
+              print("P5_CPP_FAIL_CLOSED=PASS",key,value,proc.returncode)
+          PY
       - name: Preserve independent reference on failure or success
         if: always()
         shell: bash
