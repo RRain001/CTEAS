@@ -1257,6 +1257,16 @@ i.e. the deck releases 2 puffs per hour, each carrying 1800 s of emission =
 emission rate), entirely within the mixed layer (code 1), from a plume that has
 risen to 136.16 m, with the first step advancing the puff age from 0 to 3600 s.
 
+### Gate evidence (Linux, lhy-desktop, g++-12 + gfortran-11)
+
+`LOCAL_GATE_P7=PASS sha=3b26812cc ok=27 blocked=0 failed=0` with the
+authoritative local gate, `100% tests passed, 0 tests failed out of 29`
+(including the three new P7O CTest entries). The same matrices against the
+compiled unmodified vendor source with `GNU Fortran (Ubuntu 11.4.0) 11.4.0` are
+identical to macOS: `INJECT` 2592 cases `MAX_REL=0` (bit-exact), cadence 108 cases
+`MAX_REL=0` (bit-exact), release-time state 32 cases x 46 columns
+`MAX_REL=4.310e-08` - 2732 cases, `MISMATCHES=0`.
+
 ### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
 
 - `cteas_p7o_release_scheduler_contract`: cadence closed forms (including the

@@ -36,6 +36,11 @@ ReleaseCadence release_cadence(const ReleaseCadenceInputs& inputs) {
     const R hour_seconds = to_real(inputs.hour_seconds, "emission hour length");
     require_true(inputs.max_puffs >= 1, "MXNEW must be at least 1");
     require_true(hour_seconds > kZero, "the emission hour must be positive");
+    // The vendor truncates WSNEW*XTMP1+1 into an integer; for a non-negative
+    // wind that equals INT(WSNEW*XTMP1)+1, so a negative wind (unphysical, and
+    // not equivalent) is refused rather than silently diverging.
+    require_true(wind >= kZero, "the release wind speed must not be negative");
+    require_true(interval > kZero, "the emission interval must be positive");
 
     int puff_count = static_cast<int>(wind * interval) + 1;
     puff_count = std::max(puff_count, 1);
