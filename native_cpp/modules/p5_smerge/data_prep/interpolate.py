@@ -169,17 +169,23 @@ def fill_wind_forward_calm(df, dir_col, spd_col, strict=False):
 
     method = pd.Series("OBSERVED_OR_PREVIOUS_HOUR", index=index, dtype="object")
     method.loc[exact_zero] = "ZERO_SPEED_DIRECTION_CANONICAL_0_FOR_GENERIC"
+    dir_age_h = (pd.Series(index, index=index) - dir_src).dt.total_seconds() / 3600
+    spd_age_h = (pd.Series(index, index=index) - spd_src).dt.total_seconds() / 3600
+    pair_valid = direction_generic.notna() & speed_generic.notna()
     audit = pd.DataFrame({
         "wind_direction_raw_deg": direction,
         "wind_speed_raw_m_s": speed,
         "observation_case": observation_case,
         "unseeded_noncalm_direction": unseeded_noncalm,
+        "generic_wind_pair_valid": pair_valid,
         "wind_direction_filled_deg": direction_filled,
         "wind_direction_was_filled": direction_seed.isna() & direction_filled.notna(),
         "wind_direction_fill_source_utc": dir_src,
+        "wind_direction_source_age_hours": dir_age_h,
         "wind_speed_filled_m_s": speed_filled,
         "wind_speed_was_filled": speed.isna() & speed_filled.notna(),
         "wind_speed_fill_source_utc": spd_src,
+        "wind_speed_source_age_hours": spd_age_h,
         "is_calm": low_wind,
         "is_exact_zero_speed": exact_zero,
         "wind_direction_statistics_deg": direction_filled,
@@ -206,6 +212,10 @@ def fill_wind_forward_calm(df, dir_col, spd_col, strict=False):
         "observed_direction_only_hours": int((observation_case == "DIRECTION_ONLY").sum()),
         "observed_both_missing_hours": int((observation_case == "BOTH_MISSING").sum()),
         "unseeded_noncalm_direction_hours": int(unseeded_noncalm.sum()),
+        "generic_valid_wind_pair_hours": int(pair_valid.sum()),
+        "generic_invalid_wind_pair_hours": int((~pair_valid).sum()),
+        "max_wind_direction_previous_value_hours": float(dir_age_h.max()) if dir_age_h.notna().any() else None,
+        "max_wind_speed_previous_value_hours": float(spd_age_h.max()) if spd_age_h.notna().any() else None,
         "statistics_speed_field": "wind_speed_filled_m_s",
         "calculation_speed_field": "wind_speed_generic_m_s (NO P5 MINIMUM)",
         "main_table_speed_field": "wind_speed_generic_m_s (zero and low wind retained)",
