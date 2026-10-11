@@ -233,3 +233,20 @@ IPCODE precipitation; no rain data for 143/143 hours.
 State E10 implementation SUBMITTED, NOT PASS until runner CI returns
 source evidence. P6E_FULL remains NOT PASS: actual 2022 one/six/143h,
 upper-air sounding-based daytime MIXHT, TEMP3D and water paths pending.
+
+## E11 MIXHMC daytime Maul-Carson physical growth — CI pending
+
+A separate original-source aligned `MIXHMC` convective growth kernel
+(`ILAPSE=2`) now covers computed potential-temperature gradient
+clipping, user-defined buoyancy threshold, binary collapse versus
+exponential relaxation (`IZICRLX`), timestep factors, convective
+potential-temperature jump `DPTT`, and `ZIMAX` clipping.
+Scientific parity harness compiles verbatim pinned original
+CALMET 6.5.0 `MIXHMC` subroutine with original `ZIPARM.MET` and
+`GEN.MET`, stubbing unreachable prognostic `MIXDT2`. Frozen 160
+configurations x five outputs = **800 scalar comparisons** spanning
+night/warm, threshold, collapse, growth, relaxation, and time steps.
+
+E11 is **a subcomponent of daytime MIXHT**, not full daytime
+`MIXHT` with the actual `MIXDT` temperature-sounding calculation.
+Its status remains PENDING until original-source CI returns PASS.

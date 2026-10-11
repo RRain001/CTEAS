@@ -214,6 +214,12 @@ jobs:
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
             --cpp build/p6e/p6e_surfvar_multistation_reference \
             --out build/p6e/surfvar-multistation-original-parity.json
+      - name: Original unmodified MIXHMC convective growth ILAPSE 2 source parity
+        run: |
+          python3 native_cpp/modules/p6_calmet/p6e/reference/compare_original_mixhmc.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --cpp build/p6e/p6e_mixhmc_reference \
+            --out build/p6e/mixhmc-original-parity.json
       - name: Save scientific gate evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -230,4 +236,5 @@ jobs:
             build/p6e/elustr-daytime-original-parity.json
             build/p6e/cloud3-original-parity.json
             build/p6e/surfvar-multistation-original-parity.json
+            build/p6e/mixhmc-original-parity.json
           if-no-files-found: warn
