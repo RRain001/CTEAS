@@ -1,0 +1,50 @@
+name: P6D WIND1 neutral SIMILT original source parity
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/similt_neutral.hpp'
+      - 'native_cpp/modules/p6_calmet/src/similt_neutral_main.cpp'
+      - 'native_cpp/modules/p6_calmet/tests/p6_similt_neutral_tests.cpp'
+      - 'native_cpp/modules/p6_calmet/reference/compare_original_similt_neutral.py'
+      - '.github/workflows/p6d-similt-neutral-original-parity.yml'
+      - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-similt-neutral:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select modern C++20 and Fortran compilers (nonprivileged)
+        uses: ./.github/actions/cteas-linux-toolchain
+      - name: Strict C++20 build and all current P6 software regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/cteas-similt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cmake -S native_cpp/modules/p6_calmet -B "$build" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$build" --parallel 2
+          ctest --test-dir "$build" --output-on-failure
+      - name: Literal unchanged original SIMILT versus independent C++
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_similt_neutral.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --cpp "$RUNNER_TEMP/cteas-similt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/cteas_p6_similt_neutral" \
+            --out "$RUNNER_TEMP/cteas-similt-parity-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+      - name: Save source-frozen numerical evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6d-similt-neutral-source-parity
+          path: ${{ runner.temp }}/cteas-similt-parity-${{ github.run_id }}-${{ github.run_attempt }}/p6d-similt-neutral-parity.json
+          if-no-files-found: warn
+          retention-days: 14
