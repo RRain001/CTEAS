@@ -5,6 +5,8 @@ Repository: `RRain001/CTEAS`; immutable foundation `60b7b1d93866fff772926b6ac32d
 
 **2026-10-11 P6C UP.DAT v2.1**：[P6C_UPDAT_RDUPN_2022_AUDIT.md](P6C_UPDAT_RDUPN_2022_AUDIT.md)：原版 `COMP` 对 v2.1 调用 `RDUPN`（不是老 `RDUP`）；真正 2022 年 P4 `UP.DAT` 的 13 条探空记录、785 层、6,280 原生 Fortran/C++ 读入与 U/V、高度转换字段 **PASS**。P6C 尚欠 `COMP` AA/BB 各时段资料选择、`VERTAV/FACET` 垂直插值及原版观测场集成对照，仍然不能标 P6C COMPLETE 或开启 P6D 整链。
 
+**2026-10-11 P6C 模型层/时次物理对照更新**：[P6C_VERTAV_PREPDI_FACET_2022_AUDIT.md](P6C_VERTAV_PREPDI_FACET_2022_AUDIT.md)。真实 P4 2022 13 次探空：原版 `VERTAV` 完整源码风速层积分 **234/234 PASS**；原版 `PREPDI` 逐层时次插值源码片段和独立时次序列 **2574/2574 PASS**（143h×9层×U/V，最大 U/V 误差 5.0E-9 m/s）；原版 `FACET+INTP` 两个完整子程序 **130/130 PASS**（最大 5.0E-9 K）；原版 CALMET 同一 CI 完整参考结果回归 PASS。**P6C 仍 PARTIAL**：原版 `COMP` 实际 AA/BB 缓冲状态、全部逐时有效性与观测场合成未完成，P6D–G 暂缓。
+
 **2026-10-11 P6C READGE/SURF 真正案例数据实测对照**：[P6C_READGE_SURFACE_2022_AUDIT.md](P6C_READGE_SURFACE_2022_AUDIT.md)。原版 P3 实际 GEO.DAT 8 字段 × 2500 单元的原生 Fortran 读取对照 **20,000/20,000 PASS**；原版 P5/SMERGE 新的 2022 SURF.DAT 143 时段 × 8 气象值及站点时次标识，原生 Fortran 输入格式对照 **PASS**。目前有效降水代码 **0/143**；P6C 仅部分完成，2022 UP.DAT/RDHDU/RDUP/站点插值及垂直高度时次处理仍需原版对照，P6D 集成按用户要求继续 HOLD。
 
 **顺序执行台账（用户明确要求 P6A→P6G 严格逐阶段验收）**：[P6_A_TO_G_SEQUENTIAL_EXECUTION_LEDGER.md](P6_A_TO_G_SEQUENTIAL_EXECUTION_LEDGER.md)。当前 P6C 仍未完成；已通过的独立 `FRADJ` 单元对照不等于 P6D 阶段验收，不允许跳过 P6C 的真实资料读取与时间/高度处理。
