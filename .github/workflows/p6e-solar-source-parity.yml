@@ -12,12 +12,32 @@ permissions:
   contents: read
 jobs:
   p6e-solar-original:
-    runs-on: ubuntu-24.04
+    # GitHub-hosted minutes exhausted; use the repository's registered runner
+    # (the job UI must confirm runner_name=lhy-desktop before parity can PASS).
+    # Targeting the self-hosted label avoids assuming a custom-name label exists.
+    runs-on: self-hosted
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Original Fortran compiler
-        run: sudo apt-get update && sudo apt-get install -y gfortran
+      - name: Identify lhy-desktop and verify toolchain
+        shell: bash
+        run: |
+          echo "Runner: ${RUNNER_NAME}; OS: ${RUNNER_OS}; arch: ${RUNNER_ARCH}"
+          if [[ "${RUNNER_NAME}" != "lhy-desktop" ]]; then
+            echo "::error::Expected lhy-desktop but received ${RUNNER_NAME}"
+            exit 1
+          fi
+          if [[ "${RUNNER_OS}" != "Linux" ]]; then
+            echo "::error::The selected CALMET GNU source-parity harness requires a Linux runner"
+            exit 1
+          fi
+          for tool in cmake c++ gfortran python3 git; do
+            if ! command -v "${tool}" >/dev/null 2>&1; then
+              echo "::error::Missing tool ${tool} on lhy-desktop; install it on the runner host"
+              exit 1
+            fi
+            command -v "${tool}"
+          done
       - name: C++20 Werror and software CTest
         run: |
           cmake -S native_cpp/modules/p6_calmet/p6e -B build/p6e -DCMAKE_BUILD_TYPE=Debug
