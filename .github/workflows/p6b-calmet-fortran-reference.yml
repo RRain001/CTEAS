@@ -118,6 +118,20 @@ jobs:
             --cpp-vertav /tmp/p6c-up-build/cteas_p6_vertav \
             --station 58424 \
             --out integration-evidence/p6c-vertav-reference
+      - name: P6C original PREPDI source-exact 143 hourly time/vertical winds parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/p6c-up-build/cteas_p6_upper_hourly \
+            project/current/met/upperair/final/up_58424.dat \
+            integration-evidence/p6c-hourly-prepdi.csv \
+            58424
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_prepdi_time.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --up project/current/met/upperair/final/up_58424.dat \
+            --original-vertav integration-evidence/p6c-vertav-reference/original_vertav_result.txt \
+            --modern-hourly integration-evidence/p6c-hourly-prepdi.csv \
+            --out integration-evidence/p6c-prepdi-time-reference
       - name: P5 real 2022 ISD + Lite / two-stage wind / GENERIC
         shell: bash
         run: |
