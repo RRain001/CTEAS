@@ -22,11 +22,12 @@ def obs(df, present, hour, direction, speed):
 
 
 class ArcTests(unittest.TestCase):
-    def test_zero_and_180_symmetry_and_user_antipodal_special(self):
+    def test_zero_180_midpoints_and_directional_clockwise_antipodal_tie(self):
         for a,b,expect in [
             (350,10,360), (360,360,360), (10,350,360),
             (170,190,180), (190,170,180), (180,180,180),
-            (90,270,180), (1,181,180), (181,1,180),
+            (90,270,180), (270,90,360),
+            (1,181,91), (181,1,271), (360,180,90), (180,360,270),
             (350,30,10), (30,350,10),
         ]:
             with self.subTest(a=a,b=b):
