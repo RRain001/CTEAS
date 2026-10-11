@@ -56,6 +56,7 @@ DIAGNO L6119–6148 的选定片段完整通过 SMOOTH→全层 DIVCEL→由下�
 - **独立清点**：CTest 内 Python 记录遍历（记录框架、1,114×132 B 注释、176 B 控制块、十条静态记录的零时钟字、OUTHR 顺序、时间标签与 3600 s 区间、XMISS 对齐计数）与写出器 `check` 报告的逐字段分母/缺测数完全一致；冻结文件的小时字段不含 `XMISS`（0/16,087,500 单元），缺测路径由合成夹具覆盖。
 - **fail-closed**：维数/站点数/静态记录长度不符、OUTHR 顺序错位、整数-实数类别不符、区间≠3600 s、时间不连续、声明运行窗口与正文不符、`NPSTA=0` 时出现 `RMM/IPCODE`、缺字段、非有限值、`ZICONV/DPTT/QH/USTAROLD` 等无文件表示的内部量，一律报错而非静默修补；负例（截断、记录标记损坏、标签损坏、静态时钟非零、区间秒数损坏）在 CTest 中必须失败。
 - **未达成**：写出器只保证布局、时间语义、单位、掩码与“数值逐字节不丢失”，**不保证重建 2022 场的物理数值正确**；P6F 整阶段门槛中的“物理值正确”仍需 P6G 用 P6D/P6E 场与原版逐值对照。支持模式仅 `IRTYPE=1`/`IWFCOD=1`/`NPSTA>=0`；`IRTYPE=0` 与 `NPSTA=-1` 不支持（fail-closed）。
+- **交付与门槛**：[PR #26](https://github.com/RRain001/CTEAS/pull/26)（base `main`）；权威本地门 `python3 scripts/local_gate.py --track p6f` → `LOCAL_GATE_P6F=PASS`（4/4 CTest，g++-12 Debug）。
 
 ## 2. 新增 P6C 站点几何子模块：原版真实源码依据
 

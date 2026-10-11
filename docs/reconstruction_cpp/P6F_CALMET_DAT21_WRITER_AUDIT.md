@@ -91,6 +91,9 @@ and `NPSTA=0`.
 python3 scripts/local_gate.py --track p6f     # LOCAL_GATE_P6F=PASS
 ```
 
+Delivered as PR [#26](https://github.com/RRain001/CTEAS/pull/26) (base `main`); the script writes
+its own machine-readable evidence under `$CTEAS_GATE_ROOT/evidence/p6f-<sha12>.json`.
+
 The gate configures, builds (`g++-12`, `-Wall -Wextra -Wpedantic -Werror`) and runs the module's
 four CTest targets:
 
