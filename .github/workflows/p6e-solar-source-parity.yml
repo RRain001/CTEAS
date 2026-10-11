@@ -1,4 +1,4 @@
-name: P6E SOLAR original source parity
+name: P6E independent SOLAR and PGTSTB source parity
 on:
   push:
     branches:
@@ -29,10 +29,18 @@ jobs:
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
             --cpp build/p6e/p6e_solar_reference \
             --out build/p6e/solar-original-parity.json
+      - name: Source-locked unchanged Fortran PGTSTB comparison
+        run: |
+          python3 native_cpp/modules/p6_calmet/p6e/reference/compare_original_pgtstb.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --cpp build/p6e/p6e_pgtstb_reference \
+            --out build/p6e/pgtstb-original-parity.json
       - name: Save scientific gate evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: p6e-solar-original-parity
-          path: build/p6e/solar-original-parity.json
+          path: |
+            build/p6e/solar-original-parity.json
+            build/p6e/pgtstb-original-parity.json
           if-no-files-found: warn
