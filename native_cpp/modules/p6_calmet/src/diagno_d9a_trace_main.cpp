@@ -1,7 +1,7 @@
 // P6D9A original-source *synthetic identity upstream* numeric trace.
 // THIS IS NOT a replacement for real P6E heat/terrain/slope physics.
 #include "cteas/p6/diagno_d9a_selected_bridge.hpp"
-#include "cteas/p6/similt_neutral.hpp"
+#include "cteas/p6/similt_profile.hpp"
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -32,8 +32,8 @@ int main(int argc,char** argv){
     if(std::sqrt(su*su+sv*sv)<0.0001f){
         for(auto& w:s.surface_neutral_profile)w=LayerWind{0.f,0.f};
     }else{
-        const SimiltNeutralInput surface{lat,height,rough,su,sv,-4,0};
-        const auto neutral=original_similt_wind1_neutral(surface);
+        const SimiltProfileInput surface{lat,height,rough,su,sv,-4,0};
+        const auto neutral=original_similt_profile(surface);
         for(std::size_t k=0;k<9;k++)
             s.surface_neutral_profile[k]={neutral.u_mps[k],neutral.v_mps[k]};
     }

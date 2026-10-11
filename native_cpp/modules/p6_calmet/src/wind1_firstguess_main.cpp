@@ -1,5 +1,5 @@
 #include "cteas/p6/wind1_selected_firstguess.hpp"
-#include "cteas/p6/similt_neutral.hpp"
+#include "cteas/p6/similt_profile.hpp"
 #include <cmath>
 #include <exception>
 #include <fstream>
@@ -30,10 +30,10 @@ int main(int argc,char** argv){
     if(first_speed<0.0001f){
         for(auto& w:station.surface_neutral_profile)w=LayerWind{0.f,0.f};
     }else {
-        const SimiltNeutralInput input{
+        const SimiltProfileInput input{
             latitude,zanem,rough,observed_u,observed_v,-4,0
         };
-        const auto extrapolated=original_similt_wind1_neutral(input);
+        const auto extrapolated=original_similt_profile(input);
         for(std::size_t k=0;k<9;k++){
             station.surface_neutral_profile[k]={
                 extrapolated.u_mps[k],extrapolated.v_mps[k]

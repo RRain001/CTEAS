@@ -25,7 +25,7 @@
 #include "cteas/p6e/surface_solar.hpp"
 #include "cteas/p6e/surfvar_observed.hpp"
 #include "cteas/p6/inter2_selected.hpp"
-#include "cteas/p6/similt_neutral.hpp"
+#include "cteas/p6/similt_profile.hpp"
 #include "cteas/p6/terrain_envelope.hpp"
 #include "cteas/p6/upper_hourly_wind.hpp"
 #include "cteas/p6/wind1_selected_firstguess.hpp"
@@ -135,7 +135,7 @@ std::string hour_label(std::chrono::sys_seconds clock){
 }
 
 struct Arguments {
-    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,ziconv_file;
+    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,ziconv_file,el_file;
     int hours=143;
     fs::path out()const{return out_dir;}
 };
@@ -159,6 +159,7 @@ int main(int argc,char** argv){
         else if(flag=="--fixtures")args.fixture_dir=next();
         else if(flag=="--gamma")args.gamma_dir=next();
         else if(flag=="--ziconv")args.ziconv_file=next();
+        else if(flag=="--el")args.el_file=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
         else throw std::invalid_argument("unknown argument "+flag);
     }
@@ -324,6 +325,17 @@ int main(int argc,char** argv){
         for(std::size_t k=0;k<9;++k)
             nsmth[k]=static_cast<int>(it->second[k]);
     }
+    // Deck ZIMIN: the lower bound SIMILT applies to the mixing height
+    // (calmet.for L6894 passes ZIMIN as ZIMINI).
+    float zimin_m=0.f;
+    {
+        const auto it=controls.find("ZIMIN");
+        if(it==controls.end()||it->second.empty())
+            throw std::runtime_error("the deck must declare ZIMIN");
+        zimin_m=it->second[0];
+        if(!(zimin_m>0.f&&zimin_m<9998.f))
+            throw std::runtime_error("the deck ZIMIN must be a positive height");
+    }
     std::vector<int> nintrp(9);
     {
         const auto it=controls.find("NINTR2");
@@ -353,6 +365,21 @@ int main(int argc,char** argv){
         if(!stream)throw std::runtime_error("cannot open the ZICONV file");
         ziconv_hours.assign(bytes/std::size_t(4),0.f);
         stream.read(reinterpret_cast<char*>(ziconv_hours.data()),
+                    static_cast<std::streamsize>(bytes));
+    }
+    // Monin-Obukhov length per hour (P6E E29 <prefix>.el.f32, same layout).
+    // DIAGI's station column is built from it (calmet.for L6894 -> STHEOR).
+    std::vector<float> el_hours;
+    if(!args.el_file.empty()){
+        if(!fs::is_regular_file(args.el_file))
+            throw std::runtime_error("EL file does not exist: "+args.el_file.string());
+        const auto bytes=fs::file_size(args.el_file);
+        if(bytes%std::size_t(4*(std::size_t(nx)*std::size_t(ny)))!=0)
+            throw std::runtime_error("EL file must hold whole hourly nx*ny float32 blocks");
+        std::ifstream stream(args.el_file,std::ios::binary);
+        if(!stream)throw std::runtime_error("cannot open the EL file");
+        el_hours.assign(bytes/std::size_t(4),0.f);
+        stream.read(reinterpret_cast<char*>(el_hours.data()),
                     static_cast<std::streamsize>(bytes));
     }
     const auto envelope=terset(geo.terrain_m,nx,ny,grid_m,grid_m,terrad_km);
@@ -399,9 +426,11 @@ int main(int argc,char** argv){
         station.surface_observed_v_mps=surface_v;
         const float roughness=geo.z0_m.empty()?0.1f:geo.z0_m[0];
         if(std::hypot(surface_u,surface_v)>0.0001f){
-            const SimiltNeutralInput neutral{
-                31.939774f,10.f,roughness,surface_u,surface_v,iextrp,0};
-            const auto profile=original_similt_wind1_neutral(neutral);
+            const SimiltProfileInput neutral{
+                31.939774f,10.f,roughness,surface_u,surface_v,
+                10000.f,10000.f,10000.f,0,
+                {0.f,20.f,40.f,80.f,160.f,320.f,640.f,1200.f,2000.f,3000.f}};
+            const auto profile=original_similt_profile(neutral);
             for(std::size_t k=0;k<9;++k)
                 station.surface_neutral_profile[k]=
                     LayerWind{profile.u_mps[k],profile.v_mps[k]};
@@ -425,15 +454,29 @@ int main(int argc,char** argv){
             // zii=amax1(zimech,ziconv) to SIMILT, whose loop exits above it,
             // L30345). The WIND1 first guess is a different call: L36171 uses
             // zmo=zml=10000 (neutral, uncapped), so it keeps all nine levels.
-            std::size_t levels_filled=1;
-            for(std::size_t k=0;k<9;++k){
-                const bool inside=k==0||(mixing_height_m>0.f&&
-                                         mixing_height_m<9998.f&&
-                                         center_m[k]<=mixing_height_m);
-                diagi_surface_column[k]=inside
-                    ? station.surface_neutral_profile[k]
-                    : LayerWind{999999.f,999999.f};
-                if(inside)++levels_filled;
+            std::size_t levels_filled=0;
+            if(!ziconv_hours.empty()&&!el_hours.empty()){
+                const std::size_t cell=std::size_t(ny/2)*std::size_t(nx)+
+                                       std::size_t(nx/2);
+                const std::size_t offset=h*std::size_t(nx)*std::size_t(ny)+cell;
+                if(offset>=ziconv_hours.size()||offset>=el_hours.size())
+                    throw std::runtime_error("EL/ZICONV file has no block for "+
+                                             hour_label(clock));
+                const SimiltProfileInput diagi{
+                    station_lat_deg,10.f,roughness,surface_u,surface_v,
+                    el_hours[offset],ziconv_hours[offset],zimin_m,0,zface};
+                const auto profile=original_similt_profile(diagi);
+                levels_filled=profile.levels_filled;
+                for(std::size_t k=0;k<9;++k)
+                    diagi_surface_column[k]=k<levels_filled
+                        ? LayerWind{profile.u_mps[k],profile.v_mps[k]}
+                        : LayerWind{999999.f,999999.f};
+            }else{
+                // No certified EL/ZICONV: keep the neutral uncapped column and
+                // record the gap instead of inventing stability.
+                levels_filled=9;
+                for(std::size_t k=0;k<9;++k)
+                    diagi_surface_column[k]=station.surface_neutral_profile[k];
             }
             station.similt_levels_filled=levels_filled;
             station.mixing_height_m=mixing_height_m;
