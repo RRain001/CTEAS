@@ -14,9 +14,9 @@
 | 项 | 结论 |
 |---|---|
 | 链路可复现 | **PASS**：`scripts/run_p6_end_to_end.py` 一条命令，从空目录（空 build + 空 work）跑通全部三段，端到端墙钟 **8:21**（其中链路本体 477.87 s） |
-| 口径 B（原版风场驱动） | 45 字段判定齐备，**7 PASS / 3 FAIL / 35 分母 0**（FAIL：`ZI`、`EL`、`WSTAR`） |
-| 口径 A（重建风场驱动） | 45 字段判定齐备，**6 PASS / 4 FAIL / 35 分母 0**（FAIL：`USTAR`、`ZI`、`EL`、`WSTAR`） |
-| A−B（P6D 风场重建段引入的端到端误差） | 45 字段判定齐备，**7 PASS / 3 FAIL / 35 分母 0**（FAIL：`USTAR`、`EL`、`WSTAR`；`ZI` 差值在容差内） |
+| 口径 B（原版风场驱动） | 45 字段判定齐备，**7 PASS / 3 FAIL / 35 分母 0**（FAIL：`ZI`、`EL`、`WSTAR`）〔基点 `9197e6f`；当前 main `3be69bb` 为 **12 PASS / 6 FAIL / 27 分母 0**，见 §8〕 |
+| 口径 A（重建风场驱动） | 45 字段判定齐备，**6 PASS / 4 FAIL / 35 分母 0**（FAIL：`USTAR`、`ZI`、`EL`、`WSTAR`）〔基点 `9197e6f`；当前 main `3be69bb` 为 **11 PASS / 7 FAIL / 27 分母 0**，见 §8〕 |
+| A−B（P6D 风场重建段引入的端到端误差） | 45 字段判定齐备，**7 PASS / 3 FAIL / 35 分母 0**（FAIL：`USTAR`、`EL`、`WSTAR`；`ZI` 差值在容差内）〔当前 main `3be69bb` 为 **15 PASS / 3 FAIL / 27 分母 0**，FAIL 集合不变，见 §8〕 |
 | AUX（P6F 重建 `CALMET.DAT` vs 冻结） | 45 字段判定齐备：27 个 P6D 风场字段全部 FAIL（真实数值差异，见 §3.4），18 个非风字段逐位 0 差 |
 | 本轮新发现 | **P6F `write-from-p6d` 的 U/V/W 平面索引置换缺陷**（旧代码按 cell-major 读层主序 P6D 平面），已修复并补上可捕获它的回归断言，见 §5 |
 | 正式门槛 | `P6G=IN_PROGRESS / FIRST_END_TO_END_VERDICTS_RECORDED`；`P6D_FULL=NOT_PASS`；`P6E_FULL=NOT_PASS`；`P6_CALPUFF_READY=FALSE`（无变化） |
@@ -24,6 +24,11 @@
 **一句话**：端到端链路第一次真正闭环并给出逐字段判定；P6D 风场本身在第 1 层已逼近原版
 （`U-LEV 1` 最大绝对差 1.518e-03 m/s），但随高度增大到第 9 层 13.51 m/s，并把
 `USTAR`、`EL` 推出容差；`ZI`/`WSTAR` 的超差主体**不在风场**，而落在 P6E 内核。
+
+> **§3–§4 的表基于本 PR 的分支基点 `9197e6f`。** 合入时 main 已前进到含 P6E E31–E35 的 `3be69bb`，
+> 该版本会额外产出 `T-LEV 2..9`。**当前 main 的判定表见 §8**（`USTAR/ZI/EL/WSTAR/TEMPK/RHO/QSW/IRH/IPGT`
+> 与 `T-LEV 1` 的两种口径数值与 §3 **完全一致**，AUX 表 45 行也完全一致；只有 `T-LEV 2..9` 从
+> `NOT_PRODUCED` 变为已产出）。
 
 ---
 
@@ -322,8 +327,9 @@ value = winds.w_face_mps[cell * (levels + 1U) + level];
    （metadata：143 h、6,435,000 分量、最坏 4.22e-05 m/s），但**"子程序等价"不等于"整段 DIAGNO 等价"**。
 3. **P6E 不写出风场**：`U-LEV/V-LEV/WFACE` 在 A/B 两张表里分母恒为 0，这是产品边界而非失败；
    风场段的直接判定放在 §3.4 的 AUX 表。
-4. **`T-LEV 2..9` 未产出**：P6E `emit-realcase` 只给 `T-LEV 1`（= `TEMPK`），9 层温度场仍缺
-   `TEMP3D` 的完整层结构（依赖已闭合的 `ZICONV`）。
+4. **`T-LEV 2..9`**：在本 PR 的基点 `9197e6f` 上 P6E `emit-realcase` 只给 `T-LEV 1`（= `TEMPK`），
+   9 层温度场缺 `TEMP3D` 的完整层结构；**当前 main `3be69bb` 已产出 `T-LEV 2..9`**（§8.4），
+   其中 `T-LEV 5/6/7` 仍有 18/137/557 格超差，且已归因于 P6E `TEMP3D` 残差而非风场。
 5. **降水/湿沉降不适用**：`NPSTA=0`，`RMM`/`IPCODE` 不写出，`P6_WET_FORCING_VALIDATED=FALSE`（无变化）。
 6. **本站点代表性、扩散结果（P7）不在本轮范围**：本轮只做同源同控制的 143 时段逐格逐场判定。
 7. **观察（未改码）**：P6F `write-from-p6d` 报告里 `variant_source_verified` 硬编码为
@@ -397,3 +403,133 @@ Maximum resident set size (kbytes): 402376
 - `native_cpp/modules/p6_calmet/p6f/tests/verify_p6d_array_input.py`（期望值改为按文档布局独立重建）
 - `docs/reconstruction_cpp/P6G_END_TO_END_20261012.md`（本记录）
 - `docs/reconstruction_cpp/P6_A_TO_G_SEQUENTIAL_EXECUTION_LEDGER.md`（P6G 行）
+
+---
+
+## 8. 并入最新 main 后的复跑（base `3be69bb`）——当前 main 的判定
+
+本 PR 合入时 main 已前进到 `3be69bb`（含 P6E E31–E35：`calmet_dat21_tool_main.cpp` 增量 69 行、
+`temp3d_observed_land.hpp` 增量 23 行），P6E 现在会通过 `TEMP3D` 产出 `T-LEV 2..9`。
+为给出**当前 main** 的判定，把同一条命令在 `3be69bb` 上从空目录重跑（P6D/P6F 段源码与 §3 相同）。
+（此后 main 又前进到 `2c03ad4`，但 `native_cpp/modules/p6_calmet/**` 与 `scripts/run_p6_end_to_end.py`
+在 `3be69bb..2c03ad4` 之间**没有变化**，故本节数字仍对应当前 main 的代码状态。）
+
+**命令与耗时**（`/home/lhy/g6/CTEAS-main`，空 `main/` 与空 `main-work/`）：
+
+```
+[p6d]   32.77 s  exit=0
+[p6f]   77.75 s  exit=0
+[bridge]    0.19 s  exit=0
+[p6e-A]  122.19 s  exit=0
+[p6e-B]  122.20 s  exit=0
+   A: PASS=11, FAIL=7, NOT_PRODUCED=27, NO_DATA=0  (of 45 fields)
+   B: PASS=12, FAIL=6, NOT_PRODUCED=27, NO_DATA=0  (of 45 fields)
+ A-B: PASS=15, FAIL=3, NOT_PRODUCED=27, NO_DATA=0  (of 45 fields)
+total wall time: 480.77 s
+Elapsed (wall clock) time (h:mm:ss or m:ss): 8:23.59
+```
+
+27 个 P6D 风场字段在 A、B 两表中仍是 `NOT_PRODUCED`（分母 0，`miss(ref/cand)=0/357500`），
+在 A−B 表中是 `NOT_PRODUCED`（分母 0，`miss=357500/0`）；与 §3 逐字相同，不再重复。
+所有 18 个已产出字段的分母均为 357500、`miss(ref/cand)=0/0`，容差见 §2。
+
+### 8.1 A —— 重建风场驱动 vs 冻结 `met.dat`
+
+| 字段 | max_abs | max_rel | 超差 | 判定 |
+|---|---|---|---|---|
+| `T-LEV 1` | 5.7983e-04 | 2.0921e-06 | 0 | PASS |
+| `T-LEV 2` | 4.5776e-04 | 1.6475e-06 | 0 | PASS |
+| `T-LEV 3` | 1.58691e-03 | 5.593e-06 | 0 | PASS |
+| `T-LEV 4` | 8.2397e-04 | 2.9116e-06 | 0 | PASS |
+| `T-LEV 5` | 4.28772e-02 | 1.5394e-04 | **18** | **FAIL** |
+| `T-LEV 6` | 1.43555 | 5.10876e-03 | **137** | **FAIL** |
+| `T-LEV 7` | 2.51669 | 9.09273e-03 | **557** | **FAIL** |
+| `T-LEV 8` | 0 | 0 | 0 | PASS |
+| `T-LEV 9` | 0 | 0 | 0 | PASS |
+| `IPGT` | 0 | 0 | 0 | PASS |
+| `USTAR` | 5.7228e-05 | 4.8966e-04 | **9213** | **FAIL** |
+| `ZI` | 51.0637 | 5.61028e-02 | **4465** | **FAIL** |
+| `EL` | 18282 | 7.69106e-02 | **1581** | **FAIL** |
+| `WSTAR` | 2.62769e-02 | 2.4397e-02 | **5027** | **FAIL** |
+| `TEMPK` | 5.7983e-04 | 2.0921e-06 | 0 | PASS |
+| `RHO` | 2.7418e-06 | 2.1196e-06 | 0 | PASS |
+| `QSW` | 7.2479e-04 | 6.3625e-05 | 0 | PASS |
+| `IRH` | 0 | 0 | 0 | PASS |
+
+汇总：**PASS 11 / FAIL 7 / NOT_PRODUCED 27**。
+
+### 8.2 B —— 原版风场驱动 vs 冻结 `met.dat`
+
+| 字段 | max_abs | max_rel | 超差 | 判定 |
+|---|---|---|---|---|
+| `T-LEV 1` | 0 | 0 | 0 | PASS |
+| `T-LEV 2` | 1.2207e-04 | 4.2992e-07 | 0 | PASS |
+| `T-LEV 3` | 1.5564e-03 | 5.4855e-06 | 0 | PASS |
+| `T-LEV 4` | 8.5449e-04 | 3.0181e-06 | 0 | PASS |
+| `T-LEV 5` | 4.29382e-02 | 1.5416e-04 | **18** | **FAIL** |
+| `T-LEV 6` | 1.43555 | 5.10876e-03 | **137** | **FAIL** |
+| `T-LEV 7` | 2.51669 | 9.09273e-03 | **558** | **FAIL** |
+| `T-LEV 8` | 0 | 0 | 0 | PASS |
+| `T-LEV 9` | 0 | 0 | 0 | PASS |
+| `IPGT` | 0 | 0 | 0 | PASS |
+| `USTAR` | 5.5134e-07 | 5.0724e-06 | 0 | PASS |
+| `ZI` | 51.0623 | 5.61028e-02 | **4488** | **FAIL** |
+| `EL` | 10734 | 3.22548e-02 | **630** | **FAIL** |
+| `WSTAR` | 2.62769e-02 | 1.9062e-02 | **4880** | **FAIL** |
+| `TEMPK` | 0 | 0 | 0 | PASS |
+| `RHO` | 0 | 0 | 0 | PASS |
+| `QSW` | 7.2479e-04 | 6.3625e-05 | 0 | PASS |
+| `IRH` | 0 | 0 | 0 | PASS |
+
+汇总：**PASS 12 / FAIL 6 / NOT_PRODUCED 27**。
+
+### 8.3 A−B —— P6D 风场重建段引入的端到端误差（当前 main）
+
+| 字段 | max_abs | max_rel | 超差 | 判定 |
+|---|---|---|---|---|
+| `T-LEV 1` | 5.7983e-04 | 2.0921e-06 | 0 | PASS |
+| `T-LEV 2` | 4.5776e-04 | 1.6475e-06 | 0 | PASS |
+| `T-LEV 3` | 4.5776e-04 | 1.6492e-06 | 0 | PASS |
+| `T-LEV 4` | 4.5776e-04 | 1.6527e-06 | 0 | PASS |
+| `T-LEV 5` | 4.8828e-04 | 1.7661e-06 | 0 | PASS |
+| `T-LEV 6` | 4.2725e-04 | 1.5682e-06 | 0 | PASS |
+| `T-LEV 7` | 8.5449e-04 | 3.1456e-06 | 0 | PASS |
+| `T-LEV 8` | 0 | 0 | 0 | PASS |
+| `T-LEV 9` | 0 | 0 | 0 | PASS |
+| `IPGT` | 0 | 0 | 0 | PASS |
+| `USTAR` | 5.7228e-05 | 4.8966e-04 | **9213** | **FAIL** |
+| `ZI` | 7.48291e-02 | 1.8529e-04 | 0 | PASS |
+| `EL` | 18282 | 7.69106e-02 | **1260** | **FAIL** |
+| `WSTAR` | 4.9968e-04 | 2.4403e-02 | **159** | **FAIL** |
+| `TEMPK` | 5.7983e-04 | 2.0921e-06 | 0 | PASS |
+| `RHO` | 2.7418e-06 | 2.1196e-06 | 0 | PASS |
+| `QSW` | 0 | 0 | 0 | PASS |
+| `IRH` | 0 | 0 | 0 | PASS |
+
+汇总：**PASS 15 / FAIL 3 / NOT_PRODUCED 27**。
+
+### 8.4 归因更新（新增 `T-LEV 2..9`）
+
+- `T-LEV 2/3/4/8/9` 已产出且在两种口径下都 PASS，A−B 也 PASS。
+- **`T-LEV 5/6/7` 在两种口径下都 FAIL**，且 A、B 的 max_abs 几乎相同（`4.28772e-02` vs `4.29382e-02`、
+  `1.43555` vs `1.43555`、`2.51669` vs `2.51669`），而 A−B 的 max_abs 只有 `~5e-04` 且 0 超差：
+  **这是 P6E `TEMP3D` 的残差，不是风场段的问题**（与 `ZI`/`WSTAR` 同一类）。
+- `USTAR` 仍是唯一"B PASS、A FAIL"且 A−B 超差全部来自风场段的字段；
+  `EL` 以风场段为主，`WSTAR` 的风场贡献只有 159 格。
+
+### 8.5 当前 main 的复现哈希
+
+| 产物 | sha256 |
+|---|---|
+| 重建风场 `p6f/reconstructed_wind.dat` | `a309d4f1a97ff4f1de102e2543a417a8316afb531d1710871cf714a524f67c81`（与 §7 逐字节相同） |
+| A 候选 `A/candidate.dat` | `b60b50b773de47f5ae69296c5bb0363e9d0d1b8742b3a5741df952ddf626645b` |
+| B 候选 `B/candidate.dat` | `71f4afbd5c3f003969a915ac4b479d39adba28676bf5f7ac32c9d68003ae36dc` |
+| 观测桥 `bridge/hourly.csv` | `eae56e3b621acf018a6b47080fb393a35419b699412edf59a890c418858fa41e`（与 §7 相同） |
+| `compare_A.json` | `b3f51f14105a3bc1175fc73403ce3f6d4b24b8e99c82c556577d50fce63e9d48` |
+| `compare_B.json` | `b17b20fd654cef46f7d0f7ab8e9c90a475f60df489f5bf2e520b0329d83be128` |
+| `compare_AB.json` | `8853040bbf2d76df77ee5abc718c260950b6fb08592f518510a297316d5046a6` |
+| `compare_wind.json` | `4cc13bf5bb502d63730ab9893e533c3bd1c8db4d1a17fcf72cb0bb37022b7021` |
+| `p6g_report.json` | `030ff8a4c0153d2ae97632e71842d4213774e1103d381577cbf8044999b186f5` |
+
+`p6d/metadata.json` 内嵌案件树绝对路径，故其哈希随 `--case` 路径变化（本次 `3f731ced…`，案件树经符号链接解析）；
+`reconstructed_wind.dat` 与 `bridge/hourly.csv` 与路径无关，跨基点（`9197e6f` / `3be69bb`）逐字节相同。
