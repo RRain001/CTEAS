@@ -20,7 +20,7 @@ template<class F> static void rejected(F&& f,const char* message) {
     try{f();}catch(const std::invalid_argument&){caught=true;}
     require(caught,message);
 }
-static void fill_froude(DiagnoD9FroudeBoundary& f,bool flat){
+static void fill_froude(DiagnoD9TerrainBoundary& f,bool flat){
     f.isurft=-1;
     f.tinf_k=285.f;
     f.critfn=1.f;
@@ -83,13 +83,13 @@ int main(){
             "D9A identity route must leave the step-one field untouched");
     // Original FRADJ needs terrain relief, subcritical Froude numbers and an
     // upslope wind; a flat 0 m terrain envelope must be a strict no-op.
-    input.froude_adjustment=true;
-    fill_froude(input.froude,true);
+    input.terrain_adjustment=true;
+    fill_froude(input.terrain,true);
     const auto flat=integrate_diagno_d9_selected(input);
     require(flat.prepared_ug==identity.prepared_ug&&
             flat.prepared_vg==identity.prepared_vg,
             "D9A original FRADJ must not adjust flat calm terrain");
-    fill_froude(input.froude,false);
+    fill_froude(input.terrain,false);
     const auto froude=integrate_diagno_d9_selected(input);
     require(froude.prepared_ug!=identity.prepared_ug||
             froude.prepared_vg!=identity.prepared_vg,
@@ -117,23 +117,23 @@ int main(){
                 "D9A FRADJ must not touch levels above the terrain envelope");
     // Fail-closed contract surface.
     auto short_terrain=input;
-    short_terrain.froude.terrain_m.pop_back();
+    short_terrain.terrain.terrain_m.pop_back();
     rejected([&]{(void)integrate_diagno_d9_selected(short_terrain);},
              "D9A accepted a truncated FRADJ terrain field");
     auto missing_heat=input;
-    missing_heat.froude.surface_temperature_k.clear();
+    missing_heat.terrain.surface_temperature_k.clear();
     rejected([&]{(void)integrate_diagno_d9_selected(missing_heat);},
              "D9A accepted a missing FRADJ surface temperature field");
     auto bad_critfn=input;
-    bad_critfn.froude.critfn=-1.f;
+    bad_critfn.terrain.critfn=-1.f;
     rejected([&]{(void)integrate_diagno_d9_selected(bad_critfn);},
              "D9A accepted a negative FRADJ critical Froude number");
     auto bad_tinf=input;
-    bad_tinf.froude.tinf_k=0.f;
+    bad_tinf.terrain.tinf_k=0.f;
     rejected([&]{(void)integrate_diagno_d9_selected(bad_tinf);},
              "D9A accepted a nonpositive FRADJ domain temperature");
     auto nonfinite=input;
-    nonfinite.froude.lapse_rate_k_per_m[0]=std::nanf("");
+    nonfinite.terrain.lapse_rate_k_per_m[0]=std::nanf("");
     rejected([&]{(void)integrate_diagno_d9_selected(nonfinite);},
              "D9A accepted a nonfinite FRADJ lapse rate");
     auto double_corrected=input;

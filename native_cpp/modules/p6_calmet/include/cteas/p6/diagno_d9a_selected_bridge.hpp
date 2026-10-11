@@ -15,6 +15,7 @@
 #include "cteas/p6/diagno_segment.hpp"
 #include "cteas/p6/diagno_obrien_minim.hpp"
 #include "cteas/p6/froude_adjust.hpp"
+#include "cteas/p6/slope_flow.hpp"
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -28,15 +29,25 @@ enum class DiagnoD9UpstreamMode {
     SyntheticIdentityForSourceAudit=1,
     ExternallyCompletedUpstreamPhysics=2
 };
-struct DiagnoD9FroudeBoundary {
-    // Original FRADJ inputs beyond the step-one winds: gridded terrain,
+struct DiagnoD9TerrainBoundary {
+    // Original FRADJ/SLOPE inputs beyond the step-one winds: gridded terrain,
     // terrain envelope HMAX, lapse rate GAMMA, 2-D surface temperature and
     // the ISURFT selector. All 2500-element fields are k-less 50x50 planes.
+    // CRITFN is consumed by FRADJ only.
     int isurft=-1;
     float tinf_k=0.f;
     float critfn=0.f;
     std::vector<float> terrain_m,maximum_terrain_m;
     std::vector<float> lapse_rate_k_per_m,surface_temperature_k;
+};
+struct DiagnoD9SlopeBoundary {
+    // Original SLOPE inputs beyond HTOPO/HMAX/TEMP2D/TINF/ISURFT: valley
+    // bottoms, birdwise distances to the envelope extremes, gridded sensible
+    // heat flux and the GEO water landuse range. 2500-element planes.
+    int water_first=0,water_last=0;
+    std::vector<float> minimum_terrain_m,distance_to_max_terrain_m;
+    std::vector<float> distance_to_min_terrain_m,sensible_heat_w_m2;
+    std::vector<int> landuse;
 };
 struct DiagnoD9SelectedInput {
     Wind1SelectedStationHour stations;
@@ -52,7 +63,11 @@ struct DiagnoD9SelectedInput {
     // Original IFRADJ=1 stage L5643-L5644, applied to the step-one UG/VG
     // before the L5748 WINDBC snapshot and the L6055/L6059 INTER2 calls.
     bool froude_adjustment=false;
-    DiagnoD9FroudeBoundary froude;
+    DiagnoD9TerrainBoundary terrain;
+    // Original ISLOPE=1 stage L5722 plus the L5738-L5742 additive loop,
+    // applied after FRADJ and before the L5748 WINDBC snapshot.
+    bool slope_flow=false;
+    DiagnoD9SlopeBoundary slope;
     // Original IOBR=1 tail: O'Brien W adjustment L6153-L6159 then MINIM
     // L6180. CELLZB(1) is the original lowest face height, NITER and DIVLIM
     // are the original namelist MINIM controls.
@@ -98,24 +113,60 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
              !request.corrected_first_guess_v_mps.empty()) {
         throw std::invalid_argument("D9 synthetic identity cannot silently apply corrections");
     }
-    if(request.froude_adjustment) {
+    if(request.froude_adjustment||request.slope_flow) {
         if(request.upstream_mode!=DiagnoD9UpstreamMode::SyntheticIdentityForSourceAudit)
-            throw std::invalid_argument("D9 Froude stage cannot re-adjust an external corrected field");
-        const auto& f=request.froude;
+            throw std::invalid_argument("D9 terrain stages cannot re-adjust an external corrected field");
+    }
+    // Original CELLZB(K)=ZFACE(K); shared by the FRADJ height test and the
+    // SLOPE vertical decay of the slope-flow layer.
+    std::vector<float> zface(10);
+    zface[0]=request.cellzb_origin_m;
+    for(std::size_t k=0;k<9;++k)zface[k+1]=zface[k]+
+        request.layer_thickness_m[k];
+    if(request.froude_adjustment) {
+        const auto& f=request.terrain;
         if(f.terrain_m.size()!=2500||f.maximum_terrain_m.size()!=2500||
            f.lapse_rate_k_per_m.size()!=2500||
            f.surface_temperature_k.size()!=2500)
             throw std::invalid_argument("D9 missing original FRADJ 50x50 fields");
-        std::vector<float> zface(10);
-        zface[0]=request.cellzb_origin_m;
-        for(std::size_t k=0;k<9;++k)zface[k+1]=zface[k]+
-            request.layer_thickness_m[k];
         WindUV step_one{std::move(u),std::move(v)};
         auto adjusted=froude_adjust(
             50,50,9,100.f,100.f,f.terrain_m,f.maximum_terrain_m,
             f.lapse_rate_k_per_m,f.surface_temperature_k,
             f.isurft,f.tinf_k,f.critfn,zface,std::move(step_one));
         u=std::move(adjusted.u);v=std::move(adjusted.v);
+    }
+    if(request.slope_flow) {
+        const auto& t=request.terrain;
+        const auto& s=request.slope;
+        if(t.terrain_m.size()!=2500||t.maximum_terrain_m.size()!=2500||
+           t.surface_temperature_k.size()!=2500||
+           s.minimum_terrain_m.size()!=2500||
+           s.distance_to_max_terrain_m.size()!=2500||
+           s.distance_to_min_terrain_m.size()!=2500||
+           s.sensible_heat_w_m2.size()!=2500||s.landuse.size()!=2500)
+            throw std::invalid_argument("D9 missing original SLOPE 50x50 fields");
+        SlopeInput slope;
+        slope.nx=50;slope.ny=50;slope.nz=9;
+        slope.dx_m=100.f;slope.dy_m=100.f;
+        slope.water_first=s.water_first;slope.water_last=s.water_last;
+        slope.isurft=t.isurft;
+        slope.domain_temperature_k=t.tinf_k;
+        slope.zface_m=zface;
+        slope.terrain_m=t.terrain_m;slope.hmax_m=t.maximum_terrain_m;
+        slope.hmin_m=s.minimum_terrain_m;
+        slope.disthmax_m=s.distance_to_max_terrain_m;
+        slope.disthmin_m=s.distance_to_min_terrain_m;
+        slope.sensible_heat_w_m2=s.sensible_heat_w_m2;
+        slope.surface_temperature_k=t.surface_temperature_k;
+        slope.landuse=s.landuse;
+        const auto contribution=compute_original_slope_scoped(slope);
+        // Original L5738-L5742 adds the slope flow to the step-one winds at
+        // every level; every magnitude guard is performed inside SLOPE.
+        for(std::size_t n=0;n<22500;++n){
+            u[n]+=contribution.u_mps[n];
+            v[n]+=contribution.v_mps[n];
+        }
     }
 
     // Original DIAGNO refreshes step-one WINDBC after terrain and slope

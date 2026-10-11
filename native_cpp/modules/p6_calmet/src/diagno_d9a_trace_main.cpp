@@ -86,18 +86,35 @@ int main(int argc,char** argv){
         throw std::runtime_error("D9A IOBR flag must be 0 or 1");
     in.obrien_adjustment=obrien==1;
     int froude=0;
-    if(!(f>>froude>>in.froude.isurft>>in.froude.tinf_k>>in.froude.critfn))
+    if(!(f>>froude>>in.terrain.isurft>>in.terrain.tinf_k>>in.terrain.critfn))
         throw std::runtime_error("D9A IFRADJ controls missing");
     if(froude!=0&&froude!=1)
         throw std::runtime_error("D9A IFRADJ flag must be 0 or 1");
     in.froude_adjustment=froude==1;
-    for(auto* plane:{&in.froude.terrain_m,&in.froude.maximum_terrain_m,
-                     &in.froude.lapse_rate_k_per_m,
-                     &in.froude.surface_temperature_k}){
+    for(auto* plane:{&in.terrain.terrain_m,&in.terrain.maximum_terrain_m,
+                     &in.terrain.lapse_rate_k_per_m,
+                     &in.terrain.surface_temperature_k}){
         plane->resize(2500);
         for(float& value:*plane)
             if(!(f>>value))throw std::runtime_error("D9A FRADJ 50x50 field missing");
     }
+    int slope=0;
+    if(!(f>>slope>>in.slope.water_first>>in.slope.water_last))
+        throw std::runtime_error("D9A ISLOPE controls missing");
+    if(slope!=0&&slope!=1)
+        throw std::runtime_error("D9A ISLOPE flag must be 0 or 1");
+    in.slope_flow=slope==1;
+    for(auto* plane:{&in.slope.minimum_terrain_m,
+                     &in.slope.distance_to_max_terrain_m,
+                     &in.slope.distance_to_min_terrain_m,
+                     &in.slope.sensible_heat_w_m2}){
+        plane->resize(2500);
+        for(float& value:*plane)
+            if(!(f>>value))throw std::runtime_error("D9A SLOPE 50x50 field missing");
+    }
+    in.slope.landuse.resize(2500);
+    for(int& value:in.slope.landuse)
+        if(!(f>>value))throw std::runtime_error("D9A SLOPE landuse missing");
     std::string extra;
     if(f>>extra)throw std::runtime_error("D9A input trailing data");
     auto out=integrate_diagno_d9_selected(in);

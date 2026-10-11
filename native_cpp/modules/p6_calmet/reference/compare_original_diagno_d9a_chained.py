@@ -23,6 +23,7 @@ import compare_original_inter2 as inter2
 import compare_original_diagno_final_segment as diag
 import compare_original_diagno_obrien_minim as obr
 import compare_original_diagno_d9a_fradj as fradj
+import compare_original_diagno_d9a_slope as upstream
 
 SOURCE_BLOB="437f43bb7f0e51a1919e56664663e1a046986ed0"
 NX=NY=50
@@ -67,12 +68,14 @@ def compile_references(vendor,out):
     run(base+[s for s,_ in seg_src]+[drv_d,"-o",orig_d])
     orig_o,obrien_meta=obr.compile_reference(vendor,out,base)
     orig_f,fradj_meta=fradj.compile_reference(vendor,out,base)
-    return (orig_w,orig_i,orig_d,orig_o,orig_f),dict(
+    orig_u,upstream_meta=upstream.compile_reference(vendor,out,base)
+    return (orig_w,orig_i,orig_d,orig_o,orig_f,orig_u),dict(
         wind1_original_sha=SOURCE_BLOB,
         inter2_original=[s for _,s in interp_src],
         final_original=meta,
         obrien_original=obrien_meta,
-        fradj_original=fradj_meta)
+        fradj_original=fradj_meta,
+        upstream_original=upstream_meta)
 
 def generate_synthetic(scene):
     name=scene["name"]
@@ -92,8 +95,10 @@ def generate_synthetic(scene):
     ]
     return land,observation_weight,station_u,station_v
 
-def write_bridge(path,scene,land,weights,sta_u,sta_v,obrien=False,froude=False):
+def write_bridge(path,scene,land,weights,sta_u,sta_v,obrien=False,froude=False,
+                 slope=False):
     planes=fradj.fields(scene)
+    slope_planes=upstream.fields(scene,land)
     with path.open("w") as f:
         def line(values):
             f.write(" ".join(map(str,values))+"\n")
@@ -113,9 +118,10 @@ def write_bridge(path,scene,land,weights,sta_u,sta_v,obrien=False,froude=False):
         for k in range(NZ):line(sta_u[k*2:k*2+2])
         for k in range(NZ):line(sta_v[k*2:k*2+2])
         # Original IOBR, CELLZB(1)=ZFACE(1), NITER and DIVLIM controls, then
-        # the original IFRADJ selector with its terrain/heat planes.
+        # the original IFRADJ and ISLOPE selectors with their fixtures.
         line([ZFACE1_M,1 if obrien else 0,MINIM_ITERATIONS,MINIM_DIVLIM])
         fradj.write_bridge_fields(f,1 if froude else 0,*planes)
+        upstream.write_bridge_fields(f,1 if slope else 0,slope_planes,land)
 
 def read_original_wind(path):
     rows=[line.split() for line in path.read_text().splitlines()]
@@ -191,7 +197,8 @@ def main():
     sha=hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()
     if sha!=SOURCE_BLOB:raise RuntimeError("Original vendor CALMET source changed")
     (original_wind,original_inter,original_final,original_obrien,
-     original_fradj),meta=(compile_references(args.vendor,args.out))
+     original_fradj,original_upstream),meta=(compile_references(args.vendor,
+                                                               args.out))
     results={}
     # Independent original first guess, then two independent INTER2
     # components, then actual original final DIAGNO SMOOTH/DIVCEL/W block.
@@ -303,6 +310,40 @@ def main():
         # INTER2 blend on the Froude-corrected step one must also match.
         comparison_froude_blend=compare_blend(
             f_observed["u"],f_observed["v"],folder/"blend.froude.cpp.csv")
+        # Real-deck upstream combination: literal FRADJ L5643-L5644 then
+        # literal SLOPE L5722-L5723 with the L5727-L5732 additive loop, both
+        # feeding the L5748 boundary snapshot, INTER2 and the final segment.
+        slope_planes=upstream.fields(scene,land)
+        terrain,highest,lapse,temperature=fradj.fields(scene)
+        (_,_,minimum,distance_max,distance_min,heat)=slope_planes
+        upstream_in=folder/"upstream.original.inp"
+        upstream_out=folder/"upstream.original"
+        upstream.write_case(upstream_in,ZFACE1_M,DZ,terrain,highest,lapse,
+                            temperature,minimum,distance_max,distance_min,
+                            heat,land,u,v)
+        run([original_upstream,upstream_in,upstream_out])
+        combined_u,combined_v=upstream.read_output(upstream_out)
+        upstream_inp=folder/"bridge.upstream.in"
+        write_bridge(upstream_inp,scene,land,weights,station_u,station_v,
+                     froude=True,slope=True)
+        cpp_prepared_upstream=folder/"prepared.upstream.cpp.csv"
+        cpp_final_upstream=folder/"final.upstream.cpp.csv"
+        cpp_bc_upstream=folder/"boundary.upstream.cpp"
+        run([args.cpp,upstream_inp,folder/"wind1.upstream.cpp",
+             folder/"blend.upstream.cpp.csv",cpp_final_upstream,
+             cpp_bc_upstream,cpp_prepared_upstream])
+        comparison_upstream_step=upstream.compare(
+            upstream_out,cpp_prepared_upstream,step_u,step_v)
+        u_observed,u_bc_u,u_bc_v,u_segment,u_bounds,_=original_tail(
+            folder,".upstream",combined_u,combined_v)
+        comparison_upstream=diag.compare(u_segment,cpp_final_upstream,
+                                         u_bounds,cpp_bc_upstream)
+        comparison_upstream["original_upstream_changed_components"]=(
+            comparison_upstream_step["original_changed_step_one_components"])
+        comparison_upstream["upstream_step_max_abs_errors"]=(
+            comparison_upstream_step["max_abs_errors"])
+        comparison_upstream_blend=compare_blend(
+            u_observed["u"],u_observed["v"],folder/"blend.upstream.cpp.csv")
         results[name]=dict(first_guess=comparison_first,
                            inter2=comparison_blend,final=comparison_final,
                            obrien=comparison_obrien,
@@ -310,11 +351,17 @@ def main():
                                        inter2=comparison_froude_blend,
                                        final=comparison_froude,
                                        boundary_input_west_east=f_bc_u[0],
-                                       boundary_input_south_north=f_bc_v[0]))
+                                       boundary_input_south_north=f_bc_v[0]),
+                           upstream=dict(step_one=comparison_upstream_step,
+                                         inter2=comparison_upstream_blend,
+                                         final=comparison_upstream))
 
     froude_adjusted=sum(r["froude"]["final"]
                         ["original_froude_adjusted_components"]
                         for r in results.values())
+    upstream_changed=sum(r["upstream"]["final"]
+                         ["original_upstream_changed_components"]
+                         for r in results.values())
     complete=(len(results)==len(selected) and
         all(
           r["first_guess"]["status"]=="PASS" and
@@ -325,8 +372,12 @@ def main():
           r["obrien"]["original_iobr0_top_face_nonzero_cells"]>0 and
           r["froude"]["step_one"]["status"]=="PASS" and
           r["froude"]["inter2"]["status"]=="PASS" and
-          r["froude"]["final"]["status"]=="PASS"
-          for r in results.values()) and froude_adjusted>0)
+          r["froude"]["final"]["status"]=="PASS" and
+          r["upstream"]["step_one"]["status"]=="PASS" and
+          r["upstream"]["inter2"]["status"]=="PASS" and
+          r["upstream"]["final"]["status"]=="PASS"
+          for r in results.values()) and froude_adjusted>0 and
+        upstream_changed>0)
     counters=dict(
         firstguess_components=sum(r["first_guess"]["components_compared"]
                                   for r in results.values()),
@@ -350,11 +401,21 @@ def main():
         froude_boundary_components=sum(r["froude"]["final"]
                                        ["boundary_comparisons"]
                                        for r in results.values()),
-        froude_adjusted_step_one_components=froude_adjusted
+        froude_adjusted_step_one_components=froude_adjusted,
+        upstream_step_one_components=sum(r["upstream"]["step_one"]
+                                         ["compared_components"]
+                                         for r in results.values()),
+        upstream_final_uv_div_w_components=sum(r["upstream"]["final"]
+                                               ["uv_div_w_comparisons"]
+                                               for r in results.values()),
+        upstream_boundary_components=sum(r["upstream"]["final"]
+                                         ["boundary_comparisons"]
+                                         for r in results.values()),
+        upstream_changed_step_one_components=upstream_changed
     )
     report=dict(
         status="PASS_D9A_SELECTED_CHAINED_ORIGINAL_SOURCES" if complete else "FAIL",
-        scope="synthetic identity upstream WIND1 original -> original INTER2 U/V -> original SMOOTH/DIVCEL/W, replayed with and without the original IOBR=1 O'Brien/MINIM tail and with the original IFRADJ=1 Froude terrain adjustment of the step-one winds; no TOPOF2/slope/heat, not real 2022 full DIAGNO",
+        scope="synthetic identity upstream WIND1 original -> original INTER2 U/V -> original SMOOTH/DIVCEL/W, replayed with and without the original IOBR=1 O'Brien/MINIM tail, with the original IFRADJ=1 Froude terrain adjustment, and with the original IFRADJ=1+ISLOPE=1 upstream sequence of the real case deck; no TOPOF2/heat, not real 2022 full DIAGNO",
         vendor_blob=sha,original_reference=meta,
         obrien_controls=dict(cellzb_origin_m=ZFACE1_M,minim_iterations=MINIM_ITERATIONS,
                              minim_divergence_limit_per_s=MINIM_DIVLIM,iobr=1),
@@ -362,6 +423,14 @@ def main():
                              critfn=fradj.CRITFN,cellzb_origin_m=ZFACE1_M,
                              envelope_margin_m=fradj.ENVELOPE_MARGIN_M,
                              slope_and_heat_stages_enabled=False),
+        upstream_controls=dict(iwf_cod=1,ifradj=1,islope=1,ikine=0,iobr=0,
+                               isurft=upstream.chain_fradj.ISURFT,
+                               tinf_k=upstream.chain_fradj.TINF_K,
+                               critfn=upstream.chain_fradj.CRITFN,
+                               cellzb_origin_m=ZFACE1_M,
+                               envelope_margin_m=upstream.chain_fradj.ENVELOPE_MARGIN_M,
+                               water_class_range=[upstream.WATER_FIRST,
+                                                  upstream.WATER_LAST]),
         tolerance_wind_mps=COMP_TOL,summary=counters,scenes=results)
     (args.out/"p6d9a-original-chained-source-parity.json").write_text(
         json.dumps(report,indent=2)+"\n")
