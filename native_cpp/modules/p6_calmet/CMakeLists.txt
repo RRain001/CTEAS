@@ -308,6 +308,16 @@ else()
 endif()
 add_test(NAME p6d9a_inchain_terset_envelope_contract COMMAND cteas_p6_terset_envelope_tests)
 
+# P6D real-case wind-field producer (partial product: WIND1 step-one UG/VG
+# plus the in-chain TERSET envelope, with explicit provenance metadata).
+add_executable(cteas_p6_realcase_wind_field src/realcase_wind_field_main.cpp)
+target_link_libraries(cteas_p6_realcase_wind_field PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_realcase_wind_field PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_realcase_wind_field PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 # P6D9A composed trace for chained unmodified original Fortran comparisons.
 add_executable(cteas_p6_d9a_source_trace src/diagno_d9a_trace_main.cpp)
 target_link_libraries(cteas_p6_d9a_source_trace PRIVATE cteas_p6a_contracts)
