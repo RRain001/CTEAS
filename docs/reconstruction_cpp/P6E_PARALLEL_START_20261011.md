@@ -156,3 +156,38 @@ lhy-desktop actually executes and returns original Fortran parity
 logs/artifacts. This selected path does not qualify daytime mixing
 heights, mixed-layer convective growth, or real AA/BB sounding
 time-slicing. **Full P6E remains NOT PASS**.
+
+## E5–E7 completed on dedicated lhy-desktop-2 (2026-10-11)
+
+[Successful original-source CI run 38121546787](https://github.com/RRain001/CTEAS/actions/runs/38121546787) finished with
+`runner_name=lhy-desktop-2`, 7/7 CTest PASS and all seven original
+source parity steps PASS, including new E5/E6/E7.
+
+- E5 ELUSTR selected **nighttime stable**: 30x20x3 = 1800 values
+  PASS, 0 mismatches after fixing QH's output-serialization issue on
+  water cells (the binary32-derived `-0.1` value is rendered by
+  Fortran 14 digits vs C++ 11 digits). Land physics thresholds
+  **not** relaxed; exact USTAR/L water sentinels retained.
+- E6 WSTARR: 30x20 = 600 values PASS, zero mismatches, max
+  absolute wstar error 4.920064355928844e-12 m/s.
+- E7 MIXHT selected **nighttime stable**: 30x20x2 = 1200 values
+  PASS, zero mismatches.
+- E1–E4 remain PASS in this same run.
+
+`P6E_E1_TO_E7_IMPLEMENTED_SELECTED_ORIGINAL_SOURCE_PATHS=PASS`;
+`P6E_FULL=NOT_PASS`. Full daytime physics and 2022 actual hourly
+input/field-coupling remain unqualified.
+
+## E8 ELUSTR daytime/neutral — implementation, CI pending
+
+Separate C++20 original-source day-land `ELUSTR` module retains the
+original neutral `QH==0` sentinel `L=-9.9e9`, 5-pass convective
+iterations, minimum friction speed and both `IPSIFCN=0` COARE
+`PSIUD` and `IPSIFCN=1` legacy `PSIUC` functions.
+The new independent Fortran harness extracts the unmodified full
+ELUSTR and unmodified original PSIUD and PSIUC from pinned vendor
+source. Frozen 36x20x3=2160 scalar comparisons span both PSI functions,
+neutral/unstable, calm/normal/strong winds, roughness/temperature
+and water skip. Do not mark E8 PASS until exact original-source CI runs.
+Still pending: daytime MIXHT with real upper-air soundings, TEMP3D,
+selected SURFVAR multistation, full 2022 hourly field coupling.
