@@ -486,6 +486,7 @@ int main(int argc,char** argv){
                   surface_state.temp_k);
         write_f32(args.out()/("qh_"+hour_label(clock)+".f32"),heat_flux);
         std::vector<float> blended_u,blended_v;
+        std::vector<float> station_values[2];
         for(int component=0;component<2;++component){
             Inter2SelectedInput blend;
             blend.nx=nx;blend.ny=ny;blend.nz=nz;blend.nstations=2;
@@ -514,6 +515,7 @@ int main(int argc,char** argv){
                     ? upper_wind.u_mps:upper_wind.v_mps;
             }
             blend.step1_mps=component==0?corrected_u:corrected_v;
+            station_values[component]=blend.station_component_mps;
             const auto blended=original_inter2_selected(blend);
             if(component==0)blended_u=blended.component_mps;
             else blended_v=blended.component_mps;
@@ -563,6 +565,38 @@ int main(int argc,char** argv){
             for(std::size_t k=0;k<9;++k)
                 fixture<<station.upper_observed_profile[k].u_mps<<" "
                        <<station.upper_observed_profile[k].v_mps<<"\n";
+            // Original INTER2 driver inputs for the same hour, so the blend can
+            // be compared against the unchanged original subroutine.
+            for(int component=0;component<2;++component){
+                std::ofstream inter2(args.fixture_dir/
+                    ((component==0?"inter2_u_":"inter2_v_")+
+                     hour_label(clock)+".inp"));
+                if(!inter2)throw std::runtime_error("cannot write INTER2 fixture");
+                inter2<<"2 0 "<<rmin_km<<" "<<rmax1_km<<" "<<rmax2_km<<" "
+                      <<rmax3_km<<" "<<r1_km<<" "<<r2_km<<" 999999 999998\n";
+                for(std::size_t k=0;k<9;++k)
+                    inter2<<nintrp[k]<<(k==8?"\n":" ");
+                const float station_km=static_cast<float>(centre_x_km);
+                inter2<<station_km<<" "<<station_km<<"\n";
+                inter2<<static_cast<float>(centre_y_km)<<" "
+                      <<static_cast<float>(centre_y_km)<<"\n";
+                for(std::size_t row=0;row<50;++row){
+                    for(std::size_t i=0;i<50;++i)
+                        inter2<<geo.landuse[row*50+i]<<(i==49?"\n":" ");
+                }
+                for(std::size_t k=0;k<18;++k)
+                    inter2<<station_values[component][k]
+                          <<(k==17?"\n":" ");
+                const std::vector<float>& guess=component==0?corrected_u:corrected_v;
+                for(std::size_t row=0;row<50;++row){
+                    for(std::size_t i=0;i<50;++i)
+                        inter2<<guess[row*50+i]<<(i==49?"\n":" ");
+                }
+                for(std::size_t row=0;row<50;++row){
+                    for(std::size_t i=0;i<50;++i)
+                        inter2<<1.0f<<(i==49?"\n":" ");
+                }
+            }
         }
         index<<hour_label(clock)<<"\n";
         ++written;
@@ -628,7 +662,6 @@ int main(int argc,char** argv){
     meta<<"    {\"stage\": \"SMOOTH/DIVCEL/W tail (DIAGNO L6119-L6148)\", \"status\": \"APPLIED_SLOPE_COMPENSATED_FRADJ_PENDING\","
           " \"product\": \"w_face_*.f32 (10 faces per column)\","
           " \"note\": \"run on the SLOPE-corrected blended field with the deck NSMTH, so the boundaries are the L5748 snapshot except for the still-pending FRADJ (GAMMA) correction\"},\n"
-          " \"note\": \"boundaries come from the SLOPE-corrected blended field, i.e. the L5748 snapshot except for the still-pending FRADJ (GAMMA) correction\"},\n";
     meta<<"    {\"stage\": \"TOPOF2/IKINE route and O'Brien/IOBR=1 tail\", \"status\": \"NON_CASE_PATH\","
           " \"note\": \"the case deck sets IKINE=0 and IOBR=0\"}\n";
     meta<<"  ],\n";
