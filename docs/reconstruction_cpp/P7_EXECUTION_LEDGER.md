@@ -1526,3 +1526,100 @@ the sigma update and (b) the overall fidelity of the advection/step integration
 bookkeeping and `/CSIGMA/` selection (P7P) and the sigma update (this round) all
 carry original-source parity, and the two independent deck runs agree on the
 end-of-step sigmas.
+
+## 2026-10-12 P7R MCTADJ=2 terrain constraints (CTADJ2 + WALLTRAP)
+
+Round status: the two MCTADJ=2 constraints that P7Q left open - both on the locked
+deck's path - are reconstructed and parity-checked against the compiled
+**unmodified** vendor units.
+
+### Ported units and parity evidence
+
+| unit | vendor span | ported | parity |
+|---|---|---|---|
+| `CTADJ2` (strain + stable-flow height change) | L20542-20835 | yes | 432 cases x 4 columns, `MAX_REL=5.9e-07` |
+| `WALLTRAP` (valley sigma-y limit) | L21745-21894 | yes | 144 cases x 2 columns, `MAX_REL=4.4e-14` |
+
+`P7R_ORACLE_PARITY_TOTAL_CASES=576`, `MISMATCHES=0`. Both units are extracted whole
+and compiled unmodified; the oracle driver supplies deterministic `GETCELL`/
+`GETELEV` stubs and fills the `/GRID/` (`relief(5,...)`, `ivalw(...)`, `dzval`) and
+`/METHD/` (`elev`, `xgridm`) state from the case line, while the port takes the
+same lookups as explicit dependencies (`TerrainLookup`) and fails closed when one
+is missing. The terrain-state producer `TRELIEF` (L21205-21545, calls `TERAVG`)
+and the lookups `GETCELL` (L82482-82742) / `GETELEV` (L21098-21203) are pinned in
+the anchor as the documented next entry point.
+
+### Semantics worth recording
+
+1. `CTADJ2` conditions `R` to at most one, picks the relief corner from the step's
+   bearing (N-S / NE-SW / EW / SE-NW at the 22.5 and 67.5 degree tangents), and
+   only adjusts the puff height when the flow is upslope with stratification;
+   `FRACZ` is **not** clamped - it can be negative (the dividing streamline lies
+   above the start elevation) or exceed one (the puff height is then reduced by the
+   full rise).
+2. `WALLTRAP` first checks the puff against the dividing-streamline elevation, then
+   requires a valley-width table (`IVALW`) for both ends and both bracketing
+   levels; a single `-1` disables trapping. The trapping ratio is `RCRIT = 0.4`
+   with the full/partial/none branches (`SYE = SYB` for full trapping and a linear
+   crossing for partial).
+3. Both routines read the terrain through the met-grid-unit lookups, which is why
+   the port's lookups are called with met-grid coordinates (the deck run initially
+   sampled the wrong point until this was fixed).
+
+### Locked-case terrain run (physical chain only)
+
+`cteas_p7r_probe --deck-terrain MET.DAT puff.inp 0 513.3846439571 3533.7689269678
+70.8 89.152 0.9 1.396 0.02` drives the constraints with the deck's real CALMET
+elevation field (decoded by P7G):
+
+```
+P7R_DECK_TERRAIN_RUN=PASS HOUR=0 MCTADJ=2 ZI_M=230.951 DX_M=100 ELEV_MIN_M=25
+  ELEV_MAX_M=59.5 PUFF_HEIGHT_M=70.8 SIGMA_Z_START_M=89.152 ELEV_OLD_M=47.7415
+  ELEV_NEW_M=45.7526 DELX_M=5025.6 SIGMA_RATIO=0.9 SPEED_MS=1.396 BVF=0.02
+  STRAIN=1.00649 ZPNEW_M=70.8 FRACZ=0 UPSLOPE=false WALLTRAP_TRAPPED=false
+  WALLTRAP_SYE_M=200 TRELIEF_STANDIN=true VALLEY_TABLE_ABSENT=true
+  PHYSICAL_CHAIN_ONLY=true NOT_A_PUFF_CON_COMPARISON=true
+```
+
+Two stand-ins are stated in the output: `TRELIEF`'s directional relief is replaced
+by the local drop from the surrounding peak to the cell elevation (computed from
+the real field) and the valley-width table is absent (`IVALW = -1`), so `WALLTRAP`
+reports no trapping. For this hour the step is nearly level and downslope
+(-1.99 m over 5025.6 m), so the strain is small (1.0065) and the puff height is
+unchanged. This is a physical-chain demonstration, **not** a comparison with the
+frozen `puff.con`.
+
+### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
+
+- `cteas_p7r_terrain_constraints_contract`: the `CTADJ2` degenerate case, the
+  upslope/stratified branch, the neutral branch, the `R` conditioning and every
+  fail-closed path; `WALLTRAP`'s no-stratification, full, partial and no-trapping
+  branches, the above-dividing-streamline case, the missing-valley-table case and
+  every fail-closed path. PASS.
+- `cteas_p7r_source_parity`: anchor + the pinned `TRELIEF`/`GETCELL`/`GETELEV`
+  spans + 36 quoted statements + the two matrices. PASS (576 cases).
+- `cteas_p7r_locked_case_terrain`: the deck run above. PASS.
+- Local `ctest` 37/38 PASS; the only failure remains the pre-existing macOS
+  case-insensitive-filesystem failure of `cteas_p7_original_case_stage_contract`
+  (PASS on Linux).
+
+### Precise gaps
+
+1. **`TRELIEF`** (L21205-21545, 341 lines) builds `relief(1..5)` and `ivalw(...)`
+   from the CALMET elevation grid; without it the deck run uses the documented
+   relief stand-in and has no valley widths. It is the last piece needed for the
+   terrain constraints to run on fully original inputs.
+2. **`GETCELL`/`GETELEV`** (the vendor's own lookups, incl. nested grids) are
+   replaced by explicit callables; the vendor versions remain unported.
+3. `SETPUF`'s `/CURRENT/` publication tail (`xb1/yb1/xe1/ye1`, `bidsq`,
+   `xfrise/zfrise`, `xshift`, `speedi/srat`, `temis`, `iage`) is still open.
+
+### Incomparability list after this round
+
+**Still one cause, now at its narrowest**: the puff model's remaining gap is the
+overall fidelity of the advection/step integration (no release-cadence-to-
+concentration end-to-end run yet), the `TRELIEF` terrain-state producer and the
+CTEAS-only `CONC.DAT` header. Every other on-path piece of the puff step now
+carries original-source parity: release scheduler (P7O), plume rise (P7N), step
+bookkeeping and `/CSIGMA/` (P7P), the sigma update (P7Q) and the MCTADJ=2 terrain
+constraints (this round), with CTSG closed earlier (P7M) and off this deck.

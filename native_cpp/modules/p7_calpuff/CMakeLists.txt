@@ -444,3 +444,33 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7q_probe --deck-sigma "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
             0 513.3846439571 3533.7689269678 70.8 1.0 1.0 100.0)
 endif()
+
+# P7R: the MCTADJ=2 terrain constraints (CTADJ2 strain, WALLTRAP valley).
+add_library(cteas_p7_terrain STATIC src/terrain_constraints.cpp)
+target_include_directories(cteas_p7_terrain PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_terrain PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_terrain PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7r_tests tests/p7r_tests.cpp)
+target_link_libraries(cteas_p7r_tests PRIVATE cteas_p7_terrain)
+if(MSVC)
+  target_compile_options(cteas_p7r_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7r_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7r_terrain_constraints_contract COMMAND cteas_p7r_tests)
+
+add_executable(cteas_p7r_probe src/terrain_probe.cpp)
+target_link_libraries(cteas_p7r_probe PRIVATE cteas_p7_terrain cteas_p7_calmet21
+  cteas_p7_control)
+add_test(NAME cteas_p7r_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7r_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7r_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7r_locked_case_terrain
+    COMMAND cteas_p7r_probe --deck-terrain "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
+            0 513.3846439571 3533.7689269678 70.8 89.152 0.9 1.396 0.02)
+endif()
