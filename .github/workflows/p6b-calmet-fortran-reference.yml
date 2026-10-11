@@ -299,6 +299,38 @@ jobs:
           cp project/current/met/surface/final/stations.csv integration-evidence/p5-stations.csv
           cp project/current/met/upperair/final/stations.csv integration-evidence/p4-stations.csv
           cp project/current/run/met/met.inp integration-evidence/frozen-calmet-controls.inp
+      - name: P6C independently execute original COMP with write-only AA BB runtime trace
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/p6c-original-comp
+          python3 native_cpp/modules/p6_calmet/reference/original_comp_runtime_trace.py instrument \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --out /tmp/p6c-original-comp/calmet.for
+          cp /tmp/p6c-original-comp/p6c-comp-trace-instrumentation.json \
+            integration-evidence/p6c-comp-trace-instrumentation.json
+          flags="-O0 -std=legacy -fno-automatic -fno-align-commons -fallow-argument-mismatch -ffixed-line-length-none"
+          gfortran $flags -I/tmp/p4p5-calmet-include \
+            /tmp/p6c-original-comp/calmet.for \
+            -o /tmp/p6c-original-comp/met-trace.x \
+            > integration-evidence/p6c-comp-trace-build.log 2>&1
+          baseline_sha=$(sha256sum project/current/run/met/met.dat | cut -d' ' -f1)
+          cp bin/linux-x86_64/met.x /tmp/p6c-original-comp/met-untouched.x
+          trap 'cp /tmp/p6c-original-comp/met-untouched.x bin/linux-x86_64/met.x' EXIT
+          cp /tmp/p6c-original-comp/met-trace.x bin/linux-x86_64/met.x
+          python3 -m engine.run_met.run_met --case ci_original_calmet_p4_p5_2022 \
+            > integration-evidence/p6c-original-comp-run.log 2>&1
+          instrumented_sha=$(sha256sum project/current/run/met/met.dat | cut -d' ' -f1)
+          printf 'untouched=%s\\nwrite_only_trace=%s\\n' "$baseline_sha" "$instrumented_sha" \
+            > integration-evidence/p6c-comp-output-equivalence.txt
+          test "$baseline_sha" = "$instrumented_sha"
+          cp project/current/run/met/met_runtime.log \
+            integration-evidence/p6c-original-comp-runtime.log
+          python3 native_cpp/modules/p6_calmet/reference/original_comp_runtime_trace.py compare \
+            --runtime integration-evidence/p6c-original-comp-runtime.log \
+            --joint integration-evidence/p6c-joint-observation.csv \
+            --up project/current/met/upperair/final/up_58424.dat \
+            --out integration-evidence/p6c-original-comp-vs-cpp-143h.json
       - name: Retain diagnostics even on failure
         if: always()
         shell: bash
