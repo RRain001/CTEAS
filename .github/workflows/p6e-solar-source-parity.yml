@@ -1,0 +1,38 @@
+name: P6E SOLAR original source parity
+on:
+  push:
+    branches:
+      - 'codex/cteas-p6e-*'
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/p6e/**'
+      - '.github/workflows/p6e-solar-source-parity.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  p6e-solar-original:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Original Fortran compiler
+        run: sudo apt-get update && sudo apt-get install -y gfortran
+      - name: C++20 Werror and software CTest
+        run: |
+          cmake -S native_cpp/modules/p6_calmet/p6e -B build/p6e -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build/p6e --parallel 2
+          ctest --test-dir build/p6e --output-on-failure
+      - name: Source-locked unchanged Fortran SOLAR comparison
+        run: |
+          python3 native_cpp/modules/p6_calmet/p6e/reference/compare_original_solar.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --cpp build/p6e/p6e_solar_reference \
+            --out build/p6e/solar-original-parity.json
+      - name: Save scientific gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6e-solar-original-parity
+          path: build/p6e/solar-original-parity.json
+          if-no-files-found: warn
