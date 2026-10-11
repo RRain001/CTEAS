@@ -1589,6 +1589,15 @@ reports no trapping. For this hour the step is nearly level and downslope
 unchanged. This is a physical-chain demonstration, **not** a comparison with the
 frozen `puff.con`.
 
+### Gate evidence (Linux, lhy-desktop, g++-12 + gfortran-11)
+
+`LOCAL_GATE_P7=PASS sha=4138760ba ok=36 blocked=0 failed=0` with the authoritative
+local gate, `100% tests passed, 0 tests failed out of 38` (including the three new
+P7R CTest entries). The same matrices against the compiled unmodified vendor units
+with `GNU Fortran (Ubuntu 11.4.0) 11.4.0`: CTADJ2 432x4 `MAX_REL=7.563e-08` (vs
+`5.9e-07` on macOS), WALLTRAP 144x2 `MAX_REL=4.355e-14` - 576 cases,
+`MISMATCHES=0`.
+
 ### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
 
 - `cteas_p7r_terrain_constraints_contract`: the `CTADJ2` degenerate case, the
