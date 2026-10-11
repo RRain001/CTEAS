@@ -1112,6 +1112,18 @@ stability class outside 1-6; the flux builder refuses a zero stack temperature;
 `PRFPP` refuses a zero ambient temperature. `GRISE`'s vendor "halts on a rise
 factor below -1e-4" is reproduced as a refusal.
 
+### Gate evidence (Linux, lhy-desktop, g++-12 + gfortran-11)
+
+`LOCAL_GATE_P7=PASS sha=b7052d751 ok=24 blocked=0 failed=0` with the
+authoritative local gate, `100% tests passed, 0 tests failed out of 26`
+(including the three new P7N CTest entries). The same matrices against the
+compiled unmodified vendor units with `GNU Fortran (Ubuntu 11.4.0) 11.4.0`:
+STKTIP 144 cases `MAX_REL=1.086e-13`, PRFIN 288x6 `MAX_REL=3.979e-13`, PRM 48
+`MAX_REL=8.544e-14`, PRB 18 `MAX_REL=0`, PRFPP 18x3 `MAX_REL=5.797e-14`, FLUX
+32x2 `MAX_REL=2.362e-13`, GRISE 98x2 `MAX_REL=3.275e-13` - 646 cases,
+`MISMATCHES=0`. The only difference from macOS (gfortran 16.2.0) is PRFIN, which
+tightens from `2.0e-07` to `4.0e-13`.
+
 ### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
 
 - `cteas_p7n_plume_rise_contract`: closed forms for STKTIP, the flux pair, PRFIN
