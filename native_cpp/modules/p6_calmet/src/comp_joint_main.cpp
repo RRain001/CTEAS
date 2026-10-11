@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 int main(int argc,char** argv) {
-    if(argc!=8) {
+    if(argc!=10) {
         std::cerr<<"usage: cteas_p6_comp_joint GEO.DAT SURF.DAT UP.DAT OUT.csv UPPER_STATION XORIGKM YORIGKM\n";
         return 2;
     }
@@ -22,7 +22,7 @@ int main(int argc,char** argv) {
         const auto surf=read_surface_2022(argv[2]);
         const auto upper=read_upper_2022(argv[3],std::stoi(argv[5]));
         const std::vector<float> faces{0,20,40,80,160,320,640,1200,2000,3000};
-        const auto hours=comp_selected_2022_hours(upper,faces);
+        const auto hours=comp_selected_2022_hours(upper,faces,std::stoi(argv[8]),std::stoi(argv[9]));
         if(surf.hourly.size()!=hours.size()||hours.size()!=143)
             throw std::runtime_error("COMP-SURF interval count mismatch");
         std::ofstream out(argv[4]);
