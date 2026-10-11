@@ -1,4 +1,7 @@
 #include "cteas/met_input/p5_smerge.hpp"
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <sstream>
 #include <string>
