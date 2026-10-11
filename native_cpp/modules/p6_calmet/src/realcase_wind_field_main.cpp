@@ -474,6 +474,7 @@ int main(int argc,char** argv){
           " \"missing\": [\"QH\", \"TEMP2D\", \"HMIN/DISTHMAX/DISTHMIN (provided here as terset_*.f32)\"]},\n";
     meta<<"    {\"stage\": \"SMOOTH/DIVCEL/W tail (DIAGNO L6119-L6148)\", \"status\": \"NOT_APPLIED_IN_THIS_PARTIAL\","
           " \"note\": \"the tail consumes the L5748 WINDBC snapshot taken after the FRADJ/SLOPE corrections, which still need TEMP2D/QH; emitting W from an un-corrected step one would be an unfaithful combination\"},\n";
+    meta<<"    {\"stage\": \"TOPOF2/IKINE route and O'Brien/IOBR=1 tail\", \"status\": \"NON_CASE_PATH\","
           " \"note\": \"the case deck sets IKINE=0 and IOBR=0\"}\n";
     meta<<"  ],\n";
     meta<<"  \"control_values_read\": {\"TERRAD\": "<<terrad_km
