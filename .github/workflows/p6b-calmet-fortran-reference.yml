@@ -94,6 +94,19 @@ jobs:
             2>&1 | tee integration-evidence/p4-run.log
           test -s project/current/met/upperair/final/up_58424.dat
           cp project/current/met/upperair/final/stations.csv integration-evidence/p4-stations.csv
+      - name: P6C original RDHDU/RDUPN upper air v2.1 native Fortran vs C++ numeric parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-up-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/p6c-up-build --parallel 2
+          ctest --test-dir /tmp/p6c-up-build --output-on-failure
+          python3 native_cpp/modules/p6_calmet/reference/compare_fortran_upper_rdupn.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --up project/current/met/upperair/final/up_58424.dat \
+            --cpp /tmp/p6c-up-build/cteas_p6_read_upper \
+            --station 58424 \
+            --out integration-evidence/p6c-upper-rdupn-reference
       - name: P5 real 2022 ISD + Lite / two-stage wind / GENERIC
         shell: bash
         run: |
