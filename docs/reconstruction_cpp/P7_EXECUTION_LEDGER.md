@@ -1916,3 +1916,60 @@ step integration, and the CTEAS-only CONC.DAT header.
 产物 `dgm_puffstep.bin`（sha256 `cbbdaa29…`，89,649,824 字节 = **254,687 条 × 352 字节**：`int32[24]` 头 + `float32[64]`），逐条覆盖 P7U 的 8 项：起始位置/`icode`、网格单元与 `istab/dpbl/el/z0m`、`PUFFDZ` 返回的 `ztop/zbot`、`ADVECT` 返回的 `uadv/vadv`、抬升风与静风调整后的 `ws/uadv/vadv`、采样节奏（`nsam/nsstr/xsami/tsamp`）、`SETPUF` 入/出状态（`xtotb/tmtotb/sigyb/sigzb` 与 `/CURRENT/` 各量）、以及步末位置（`xnew/ynew`、`xpb/ypb/zpb`）。143 个小时标签、puff 1…11,985；每小时记录数、首末 puff 与字节偏移在 `dgm_puffstep.json`，可据此切出任意小时；入库切片为第 1 小时（1,275 条，sha256 `b51d20d3…`）。
 
 自查：238,908 组相邻子步连接中位置/行程/`sigyb` **0 处不一致**（`sigzb` 只增不减——垂直散度因子）；`distm == ws × tsamp_effective` 最大相对差 5.8e-08；`zold` 恒在 `PUFFDZ` 的 `[zbot,ztop]` 内；`tsamp_effective` 18.56–3600 s（子步切分被实际触发）。坐标单位为**最外层气象网格格数**（1 格 = 100 m，源在 25.0 格 = 2.5 km，与烟囱位置一致），不是 km。本节只记录证据，不改变既有阶段结论。
+
+## 2026-10-12 P7W RISEWIND ported; one-step numerical comparison against the vendor dump
+
+Round status: `RISEWIND` is ported and closed against the unmodified vendor source,
+and the **first real one-step numerical comparison against original CALPUFF numbers**
+is in place, driven by DGM's instrumented puff-step dump.
+
+### RISEWIND (calpuff.for L67162-67300)
+Extracted whole (span/SHA-256 pinned by `reference/p7w_source_anchor.py`, gate-checked
+on drift) and compiled unmodified with `reference/p7w_oracle_driver.f`. The port takes
+its two dependencies as explicit injected callbacks - the gradual-rise height (P7N's
+`gradual_plume_height`) and the advective wind (P7V's `advective_wind`) - so no common
+state is hidden. Vendor semantics reproduced: the initial wind over the start-of-step
+rise layer, the calm floor `ucalm=0.001`, the `NCOUNT` refinement loop, the step length
+`WS*DT`, the rise/fall layer selection (`RTOP=REND+DZB` while rising, `RTOP=RBEG+DZB`
+while falling, `RBOT` floored at zero), and the final-rise blend
+`UADV=(1-FFINAL)*UGR+FFINAL*UFNL` with `FFINAL=1-XFINAL/XEND` once the step passes the
+distance of final rise.
+
+Parity: `P7W_RISEWIND_ORACLE_PARITY=PASS CASES=12 COLUMNS=3 MISMATCHES=0
+MAX_REL=1.197e-06 STUBBED_DEPENDENCIES=GRISE,ADVECT` (the deterministic stubs isolate
+RISEWIND's own iteration; GRISE and ADVECT are exercised separately), plus
+`P7W_RISE_WIND_CONTRACT=PASS CHECKS=17 FAILURES=0`.
+
+### One-step numerical comparison (DGM dump, hour 202200100, 1,275 substeps / 54 puffs)
+`reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin` (sha256 `b51d20d3...`)
+is read record by record; each record carries the vendor's own PUFFDZ/ADVECT inputs and
+returns. The ported chain is driven per substep: PUFFDZ from the record's own
+`htmet/icode/istab/dpbl` and the previous substep's stored sigma, ADVECT from the real
+CALMET cell profile over the vendor's `ZBOT/ZTOP`, then RISEWIND (applied exactly where
+COMP applies it: odd ICODE and `XTOTB < XFINAL`) with `XFINAL/ZFIN` from the
+reconstructed P7N rise chain (`XFIN_M=163.913 ZFIN_M=136.158 ISTAB=4`), and finally
+COMP's calm treatment (`wscalm=0.5`, `ucalm=0.001`):
+
+- `P7W_DGM_STEP_ZT_VENDOR_VS_PORT_TOP=CASES=1221 MISMATCHES=0 UNCHECKED=54 MAX_ABS=0`
+- `P7W_DGM_STEP_ZT_VENDOR_VS_PORT_BOTTOM=CASES=1221 MISMATCHES=0 UNCHECKED=54 MAX_ABS=0`
+- `P7W_DGM_STEP_UADV_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=4.47035e-08 MAX_REL=3.13534e-07`
+- `P7W_DGM_STEP_VADV_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=0 MAX_REL=0`
+- `P7W_DGM_STEP_RISEWIND_APPLIED=107 SKIPPED=1168`
+- `P7W_DGM_STEP_UADV_ADJUSTED_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=4.08292e-05 MAX_REL=7.04828e-05`
+- `P7W_DGM_STEP_VADV_ADJUSTED_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=7.89165e-05 MAX_REL=5.82092e-05`
+- `P7W_DGM_STEP_WS_ADJUSTED_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=5.65052e-05 MAX_REL=3.83265e-05`
+- `P7W_DGM_STEP_LCALM_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=0`
+
+The 54 `UNCHECKED` rows are each puff's first substep in the slice: PUFFDZ reads the
+sigma stored by the previous substep, which lies outside the slice, so those rows are
+reported as unchecked rather than guessed. `CAP_BRANCH_SKIPPED=0`: every record's DPBL
+is above HTMET, so the vendor's DPBL cap determines ZTOP without ZIOLD/ZIMAX (which the
+dump does not carry).
+
+Comparability after this round: the puff-state **values** of the advection/step chain
+are comparable against original CALPUFF on real substeps (this comparison), and the
+remaining non-comparable item is the CTEAS-only `CONC.DAT` header subset. The inline
+COMP step integration (the substep cadence NSAM/TSAMP and the end-of-step position
+update, pinned at L10465-10473 / L10494-10519) is still not ported; the dump carries
+its own end-of-step positions, so it is the next comparison target. GETCELL and
+SETPUF's `/CURRENT/` publication tail remain open (spans pinned in the P7W anchor).
