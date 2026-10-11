@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from native_cpp.modules.p5_smerge.data_prep import interpolate as i
+from native_cpp.modules.p5_smerge.data_prep import generate_smerge_input_sections as g
 from native_cpp.modules.p5_smerge.data_prep.sparse_station_policy import (
     standardize_sparse_station, POLICY,
 )
@@ -61,6 +62,21 @@ class SparseStationTests(unittest.TestCase):
         self.assertEqual(tuple(out.loc["2022-01-01 23",["deg","ms-1"]]),(0.,0.))
         self.assertEqual(meta["observed_calm_hours"],3)
         self.assertTrue(bool(audit.loc["2022-01-01 22","original_calm"]))
+
+    def test_smerge_date_interval_does_not_require_any_valid_wind(self):
+        with tempfile.TemporaryDirectory() as td:
+            file=Path(td)/"583140-99999.csv"
+            with file.open("w",newline="") as f:
+                w=csv.writer(f)
+                w.writerow(["GENERIC","Version","'2.0'","Manuallygenerated","Timeasendinghour",""])
+                w.writerow(["Station","ID","='","583140","Temp","Precip","Pressure","RH","Wdir10m","Wspeed10m","Ccover","Cheight"])
+                w.writerow(["Month","Day","Year","Hour","DegC","mm","mb","%","deg","ms-1","tenths","hundreds_of_feet"])
+                w.writerow([1,1,2022,1800,9999,9999,9999,9999,9999,9999,9999,9999])
+                w.writerow([1,1,2022,2000,9999,9999,9999,9999,9999,9999,9999,9999])
+            begin,end=g.detect_time_range_from_any_source_hour(file)
+            self.assertEqual(begin,pd.Timestamp("2022-01-01 18:00"))
+            self.assertEqual(end,pd.Timestamp("2022-01-01 20:00"))
+            self.assertEqual(g.detect_global_period([("583140","99999",file)]),(begin,end))
 
     def test_real_generic_3_header_file_and_manifest_role(self):
         with tempfile.TemporaryDirectory() as td:
