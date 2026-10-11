@@ -1051,3 +1051,134 @@ subset, so the frozen `puff.con` values cannot be reproduced or compared yet.
 Also still open and explicitly out of this round: `ctpar`/`upper`/`flopuff`,
 the slug/wind-shear/PDF options (`MSLUG=0`, `MSHEAR=0`, `MPDF=0` for this deck),
 and `MCTADJ=1/3` terrain lookup.
+
+## 2026-10-12 P7N plume rise: the first cut of the advection prototype (on-path)
+
+Round status: the gradual plume-rise path of the locked deck is reconstructed and
+parity-checked against the compiled **unmodified** vendor units. The slice was
+chosen from the deck's own option set, not from convenience:
+
+| deck option | value | consequence |
+|---|---|---|
+| `MTRANS` | 1 | gradual (transitional) rise is modelled -> `PRM`/`PRB` are on the path |
+| `MTIP` | 1 | stack-tip downwash is modelled -> `STKTIP` is on the path |
+| `MRISE` | 1 | Briggs rise (not numerical) -> `PRFIN` + `PRM`/`PRB` are the formulas |
+| `MPARTL` | 1 | partial penetration of an elevated inversion -> `PRFPP` is on the path |
+| `MSHEAR` | 0 | `PRSHEAR`/`PRFINSH` are **off** this case's path |
+| `MSPLIT` | 0 | puff splitting/merging is **off** this case's path |
+| `MHFTSZ` | 0 | the Heffter transition (`HEFTRAN`) is **off** this case's path |
+| building downwash | none (`IDW0=0`) | `PRSS`, `PRIME` and the tabulated rise are **off** |
+
+That is why this round ports the rise family rather than `split`/`HEFTRAN`: the
+release cadence and the rise are the parts of the P7C prototype that actually
+drive the locked case's puff heights.
+
+### Ported units and parity evidence
+
+| unit | vendor span | ported | parity |
+|---|---|---|---|
+| `STKTIP` (stack-tip downwash) | L46904-46947 | yes | 144 cases, `MAX_REL=1.1e-13` |
+| `PRB` (transitional buoyant rise) | L46949-46999 | yes | 18 cases, `MAX_REL=0` |
+| `PRM` (transitional momentum rise) | L47001-47079 | yes | 48 cases, `MAX_REL=8.5e-14` |
+| `PRFIN` (final rise) | L47081-47249 | yes | 288 cases x 6 columns, `MAX_REL=2.0e-07` |
+| `PRFPP` (partial penetration) | L48041-48150 | yes | 18 cases x 3 columns, `MAX_REL=5.8e-14` |
+| `GRISE` (gradual-rise dispatch) | L47251-47620 | yes | 98 cases x 2 columns, `MAX_REL=3.3e-13` |
+| POINTS1 flux statements | L15527-15535 (inline) | yes | 32 cases x 2 columns, `MAX_REL=2.4e-13` |
+
+`P7N_ORACLE_PARITY_TOTAL_CASES=646`, `MISMATCHES=0`, worst absolute difference
+`4.6e-05` (the `PRFIN` matrix, whose `**0.25`/`**0.375` powers are constant-folded
+differently by the two compilers). `PRSHEAR`, `PRSS`, `PRTAB`, `PRBL` and
+`INTERTAB` are provided as hard-failing stubs in the oracle, so a parity case can
+never silently reach an unported branch.
+
+### Source anchor
+
+`reference/p7n_source_anchor.py` locates the six routines with the P7K/P7M
+header scan and pins their spans, SHA-256, call closure and include list in
+`reference/p7n_source_anchor.json`; `--check` fails on any drift. The buoyancy and
+momentum flux statements live **inline in `POINTS1`** rather than in a routine, so
+they are pinned by content (the `(i)` spelling occurs exactly once) and staged
+inside a generated harness subroutine that adds only declarations and the
+argument transfer: the three extracted statements stay byte-identical
+(`P7N_INLINE_BLOCK=PASS UNIT=points1 LINES=15527-15535 STATEMENTS=3`). Vendor
+source `sha256 da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568`.
+
+### Fail-closed deviations (documented, never approximated)
+
+`GRISE` refuses the tabulated/numerical rise (methods 2/3, `MRISE=2`), the shear
+correction (`MSHEAR=1`), the building-downwash paths and the area/line/flare
+source types instead of returning an invented height; `PRFIN`/`PRM` refuse a
+stability class outside 1-6; the flux builder refuses a zero stack temperature;
+`PRFPP` refuses a zero ambient temperature. `GRISE`'s vendor "halts on a rise
+factor below -1e-4" is reproduced as a refusal.
+
+### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
+
+- `cteas_p7n_plume_rise_contract`: closed forms for STKTIP, the flux pair, PRFIN
+  (all four stability/calm branches and the `FM=0` zeroing), PRM (neutral and
+  stable), PRB, PRFPP (the three `ZI` branches), the GRISE method-1 assembly, the
+  method-0 cavity path, the ground clipping, the `ZFRISE=0` rise fraction and
+  every fail-closed path. PASS.
+- `cteas_p7n_source_parity`: anchor + inline block + 39 quoted statements + the
+  seven matrices. PASS (646 cases).
+- `cteas_p7n_locked_case_rise`: the deck run below. PASS.
+- Local `ctest` 25/26 PASS; the only failure remains the pre-existing macOS
+  case-insensitive-filesystem failure of
+  `cteas_p7_original_case_stage_contract` (PASS on Linux).
+
+### Locked-case rise run (physical chain only)
+
+`cteas_p7n_probe --deck-rise MET.DAT puff.inp 0 513.3846439571 3533.7689269678
+70.8 1.6 17.26 298.15` uses the deck's own stack (diameter 1.6 m, exit velocity
+17.26 m/s, exit temperature 298.15 K, `FMFAC=1.0`) and the sampled hour's real met
+inputs:
+
+```
+P7N_DECK_RISE_RUN=PASS HOUR=0 STABILITY=4 SPEED_MS=1.39612 AMBIENT_K=279.15
+  ZI_M=230.977 STACK_H_M=70.8 DIAM_M=1.6 VEXIT_MS=17.26 TSTAK_K=298.15
+  TEMP_EXCESS_K=19.0 FLUXB=6.90346 FLUXM=178.511 TIPDW_M=0
+  XFIN_M=163.913 ZFIN_M=65.3579 ZFIN_MOMENTUM_M=59.3416 ZFIN_BUOYANCY_M=65.3579
+  FMIX=1 ZFIN_PARTIAL_M=65.3579 PLUME_HEIGHT_M=136.158
+  PHYSICAL_CHAIN_ONLY=true NOT_A_PUFF_CON_COMPARISON=true
+P7N_DECK_GRADUAL_RISE X_M=100    HEIGHT_M=125.103 RISE_FRACTION=0.830855
+P7N_DECK_GRADUAL_RISE X_M=500    HEIGHT_M=136.158 RISE_FRACTION=1
+P7N_DECK_GRADUAL_RISE X_M=5026.03 HEIGHT_M=136.158 RISE_FRACTION=1
+```
+
+i.e. the buoyant rise (65.36 m) exceeds the momentum rise (59.34 m), the stack-tip
+downwash is zero because the exit velocity is well above `1.5*WSSTK`, the plume
+reaches its final height of 136.16 m within ~500 m, and the locked hour's 5.03 km
+step samples a fully developed plume. Two assumptions are stated in the output
+path and in the code: the sampled hour is neutral/unstable (class 4, so the stable
+branches that need the potential-temperature gradient are not exercised - the run
+fails closed for `ISTAB >= 5`), and the `MPARTL=1` revision uses the vendor's
+default gradient path (`PTGRAD0=0.005`, `JSUP=5` -> `PTGINV=0.020 K/m`,
+`DPTINV=0.6 K`) because `PTLAPS`/`LCALGRD` are not reconstructed. This is a
+physical-chain demonstration, **not** a comparison with the frozen `puff.con`.
+
+### Precise gaps and the next-round entry point
+
+1. **Release cadence and the per-puff rise state** (`points1`/`setpuf`): the
+   *origin* of `FM`/`FB`/`XFIN*`/`ZFIN*`/`STIPDW`/`WS0`/`ISTAB0`/`SQRTS0` and the
+   emission schedule (`NSECDT`, puff ages, `TMTOTB`/`TMTOTE`) are still inline in
+   `points1` (L15505-16150) and `setpuf` (L48198-48757). The flux statements and
+   `PRFIN`/`STKTIP` are ported, so the next round is the *scheduler*: when a puff
+   is released, with what mass, and which `SQRT(S)`/`DPBL`/`PTGINV` the vendor
+   uses at release (`SQRT(S)=SQRT(g*ptgrad/t0)`, `ptgrad` from the met profile or
+   `PTGRAD0`, plus `JSUP`/`PTG(1:2)`).
+2. **`PTLAPS`/`LCALGRD`** (met-model inversion gradient, L18421-18559) is needed
+   before the stable branches and the met-based `PTGINV` can be exercised.
+3. **Advection/step integration** is still the P7C prototype; `SIGMA()`
+   restart/`HEFTRAN` semantics for `MHFTSZ=1` and the `split`/merge path
+   (`MSPLIT=1`, `split` L11952-12424) remain unported but are off this deck.
+
+### Incomparability list after this round
+
+**Still one cause**, now narrowed: the puff model is still the P7C prototype
+(release cadence, step integration and split/merge) plus the CTEAS-only
+`CONC.DAT` header. The plume-rise component of that prototype is no longer a gap
+for the locked deck: its gradual-rise path (`MTRANS=1`/`MTIP=1`/`MRISE=1`/
+`MPARTL=1`) is reconstructed with original-source parity, and the P7M CTSG finding
+stands (no hill in this deck, so CTSG is never invoked). Explicitly out of scope
+and off this case's path: `MSHEAR=1`, `MSPLIT=1`, `MHFTSZ=1`, building downwash
+and the numerical rise.

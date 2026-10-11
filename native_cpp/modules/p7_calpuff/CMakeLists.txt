@@ -320,3 +320,34 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7m_probe --real-grid "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
             0 2.63e13 513.3846439571 3533.7689269678 70.8)
 endif()
+
+# P7N: CALPUFF 7.2.1 plume rise (STKTIP/PRB/PRM/PRFIN/PRFPP/GRISE plus the
+# verbatim POINTS1 flux statements) for the locked deck's gradual-rise path.
+add_library(cteas_p7_plume_rise STATIC src/plume_rise.cpp)
+target_include_directories(cteas_p7_plume_rise PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_plume_rise PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_plume_rise PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7n_tests tests/p7n_tests.cpp)
+target_link_libraries(cteas_p7n_tests PRIVATE cteas_p7_plume_rise)
+if(MSVC)
+  target_compile_options(cteas_p7n_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7n_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7n_plume_rise_contract COMMAND cteas_p7n_tests)
+
+add_executable(cteas_p7n_probe src/plume_rise_probe.cpp)
+target_link_libraries(cteas_p7n_probe PRIVATE cteas_p7_plume_rise cteas_p7_calmet21
+  cteas_p7_control)
+add_test(NAME cteas_p7n_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7n_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7n_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7n_locked_case_rise
+    COMMAND cteas_p7n_probe --deck-rise "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
+            0 513.3846439571 3533.7689269678 70.8 1.6 17.26 298.15)
+endif()
