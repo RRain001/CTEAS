@@ -180,6 +180,10 @@ int main(int argc,char** argv){
     const int nz=deck_int(controls,"NZ",9);
     const float grid_m=deck_scalar(controls,"DGRIDKM",0.1f)*1000.f;
     const float terrad_km=deck_scalar(controls,"TERRAD",15.f);
+    const double origin_x_km=deck_scalar(controls,"XORIGKM",0.f);
+    const double origin_y_km=deck_scalar(controls,"YORIGKM",0.f);
+    if(origin_x_km<=0.||origin_y_km<=0.)
+        throw std::runtime_error("the deck must declare XORIGKM/YORIGKM");
     const int iextrp=deck_int(controls,"IEXTRP",-4);
     const int icalm=deck_int(controls,"ICALM",0);
     if(nx!=50||ny!=50||nz!=9)
@@ -207,7 +211,7 @@ int main(int argc,char** argv){
             for(std::size_t k=0;k<9;++k)bias[k]=it->second[k];
     }
 
-    const auto geo=read_geo_50(args.geo.string(),nx,ny);
+    const auto geo=read_geo_50(args.geo.string(),origin_x_km,origin_y_km);
     const auto surface=read_surface_2022(args.surface.string());
     const auto upper=read_upper_2022(args.upper.string(),-1);
 
@@ -335,6 +339,7 @@ int main(int argc,char** argv){
           " \"note\": \"the case deck sets IKINE=0 and IOBR=0\"}\n";
     meta<<"  ],\n";
     meta<<"  \"control_values_read\": {\"TERRAD\": "<<terrad_km
+        <<", \"XORIGKM\": "<<origin_x_km<<", \"YORIGKM\": "<<origin_y_km
         <<", \"IEXTRP\": "<<iextrp<<", \"ICALM\": "<<icalm
         <<", \"DGRIDKM\": "<<(grid_m/1000.f)<<"},\n";
     meta<<"  \"inputs\": {\"deck\": \""<<args.deck.string()<<"\", \"deck_fingerprint\": \""
