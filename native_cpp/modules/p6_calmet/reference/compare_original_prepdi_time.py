@@ -28,8 +28,9 @@ HEAD=r"""      program prepdi_source_time
       open(11,file=trim(out),status='replace')
       read(10,*)nhours
       do idx=1,nhours
-        read(10,*)jdelta,jtogo
-        if(jdelta.lt.3600.or.jdelta.gt.86400)stop 13
+        read(10,*)jdelta,jtogo,jorder
+        if(jorder.ne.-1.and.jorder.ne.1)stop 15
+        if(jdelta.lt.3600.or.jdelta.gt.50400)stop 13
         if(jtogo.lt.0.or.jtogo.gt.jdelta)stop 14
         do n=1,nz
           read(10,*)uaveaa(n,1),vaveaa(n,1),
@@ -107,13 +108,18 @@ def make_hour_data(out,profile_times,vertav):
             togo=profile_times[next_index]-t
             if delta!=43200 or not 0<=togo<=delta:
                 raise ValueError(f"bad original profile window {index}")
+            jorder=1 if lower%2==0 else -1
             inputs.append({"hour":index,"lower":lower+1,"higher":next_index+1,
-                           "gap":delta,"togo":togo})
-            h.write(f"{delta} {togo}\n")
+                           "gap":delta,"togo":togo,"jorder":jorder})
+            h.write(f"{delta} {togo} {jorder}\n")
             for layer in range(1,10):
-                ua,va=vertav[lower+1][layer]
-                ub,vb=vertav[next_index+1][layer]
-                h.write(f"{ua:.13e} {va:.13e} {ub:.13e} {vb:.13e}\n")
+                prior_u,prior_v=vertav[lower+1][layer]
+                newest_u,newest_v=vertav[next_index+1][layer]
+                if jorder>0:
+                    aa_u,aa_v,bb_u,bb_v=prior_u,prior_v,newest_u,newest_v
+                else:
+                    aa_u,aa_v,bb_u,bb_v=newest_u,newest_v,prior_u,prior_v
+                h.write(f"{aa_u:.13e} {aa_v:.13e} {bb_u:.13e} {bb_v:.13e}\n")
     return inputs
 def compare(ref,modern,expected):
     a=[line.split() for line in ref.read_text().splitlines()]
@@ -138,6 +144,9 @@ def compare(ref,modern,expected):
                 failures.append({"hour":hour,"layer":layer,"field":key,"fortran":x,"modern":y,"error":d})
     return {"status":"PASS" if not failures else "FAIL",
             "compared_hourly_layer_wind_components":2574,
+            "jorder_positive_hours":sum(x["jorder"]==1 for x in expected),
+            "jorder_negative_hours":sum(x["jorder"]==-1 for x in expected),
+            "jorder_switches":sum(expected[i]["jorder"]!=expected[i-1]["jorder"] for i in range(1,len(expected))),
             "one_hour_intervals":143,"layers_per_hour":9,
             "max_abs_error_mps":errors,"frozen_tolerance_mps":0.0003,
             "first_mismatches":failures}
@@ -160,7 +169,7 @@ def main():
     result=compare(reference,p.modern_hourly,timeline)
     result.update({"reference":source,"input_up_sha256":sha(p.up),
                    "original_vertav_sha256":sha(p.original_vertav),
-                   "limits":"Selected PREPDI 143h float32 interpolation & time bracket only. Not full CALMET COMP AA/BB control, complete vertical temperature path or diagnostic wind."})
+                   "limits":"Selected PREPDI with both original JORDER branches on all 143h; independent live COMP instrumented source audit is a separate gate. No CGAMMA or diagnostic wind parity."})
     (p.out/"p6c-prepdi-time-parity.json").write_text(json.dumps(result,indent=2)+"\n")
     print(json.dumps(result,indent=2))
     if result["status"]!="PASS":raise SystemExit(1)
