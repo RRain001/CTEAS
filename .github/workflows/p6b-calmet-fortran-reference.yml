@@ -147,6 +147,18 @@ jobs:
           test -s project/current/met/surface/final/stations.csv
           sha256sum project/current/met/surface/final/surf.dat > integration-evidence/surf.sha256
           cp project/current/run/smerge/smerge.lst integration-evidence/original-smerge.lst
+      - name: P6C strict new 2022 SURF.DAT one-hour records vs native Fortran
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-surface-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/p6c-surface-build --parallel 2
+          ctest --test-dir /tmp/p6c-surface-build --output-on-failure
+          python3 native_cpp/modules/p6_calmet/reference/compare_fortran_surface.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --surf project/current/met/surface/final/surf.dat \
+            --cpp /tmp/p6c-surface-build/cteas_p6_read_surface \
+            --out integration-evidence/p6c-surf-reference
       - name: Execute UNCHANGED original CTEAS CALMET Python flow and original Fortran binary
         shell: bash
         run: |
