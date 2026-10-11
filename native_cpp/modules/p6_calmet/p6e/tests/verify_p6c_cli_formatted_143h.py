@@ -115,7 +115,7 @@ def verify(exe: Path) -> None:
                 if (observed, code) != (0, 9999):
                     raise AssertionError("E17 missing precipitation invented")
                 missing += 1
-            if int(row["surface_humidity_pct"]) != 65:
+            if int(row["humidity_pct"]) != 65:
                 raise AssertionError("E17 humidity reader misaligned")
             if float(row["air_temperature_k"]) != 285 + n % 6:
                 raise AssertionError("E17 surface temperature misread")
