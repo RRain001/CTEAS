@@ -206,9 +206,17 @@ def require_clean_run(run_result: dict, case: str, hours: int) -> dict:
     listing = run_result["listing"]
     if not listing.is_file() or not run_result["concentration"].is_file():
         fail(f"{case}: the original produced no listing/concentration output")
+    stdout_lines = text.splitlines()
+    excerpt = [line.rstrip() for line in stdout_lines[:6]]
+    hour_lines = [line.rstrip() for line in stdout_lines if line.startswith("+ ")]
+    excerpt += ["  ..."] + hour_lines[-4:]
     return {"hours": len(rows), "first_hour": rows[0], "last_hour": rows[-1],
             "listing_bytes": listing.stat().st_size,
-            "concentration_bytes": run_result["concentration"].stat().st_size}
+            "listing_sha256": sha256_file(listing),
+            "concentration_bytes": run_result["concentration"].stat().st_size,
+            "concentration_sha256": sha256_file(run_result["concentration"]),
+            "stdout_excerpt": excerpt,
+            "stdout_bytes": len(text)}
 
 
 def listing_evidence(listing: pathlib.Path) -> dict:
@@ -263,6 +271,8 @@ def main() -> int:
     parser.add_argument("--reference-con", required=True, type=pathlib.Path)
     parser.add_argument("--reference-lst", required=True, type=pathlib.Path)
     parser.add_argument("--p6d-fields", default=None, type=pathlib.Path)
+    parser.add_argument("--p6d-variant", default="wind1",
+                        choices=("wind1", "blend", "slope_corrected"))
     parser.add_argument("--out", required=True, type=pathlib.Path)
     parser.add_argument("--report", default=None, type=pathlib.Path)
     parser.add_argument("--max-seconds", type=int, default=1800)
@@ -317,10 +327,20 @@ def main() -> int:
         if sha256_file(run_a["concentration"]) != sha256_file(args.reference_con):
             fail("case A: the original did not reproduce the tracked reference "
                  "concentration output byte for byte")
-        if normalised_listing(run_a["listing"]) != \
-                normalised_listing(args.reference_lst):
+        got_listing = normalised_listing(run_a["listing"])
+        want_listing = normalised_listing(args.reference_lst)
+        if got_listing != want_listing:
+            differences = [(index, ours, theirs)
+                           for index, (ours, theirs) in enumerate(
+                               zip(got_listing, want_listing))
+                           if ours != theirs]
+            print(f"listing lines ours={len(got_listing)} "
+                  f"reference={len(want_listing)} first differences:")
+            for index, ours, theirs in differences[:10]:
+                print(f"  line {index + 1}: ours={ours[:120]!r} "
+                      f"reference={theirs[:120]!r}")
             fail("case A: the original listing differs from the tracked reference "
-                 "beyond the wall-clock lines")
+                 f"beyond the wall-clock lines ({len(differences)} lines)")
         evidence["case_a"]["matches_tracked_reference_outputs"] = True
 
         # ---- case B: same layout, changed values ----
@@ -370,7 +390,7 @@ def main() -> int:
             case_c_dir.mkdir()
             composed = case_c_dir / "met.dat"
             result = run([args.tool, "write-from-p6d", "--fields", args.p6d_fields,
-                          "--variant", "wind1", "--w-field", "w_face",
+                          "--variant", args.p6d_variant, "--w-field", "w_face",
                           "--statics-from", args.frozen_met, "--met-fields-from",
                           args.frozen_met, "--irtype", "1", "--out", composed])
             if result.returncode != 0 or "P6F_WRITE_FROM_P6D_WRITTEN" not in result.stdout:
@@ -382,12 +402,15 @@ def main() -> int:
             evidence["case_c"] = summary_c
             evidence["case_c"]["composed_sha256"] = sha256_file(composed)
             evidence["case_c"]["p6d_fields"] = str(args.p6d_fields)
+            evidence["case_c"]["variant"] = args.p6d_variant
             evidence["case_c"]["provenance"] = (
-                "wind1_* U/V (P6D original-source verdict 6,435,000 components, "
-                "worst 2.53e-05 m/s) + w_face_* (SLOPE-compensated, FRADJ "
-                "PENDING_GAMMA: QA/plumbing values) + the case's 2-D "
-                "meteorological fields; this case proves the original reads a "
-                "composed reconstruction, not numerical parity")
+                f"{args.p6d_variant}_* U/V on the P6D real-case product, whose "
+                "own original-source verdicts are recorded in the CLI report "
+                "(wind1: original WIND1+SIMILT; blend: original INTER2), plus "
+                "w_face_* (SLOPE-compensated, FRADJ PENDING_GAMMA: QA/plumbing "
+                "values) and the case's 2-D meteorological fields; this case "
+                "proves the original reads a composed reconstruction, not "
+                "numerical parity")
             evidence["case_c"]["listing_echo"] = listing_evidence(run_c["listing"])
             evidence["case_c"]["concentration"] = concentration_stats(
                 run_c["concentration"])

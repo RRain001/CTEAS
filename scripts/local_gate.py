@@ -100,7 +100,7 @@ TRACKS: dict[str, dict] = {
                           MET_DAT,
                           "project/cases/hefei5km_2022_reference_case_20261011/deliverables/puff/puff.con",
                           "project/cases/hefei5km_2022_reference_case_20261011/deliverables/puff/puff.lst",
-                          "/home/lhy/bin-fortran/gfortran-11"]},
+                          "/usr/bin/gfortran-11"]},
         ],
     },
     "p7": {

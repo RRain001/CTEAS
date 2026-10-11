@@ -154,11 +154,14 @@ cteas_p6f_calmet_dat21_writer write-from-p6d \
   default product; `IRTYPE=1` requires `--met-fields-from`, which takes `T-LEV/IPGT/USTAR/ZI/EL/
   WSTAR/TEMPK/RHO/QSW/IRH` verbatim from another legal file (P6E's product, or the case's own records
   when composing for integration).
-- **Verification status is honoured**: when `metadata.json` marks a variant `NOT_SOURCE_VERIFIED`
-  (P6D's original-source replay of `INTER2` currently rejects `blend`), the writer refuses
-  `--variant blend` and the fields built on it unless `--accept-unverified-variant` is passed
-  explicitly, and the report always records `blend_verification`, `fradj_status`,
-  `variant_source_verified` and `w_face_source_verified`.
+- **Verification status is honoured**: the adapter keys on the verdict P6D publishes in
+  `metadata.json` (`blend.verification`) instead of on a hard-coded list. A variant whose verdict
+  starts with `NOT_SOURCE_VERIFIED` is refused unless `--accept-unverified-variant` is passed, and
+  the report always records `blend_verification`, `fradj_status`, `variant_source_verified` and
+  `w_face_source_verified`. At P6D head `d300a9326` both delivered U/V products pass their own
+  original-source replays (`wind1_u/v`: original `WIND1`+`SIMILT`, worst 2.53e-05 m/s over 6,435,000
+  components; `blend_u/v`: original `INTER2`, worst 4.22e-05 m/s), so both are accepted; the
+  `NOT_SOURCE_VERIFIED` refusal path stays covered by the adapter tests.
 - **What the composition is not**: `w_face_*` is SLOPE-compensated but not FRADJ-compensated
   (`FRADJ: PENDING_GAMMA` in the P6D metadata) until `GAMMA`/`CGAMMA` lands, so it is QA/plumbing
   data; and composing a reconstruction with the *original* 2-D fields is an integration step, not a
@@ -221,9 +224,10 @@ build by reproducing the tracked reference `puff.con` byte for byte.
   `ilandu_negative_cells` instead of failing (the independent cross-check in the byte-identity test
   reproduces `ilandu_max=20` and `ilandu_over_nlu_cells=2500`). Land-use validity remains a
   caller/upstream concern.
-- The P6D `blend_*` arrays are refused by default because P6D's own original-source replay of `INTER2`
-  currently rejects them; `w_face_*` is SLOPE-compensated but not FRADJ-compensated
-  (`FRADJ: PENDING_GAMMA`).
+- The P6D U/V products carry their own original-source verdicts and are written as delivered
+  (`wind1_*`: original `WIND1`+`SIMILT`; `blend_*`: original `INTER2`), while `slope_corrected_*` and
+  `w_face_*` are SLOPE-compensated but not FRADJ-compensated (`FRADJ: PENDING_GAMMA`): they are
+  QA/plumbing values and are labelled as such in the report.
 - The E22 header is consumed only as an independent decoder through an explicit include path, and the
   P6D contract is consumed through its published `metadata.json`/plane files: the P6F library and CLI
   include no P6E/P6D/P7 C++ header. If E22 or the P6D contract changes, the corresponding cross-read
