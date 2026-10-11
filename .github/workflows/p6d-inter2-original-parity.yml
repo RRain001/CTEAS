@@ -10,12 +10,31 @@ permissions:
 jobs:
   original-inter2:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 15
+    concurrency:
+      group: p6d-inter2-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
-      - name: Install Fortran reference toolchain
-        run: sudo apt-get update && sudo apt-get install -y gfortran
+      - name: Preflight self-hosted Linux toolchain (no privileged writes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner=$RUNNER_NAME os=$RUNNER_OS arch=$RUNNER_ARCH"
+          uname -a
+          for tool in cmake c++ gfortran python3; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "::error::Missing $tool on self-hosted runner; request host admin to install this package"
+              exit 1
+            fi
+            command -v "$tool"
+          done
+          cmake --version | head -1
+          c++ --version | head -1
+          gfortran --version | head -1
+          python3 --version
+
       - name: Strict C++20 build and all P6 regression CTests
         run: |
           cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-inter2-build -DCMAKE_BUILD_TYPE=Debug
