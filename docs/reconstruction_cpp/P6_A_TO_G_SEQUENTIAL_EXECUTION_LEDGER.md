@@ -2,6 +2,9 @@
 
 日期：2026-10-11。适用范围：合肥 2022-01-01 00:00 UTC 至 2022-01-06 23:00 UTC **144 个时间标签/143 个实际一小时时段**；5×5 km、50×50、100 m、9 层、UTM50N/WGS84。原版 CALMET 6.5.0 Level 150223。用户指令：**严格 P6A → P6B → P6C → P6D → P6E → P6F → P6G，先验收当前完整阶段，再进入下一阶段。**
 
+**截至本轮原版独立验收（2026-10-11）最新有效门槛：P6A PASS；P6B PASS；P6C PASS_SCOPED_HEFEI_2022_OBSERVATIONS；P6D READY_FOR_INTEGRATION / NOT_PASS；P6E/P6F/P6G NOT_STARTED；P6_CALPUFF_READY=FALSE。** 前文分期记录中标注的 P6C PARTIAL/HOLD 均为此前阶段的历史状态，不再代表最新结论。降水输入另行保持不合格，不能据此宣称湿沉降可用。详见 [P6C RDSN/CGAMMA 原版运行时最终审计](P6C_RDSN_CGAMMA_2022_AUDIT.md) 和 [CI #38113874913](https://github.com/RRain001/CTEAS/actions/runs/38113874913)。
+
+
 ## 0. 执行纪律
 
 1. P6A 与 P6B 已有独立 PASS 证据，无需重复设计；每次 CI 应维护不回退。实际观测数据选取与气象质量合格不能仅由原版 CALMET 正常终止来推出。
@@ -16,8 +19,8 @@
 |---|---|---|---|
 | **P6A** 程序架构/输入与时间契约 | **PASS_SOFTWARE_CONTRACTS** | C++20 `-Werror` CTest，50×50/100m/9 层、显式观测有效性、时区和输入源门槛；旧样例 `CALMET.INP` 拒绝 | 保持回归，接口不得静默变化 |
 | **P6B** 原版实算基准 | **PASS_ORIGINAL_REFERENCE_DRY_MICROMET** | [源 SHA 锁定独立原版 CI](https://github.com/RRain001/CTEAS/actions/runs/38107162904)；`MET.DAT` 64,762,556 bytes、SHA256 `968b2dd24f0eb4ad428709b52a154d9022e8c7e37a4be3fb9498e3d7e756d04e`；7,562 顺序记录、143 时段×45 字段 | 来源冻结、输出格式解码持续 PASS；降水基准另列，不要求用虚构雨量冒充 |
-| **P6C** 几何、观测预处理 | **IN_PROGRESS / NOT_COMPLETE** | `TERSET` 60,000 字段 PASS；`DIAGI` 378 原版片段字段 PASS；2022 `GEO.DAT` 20,000 数值 PASS；2022 `SURF.DAT` 1,144 气象值 +429 站时值 PASS；2022 `UP.DAT` 13探空/785层、6,280 原版数值 PASS；**源码原样 `VERTAV` 13×9×U/V=234 PASS；原版 `PREPDI` 143h×9×U/V=2,574 PASS；源码原样 `FACET+INTP` 13×10=130 PASS**。2022 降水代码 143/143 缺测。 | 仍欠完整原版 `COMP` AA/BB 缓冲状态、逐时 `PREPDI` 站点风场与温度/缺测状态集成、完整 `READGE/RDSN/RDUPN` 调用状态，所有真实数据的 1h→6h→143h 原版观测场逐值对比。**未验收前不得标 P6C COMPLETE**。 |
-| **P6D** 三维诊断风场 | **NOT_STARTED_INTEGRATION / FRADJ_ISOLATED_PASS** | 旧已实现 `TERSET+FRADJ` 独立源码数值对照：7 案例 315,000 U/V 字段 PASS，稳定弱风山峰有 5,657 个原版风分量真实调整 | P6C 完成后：`SLOPE`、`WIND1`、`SIMILT`、`DIAGNO`、`TOPOF2`、平滑/客观分析、`DIVCEL/MINIM`，原版首小时→6 h→143 时段逐层 `U/V/W`、散度与正确值掩码 PASS |
+| **P6C** 几何、观测预处理 | **PASS_SCOPED_HEFEI_2022_OBSERVATIONS** | 既有 TERSET/DIAGI、GEO 20,000、SURF 1,144、UP 6,280、VERTAV 234、PREPDI 2,574、FACET 130；[COMP+RDSN 143h 真实运行时](https://github.com/RRain001/CTEAS/actions/runs/38113500059) AA/BB 286 个时次、RDSN 1,144 个输入值、858 时间字段、0 差异；[CGAMMA 143h 原版实时调用](https://github.com/RRain001/CTEAS/actions/runs/38113874913) 86/51/6 三分支 PASS，最大误差 5.0E-11 K/m；原版 MET.DAT 插桩前后 SHA 相同 | 本阶段**仅**验收固定 2022 一地面虚拟站、一探空站、GEO/SURF/UP 与 143h 观测输入的选定配置；其他格式、多站与缺测回填分支未纳入支持范围。雨量另列不合格，不妨碍无雨诊断风场开发 |
+| **P6D** 三维诊断风场 | **READY_FOR_INTEGRATION / FRADJ_ISOLATED_PASS / NOT_PASS** | 旧已实现 `TERSET+FRADJ` 独立源码数值对照：7 案例 315,000 U/V 字段 PASS，稳定弱风山峰有 5,657 个原版风分量真实调整 | P6C 选定观测阶段已通过，开始：`SLOPE`、`WIND1`、`SIMILT`、`DIAGNO`、`TOPOF2`、平滑/客观分析、`DIVCEL/MINIM`，原版首小时→6 h→143 时段逐层 `U/V/W`、散度与正确值掩码 PASS |
 | **P6E** 地表与边界层 | **NOT_STARTED** | P6B 原版包含微气象字段格式，不代表 C++ 物理 PASS | `SOLAR`、`HEATFX`、`ELUSTR`、`MIXHT`、`TEMP3D`、`SURFVAR`、云量/RH/稳定度/混合层高度/地表参数全字段独立对照；白天、夜间、低风与稳/不稳定 |
 | **P6F** `CALMET.DAT` 写出 | **NOT_STARTED_CPP_WRITER** | 原版二进制 v2.1 记录框架、字段名、时间标签、顺序和维度的独立读取解码 PASS | C++ 完整合法输出 v2.1，原版 P7 读取，物理值正确；不能仅以文件可读取作为科学数值通过 |
 | **P6G** 全链条科研验收 | **NOT_STARTED** | 已有原版固定对照；需等待 P6C→F | 同源同控制的 143 个完整时段、逐网格逐高度逐场对照及独立审计；按预注册误差门槛和质量分母给出 PASS/FAIL；站点代表性/雨量/扩散结果分别报告 |
@@ -58,3 +61,9 @@
 - **原版 `MAXSEP=14 h`** 是 `calmet.for` 的 `data maxsep/14/` 固定常量（L3654），不是 CALMET.INP 的可配置 24h。已纠正原生默认限制，测试 15 h 缺测 fail-closed；频率严格检查原版 `abs(IUPSEC)<NSECDT && IUPSEC != 0`。
 - 仍欠原版 `RDSN/CGAMMA` 联动及完整观测掩码/输入场执行状态验收。不能因 COMP 状态 PASS 就认定 `P6C_COMPLETE=TRUE`，也不能开始 P6D 整阶段。
 - P5 SURF 的降水 `IPCODE=9999` **143/143 缺测**；原版 `NPSTA=0`。`P6_WET_FORCING_VALIDATED=FALSE`、`P7_WET_DEPOSITION_VALIDATED=FALSE` 独立保持。
+
+### P6C 正式选定配置验收结论（覆盖前面的分期 PARTIAL 状态）
+
+独立证据：[原版真实 143h RDSN/COMP PASS](https://github.com/RRain001/CTEAS/actions/runs/38113500059)；[原版真实 143h CGAMMA 与完整 P6B 回归 PASS](https://github.com/RRain001/CTEAS/actions/runs/38113874913)；[专项最终报告](P6C_RDSN_CGAMMA_2022_AUDIT.md)。通过了 1h→6h→143h 地形、地面观测、探空原始字段与垂直/时间风温插值源对照；`COMP` 物理 AA/BB 286 个时次、`RDSN` 1,144 个原版实际地面气象值、858 个时间关联值及 143 个 `CGAMMA` 直减率均为 **0 超限项**。温度直减率三路径样本为普通插值 86、当时次干绝热 51、先前对流记忆修正 6。插桩前后原版 `MET.DAT` SHA256 严格相等。
+
+**决策：`P6C_SELECTED_CASE=PASS_SCOPED_HEFEI_2022_OBSERVATIONS`，P6D 的完整三维诊断风场集成可以开始，但绝不把已经 PASS 的孤立 `FRADJ` 误称为 P6D 完成。** P6E–P6G 仍未验收，`P6_CALPUFF_READY=FALSE`。湿驱动方面，真实 SURF `IPCODE=9999` 143/143、`NPSTA=0`：`P6_WET_FORCING_VALIDATED=FALSE`，`P7_WET_DEPOSITION_VALIDATED=FALSE`，与 P6C 选定配置通过彼此独立。
