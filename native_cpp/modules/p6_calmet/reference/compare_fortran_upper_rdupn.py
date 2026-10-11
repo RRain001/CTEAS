@@ -146,7 +146,7 @@ def main():
       "subroutine rdhdu(","subroutine rdupn(",
       "format(9x,i8,2(4x,i4,i4,i3,i3,i5),8x,i5)",
       "format(4(3x,f6.1,1x,f5.0,1x,f5.1,1x,f3.0,1x,f3.0))",
-      "deg=0.0174533*uaa(iup,i)",
+      "dir=0.0174533*uaa(iup,i)",
       "uaa(iup,i)=-spd*sin(dir)",
       "vaa(iup,i)=-spd*cos(dir)",
     ]:
