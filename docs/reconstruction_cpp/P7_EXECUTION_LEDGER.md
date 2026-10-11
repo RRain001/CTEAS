@@ -1690,6 +1690,15 @@ trapping because `VWIDTH` (the valley-width table) is not reconstructed, and the
 run says so explicitly. This is a physical-chain demonstration, **not** a
 comparison with the frozen `puff.con`.
 
+### Gate evidence (Linux, lhy-desktop, g++-12 + gfortran-11)
+
+`LOCAL_GATE_P7=PASS sha=66b47e173 ok=39 blocked=0 failed=0` with the authoritative
+local gate, `100% tests passed, 0 tests failed out of 41` (including the three new
+P7S CTest entries). The same matrices against the compiled unmodified vendor units
+with `GNU Fortran (Ubuntu 11.4.0) 11.4.0` are **identical to macOS**: TERAVG 652x1
+`MAX_REL=2.068e-13`, TRELIEF 16x45 `MAX_REL=0` and GETELEV 96x1 `MAX_REL=0` -
+764 cases, `MISMATCHES=0`.
+
 ### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
 
 - `cteas_p7s_terrain_state_contract`: `TERAVG`'s four orientations on flat, ramp
