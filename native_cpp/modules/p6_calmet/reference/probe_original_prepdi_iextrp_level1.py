@@ -25,7 +25,7 @@ NZ = 9
 
 DRIVER_HEAD = """      program prepdi_iextrp_probe
       include 'params.met'
-      real us(mxnz),vs(mxnz),work3(64)
+      real us(mxnz,2),vs(mxnz,2),work3(64)
       real edit
       integer i1,iextrp,i,j,k,nz
       character*256 arg
@@ -38,15 +38,15 @@ DRIVER_HEAD = """      program prepdi_iextrp_probe
         work3(k)=100.+float(k)
       enddo
       do k=1,9
-        us(k)=edit
-        vs(k)=edit
+        us(k,j)=edit
+        vs(k,j)=edit
       enddo
       i1=1
 """
 
 DRIVER_TAIL = """      open(11,file='probe_'//trim(arg)//'.out',status='replace')
       do k=1,9
-        write(11,'(I3,1X,2(ES20.10E3,1X))') k,us(k),vs(k)
+        write(11,'(I3,1X,2(ES20.10E3,1X))') k,us(k,1),vs(k,1)
       enddo
       close(11)
       end
