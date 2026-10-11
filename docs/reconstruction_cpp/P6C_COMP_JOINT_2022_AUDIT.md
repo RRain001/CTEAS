@@ -21,6 +21,10 @@ Pinned unmodified `engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for` SHA256 `4
 - Explicit comparison windows: first 1 hour 18 U/V components; first 6 hours 108; full 143 hours 2,574. These source-backed scalar checks **PASS**.
 - Candidate physical AA/BB switches 11 times in 143 hours, including exact 00/12 UTC boundaries. **This was a C++/chronological candidate conclusion, not original live COMP runtime evidence.**
 
+## Both original PREPDI physical-slot JORDER branches — PASS
+
+[Full latest P6B/P6C CI #38112918986](https://github.com/RRain001/CTEAS/actions/runs/38112918986) compiled the literal original PREPDI branch expressions against actual 13 sounding Fortran VERTAV outputs. The test explicitly feeds **71 hours JORDER=+1**, **72 hours JORDER=-1** with **11 physical AA/BB switchovers** rather than reusing only the `+1` branch. All **2,574 U/V hourly-layer components PASS**, max absolute U and V errors **5.0000004e-9 m/s**, zero mismatches, fixed `3e-4 m/s` tolerance. The same run reproduced the **143 original COMP live states** and source-backed triple-input joint comparison successfully.
+
 ## Further original runtime check introduced, separate from prior PASS
 
 `reference/original_comp_runtime_trace.py` SHA-pins the original CALMET source; makes **only a temporary Fortran copy**; adds write-only `P6C_COMP_TRACE` at original COMP accepted-return path and recompiles under identical compiler settings. The integration workflow runs untouched original baseline, reruns write-only traced original and requires identical `MET.DAT` SHA256; it compares 143 original `nowtze,nsecze,ntzaa,ntzbb,justa,jusdt,jaasec,jbbsec` states to C++ joint buffer, including physical AA/BB time ordering, JORDER, interval gates. This is a required *independent result*; a successful source inspection or software test cannot substitute for execution.
