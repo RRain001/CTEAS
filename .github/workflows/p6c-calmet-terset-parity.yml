@@ -1,0 +1,52 @@
+name: P6C CALMET original TERSET Fortran numerical parity
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/p6c-calmet-terset-parity.yml'
+      - 'native_cpp/modules/p6_calmet/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  terset-original-fortran-parity:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Pin isolated P3 source capture without merging its branch
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin 5b1013baea10c0b3c3946e62ab77428dff05455e
+          git restore --source=FETCH_HEAD -- native_cpp/reference/capture_p3_makegeo.py
+      - name: Compiler and real case original GEO.DAT
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gfortran libgdal-dev
+          python3 native_cpp/reference/capture_p1_p2.py --output /tmp/p6c-real-p3
+          python3 native_cpp/reference/capture_p3_makegeo.py --output /tmp/p6c-real-p3
+          test -s /tmp/p6c-real-p3/p3/geo.dat
+      - name: Build independent C++20 terrain kernel and software checks
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/p6c-build -j2
+          ctest --test-dir /tmp/p6c-build --output-on-failure
+      - name: Compile untouched original TERSET routine and compare 60,000 grid values
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_terset.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --geo /tmp/p6c-real-p3/p3/geo.dat \
+            --cpp /tmp/p6c-build/cteas_p6_terset \
+            --output /tmp/p6c-compare
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p6c-calmet-original-terset-vs-cpp-2022
+          path: /tmp/p6c-compare/
+          retention-days: 7
+          if-no-files-found: warn
