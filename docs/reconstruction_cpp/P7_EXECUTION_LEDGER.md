@@ -1367,6 +1367,15 @@ midpoint is at 2.513 km / 1800 s, the dispersion option stays at the deck's
 (`DHFTY=10.13 km`) with `SZH=550 m` from the deck's `SYTDEP`. This is a
 physical-chain demonstration, **not** a comparison with the frozen `puff.con`.
 
+### Gate evidence (Linux, lhy-desktop, g++-12 + gfortran-11)
+
+`LOCAL_GATE_P7=PASS sha=ca991a3b7 ok=27 blocked=0 failed=0` with the authoritative
+local gate, `100% tests passed, 0 tests failed out of 32` (including the three new
+P7P CTest entries). The same matrices against the compiled unmodified vendor
+source with `GNU Fortran (Ubuntu 11.4.0) 11.4.0` are identical to macOS: step
+bookkeeping 320x13 `MAX_REL=3.426e-08`, state update 64x6 `MAX_REL=4.213e-13`,
+`SETCSIG` 32x22 `MAX_REL=1.981e-08` - 416 cases, `MISMATCHES=0`.
+
 ### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
 
 - `cteas_p7p_step_bookkeeping_contract`: closed forms for the step bookkeeping
