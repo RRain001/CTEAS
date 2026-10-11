@@ -1794,3 +1794,71 @@ demonstration, **not** a comparison with the frozen `puff.con`.
 - Local `ctest` 43/44 PASS; the only failure remains the pre-existing macOS
   case-insensitive-filesystem failure of `cteas_p7_original_case_stage_contract`
   (PASS on Linux).
+
+## 2026-10-12 P7U advection / step integration: located, pinned, instrumentation requested
+
+Round status: the chain that advances a puff one step is located and pinned, and
+the exact instrumentation request for a first real numerical comparison is
+recorded below. **No advection code is ported this round**; the pinned spans are
+the entry point for the next one.
+
+### Located and pinned units
+
+| unit | span | lines | calls |
+|---|---|---|---|
+| `ADVWND` (vertically-averaged wind over the puff's layer) | L2438-2538 | 101 | `zfind` |
+| `ADVECT` (advective-wind dispatch, METFM 1-5) | L2540-2765 | 226 | `advwnd`, `powlaw`, `xtprf` |
+| `PUFFDZ` (the puff's vertical extent ZBOT/ZTOP for the step) | L2882-3005 | 124 | - |
+| `ZFIND` (met layer containing a height) | L18381-18419 | 39 | - |
+| `POWLAW` (power-law profile, METFM 2/3 - off this deck) | L33463-33516 | 54 | - |
+| `XTPRF` (profile-data lookup, METFM 4/5 - off this deck) | L33192-33461 | 270 | - |
+
+plus the two inline pieces of `COMP`'s step integration
+(`comp_step_start` L10465-10473 and `comp_step_wind` L10494-10519), pinned by
+content and SHA-256 in `reference/p7u_source_anchor.json` (`--check` fails on
+drift).
+
+### The deck's advection path (METFM = 1)
+
+`COMP`'s puff loop runs, per sampling substep: the start-of-step position
+(`xold = xpb(ii)`, L10465) -> `GETCELL` -> the cell's met parameters (`IPGT`,
+`HTMIX`, `XMONIN`, `Z0`) -> `PUFFDZ` (L10487) -> `ADVECT` (L10491) -> `ws =
+sqrt(uadv**2+vadv**2)` (L10494) -> the rise-wind adjustment through `RISEWIND`
+when the puff is Gaussian and has not reached its final rise (L10499-10512) -> the
+calm treatment (L10516-10523). `ADVECT` with `METFM = 1` copies the cell's U/V
+profile and calls `ADVWND`, which clamps ZBOT/ZTOP to the face range, resolves the
+bracketing layers with `ZFIND` and returns the depth-weighted average.
+
+### Instrumentation request (DGM-style) for a first real numerical comparison
+
+The following probe would make one puff step numerically comparable against the
+original on the locked case. All of it is **read-only instrumentation** of the
+unchanged original (a debug `write` guarded by the existing `LDB`/`LDBHR` flags or
+a new `P7DBG` logical), and it should run for `METFM=1` on the frozen 2022 inputs
+for a single hour and a single puff:
+
+| # | unit / span | variables to print | purpose |
+|---|---|---|---|
+| 1 | `COMP` L10465-10473 | `ii`, `xold`, `yold`, `zold`, `icode` | the start-of-step puff state (the comparison's initial condition) |
+| 2 | `COMP` L10474-10486 | `ixs`, `iys`, `mdoms`, `istab`, `dpbl`, `el`, `z0m` | the met cell and parameters the step uses |
+| 3 | `PUFFDZ` L2882-3005 (return) | `ztop`, `zbot` | the averaging layer bounds |
+| 4 | `ADVECT` L2540-2765 (return) | `uadv`, `vadv` | the advective wind (our `advwnd` port must reproduce this) |
+| 5 | `COMP` L10494-10523 | `ws`, `lcalm`, `uadv`, `vadv` after the rise-wind and calm adjustments | the effective transport speed |
+| 6 | `COMP` L10155-10180 and the sampling loop | `nsam`, `nsstr`, `xsami`, `tsamp` | the substep cadence |
+| 7 | the position update of the sampling loop | `xnew`, `ynew`, `znew`, `xpb(ii)`, `ypb(ii)`, `zpb(ii)` after the step | the end-of-step puff position |
+| 8 | `SETPUF` L48198-48757 (entry/return) | `xtotb(ii)`, `tmtotb(ii)`, `syb1/sym1/sye1`, `szb1/szm1/sze1`, `sigyb(ii)`, `sigzb(ii)` | the sigma update (already ported in P7P/P7Q) |
+
+Items 1-5 plus 8 are reachable with the ported modules alone except for `PUFFDZ`
+and `ADVWND`/`ZFIND` (this round's pinned entry points); items 6-7 are the inline
+substep/position code. The request is deliberately expressed as *observable
+variables at named lines* so the instrumented run can be diffed against the C++
+chain value by value.
+
+### Incomparability list after this round
+
+**Still one cause**: the advection/step integration is now the only unported
+physics on the deck's path (its units are located, pinned and instrumented above),
+plus the CTEAS-only `CONC.DAT` header. The terrain path (P7R/P7S/P7T) is complete
+on real inputs, and the release scheduler (P7O), plume rise (P7N), step
+bookkeeping and `/CSIGMA/` (P7P), the sigma update (P7Q) and CTSG (P7M, off this
+deck) all carry original-source parity.
