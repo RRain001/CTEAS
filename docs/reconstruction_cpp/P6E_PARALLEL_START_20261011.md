@@ -55,3 +55,18 @@ The source-locked Fortran harness covers 28 configurations x 20 cells =
 exactly. E2 is **NOT PASS** until its GitHub original-source workflow
 completes; selected 2022 COMP MCLOUD scheduling and P6D integration remain
 separate gates.
+
+## Verified P6E E2 and E3 evidence (2026-10-11)
+
+The same [independent original-source CI run](https://github.com/RRain001/CTEAS/actions/runs/38116019206) confirms C++20 warnings-as-errors, **3/3 CTests PASS**, immutable CALMET 6.5.0 vendor source and three independent numerical kernels.
+
+- **E1 SOLAR**: 2,808 / 2,808 values PASS, maximum exported numerical difference 0.0.
+- **E2 PGTSTB**: 560 / 560 results PASS (498 land stability classes + 62 water skip masks), exact integer classes, zero mismatches; modes MCLOUD 1–4 covered synthetically.
+- **E3 selected SURFVAR**: original *full* SURFVAR subroutine compiled unchanged with temporary mock COMMON declarations; 12 controlled one-station, all-land, observed-dry inputs x 5x4 grid = 240 grid cells x (temperature, RH, IPCODE) = **720 values PASS**. Temperature maximum absolute difference **3.0518e-5 K**, frozen tolerance **3e-4 K**; RH and IPCODE exact. Source stub AVETMP aborts if unexpectedly invoked. This does not validate smoothing, multisite inverse-distance behavior, surface water, prognostic fields, rain-data processing, or 2022 actual joint COMP inputs.
+
+**Authoritative gate**: P6E_E1_SOLAR_SOURCE_PARITY=PASS;
+P6E_E2_PGTSTB_SOURCE_PARITY=PASS;
+P6E_E3_SURFVAR_ONE_STATION_SOURCE_PARITY=PASS;
+P6E_COMPLETE=FALSE; P6D_INTEGRATED=FALSE; P6_CALPUFF_READY=FALSE.
+
+Next physical components requiring full original parity: SURFVAR multistation and real P6C hourly fields, ELUSTR, HEATFX, MIXHT, TEMP3D and related selected cloud/RH/radiation paths. Eventually original 1h/6h/143h micrometeorological field comparison must be performed after P6D gate. Precipitation codes in real 2022 SURF are missing 143/143, original NPSTA=0. Original dry output IPCODE2D=0 must NOT be interpreted as valid observed zero rain; wet forcing remains unqualified.
