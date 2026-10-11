@@ -240,3 +240,15 @@ else()
   target_compile_options(cteas_p6_wind1_firstguess_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME p6d8b_original_wind1_firstguess_selected_software COMMAND cteas_p6_wind1_firstguess_tests)
+
+# P6D9A source-scoped WIND1 -> INTER2 -> SMOOTH/DIVCEL/W bridge.
+# Heat/terrain/slope effects MUST be supplied externally or explicitly bypassed
+# in synthetic source-only audit mode; this does not qualify full DIAGNO.
+add_executable(cteas_p6_d9a_bridge_tests tests/p6_diagno_d9a_bridge_tests.cpp)
+target_link_libraries(cteas_p6_d9a_bridge_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_d9a_bridge_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_d9a_bridge_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6d9a_wind1_inter2_diagno_selected_bridge_contract COMMAND cteas_p6_d9a_bridge_tests)
