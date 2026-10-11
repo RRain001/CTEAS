@@ -2122,6 +2122,13 @@ TEMPK, RHO, IPGT, USTAR, QSW, IRH) inside tolerance.
 
 ## E41 the port target is exact: CALMET's own `GLOBE1`/`GLOBE` -> COORDLIB `PJ07Z0`
 
+> **Corrected in E42:** the *chain* located here is right, but the projection
+> module is **not** `PJ07Z0`. `GTPZ0` routes UTM (`INSYS=1`) through `PJ01Z0`,
+> which wraps `PJ09Z0` (TRANSVERSE MERCATOR); `PJ07Z0` is the *polyconic*
+> module and is never reached. The closed form quoted below (and its
+> `PHI4Z0`/`ASINZ0` helpers) is `PJ07Z0`'s and does **not** reproduce the
+> original geometry. See E42 for the landed port and the measured result.
+
 Located the conversion that produces the geometry the original feeds to
 `SOLAR` (the one component E40 left unaligned):
 
@@ -2135,19 +2142,30 @@ Located the conversion that produces the geometry the original feeds to
   `ykm = ymap0 + (float(j)-0.5)*dgrid*0.001` - i.e. **cell centres in km**,
   and the result is stored in `xlat/xlon` (REAL*4) which `SOLAR` then uses as
   `radlat = 0.0174533*xlat(i,j)` and `solha = 15*(gmt-em) + xlon(i,j)`.
-- `GLOBE` -> `UTM2LL` -> `GTPZ0` -> **`PJ07Z0`** (GCTP 2.0.2) with the datum
+- `GLOBE` -> `UTM2LL` -> `GTPZ0` -> **`PJ09Z0`** (GCTP 2.0.2, transverse
+  Mercator; `PJ01Z0` is the thin UTM wrapper) with the datum
   "WGS-84" unchanged on input and output (identity datum shift). For UTM zone
   50 / UTMHEM=N that means `LAT0 = 0` (so `ML0 = MLFNZ0(...) = 0`),
   `LON0 = 117 deg`, `X0 = 500000 m`, `Y0 = 0`, and the WGS-84 ellipsoid
-  `A = 6378137.0`, `B = 6356752.314140` from COORDLIB's `AXIS`/`BXIS` tables.
+  `A = 6378137.0`, `B = 6356752.314245` from COORDLIB's `AXIS`/`BXIS` tables
+  (`SPHDZ0` spheroid 12 = WGS 84; *not* spheroid 8 = GRS 80).
 
 **Verbatim source segments to port (with line numbers and segment sha256, for
 the "unmodified-source comparison" the track requires):**
 
+> **E42 uses the whole-file pin instead.** The per-block hashes below were
+> computed over ranges that do not reproduce byte-for-byte; the only value the
+> landed harness relies on is the whole-file
+> `coordlib.for` sha256 `abe1d9a69ed7a4b8fa98bf1092cd668feef9f5612619ae3a8b565ec5b9be3c93`,
+> which the reference *and* this document agree on. The landed port is
+> `PJ09Z0` (see E42), and its helpers are `MLFNZ0` (L3374), `ADJLZ0` (L2658),
+> `ASINZ0` (L2686, unused on the ellipsoidal branch) and `E0FNZ0..E3FNZ0`
+> (L2733-2802).
+
 | segment | lines | sha256 (first 32) |
 |---|---|---|
 | `coordlib.for` (whole, v1.98/1.99 GCTP 2.0.2) | - | `abe1d9a69ed7a4b8fa98bf1092cd668f` |
-| `PJ07Z0` | 5851-5925 | `1750d1dcfcddcb303b05cfbb959a0240` |
+| `PJ07Z0` (polyconic - NOT used by UTM) | 5851-5925 | `1750d1dcfcddcb303b05cfbb959a0240` |
 | `PHI4Z0` | 3681-3731 | `f3d4a281a1dfea3cce21fda32c8ae63f` |
 | `MLFNZ0` | 3374-3385 | `bffa51859a4b5af7ef72ebe2c8a4a6eb` |
 | `ASINZ0` | 2686-2700 | `c92a5a79d1257829273dcfd5101b5dea` |
@@ -2161,13 +2179,12 @@ eccentricity from A/B, `E0..E3` the standard GCTP meridional-arc coefficients
 `X = easting - X0`, `Y = northing - Y0`, `AL = ML0 + Y/A`,
 `B = AL^2 + (X/A)^2`, then `PHI4Z0(es,E0..E3,AL,B,C,phi)` (Newton, tolerance
 1e-10, <= 15 iterations) and `lon = ADJLZ0(ASINZ0(X*C/A)/SIN(phi) + LON0)`.
+*(This is the polyconic inverse; the UTM inverse actually used is `PJ09Z0`'s
+Newton-on-the-meridional-arc plus the standard T-M series - see E42.)*
 
-**Status: specified, not landed.** The port plus its unmodified-source
-comparison harness is the next increment; the acceptance test is already in
-place and checkable: `dump-field --field QSW` must show **`dQSW == 0` at
-hours 6, 9 and 33**, after which `EL` (630 cells) and `WSTAR` (39 cells)
-should fall to zero. Timeboxed deliberately rather than landing a
-half-verified numeric port.
+**Status: superseded by E42.** The port plus its unmodified-source comparison
+harness is landed in E42; `dump-field --field QSW` now shows `dQSW == 0` for
+**all 143 hours**, not only 6/9/33.
 
 **Residual bounds at this commit (tolerances unchanged):** EL 630 cells in the
 two 08:00 hours (2022-01-01/02), |dEL| <= 10,733.6 m (3.2e-2 relative),
@@ -2175,3 +2192,112 @@ two 08:00 hours (2022-01-01/02), |dEL| <= 10,733.6 m (3.2e-2 relative),
 cells (hour 9: 45 over the absolute-only limit, hour 6: 2), |dw*| <=
 2.0588e-4 m/s; ZI, T-LEV 1..9, post-AVEMIX ZICONV, TEMPK, RHO, IPGT, USTAR,
 QSW and IRH all inside tolerance.
+
+## E42 COORDLIB `PJ09Z0` UTM inverse landed: `dQSW == 0` for all 143 hours, HEATFX integer powers fixed
+
+### What was wrong with E41's port target
+
+`GTPZ0` dispatches `INSYS = 1` (UTM) to `PJ01Z0` (coordlib.for L5318, banner
+`* U T M *`), and `PJ01Z0` is a thin wrapper that calls `PJ09Z0`
+(L6023, banner `* TRANSVERSE MERCATOR *`).  `PJ07Z0` (L5851) is the
+`* POLYCONIC *` module and is never reached by a UTM conversion.  The E41
+note quoted `PJ07Z0`'s closed form (`PHI4Z0`, `AL = ML0 + Y/A`, ...), which
+does not reproduce the original geometry; the landed port implements
+`PJ09Z0`'s inverse (Newton on the meridional arc with `E0..E3`, then the
+standard transverse-Mercator series).
+
+Two REAL*4 quantisation points E41 also missed, both required for bit
+equality with the original:
+
+1. `MICROI` forms each cell centre in **REAL*4 kilometres**
+   (`xkm = xmap0 + (float(i)-0.5)*dgrid*0.001`), and `COORDS` then scales by
+   `1000.0D0` in double precision.  So the input easting is
+   `DBLE(xkm_real4)*1000`, not the exact metre value.
+2. The projection origin must be recovered from the CALMET.DAT metres by an
+   exact-division round trip: `xorigin_m*0.001f` is wrong (`3531269.0f ->
+   3531.269287109375`), while `float(double(yorigin_m)*0.001)` recovers the
+   original `yorigkm = 3531.26904296875`.
+3. COORDLIB converts radians to degrees with its own
+   `FACTRS(5,1) = 0.5729577951308231D2`, which is not `180/pi` to the last
+   bit.
+
+### Landed
+
+- `include/cteas/p6e/coordlib_pj09z0.hpp` - the verbatim port of `PJ09Z0`
+  (inverse, `IND=0` branch), `MLFNZ0`, `ADJLZ0`, `ASINZ0`,
+  `E0FNZ0..E3FNZ0`, the `SPHDZ0` WGS-84 spheroid (**12**:
+  `A = 6378137.0`, `B = 6356752.314245`, *not* GRS 80), the `PJINIT` UTM
+  branch + label-900 initialisation, and `PAKRZ0` for the central meridian.
+- `surface_solar.hpp` now calls it; the previous Snyder series inverse was
+  **removed** (no dual path).
+- `tests/coordlib_pj09z0_tests.cpp` and `src/coordlib_utm_reference_main.cpp`
+  pin the REAL*4 grid geometry of the frozen case.
+- `reference/compare_original_coordlib_utm.py` + `coordlib_utm_driver.f`
+  compile the **whole unmodified `coordlib.for`** (sha256
+  `abe1d9a6…be3c93`) and replay `MICROI -> GLOBE1 -> GLOBE -> COORDS ->
+  GTPZ0 -> PJ01Z0 -> PJ09Z0` over an 11-case parameter matrix (4 UTM zones,
+  5 grid spacings, 6 origins, grids 1x1..50x50).  Verdict: **5222 values, 0
+  REAL*4 bit-pattern mismatches, max abs/rel error 0.0**.
+
+### Acceptance measurement (frozen `met.dat`, original wind + GEO.DAT, 143 h)
+
+Same one-command chain the track already uses
+(`p6e_p6c_hourly_bridge` -> `p6e_calmet_dat21 emit-realcase --wind-file
+--geo-file --state-prefix` -> `dump-field` diff /
+`reference/compare_calmet_dat21.py`).  Three stages:
+
+| field | E41 tip (baseline) | + COORDLIB port | + HEATFX power fix | gate limit |
+|---|---|---|---|---|
+| `QSW` | 22,201 values differ, max 7.25e-4 W/m2 | **0 differ (bit-exact)**, all 143 h | 0 differ | 1e-4 / 1e-5 rel |
+| `EL` (630 cells) | 630 over, max 10,733.6 m | 273 over, max 478.1 m | **0 over**, max 0.078 m | 0.04 m / 5e-5 rel |
+| `WSTAR` (39 cells) | 39 over, max 2.0588e-4 m/s | 10 over, max 8.19e-5 m/s | **0 over**, max 1.19e-7 m/s | 2e-5 m/s / 3e-5 rel |
+| `ZI` | (E38) 0 over, max 0.0578 m | - | 0 over, max 3.05e-4 m | 0.07 m / 8e-5 rel |
+
+Final authoritative verdict: `reference/compare_calmet_dat21.py --tool
+p6e_calmet_dat21 --reference run/met/met.dat --reference-sha256
+b1823cda…37d30 --candidate candidate.dat` reports
+`status = PASS` ("every compared cell is inside the frozen source-gate
+tolerance") with **total exceedances 400 -> 0**, over the 18 P6E-owned
+fields (`T-LEV 1..9`, `IPGT`, `USTAR`, `ZI`, `EL`, `WSTAR`, `TEMPK`, `RHO`,
+`QSW`, `IRH`); `TEMPK`, `RHO`, `QSW`, `IRH` are bit-exact (max abs 0) and
+`T-LEV 7` differs only at 3.05e-5 K.  `dQSW == 0` holds at hours 6, 9 and
+33 (and every other hour), as required, and `EL`/`WSTAR` fell to zero with
+it.
+
+### The remaining EL/WSTAR residual was a HEATFX integer-power bug
+
+With `QSW` bit-exact the EL/WSTAR residual did **not** vanish, so E40's
+single-cause attribution was incomplete.  The surviving differences are
+concentrated at the two 08:00 hours and are large in relative terms
+(max 6.9e-3) **because the sunrise net radiation is a catastrophic
+cancellation**: `QSTAR = ((1-albedo)*QSW + hc1*T**6 - 5.67e-8*T**4 +
+hc2*cc)/(hc3+1)` with `hc1 = 5.31e-13`, `T ~ 275 K` gives two ~+229/324
+W/m2 terms whose residual is only ~0.02 W/m2.
+
+`heatfx.hpp` computed `T**6`/`T**4` with `std::pow`, i.e. libm `powf`,
+while the Fortran source has **integer** exponents and gfortran evaluates
+them by repeated multiplication (verified against gfortran-11 `-O0`):
+
+| expression | gfortran `-O0` | C++ `std::pow` |
+|---|---|---|
+| `x**4` | `(x*x)*(x*x)` | 1 ULP different |
+| `x**6` | `((x*x)*(x*x))*(x*x)` | 2 ULP different |
+
+Those 1-2 ULP differences in the ~229/324 W/m2 terms are ~2e-5..7e-5
+absolute, i.e. ~1e-3 relative on the ~0.02 W/m2 `QSTAR` residual, and
+`EL = -253.8226*rho*T*u*^3/QH` (and `WSTAR = (g*QH*ZICONV/(T*rho*cp))^1/3`)
+inherit exactly that.  `heatfx.hpp` now assembles `tk2 = tk*tk`,
+`tk4 = tk2*tk2`, `tk6 = tk4*tk2`, matching the source's grouping.
+
+**Causal evidence (hour 9, the 154 EL-exceeding cells, before the fix):**
+`QSW` identical, `TEMPK` bit-exact (0/357,500 differ), `RHO` bit-exact,
+`USTAR` differs by <= 1.19e-7 (1 ULP) - so a 6.9e-3 EL difference cannot
+come from the wind or the geometry and must come from `QH`.
+
+### Status
+
+`P6E_COORDLIB_UTM_SOURCE_PARITY=PASS` (5222 values, 0 bit mismatches);
+`P6E_QSW_REAL_CASE=PASS (bit-exact, 0/357,500 differ)`;
+`P6E_EL_REAL_CASE=0 exceedances`, `P6E_WSTAR_REAL_CASE=0 exceedances`;
+`P6E_18_OWNED_FIELDS_REAL_CASE=PASS` (total exceedances 0);
+`P6E_FULL=NOT_PASS` (the 27 P6D-owned wind fields remain P6D's).

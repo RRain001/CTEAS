@@ -73,9 +73,18 @@ inline HeatFluxResult heatfx(const HeatFluxInput& a) {
                 continue;
             if(a.sun[k]<=0.f){r.sensible_wm2[k]=-0.1f;continue;}
             const float tk=a.temp_k[k];
+            // `temp2d(i,j)**6` / `**4` have INTEGER exponents, so gfortran
+            // evaluates them by repeated multiplication, not libm `powf`:
+            //   x**4 == (x*x)*(x*x),  x**6 == ((x*x)*(x*x))*(x*x)
+            // (verified against gfortran-11 -O0).  Using std::pow here differs
+            // by 1-2 ULP, which the sunrise-hours net-radiation cancellation
+            // amplifies into the QH/EL/WSTAR residual.
+            const float tk2=tk*tk;
+            const float tk4=tk2*tk2;
+            const float tk6=tk4*tk2;
             const float qstar=((1.f-a.albedo[k])*r.shortwave_wm2[k]+
-                               a.hc1*std::pow(tk,6.f)-
-                               5.67e-8f*std::pow(tk,4.f)+a.hc2*ccfrac)/
+                               a.hc1*tk6-
+                               5.67e-8f*tk4+a.hc2*ccfrac)/
                                a.hc3p1;
             r.sensible_wm2[k]=a.bowen[k]*
                 (qstar*(1.f-a.soil_heat_fraction[k])+a.anthropogenic_wm2[k])/

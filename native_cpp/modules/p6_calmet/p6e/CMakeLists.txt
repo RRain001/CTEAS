@@ -19,6 +19,38 @@ endif()
 enable_testing()
 add_test(NAME p6e_solar_software COMMAND p6e_solar_tests)
 
+# COORDLIB (GCTP 2.0.2) UTM inverse, ported from the CALMET vendor coordlib.for.
+# The software test pins the REAL*4 grid geometry of the frozen 2022 case; the
+# parity test re-derives it from the unmodified Fortran source over a wider
+# parameter matrix and is registered whenever a gfortran is present.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_executable(p6e_coordlib_pj09z0_tests tests/coordlib_pj09z0_tests.cpp)
+add_executable(p6e_coordlib_utm_reference src/coordlib_utm_reference_main.cpp)
+target_link_libraries(p6e_coordlib_pj09z0_tests PRIVATE p6e_solar)
+target_link_libraries(p6e_coordlib_utm_reference PRIVATE p6e_solar)
+if(MSVC)
+  target_compile_options(p6e_coordlib_pj09z0_tests PRIVATE /W4 /WX)
+  target_compile_options(p6e_coordlib_utm_reference PRIVATE /W4 /WX)
+else()
+  target_compile_options(p6e_coordlib_pj09z0_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_compile_options(p6e_coordlib_utm_reference PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6e_coordlib_pj09z0_software COMMAND p6e_coordlib_pj09z0_tests)
+
+find_program(P6E_GFORTRAN NAMES gfortran-13 gfortran-12 gfortran-11 gfortran)
+if(P6E_GFORTRAN)
+  add_test(NAME p6e_coordlib_utm_original_source_parity
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_original_coordlib_utm.py"
+      --vendor "${CMAKE_CURRENT_SOURCE_DIR}/../../../../engine/vendor/src/CALMET_v6.5.0_L150223/coordlib.for"
+      --cpp "$<TARGET_FILE:p6e_coordlib_utm_reference>"
+      --gfortran "${P6E_GFORTRAN}"
+      --out "${CMAKE_CURRENT_BINARY_DIR}/coordlib-utm-original-parity.json")
+  message(STATUS "P6E COORDLIB UTM original-source parity test: REGISTERED (${P6E_GFORTRAN})")
+else()
+  message(STATUS "P6E COORDLIB UTM original-source parity test: not registered (no Fortran compiler)")
+endif()
+
 add_executable(p6e_pgtstb_tests tests/pgtstb_tests.cpp)
 add_executable(p6e_pgtstb_reference src/pgtstb_reference_main.cpp)
 target_link_libraries(p6e_pgtstb_tests PRIVATE p6e_solar)
