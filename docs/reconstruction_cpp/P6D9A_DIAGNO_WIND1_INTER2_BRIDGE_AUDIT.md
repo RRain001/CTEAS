@@ -33,13 +33,22 @@ This is the first **single-call C++ bridge** of the selected 50×50×9 diagnosti
 - `metadata.json` — dims, layout, dtype, layer geometry from the deck `ZFACE`, per-file units, sentinel, hour-label convention, surface wind speed range, the list of **stages applied in-chain**, the list of **stages not applied with their exact blocking inputs**, control values read, per-input FNV-1a fingerprints, station ids and sounding count.
 
 Verified on the frozen case (`hefei5km_2022_reference_case_20261011`): 143/143 hour labels, 719 float32 arrays (five fields x 143 hours plus four envelope planes) plus `metadata.json`, 22,500 values per 3-D array and 25,000 per W face array; ranges u in [-0.71, 2.98] m/s (step one) and [-1.29, 5.29] m/s (blended), v in [0.88, 4.25] m/s (step one) and [0.07, 4.50] m/s (blended), W faces in [-1.75e-03, 1.74e-03] m/s with a zero surface face, no sentinel cells, envelope relief 34.5 m, and a fail-closed CTest `p6d_realcase_wind_producer_case_contract` that runs the producer on the case and requires the 143-hour banner (29/29 scoped CTests). `metadata.json` states this is a **partial** product: the DIAGNO stages after the first guess are not applied, so consumers must treat the arrays as the step-one field the original `DIAGNO` starts from.
+### Real-case gate steps (requested)
+
+The two real-case verdicts are not yet inside `scripts/local_gate.py`'s `p6d` step list, which currently stops at the synthetic chained parity. To make the product's evidence part of the authoritative gate, add these two steps after it (both need only the module build, the vendor tree and the frozen case):
+
+1. `{build}/cteas_p6_realcase_wind_field --case project/cases/hefei5km_2022_reference_case_20261011 --out {out}/p6d-realcase --fixtures {out}/p6d-realcase-fixtures` (requires the case tree)
+2. `python3 native_cpp/modules/p6_calmet/reference/compare_original_d9a_realcase_step_one.py --vendor engine/vendor/src/CALMET_v6.5.0_L150223 --fields {out}/p6d-realcase --fixtures {out}/p6d-realcase-fixtures --out {out}/p6d-realcase-parity` (step-one verdict) and the same with `reference/compare_original_d9a_realcase_blend.py` (blend verdict)
+
+Both comparators compile the unchanged original routines with gfortran and are fail-closed, so they belong in the gate rather than only in local evidence.
+
 ### Machine-readable metadata contract
 
 `grid.layout` = `i_fastest` (with `grid.layout_note` giving `index = i + nx*(j + ny*k)`), `grid.dtype` = `float32`, `grid.byte_order` = `little`, `missing_sentinel` = the scalar `9999.0`, `hour_label` = `END` (interval end in UTC) and `levels.zface_m/thickness_m/center_m` from the deck: exact literals the P6F CALMET.DAT 2.1 writer keys on instead of hardcoding.
 
 ### Remaining upstream dependency (precise)
 
-`FRADJ` (L5643-L5644) is the only real-path stage still not applied in the producer: it needs the gridded `GAMMA`, and the original `CGAMMA` derives it with `ZICONV` from the convective boundary-layer trace (P6E's MIXHT/WSTARR family). Until that exists the producer leaves `GAMMA` caller-supplied and marks the stage `PENDING_GAMMA`; wiring it is a one-line addition to the existing chain because the FRADJ kernel and its original-source parity already exist.
+`FRADJ` (L5643-L5644) is the only real-path stage still not applied in the producer: it needs the gridded `GAMMA`, and the original `CGAMMA` derives it with `ZICONV`. After merging the newest `origin/main` I can state exactly what is missing rather than "ZICONV is coming": P6E's MIXHT is **stateful**, not a per-hour function — `cteas::p6e::MixhtObservedMcInput` requires caller-supplied `initial_zi`, `initial_ziconv` and `initial_dptt` fields and is advanced hour by hour through `apply_p6c_hour_to_mixht_one_station` with `cteas::p6e::P6CObservedHour` (the E26 orchestration). So the precise dependency is: **a realized 143-hour `ZICONV` (or `ZI`) array per hour, either exported by P6E's orchestration or supplied by the caller with provenance**; with that in hand the FRADJ wiring is one call in the producer (the FRADJ kernel and its original-source parity already exist here). Until then the stage is marked `PENDING_GAMMA` and the W faces stay the uncompensated-Froude variant.
 
 ### Real-case numeric verdict (blend): PASS after the layout fix
 
