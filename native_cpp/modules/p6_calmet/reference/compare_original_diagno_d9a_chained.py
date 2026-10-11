@@ -359,7 +359,7 @@ def main():
         comparison_upstream_blend=compare_blend(
             u_observed["u"],u_observed["v"],folder/"blend.upstream.cpp.csv")
         # Original IKINE=1 pre-blend kinematic route (completeness branch; the
-        # real deck has IKINE=0): literal W zeroing L5619-L5620, literal TOPOF2
+        # real deck has IKINE=0): literal W zeroing L5615-L5616, literal TOPOF2
         # L5621-L5622 and the literal pre-blend MINIM call L5628-L5629 using
         # the literal L5598-L5600 WINDBC snapshot, all before FRADJ/SLOPE.
         terrain,highest,lapse,temperature=fradj.fields(scene)

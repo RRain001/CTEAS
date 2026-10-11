@@ -1,5 +1,5 @@
 // P6D9A selected DIAGNO IKINE=1 pre-blend kinematic route: original W zeroing
-// L5619-L5620, TOPOF2 L5621-L5622 and the pre-blend MINIM call L5628-L5629
+// L5615-L5616, TOPOF2 L5621-L5622 and the pre-blend MINIM call L5628-L5629
 // with the L5598-L5600 WINDBC snapshot. Completeness branch only: the frozen
 // real deck has IKINE=0 so this route is not the real-case path. Numerical
 // parity against the unchanged original Fortran is the chained comparison.

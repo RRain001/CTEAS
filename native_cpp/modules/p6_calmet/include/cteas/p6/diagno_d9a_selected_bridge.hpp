@@ -61,7 +61,7 @@ struct DiagnoD9SelectedInput {
     // the caller's terrain/heat/slope-corrected UG/VG. Size 50*50*9.
     std::vector<float> corrected_first_guess_u_mps,corrected_first_guess_v_mps;
     bool lake_breeze=false;
-    // Original IKINE=1 pre-blend kinematic route: W zeroed [L5619-5620],
+    // Original IKINE=1 pre-blend kinematic route: W zeroed [L5615-5616],
     // TOPOF2 [L5621-5622], then MINIM(UG,VG,W,UB,VB,DIV,NITER,DIVLIM)
     // [L5628-5629] using the L5598-5600 boundary snapshot. ALPHA is the
     // original empirical topographic coefficient. Non-case path: the frozen

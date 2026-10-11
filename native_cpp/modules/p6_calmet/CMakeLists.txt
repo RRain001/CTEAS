@@ -287,7 +287,7 @@ endif()
 add_test(NAME p6d9a_slope_upstream_route_contract COMMAND cteas_p6_slope_route_tests)
 
 # P6D9A selected original IKINE=1 pre-blend kinematic route: W zeroing
-# L5619-L5620, TOPOF2 L5621-L5622 and MINIM L5628-L5629.
+# L5615-L5616, TOPOF2 L5621-L5622 and MINIM L5628-L5629.
 add_executable(cteas_p6_topof2_route_tests tests/p6_diagno_topof2_route_tests.cpp)
 target_link_libraries(cteas_p6_topof2_route_tests PRIVATE cteas_p6a_contracts)
 if(MSVC)

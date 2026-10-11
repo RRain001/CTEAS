@@ -3,7 +3,7 @@
 
 Compiles the *unchanged* original CALMET 6.5.0 ``TOPOF2`` (L31904-L32078,
 DIAGNO L5621-L5622) and ``MINIM`` (L9645-L9761, DIAGNO L5628-L5629) verbatim
-and replays the original order: W is XMIT-zeroed (L5619-L5620), TOPOF2 builds
+and replays the original order: W is XMIT-zeroed (L5615-L5616), TOPOF2 builds
 the terrain-following vertical velocity, then MINIM relaxes UG/VG at fixed W
 using the L5598-L5600 WINDBC boundary snapshot. ``ALPHA`` is the original
 empirical topographic coefficient and ``NITER``/``DIVLIM`` the original
@@ -34,7 +34,7 @@ W_ABS_TOL = 2.0e-4
 TOPOF2_ROUTINE_LINES = (31904, 32079)
 MINIM_ROUTINE_LINES = (9645, 9762)
 WINDBC_LOOP_LINES = (5598, 5600)
-WINIT_LINES = (5619, 5620)
+WINIT_LINES = (5615, 5616)
 TOPOF2_CALL_LINES = (5621, 5622)
 MINIM_CALL_LINES = (5628, 5629)
 
@@ -175,6 +175,7 @@ def original_source(vendor, out):
         },
         "driver_sha256": hashlib.sha256(driver.read_bytes()).hexdigest(),
         "alpha_consumers": "DIAGNO L5621-L5622 TOPOF2 only",
+        "surfvar_temp2d_lines": [5609, 5610],
     }
     return topof2_path, minim_path, driver, meta
 
