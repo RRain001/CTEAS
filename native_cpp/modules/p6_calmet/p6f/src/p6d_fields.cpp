@@ -374,6 +374,24 @@ P6dFieldsMetadata read_p6d_fields_metadata(const std::string& metadata_path) {
         metadata.product = as_string(*product, "product");
     if(const JsonValue* status = root.find("status"))
         metadata.status = as_string(*status, "status");
+    if(const JsonValue* blend = root.find("blend")) {
+        if(blend->kind == JsonValue::Kind::object)
+            if(const JsonValue* verdict = blend->find("verification"))
+                metadata.blend_verification =
+                    as_string(*verdict, "blend.verification");
+    }
+    if(const JsonValue* stages = root.find("stages_not_applied")) {
+        if(stages->kind == JsonValue::Kind::array)
+            for(const JsonValue& stage : stages->array) {
+                if(stage.kind != JsonValue::Kind::object)continue;
+                const JsonValue* name = stage.find("stage");
+                if(name == nullptr || name->kind != JsonValue::Kind::string)
+                    continue;
+                if(name->text.rfind("FRADJ", 0U) != 0U)continue;
+                if(const JsonValue* status = stage.find("status"))
+                    metadata.fradj_status = as_string(*status, "FRADJ status");
+            }
+    }
     if(const JsonValue* partial = root.find("partial")) {
         require(partial->kind == JsonValue::Kind::boolean,
                 "metadata.partial must be a boolean");
@@ -447,7 +465,7 @@ Calmet21File build_calmet_from_p6d(const std::string& directory,
                                    const std::vector<std::string>& labels,
                                    const Calmet21File& statics_from,
                                    const Calmet21File* met_fields_from,
-                                   int irtype) {
+                                   int irtype, bool allow_unverified) {
     require(!labels.empty(), "no hourly labels were selected");
     require(irtype == 0 || irtype == 1, "IRTYPE must be 0 or 1");
     require(irtype == 1 || met_fields_from == nullptr,
@@ -465,6 +483,15 @@ Calmet21File build_calmet_from_p6d(const std::string& directory,
             "the P6D grid does not match --statics-from");
     require(metadata.zface_m == statics_from.statics.zface_m,
             "the P6D levels.zface_m does not match the ZFACE of --statics-from");
+    // P6D publishes the verification verdict of its own products. A variant its
+    // original-source replay rejects must not be written silently.
+    const std::string verdict = metadata.blend_verification;
+    if(variant != "wind1" && !verdict.empty() &&
+       verdict.rfind("NOT_SOURCE_VERIFIED", 0U) == 0U && !allow_unverified)
+        fail("variant " + variant + " is marked '" + verdict +
+             "' by the P6D product metadata: it is not source-verified, so the "
+             "writer refuses it; pass --accept-unverified-variant to write it "
+             "for QA/plumbing only");
     if(metadata.hourly_label_count > 0)
         require(labels.size() <=
                     static_cast<std::size_t>(metadata.hourly_label_count),

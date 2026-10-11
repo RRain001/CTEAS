@@ -636,8 +636,8 @@ int command_write_from_p6d(const std::string& fields, const std::string& variant
                            const std::string& w_field,
                            const std::string& statics_from,
                            const std::string& met_fields_from, int irtype,
-                           int hours, const std::string& out,
-                           const std::string& report) {
+                           int hours, bool allow_unverified,
+                           const std::string& out, const std::string& report) {
     require_argument(!fields.empty(), "write-from-p6d requires --fields");
     require_argument(!statics_from.empty(),
                      "write-from-p6d requires --statics-from <legal CALMET.DAT>");
@@ -666,7 +666,8 @@ int command_write_from_p6d(const std::string& fields, const std::string& variant
         labels.resize(static_cast<std::size_t>(hours));
     const cteas::p6f::P6dFieldsMetadata metadata = declared;
     const cteas::p6f::Calmet21File file = cteas::p6f::build_calmet_from_p6d(
-        fields, variant, w_field, labels, statics, met.get(), irtype);
+        fields, variant, w_field, labels, statics, met.get(), irtype,
+        allow_unverified);
     const std::vector<std::uint8_t> bytes =
         cteas::p6f::serialize_calmet_dat21(file);
     write_bytes(out, bytes);
@@ -689,6 +690,15 @@ int command_write_from_p6d(const std::string& fields, const std::string& variant
     text += "  \"product\": " + json_string(metadata.product) + ",\n";
     text += "  \"product_status\": " + json_string(metadata.status) + ",\n";
     text += "  \"product_partial\": " + json_bool(metadata.partial) + ",\n";
+    text += "  \"blend_verification\": " + json_string(metadata.blend_verification) +
+            ",\n";
+    text += "  \"fradj_status\": " + json_string(metadata.fradj_status) + ",\n";
+    text += "  \"variant_source_verified\": " +
+            json_bool(variant == "wind1") + ",\n";
+    text += "  \"w_face_source_verified\": " +
+            json_bool(w_field != "w_face") + ",\n";
+    text += "  \"accept_unverified_variant\": " +
+            json_bool(allow_unverified) + ",\n";
     text += "  \"grid_layout\": " + json_string(metadata.layout) + ",\n";
     text += "  \"grid_dtype\": " + json_string(metadata.dtype) + ",\n";
     text += "  \"missing_sentinel\": " +
@@ -743,6 +753,7 @@ int main(int argc, char** argv) {
         std::string file, out, expect, report, start;
         std::string fields, variant = "wind1", w_field = "w_face";
         std::string statics_from, met_fields_from;
+        bool allow_unverified = false;
         // 0 means "all produced hours" for write-from-p6d and 3 for the
         // synthetic fixture generator.
         int hours = 0, nx = 8, ny = 5, nz = 3;
@@ -772,6 +783,7 @@ int main(int argc, char** argv) {
             else if(flag == "--w-field")w_field = option_value(args, at, flag);
             else if(flag == "--statics-from")statics_from = option_value(args, at, flag);
             else if(flag == "--met-fields-from")met_fields_from = option_value(args, at, flag);
+            else if(flag == "--accept-unverified-variant")allow_unverified = true;
             else if(flag == "--with-missing")with_missing = true;
             else throw std::runtime_error("unknown option " + flag);
         }
@@ -789,8 +801,8 @@ int main(int argc, char** argv) {
             // meteorological fields from another legal file.
             return command_write_from_p6d(fields, variant, w_field, statics_from,
                                           met_fields_from,
-                                          irtype_given ? irtype : 0, hours, out,
-                                          report);
+                                          irtype_given ? irtype : 0, hours,
+                                          allow_unverified, out, report);
         }
         if(command == "emit-fixture") {
             if(out.empty())

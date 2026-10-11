@@ -54,6 +54,11 @@ struct P6dFieldsMetadata {
     std::string product;
     std::string status;
     bool partial = false;
+    // provenance P6D publishes alongside the arrays: the blend verification
+    // verdict and the FRADJ stage status, reported (and acted on) rather than
+    // silently assumed.
+    std::string blend_verification;
+    std::string fradj_status;
 };
 
 // Strict, fail-closed reader of <dir>/metadata.json.
@@ -80,12 +85,15 @@ P6dWindHour read_p6d_wind_hour(const std::string& directory,
 // Compose the writable dataset: declaration/statics/controls from
 // `statics_from`, hourly U/V/W from the P6D planes, and - for IRTYPE=1 - the
 // 2-D meteorological fields taken verbatim from `met_fields_from`.
+// `allow_unverified` is the explicit opt-in required to write a variant that the
+// P6D metadata marks NOT_SOURCE_VERIFIED (currently `blend`, and the fields built
+// on it). Without it such a selection fails closed.
 Calmet21File build_calmet_from_p6d(const std::string& directory,
                                    const std::string& variant,
                                    const std::string& w_field,
                                    const std::vector<std::string>& labels,
                                    const Calmet21File& statics_from,
                                    const Calmet21File* met_fields_from,
-                                   int irtype);
+                                   int irtype, bool allow_unverified);
 
 }  // namespace cteas::p6f

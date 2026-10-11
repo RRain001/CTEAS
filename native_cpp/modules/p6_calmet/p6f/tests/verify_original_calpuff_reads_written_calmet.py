@@ -268,8 +268,20 @@ def main() -> int:
     parser.add_argument("--max-seconds", type=int, default=1800)
     args = parser.parse_args()
 
+    # Every path argument is resolved once: the driver builds the original in a
+    # temporary directory, so relative inputs would resolve against the wrong cwd.
+    args.vendor = args.vendor.resolve()
+    args.control = args.control.resolve()
+    args.frozen_met = args.frozen_met.resolve()
+    args.reference_con = args.reference_con.resolve()
+    args.reference_lst = args.reference_lst.resolve()
+    args.out = args.out.resolve()
+    if args.p6d_fields is not None:
+        args.p6d_fields = args.p6d_fields.resolve()
     if not args.control.is_file() or not args.frozen_met.is_file():
         fail("the frozen control deck or weather file is missing")
+    if not args.reference_con.is_file() or not args.reference_lst.is_file():
+        fail("the tracked original reference outputs are missing")
     frozen = args.frozen_met.read_bytes()
     if sha256_bytes(frozen) != args.frozen_sha256:
         fail("the frozen weather file does not match its pinned SHA-256")
@@ -358,6 +370,7 @@ def main() -> int:
             case_c_dir.mkdir()
             composed = case_c_dir / "met.dat"
             result = run([args.tool, "write-from-p6d", "--fields", args.p6d_fields,
+                          "--variant", "wind1", "--w-field", "w_face",
                           "--statics-from", args.frozen_met, "--met-fields-from",
                           args.frozen_met, "--irtype", "1", "--out", composed])
             if result.returncode != 0 or "P6F_WRITE_FROM_P6D_WRITTEN" not in result.stdout:
@@ -369,6 +382,12 @@ def main() -> int:
             evidence["case_c"] = summary_c
             evidence["case_c"]["composed_sha256"] = sha256_file(composed)
             evidence["case_c"]["p6d_fields"] = str(args.p6d_fields)
+            evidence["case_c"]["provenance"] = (
+                "wind1_* U/V (P6D original-source verdict 6,435,000 components, "
+                "worst 2.53e-05 m/s) + w_face_* (SLOPE-compensated, FRADJ "
+                "PENDING_GAMMA: QA/plumbing values) + the case's 2-D "
+                "meteorological fields; this case proves the original reads a "
+                "composed reconstruction, not numerical parity")
             evidence["case_c"]["listing_echo"] = listing_evidence(run_c["listing"])
             evidence["case_c"]["concentration"] = concentration_stats(
                 run_c["concentration"])
