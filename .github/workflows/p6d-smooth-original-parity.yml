@@ -1,21 +1,29 @@
 name: P6D original CALMET SMOOTH selected path parity
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
-      - 'native_cpp/modules/p6_calmet/**'
-      - '.github/workflows/p6d-smooth-original-parity.yml'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/*smooth*'
+      - 'native_cpp/modules/p6_calmet/src/smooth_main.cpp'
+      - 'native_cpp/modules/p6_calmet/tests/p6_smooth_tests.cpp'
+      - 'native_cpp/modules/p6_calmet/reference/compare_original_smooth.py'
+      - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   original-smooth:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 13
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Install original Fortran toolchain
-        run: sudo apt-get update && sudo apt-get install -y gfortran
+        run: gfortran --version | head -1
       - name: Build strict C++20 and run all P6 CTests
         run: |
           cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-p6d-smooth -DCMAKE_BUILD_TYPE=Debug

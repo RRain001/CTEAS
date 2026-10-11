@@ -1,14 +1,20 @@
 name: P6B pinned ORIGINAL CALMET 2022 100m baseline
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
-      - '.github/workflows/p6b-calmet-fortran-reference.yml'
-      - 'native_cpp/modules/p6_calmet/**'
+      - 'engine/templates/calmet.inp'
+      - 'project/cases/**'
+      - 'native_cpp/modules/p4_read62/**'
+      - 'native_cpp/modules/p5_smerge/**'
+      - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
   workflow_dispatch:
 jobs:
   original-calmet:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-22.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
     permissions:
       contents: read
@@ -16,6 +22,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Pin P4/P5/P3 upstream snapshots without merging branches
         shell: bash
         run: |
@@ -40,9 +48,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gfortran libgdal-dev
-          python3 -m pip install --disable-pip-version-check PyYAML numpy pandas
+          if ! pkg-config --exists gdal; then
+            sudo -n apt-get update -qq
+            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
+          fi
+          python3 -m venv "$RUNNER_TEMP/cteas-p6b-venv"
+          "$RUNNER_TEMP/cteas-p6b-venv/bin/python" -m pip install --disable-pip-version-check PyYAML numpy pandas
+          echo "$RUNNER_TEMP/cteas-p6b-venv/bin" >> "$GITHUB_PATH"
           gfortran --version | head -1 | tee integration-evidence/compiler.txt
       - name: Original unchanged P1-P2-P3 100m GEO.DAT
         shell: bash

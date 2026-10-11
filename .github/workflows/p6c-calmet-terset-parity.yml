@@ -1,21 +1,31 @@
 name: P6C-D CALMET original TERSET and FRADJ numerical parity
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
   pull_request:
     paths:
-      - '.github/workflows/p6c-calmet-terset-parity.yml'
-      - 'native_cpp/modules/p6_calmet/**'
+      - 'native_cpp/modules/p6_calmet/src/terrain_envelope_main.cpp'
+      - 'native_cpp/modules/p6_calmet/src/froude_adjust_main.cpp'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/*terrain*'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/*froude*'
+      - 'native_cpp/modules/p6_calmet/reference/compare_original_terset.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_original_fradj.py'
+      - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   terset-original-fortran-parity:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Pin isolated P3 source capture without merging its branch
         run: |
           set -euo pipefail
@@ -24,8 +34,11 @@ jobs:
       - name: Compiler and real case original GEO.DAT
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gfortran libgdal-dev
+          if ! pkg-config --exists gdal; then
+            sudo -n apt-get update -qq
+            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
+          fi
+          gfortran --version | head -1
           python3 native_cpp/reference/capture_p1_p2.py --output /tmp/p6c-real-p3
           python3 native_cpp/reference/capture_p3_makegeo.py --output /tmp/p6c-real-p3
           test -s /tmp/p6c-real-p3/p3/geo.dat

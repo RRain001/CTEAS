@@ -1,20 +1,26 @@
 name: P1 P2 original reference capture
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'native_cpp/reference/**'
-      - '.github/workflows/fortran-reference-p1-p2.yml'
+      - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
 jobs:
   capture:
-    if: github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 12
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Select self-hosted C++20 and Fortran tools
+        uses: ./.github/actions/cteas-linux-toolchain
       - name: Install gfortran
-        run: sudo apt-get update && sudo apt-get install -y gfortran
+        run: gfortran --version | head -1
       - name: Generate and run original P1/P2 in isolated path
         run: python3 native_cpp/reference/capture_p1_p2.py --output /tmp/cteas-reference-p1-p2
       - name: Independently parse exact original field content
