@@ -297,6 +297,17 @@ else()
 endif()
 add_test(NAME p6d9a_topof2_preblend_route_contract COMMAND cteas_p6_topof2_route_tests)
 
+# P6D9A in-chain original TERSET envelope (DIAGI L5228, I3DCTW=IWFCOD=1 in the
+# real deck) replacing the caller-supplied HMAX/HMIN/DISTH* planes.
+add_executable(cteas_p6_terset_envelope_tests tests/p6_diagno_terset_envelope_tests.cpp)
+target_link_libraries(cteas_p6_terset_envelope_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_terset_envelope_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_terset_envelope_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6d9a_inchain_terset_envelope_contract COMMAND cteas_p6_terset_envelope_tests)
+
 # P6D9A composed trace for chained unmodified original Fortran comparisons.
 add_executable(cteas_p6_d9a_source_trace src/diagno_d9a_trace_main.cpp)
 target_link_libraries(cteas_p6_d9a_source_trace PRIVATE cteas_p6a_contracts)

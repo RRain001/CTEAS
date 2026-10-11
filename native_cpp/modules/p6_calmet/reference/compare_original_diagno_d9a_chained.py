@@ -51,6 +51,8 @@ MINIM_DIVLIM=0.
 ALPHA=0.1
 KINEMATIC_NITER=50
 KINEMATIC_DIVLIM=0.
+# Original TERSET envelope radius, the real deck's TERRAD=15 km (met.inp L604).
+TERRAD_KM=15.
 
 def run(args):
     p=subprocess.run([str(x) for x in args],capture_output=True,text=True,timeout=180)
@@ -111,7 +113,7 @@ def generate_synthetic(scene):
     return land,observation_weight,station_u,station_v
 
 def write_bridge(path,scene,land,weights,sta_u,sta_v,obrien=False,froude=False,
-                 slope=False,kin=False):
+                 slope=False,kin=False,terset=False):
     planes=fradj.fields(scene)
     slope_planes=upstream.fields(scene,land)
     with path.open("w") as f:
@@ -141,6 +143,7 @@ def write_bridge(path,scene,land,weights,sta_u,sta_v,obrien=False,froude=False,
         upstream.write_bridge_fields(f,1 if slope else 0,slope_planes,land)
         kinematic.write_bridge_fields(f,1 if kin else 0,ALPHA,KINEMATIC_NITER,
                                         KINEMATIC_DIVLIM)
+        f.write(f"{1 if terset else 0} {TERRAD_KM:.9f}\n")
 
 def read_original_wind(path):
     rows=[line.split() for line in path.read_text().splitlines()]
@@ -340,12 +343,12 @@ def main():
         upstream_out=folder/"upstream.original"
         upstream.write_case(upstream_in,ZFACE1_M,DZ,terrain,highest,lapse,
                             temperature,minimum,distance_max,distance_min,
-                            heat,land,u,v)
+                            heat,land,u,v,TERRAD_KM,True)
         run([original_upstream,upstream_in,upstream_out])
         combined_u,combined_v=upstream.read_output(upstream_out)
         upstream_inp=folder/"bridge.upstream.in"
         write_bridge(upstream_inp,scene,land,weights,station_u,station_v,
-                     froude=True,slope=True)
+                     froude=True,slope=True,terset=True)
         cpp_prepared_upstream=folder/"prepared.upstream.cpp.csv"
         cpp_final_upstream=folder/"final.upstream.cpp.csv"
         cpp_bc_upstream=folder/"boundary.upstream.cpp"
@@ -359,6 +362,7 @@ def main():
             folder,".upstream",combined_u,combined_v)
         comparison_upstream=diag.compare(u_segment,cpp_final_upstream,
                                          u_bounds,cpp_bc_upstream)
+        comparison_upstream["envelope_source"]="original TERSET L5228 in-chain (TERRAD=%g km)"%TERRAD_KM
         comparison_upstream["original_upstream_changed_components"]=(
             comparison_upstream_step["original_changed_step_one_components"])
         comparison_upstream["upstream_step_max_abs_errors"]=(
@@ -508,6 +512,8 @@ def main():
                                 real_case_path=False,
                                 divlim_note="deterministic iteration count; the deck's DIVLIM=5e-6 makes the original convergence test threshold-sensitive, measured calm-scene spread 2.8e-03 m/s"),
         upstream_controls=dict(iwf_cod=1,ifradj=1,islope=1,ikine=0,iobr=0,
+                               terset_envelope="original L5228 in-chain",
+                               terrad_km=TERRAD_KM,
                                isurft=upstream.chain_fradj.ISURFT,
                                tinf_k=upstream.chain_fradj.TINF_K,
                                critfn=upstream.chain_fradj.CRITFN,
