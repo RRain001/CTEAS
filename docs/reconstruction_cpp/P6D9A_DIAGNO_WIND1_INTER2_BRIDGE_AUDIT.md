@@ -42,6 +42,25 @@ The two real-case verdicts are not yet inside `scripts/local_gate.py`'s `p6d` st
 
 Both comparators compile the unchanged original routines with gfortran and are fail-closed, so they belong in the gate rather than only in local evidence.
 
+### Round 18: the level-1 residual is *my* spurious structure, not the observation assembly
+
+DGM's station dump settles the first half of the question: the anemometer-to-`ZMID(1)` adjustment cannot move level 1 here, because the deck's anemometer height (10 m) equals `ZMID(1) = (ZFACE(1)+ZFACE(2))/2 = 10 m`, so the neutral log factor is 1 (max |adjusted(1) - entering(1)| over 143 hours: 9.54e-06 m/s). The level-1 columns entering the analysis are therefore the raw observations, and my producer already uses them.
+
+Comparing the original's `UG` (kpt 8 of DGM's dump, six hours) against my `blend_u` per cell flips the picture:
+
+| hour | level 1: original spread | level 1: my spread | max abs diff (L1) | level 2 max abs diff |
+|---|---|---|---|---|
+| 2022-01-01_01 | **0.000000** | 0.000112 | 0.000057 | 0.043854 |
+| 2022-01-01_02 | **0.000000** | 0.000157 | 0.000080 | 0.012229 |
+| 2022-01-01_03 | **0.000000** | 0.000178 | 0.000091 | 0.034999 |
+| 2022-01-04_09 | **0.000000** | 0.000041 | 0.000023 | 0.013456 |
+| 2022-01-04_10 | **0.000000** | 0.000056 | 0.000031 | 0.454098 |
+| 2022-01-04_11 | **0.000000** | 0.000056 | 0.000031 | 0.325769 |
+
+The original's level-1 field is **exactly uniform** (only the surface station has data there; the upper-air level 1 is excluded by `IEXTRP <= 0`), while my field carries 4e-5..1.8e-4 of structure. So the `U/V-LEV 1` residual is *my* structure (plus a small uniform offset), produced inside my INTER2/analysis path for two near-coincident stations - not by the observation assembly, which DGM has now cleared. The level-2 columns in the same table (0.012..0.454) also show that the level-2 term is not fully closed even after the EL fix.
+
+**Instrumentation request** (DGM format, to pin the weight expression rather than guess): inside `INTER2` (calmet.for 8124-8616), for one hour, the per-cell weight quantities `RS(L)`, `SUM`, `RSQ(L)` (and the station ordering) at four cells - the centre `(26,26)`, an edge `(1,26)`, a corner `(1,1)` and a mid-radius cell `(13,13)` - plus the same for the first level where `WO` is read. That distinguishes a weight-expression difference from a radius-cutoff/fallback difference at the near-coincident-station configuration this case has.
+
 ### Round 17: the EL table closes the level-2 term; level 1 is an observation-assembly residual
 
 **Bisection.** `U-LEV 2`'s 0.0279876 comes from two consecutive hours (2022-01-02_18/19, my indexes 41/42) and is confined to **level 2** (levels 1 and 3-9 exact at those hours). Reading the station columns out of the INTER2 fixture at that hour shows the reference's level-2 value (`-0.2188`) is neither my surface column (`-0.4856`) nor my upper column (`-0.0076`), so a *station-column input* differs, and the culprit is the Monin-Obukhov length: **the original's `EL` at hours 42/43 is 120.4009 while the P6E E29 `EL` export reads 43.3443** (they agree at every other hour sampled). The same check across all 143 hours finds 8 hours where the two differ by more than 1e-3: 9, 14, 18, 24, 42, 43, 81, 138 (largest at 18: 67.73 vs 43.34; at 42/43: 120.40 vs 43.34).
