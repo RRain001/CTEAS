@@ -18,9 +18,17 @@ Stages, in order:
     ctgproc                 -> geo/ctgproc/lu.dat                         (CTGPROC.x)
     makegeo                 -> geo/makegeo/geo.dat                        (MAKEGEO.x)
     read62                  -> met/upperair/final/up_*.dat                (READ62.x)
+    isd_download            -> met/surface/isd_raw/...                    (NOAA ISD fetch)
+    smerge_prepare          -> met/surface/isd2smerge_ready/*.csv         (NOAA clean/fill)
     smerge                  -> met/surface/final/surf.dat                 (SMERGE.x)
-    met                     -> run/met/met.dat (CALMET.DAT 2.1)           (met.x)
-    puff                    -> run/puff/puff.con + puff.lst               (puff.x)
+    calmet                  -> run/met/met.dat (CALMET.DAT 2.1)           (met.x)
+    calpuff                 -> run/puff/puff.con + puff.lst               (puff.x)
+
+The surface chain is the P5 data-prep path already validated in CI for this exact
+2022 Hefei domain (``.github/workflows/p4-p5-original-calmet-integration.yml``);
+it is the only path that implements the documented station policy of the 5 km
+domain (no ISD station inside, so the nearest annual-coverage-qualified station is
+relocated virtually to the stack position).  SMERGE itself is the original binary.
 
 After the last stage the script freezes every produced artifact, every control
 deck and every stage traced back to the vendor sources into a machine readable
@@ -33,6 +41,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -91,6 +100,9 @@ MET_LOCKED_OPTIONS = {
     "THRESHL": "0.",
     "IZICRLX": "1",
     "NSECDT": "3600",
+    "ISURFT": "-1",
+    "IUPT": "-1",
+    "IUPWND": "-1",
 }
 PUFF_LOCKED_OPTIONS = {
     "METFM": "1",
@@ -148,7 +160,10 @@ REQUIRED_ARTIFACTS = [
     "geo/makegeo/geo.dat",
     "run/read62/read62.inp",
     "run/smerge/smerge.inp",
+    "met/surface/isd_raw/station_selection_{year}.json",
     "met/surface/final/surf.dat",
+    "met/surface/final/stations.csv",
+    "met/upperair/final/stations.csv",
     "run/met/met.inp",
     "run/met/met.lst",
     "run/met/met.dat",
@@ -516,6 +531,9 @@ def render_capture_markdown(manifest: dict) -> str:
         f"| ZFACE (m) | {', '.join(str(int(z)) for z in spec['zface_m'])} |",
         f"| Period (UTC) | {spec['begin']} -> {spec['end']} |",
         f"| Hourly labels produced | {manifest['verification']['calmet']['hourly_labels']} |",
+        f"| Capture host | {manifest['host']['platform']}, {manifest['host']['processor_count']} CPUs, "
+        f"python {manifest['host']['python']} |",
+        f"| Total stage time (s) | {manifest['stage_total_s']} |",
         "",
         "## Stage commands (original Fortran binaries)",
         "",
@@ -714,12 +732,35 @@ def main() -> int:
     )
     runner.run(
         6,
-        "smerge",
-        "engine.preprocess.smerge_surf_data.run_isd_surface_pipeline",
-        ["--python", args.python],
+        "isd_download",
+        "native_cpp.modules.p5_smerge.data_prep.download_isd_by_grid",
+        [
+            "--year", str(args.year),
+            "--stack-lat", repr(spec["stack_latitude_deg"]),
+            "--stack-lon", repr(spec["stack_longitude_deg"]),
+            "--timeout", "30",
+            "--retries", "2",
+        ],
     )
-    runner.run(7, "calmet", "engine.run_met.run_met", ["--case", args.case_name])
-    runner.run(8, "calpuff", "engine.run_puff.run_puff", ["--case", args.case_name])
+    runner.run(
+        7,
+        "smerge_prepare",
+        "native_cpp.modules.p5_smerge.data_prep.prepare_inputs",
+        [
+            "--expected-year", str(args.year),
+            "--skip-download",
+            "--write-legacy-control",
+            "--execute",
+        ],
+    )
+    runner.run(
+        8,
+        "smerge",
+        "native_cpp.modules.p5_smerge.data_prep.run_smerge_and_monitor",
+        [],
+    )
+    runner.run(9, "calmet", "engine.run_met.run_met", ["--case", args.case_name])
+    runner.run(10, "calpuff", "engine.run_puff.run_puff", ["--case", args.case_name])
 
     # ---------------- verification -----------------------------------------
     grid_text = (case_dir / "grid" / "grid.cmn").read_text(encoding="utf-8")
@@ -729,7 +770,11 @@ def main() -> int:
     if (nx, ny, nz) != (50, 50, spec["nz"]):
         raise RuntimeError(f"grid.cmn is not the locked grid: NX={nx} NY={ny} NZ={nz}")
 
-    missing = [rel for rel in REQUIRED_ARTIFACTS if not (case_dir / rel).is_file()]
+    missing = [
+        rel.format(year=args.year)
+        for rel in REQUIRED_ARTIFACTS
+        if not (case_dir / rel.format(year=args.year)).is_file()
+    ]
     if missing:
         raise RuntimeError(f"required artifacts missing: {missing}")
 
@@ -787,9 +832,18 @@ def main() -> int:
 
     met_dat_rel = f"project/cases/{args.case_name}/run/met/met.dat"
     puff_inp_rel = f"project/cases/{args.case_name}/run/puff/puff.inp"
+    stage_total_s = round(sum(r["elapsed_s"] for r in runner.records), 3)
     manifest = {
         "case_name": args.case_name,
         "generated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "host": {
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "processor_count": os.cpu_count(),
+            "python": sys.version.split()[0],
+            "capture_command": " ".join(sys.argv),
+        },
+        "stage_total_s": stage_total_s,
         "spec": spec,
         "emission_bq_per_s": emission_bq_s,
         "seconds_per_year": args.seconds_per_year,
@@ -840,8 +894,7 @@ def main() -> int:
         ),
         (
             "Point-source coordinates are written to 3 decimals by the CALPUFF renderer: "
-            f"deck ({written_source[0]}, {written_source[1]}) km versus the exact "
-            f"({'%r' % (float(crop['center']['utm_e']),)}-style) spec centre "
+            f"deck ({written_source[0]}, {written_source[1]}) km versus the exact crop centre "
             f"({float(crop['center']['utm_e'])!r}, {float(crop['center']['utm_n'])!r}) km, i.e. "
             f"{abs(written_source[0] - float(crop['center']['utm_e'])) * 1000.0:.4f} m / "
             f"{abs(written_source[1] - float(crop['center']['utm_n'])) * 1000.0:.4f} m."
