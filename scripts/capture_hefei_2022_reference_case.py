@@ -29,6 +29,9 @@ The surface chain is the P5 data-prep path already validated in CI for this exac
 it is the only path that implements the documented station policy of the 5 km
 domain (no ISD station inside, so the nearest annual-coverage-qualified station is
 relocated virtually to the stack position).  SMERGE itself is the original binary.
+The upper-air input is pinned to the single station recorded by the project's 2022
+Hefei capture evidence (``CHM00058424``) instead of the module default
+``auto_select_all``, which would pull two stations for this domain.
 
 After the last stage the script freezes every produced artifact, every control
 deck and every stage traced back to the vendor sources into a machine readable
@@ -46,6 +49,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -75,6 +79,7 @@ SPEC = {
     "end": "20220106-230000",
     "timezone": "UTC+0000",
     "pstop_hpa": 500.0,
+    "upperair_station_id": "CHM00058424",
     "expected_hour_labels": 144,
     "crop_info": "calpuff_terrain_and_landuse_data_crop/hefei_5km/crop_info.json",
 }
@@ -185,6 +190,51 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+BINARY_NAMES = ("terrel", "ctgproc", "makegeo", "read62", "smerge", "met", "puff")
+
+# Recipe verified on lhy-desktop (gfortran-11, Linux x86_64).  The vendor Fortran
+# references INCLUDE files whose tracked names are upper case (e.g. PARAMS.TRL)
+# while the sources open them lower case, so a lower-case symlink alias tree is
+# passed with -I - exactly the workaround the P1/P2/P3 reference capture uses.
+COMMON_FFLAGS = ("-std=legacy", "-ffixed-line-length-none", "-fno-automatic",
+                 "-fno-align-commons", "-fallow-argument-mismatch", "-O0")
+LEGACY72_FFLAGS = ("-std=legacy", "-ffixed-line-length-72", "-fno-automatic",
+                   "-fno-align-commons", "-fallow-argument-mismatch", "-O0")
+PUFF_FFLAGS = (*LEGACY72_FFLAGS, "-fdec-format-defaults")
+
+
+def build_binaries(binary_dir: Path, compiler: str = "gfortran-11") -> list[str]:
+    """Rebuild the original Fortran chain from the tracked vendor sources."""
+    alias_root = Path(tempfile.mkdtemp(prefix="cteas-ref-include-"))
+    built = []
+    for name, source_rel in VENDOR_SOURCES.items():
+        if not source_rel.endswith(".for") and not source_rel.endswith(".FOR"):
+            continue
+        source = ROOT / source_rel
+        vendor_dir = source.parent
+        alias = alias_root / vendor_dir.name
+        alias.mkdir(exist_ok=True)
+        for item in vendor_dir.iterdir():
+            if item.is_file():
+                link = alias / item.name.lower()
+                if not link.exists():
+                    link.symlink_to(item)
+        flags = {
+            "calmet": COMMON_FFLAGS,
+            "terrel": COMMON_FFLAGS,
+            "calpuff": PUFF_FFLAGS,
+        }.get(name, LEGACY72_FFLAGS)
+        target = binary_dir / f"{name}.x"
+        sources = [str(source)]
+        if name == "calpuff":
+            sources = [str(ROOT / VENDOR_SOURCES["calpuff_modules"]), str(source)]
+        command = [compiler, *flags, f"-I{alias}", *sources, "-o", str(target)]
+        subprocess.run(command, check=True, cwd=str(ROOT))
+        target.chmod(0o755)
+        built.append(name)
+    return built
+
+
 def hefei_emission_bq_per_s(bq_per_year: float, seconds_per_year: float) -> float:
     return bq_per_year / seconds_per_year
 
@@ -235,7 +285,8 @@ preprocess:
     end: {spec['end']}
   upperair:
     pstop_hpa: {int(spec['pstop_hpa'])}
-    auto_select_all: true
+    auto_select_all: false
+    station_id: {spec['upperair_station_id']}
   surface:
     auto_select_all: true
 met:
@@ -594,6 +645,12 @@ def render_capture_markdown(manifest: dict) -> str:
         lines.append(f"| `{name}` | {item['bytes']} | `{item['sha256']}` |")
     lines += [
         "",
+        "## Selected meteorological stations",
+        "",
+        "```json",
+        json.dumps(manifest.get("selected_stations", {}), indent=2),
+        "```",
+        "",
         "## Verification performed by the capture script",
         "",
         "```json",
@@ -633,6 +690,16 @@ def main() -> int:
     parser.add_argument("--nz", type=int, default=SPEC["nz"])
     parser.add_argument("--crop-info", default=SPEC["crop_info"])
     parser.add_argument("--pstop", type=float, default=SPEC["pstop_hpa"])
+    parser.add_argument(
+        "--upperair-station-id",
+        default=SPEC["upperair_station_id"],
+        help="IGRA station pinned for the case (matches the project's 2022 Hefei capture evidence)",
+    )
+    parser.add_argument(
+        "--build-missing-binaries",
+        action="store_true",
+        help="Rebuild any missing bin/linux-x86_64/*.x from the tracked vendor sources",
+    )
     parser.add_argument("--seconds-per-year", type=float, default=365.0 * 24.0 * 3600.0)
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--binaries-dir", default=str(Path("bin") / "linux-x86_64"))
@@ -648,6 +715,7 @@ def main() -> int:
     spec["resolution_km"] = args.resolution_km
     spec["nz"] = args.nz
     spec["pstop_hpa"] = args.pstop
+    spec["upperair_station_id"] = args.upperair_station_id
     spec["crop_info"] = args.crop_info
 
     crop_path = (ROOT / args.crop_info).resolve()
@@ -678,14 +746,16 @@ def main() -> int:
     runner = StageRunner(case_dir, args.python, env)
 
     binary_dir = (ROOT / args.binaries_dir).resolve()
-    missing_binaries = [
-        name for name in ("terrel", "ctgproc", "makegeo", "read62", "smerge", "met", "puff")
-        if not (binary_dir / f"{name}.x").is_file()
-    ]
+    binary_dir.mkdir(parents=True, exist_ok=True)
+    missing_binaries = [name for name in BINARY_NAMES if not (binary_dir / f"{name}.x").is_file()]
+    if missing_binaries and args.build_missing_binaries:
+        print(f"[toolchain] rebuilding from tracked vendor sources: {missing_binaries}", flush=True)
+        print(f"[toolchain] built: {build_binaries(binary_dir)}", flush=True)
+        missing_binaries = [name for name in BINARY_NAMES if not (binary_dir / f"{name}.x").is_file()]
     if missing_binaries:
         raise SystemExit(
             f"original binaries missing in {binary_dir}: {missing_binaries}; "
-            "build them with scripts/build_native_linux_x86_64.sh"
+            "rerun with --build-missing-binaries to rebuild them from the tracked vendor sources"
         )
 
     crop_terrain_dir = (ROOT / crop["terrain"][0]["output"]).resolve().parent
@@ -815,6 +885,30 @@ def main() -> int:
         name: sha256(binary_dir / f"{name}.x")
         for name in ("terrel", "ctgproc", "makegeo", "read62", "smerge", "met", "puff")
     }
+    selected_stations = {}
+    upperair_used = case_dir / "met" / "upperair" / str(args.year) / "upperair_station_used_list.txt"
+    if upperair_used.is_file():
+        selected_stations["upperair_station_used_list"] = upperair_used.read_text(
+            encoding="utf-8", errors="replace"
+        ).strip().splitlines()
+    selection_json = case_dir / "met" / "surface" / "isd_raw" / f"station_selection_{args.year}.json"
+    if selection_json.is_file():
+        payload = json.loads(selection_json.read_text(encoding="utf-8"))
+        selected_stations["surface_selection"] = {
+            key: payload[key] for key in ("mode", "station_selection_case") if key in payload
+        }
+        selected_stations["surface_stations"] = [
+            {
+                "sid": station.get("sid"),
+                "ifstn": station.get("ifstn"),
+                "name": station.get("name"),
+                "lat": station.get("lat"),
+                "lon": station.get("lon"),
+                "relocated": station.get("relocated"),
+                "wind_treatment": station.get("wind_treatment"),
+            }
+            for station in payload.get("stations", [])
+        ]
     vendor_sources = {}
     for name, rel in VENDOR_SOURCES.items():
         path = ROOT / rel
@@ -860,6 +954,21 @@ def main() -> int:
         "stages": runner.records,
         "control_decks": control_decks,
         "binaries": binaries,
+        "toolchain": {
+            "build_recipe": {
+                "compiler": "gfortran-11",
+                "common_flags": list(COMMON_FFLAGS),
+                "legacy72_flags": list(LEGACY72_FFLAGS),
+                "calpuff_flags": list(PUFF_FFLAGS),
+                "include_handling": "lower-case symlink alias tree per vendor directory passed with -I",
+            },
+            "built_missing_binaries": bool(args.build_missing_binaries),
+            "note": (
+                "byte identity of the .x files depends on compiler version and build paths; "
+                "the vendor source hashes below are the frozen provenance"
+            ),
+        },
+        "selected_stations": selected_stations,
         "vendor_sources": vendor_sources,
         "inputs": inputs,
         "verification": verification,
