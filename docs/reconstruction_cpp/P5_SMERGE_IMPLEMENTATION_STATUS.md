@@ -4,7 +4,9 @@
 **最低重构验收结论：`P5_MINIMUM_RECONSTRUCTION=PASS`（受控配置 `JDAT=8 / IOFORM=2 / IOPACK=0 / LPREV=F / LPCALC=F / UTC`）。**
 
 [**P5 最小重构验收与结果报告（含完整通过证据、遗留事项、复现指令）**](P5_SMERGE_MINIMUM_RECONSTRUCTION_REPORT_2026-10-11.md)
-**Status:** `PASS_SCOPED_CPP_GENERIC_INPUT` / `PASS_PYTHON_NOAA_PREPROCESS_AND_ANNUAL_SELECTION` / `PASS_ORIGINAL_SMERGE_CALMET_SMOKE` / `PASS_NATIVE_CPP_SURFDAT_JDAT8_IOFORM2_BYTE_PARITY_AND_CALMET_SMOKE` / `MULTIYEAR_REAL_MULTISTATION_REFERENCE_OPEN`.
+
+[**P5 真实多站、跨年独立验证（2站×2年、17,519小时段、2,663,153字节完全等价）**](P5_REAL_MULTISTATION_MULTIYEAR_REFERENCE_2026-10-11.md)
+**Status:** `PASS_SCOPED_CPP_GENERIC_INPUT` / `PASS_PYTHON_NOAA_PREPROCESS_AND_ANNUAL_SELECTION` / `PASS_ORIGINAL_SMERGE_CALMET_SMOKE` / `PASS_NATIVE_CPP_SURFDAT_JDAT8_IOFORM2_BYTE_PARITY_AND_CALMET_SMOKE` / `PASS_REAL_NOAA_TWO_STATION_TWO_YEAR_BYTE_PARITY`.
 
 PR [#7](https://github.com/RRain001/CTEAS/pull/7) on `codex/cteas-p5-smerge-reference` is **Open / Ready for Review**, not merged. Native writer validated by immutable reference CI at `3f4f0a8d218161a5b07f983b5bad79c652ada93a`; subsequent tests follow new changes.
 
@@ -140,7 +142,7 @@ included. For evidence and reproduction, see the linked acceptance report.
 | Alternative original time-zone offsets and daylight-time control variants | `smerge.inp` `ASTZ/ABTZ/XSTZ`; `READCF` and `RDWRITS` | Offset and day-boundary original comparisons; current path accepts UTC only |
 | Legacy accumulated/previous-year and derived meteorology branches | `smerge.inp` `LPREV/LPCALC`, related original `SMERGE.FOR` routines | Freeze corresponding cases and independent numerical references, not implied from hourly GENERIC success |
 | Original cloud, precip and station-pressure conversions beyond scoped path | `SMERGE.FOR` `CLOUDS`, `PCODES/PCODES2`, `ALP2STP/SLP2STP`; `RDS` and `WRS` | Explicit field-level comparison on wet/cloudy/pressure-gap conditions |
-| Real, **simultaneous** multi-station NOAA data (not a synthetic auxiliary), years with changing primary/station membership | Complete ISD + ISD-Lite source, original Fortran `SMERGE.FOR`, original `CALMET calmet.for` station header interpretation | Run a real 2+ station-year; verify station IDs, aligned records, no all-calm model input, spatial/temporal consistency, missing/EOF behavior |
+| Real **2 NOAA meteorological stations × 2 calendar years** | Complete ISD + ISD-Lite source, original Fortran `SMERGE.FOR`, native C++ `p5_surf_main.cpp` | **PASS real input software test:** 2022–2023 all 17,519 hourly intervals and 2,663,153 bytes fully equivalent; note stations geographically separated, primary identity did not change. Physical same-domain and natural primary-switch tests remain open |
 | Multi-year original-Fortran continuous computation including change of virtual source or primary | `smerge.inp` station block `IFSTN/XELEV/SFCMET`; CALMET `stations.csv` and original `CALMET calmet.for` | End-to-end actual multi-year run; source positions/station membership and time-varying metadata validated instead of assumed |
 | Long unobserved spans and forcing sensitivity | User-defined unlimited previous-valid hold and artificial 0.5m/s original-calm replacement, CALMET diagnostic wind | Report hold-length distribution and calm-replacement rate; independent meteorological validity/sensitivity study; raw coverage alone is not quality assurance |
 | Full original SMERGE log and QA/precipitation code reporting | `SMERGE.FOR` `FIN`, `PCODES`, `QA.SMG`, original `SMERGE.LST` | Implement C++ equivalent and compare |
@@ -148,6 +150,9 @@ included. For evidence and reproduction, see the linked acceptance report.
 | Full independent CALMET or CALPUFF numerical parity | Original `CALMET calmet.for`; future P6/P7 branches | Outside P5; original execution success alone is not a field-level comparison |
 
 ## 5. Evidence, precise scope, and source protection
+
+- **Real NOAA two-station, two-calendar-year verified:** [workflow #38111753787](https://github.com/RRain001/CTEAS/actions/runs/38111753787), 2022–2023 17,519 hourly intervals; 52,565 original lines and 52,565 C++ lines; 2,663,153 bytes each, SHA-256 equal `f6e80e8005d27208799c3881390ab705fc92edfccfdf7f55abccf08d870d5816`. 2022 Hefei 8,692 observed raw hours, Huoshan 2,828; 2023 Hefei 8,642, Huoshan 2,729; one fully processed primary per year and all 5,557 auxiliary observed hours preserved with zero synthetic missing-hour insertions. Not a valid claim of simultaneous in-domain 5km CALMET station geography; winner stayed Hefei both years. See [detailed report](P5_REAL_MULTISTATION_MULTIYEAR_REFERENCE_2026-10-11.md).
+
 
 - **2022 NOAA 583210-99999**: 8,692 original ISD-Lite source hours / 8,760 (99.22%), 68 fully absent hours, **474 invalid wind hours INCLUDING absent**, 203 originally recorded calms. Full primary cleaned/calm-transformed outputs and 144/144 ready model hours matched; data-only original wind provenance. [Real-data capture CI](https://github.com/RRain001/CTEAS/actions/runs/38108309205) — PASS.
 - **20 NOAA station-years**: five station identities × four calendar years 2021–2024; raw codes audited, full source rows 147,503 across station-years; rule replay and source time denominators checked. [Multistation data audit](https://github.com/RRain001/CTEAS/actions/runs/38108309197) — PASS.
@@ -160,7 +165,7 @@ included. For evidence and reproduction, see the linked acceptance report.
 
 1. **DONE for frozen case**: native C++20 formatted `JDAT=8/IOFORM=2/IOPACK=0/LPREV=F/LPCALC=F/UTC` writer; checks original WRHD/WRS header, UTC hour-ending shift, 9999 sentinel, station order, missing type conversions, temperature/rain/cloud code and the full file byte comparison.
 2. **DONE for synthetic and Hefei 2022 six-day case**: independently compiled original Fortran and C++ read identical smerge.inp and GENERIC sources, compare all output bytes before publishing C++ output to unchanged CALMET.
-3. Execute actual **real** multi-station NOAA data, strict multi-year annual reselection (including differing station membership), and a run across time zones/year boundaries where supported.
+3. **DONE for genuine NOAA source data and 2022–2023 full-year boundary:** 2 real stations, 4 station-years, 17,519 hours, full original/C++ byte parity. **OPEN:** physically co-located stations within one actual 5km study domain, naturally changing primary winner and membership, full two-year CALMET physics, and non-UTC modes. See [independent multi-year report](P5_REAL_MULTISTATION_MULTIYEAR_REFERENCE_2026-10-11.md).
 4. Audit changes to CALMET diagnostics and resulting fields separately from P5 data-format correctness; do not replace scientific comparisons with “process exited zero.”
 
 See also [P4 READ62 status](https://github.com/RRain001/CTEAS/blob/codex/cteas-p4-read62-reference/docs/reconstruction_cpp/P4_READ62_IMPLEMENTATION_STATUS.md). P4's **>80% original valid 00/12 sounding profile** rule is deliberately different from P5's **strict >90% unique original full-hour surface ISD and ISD-Lite** external source gate.
