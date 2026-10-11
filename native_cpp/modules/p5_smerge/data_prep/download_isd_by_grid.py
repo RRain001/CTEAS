@@ -504,6 +504,34 @@ def main() -> int:
             writer.writerows(manifest_rows)
         print(f"P5_SELECTED year={year} mode={mode} station_count={len(accepted)} "
               f"stations={','.join(st.sid for st in accepted)} manifest={manifest}", flush=True)
+
+    # IDs must remain stable ACROSS YEARS even if the set of physical NOAA
+    # stations changes from year to year. Reconcile only after all annual
+    # selections are complete; otherwise a duplicate USAF may be resolved
+    # differently in different years, corrupting SMERGE IFSTN mapping.
+    if len(years) > 1:
+        manifests = [args.out_dir / f"station_selection_{year}.json" for year in years]
+        payloads = [json.loads(p.read_text(encoding="utf-8")) for p in manifests]
+        selected_sids = sorted({
+            row["sid"] for payload in payloads for row in payload["stations"]
+        })
+        aliases_across_years = numeric_station_ids(selected_sids)
+        for year, manifest, payload in zip(years, manifests, payloads):
+            for row in payload["stations"]:
+                row["ifstn"] = aliases_across_years[row["sid"]]
+            payload["alias_scope"] = "ALL_SELECTED_STATION_IDENTITIES_ACROSS_RESEARCH_YEARS"
+            manifest.write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n",
+                                encoding="utf-8")
+            listing = args.out_dir / f"surf_station_list_{year}.txt"
+            with listing.open("w", encoding="utf-8", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=[
+                    "sid", "name", "lat", "lon", "elev", "country",
+                    "begin", "end", "source_lat", "source_lon",
+                    "source_elev", "ifstn", "relocated"], extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(payload["stations"])
+        print(f"P5_YEARLY_ALIAS_RECONCILIATION=PASS years={years} "
+              f"unique_station_ids={len(selected_sids)}", flush=True)
     return 0
 
 
