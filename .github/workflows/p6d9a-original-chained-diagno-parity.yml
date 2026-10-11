@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'native_cpp/modules/p6_calmet/**'
+      - 'docs/reconstruction_cpp/P6D9A_DIAGNO_WIND1_INTER2_BRIDGE_AUDIT.md'
       - '.github/workflows/p6d9a-original-chained-diagno-parity.yml'
   workflow_dispatch:
 permissions:
