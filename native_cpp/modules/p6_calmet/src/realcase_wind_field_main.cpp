@@ -640,7 +640,8 @@ int main(int argc,char** argv){
           "\"lvary\": "<<(lvary?"true":"false")<<", \"nintrp_per_layer\": 99, "
           "\"station_local_km\": ["<<centre_x_km<<", "<<centre_y_km<<"], "
           "\"station_local_km_source\": \"case.yaml grid centre equals stations.csv lat/lon\", "
-          "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\"},\n";
+          "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\", "
+          "\"verification\": \"NOT_SOURCE_VERIFIED: the 143-hour comparison against the unchanged original INTER2 FAILED (worst 10.36 m/s) at producer head 2026-10-12; treat blend_u/v as unverified until the station-selection/influence branch difference is resolved\"},\n";
     meta<<"  \"stages_applied_in_chain\": [";
     meta<<"\"WIND1 selected first guess (IEXTRP=-4 neutral SIMILT)\"";
     meta<<", \"SURFVAR 2-D surface temperature (ISURFT<0, IALL=0, IAVET=1)\"";
