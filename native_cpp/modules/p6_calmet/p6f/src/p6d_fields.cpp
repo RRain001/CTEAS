@@ -517,7 +517,6 @@ Calmet21File build_calmet_from_p6d(const std::string& directory,
 
     const std::size_t cells =
         static_cast<std::size_t>(metadata.nx) * static_cast<std::size_t>(metadata.ny);
-    const std::size_t levels = static_cast<std::size_t>(metadata.nz);
     const std::vector<std::string> label_set =
         hourly_labels(metadata.nz, irtype, file.header.lcalgrd,
                       file.header.npsta);
@@ -563,20 +562,25 @@ Calmet21File build_calmet_from_p6d(const std::string& directory,
                 require(level >= 1 && level <= metadata.nz,
                         "level out of range in " + name);
                 field.real_values.resize(cells);
+                // The P6D product is level-major with the documented i-fastest
+                // index i + nx*(j + ny*k): every level plane is contiguous, so
+                // cell c of level k lives at c + cells*k. Reading it as
+                // cell-major silently permutes the field (a defect this adapter
+                // carried until the P6G end-to-end run exposed it).
                 for(std::size_t cell = 0; cell < cells; ++cell) {
                     float value = 0.f;
                     if(name.rfind("U-LEV", 0U) == 0U)
-                        value = winds.u_mps[cell * levels +
+                        value = winds.u_mps[cell + cells *
                                             static_cast<std::size_t>(level - 1)];
                     else if(name.rfind("V-LEV", 0U) == 0U)
-                        value = winds.v_mps[cell * levels +
+                        value = winds.v_mps[cell + cells *
                                             static_cast<std::size_t>(level - 1)];
                     else
                         // CALMET.DAT writes W at the TOP face of each layer, so
                         // the P6D face k+1 is WFACE(k); the ground face is not
                         // part of the v2.1 record.
                         value = winds.w_face_mps
-                            [cell * (levels + 1U) + static_cast<std::size_t>(level)];
+                            [cell + cells * static_cast<std::size_t>(level)];
                     field.real_values[cell] = value;
                 }
                 file.hourly.push_back(std::move(field));
