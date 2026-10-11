@@ -1398,3 +1398,72 @@ chain still disagrees with the frozen reference on 62 % of cells (the E28 audit
 is open), so P6D should treat the export as the correct *interface* with a
 pending accuracy question rather than a validated field. `ZICONV` has no
 reference column in `CALMET.DAT` and therefore no independent verdict yet.
+
+## E30 `FCORIOL` root cause: the ZI residual falls from 62 % to 1.26 %
+
+### The audit result, with numbers
+
+The three candidates from E28 were tested:
+
+**(c) MIXHT grid-path input provenance - CONFIRMED and fixed.** The case deck
+sets `FCORIOL = 1.0E-04` (`run/met/met.lst` L725). The original rule
+(`readcf` L9606-9616) is
+`if (fcoriol.gt.998.) f = 2*(2*pi/86400)*sin(lat) else f = fcoriol`, then
+`FCORI = max(|f|, 0.25e-4)` and `CMECH = CONSTB/sqrt(FCORI)`. The E28 code
+always derived `f` from the cell latitude, giving `7.68e-5` instead of the
+deck's `1.0e-4`, which made `CMECH = 160.9` instead of `141` (**14 % high**).
+
+Evidence, per cell and per branch:
+
+- night, hour 70: reference `USTAR = 0.10845`, `EL = 12.745`, so
+  `ZI2 = 0.4*sqrt(USTAR*EL/FCORI)` is `47.0` with `FCORI = 1e-4` (clip to
+  `ZIMIN = 50` -> reference `ZI = 50.0` exactly) but `53.7` with the
+  latitude-derived `7.68e-5` - and the pre-fix code produced exactly `53.6`;
+- daytime, hour 0: reference `ZI = 230.9`, pre-fix `263.3`; the ratio
+  `263.3/230.9 = 1.140` equals the `CMECH` ratio `160.9/141 = 1.141`, i.e. the
+  mechanical height carried the whole error.
+
+After honouring the deck constant (`--fcoriol`, default `1.0e-4`; values above
+998 still select the latitude-derived field per the source):
+**`ZI` exceedances fall from 221,549 (62 %) to 4,488 (1.26 %)**, max absolute
+difference from 113.944 m to 51.0623 m.
+
+**(a) AA/BB physical-slot mapping - not indicated.** With the dominant error
+removed, the daytime `ZI` means agree with the reference to 0.006-0.2 m in most
+hours; a swapped older/newer sounding would change the lapse rate by tens of
+percent and would not leave 98.7 % of cells inside a 0.07 m / 8e-5 gate.
+
+**(b) `DPTT`/`ZICONV` memory initialisation - partly explained away.** The
+large first-hour deviations (hour 0 +32 m, hour 1 +56 m) are reproduced by the
+same `CMECH` factor of 1.14, so they were the `FCORIOL` error, not a memory
+initialisation error. No separate evidence of a memory fault was found; the
+initial `ZICONV = 0 / DPTT = 0` remains an assumption of the same kind the
+original SETUP makes.
+
+### Current verdicts, original wind driving (143 x 2500 = 357,500 per field)
+
+| field | max abs | max rel | exceedances | verdict |
+|---|---|---|---|---|
+| `TEMPK`, `T-LEV 1`, `IRH`, `RHO`, `IPGT` | 0 | 0 | 0 | bit-exact |
+| `USTAR` | 5.51343e-7 m/s | 5.07242e-6 | 0 | PASS |
+| `QSW` | 7.24792e-4 W/m2 | 6.36252e-5 | 0 | PASS (bounded UTM residual) |
+| `EL` | - | 3.2e-2 | 630 (2 hours) | FAIL (bounded) |
+| `ZI` | 51.0623 m | 5.61028e-2 | 4,488 (1.26 %) | FAIL - close, not accepted |
+| `WSTAR` | 0.0262769 m/s | 1.9062e-2 | 4,880 (1.4 %) | FAIL - not accepted |
+
+`WSTAR` is unchanged by the `FCORIOL` fix (identical maxima and counts), which
+is itself informative: `WSTAR` consumes the **convective** height, and in
+daytime that comes from `MIXHMC`, which does not use `CMECH`/`FCORI`. Both
+remaining residuals therefore point at the convective-growth branch
+(`MIXHMC` inputs: the `MIXDT` lapse rate from the sounding bracket, or the
+`DPTT` memory), not at the mechanical path.
+
+**Exported-state caveat updated:** the E29 `ZICONV`/`ZI` export is still
+interface-ready, but its `ZI` accuracy statement improves from "62 % of cells
+outside the gate" to **1.26 %**, which is also what the JSON metadata will
+carry when it is regenerated.
+
+**Status summary:** six fields bit-exact or PASS; `EL` FAIL on 630 cells;
+`ZI` FAIL on 1.26 %; `WSTAR` FAIL on 1.4 %; `T-LEV 2..9` BLOCKED on the
+TEMP3D time-bracket generalisation; `U-LEV/V-LEV/WFACE` P6D-owned;
+`P6E_FULL=NOT_PASS`.
