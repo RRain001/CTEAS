@@ -463,7 +463,7 @@ int main(int argc,char** argv){
                     throw std::runtime_error("EL/ZICONV file has no block for "+
                                              hour_label(clock));
                 const SimiltProfileInput diagi{
-                    station_lat_deg,10.f,roughness,surface_u,surface_v,
+                    static_cast<float>(station_lat_deg),10.f,roughness,surface_u,surface_v,
                     el_hours[offset],ziconv_hours[offset],zimin_m,0,zface};
                 const auto profile=original_similt_profile(diagi);
                 levels_filled=profile.levels_filled;
