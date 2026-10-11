@@ -1589,6 +1589,15 @@ reports no trapping. For this hour the step is nearly level and downslope
 unchanged. This is a physical-chain demonstration, **not** a comparison with the
 frozen `puff.con`.
 
+### Gate evidence (Linux, lhy-desktop, g++-12 + gfortran-11)
+
+`LOCAL_GATE_P7=PASS sha=4138760ba ok=36 blocked=0 failed=0` with the authoritative
+local gate, `100% tests passed, 0 tests failed out of 38` (including the three new
+P7R CTest entries). The same matrices against the compiled unmodified vendor units
+with `GNU Fortran (Ubuntu 11.4.0) 11.4.0`: CTADJ2 432x4 `MAX_REL=7.563e-08` (vs
+`5.9e-07` on macOS), WALLTRAP 144x2 `MAX_REL=4.355e-14` - 576 cases,
+`MISMATCHES=0`.
+
 ### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
 
 - `cteas_p7r_terrain_constraints_contract`: the `CTADJ2` degenerate case, the
@@ -1623,3 +1632,92 @@ CTEAS-only `CONC.DAT` header. Every other on-path piece of the puff step now
 carries original-source parity: release scheduler (P7O), plume rise (P7N), step
 bookkeeping and `/CSIGMA/` (P7P), the sigma update (P7Q) and the MCTADJ=2 terrain
 constraints (this round), with CTSG closed earlier (P7M) and off this deck.
+
+## 2026-10-12 P7S terrain-state producers (TERAVG + TRELIEF + GETELEV)
+
+Round status: the terrain-state producers that P7R named as its entry point are
+reconstructed and parity-checked against the compiled **unmodified** vendor units,
+so the MCTADJ=2 path now runs on real, original relief.
+
+### Ported units and parity evidence
+
+| unit | vendor span | ported | parity |
+|---|---|---|---|
+| `TERAVG` (45-degree strip average) | L21547-21743 | yes | 652 cases x 1 column, `MAX_REL=2.1e-13` |
+| `TRELIEF` (relief corners + peak per cell) | L21205-21545 | yes | 16 cases x 45 columns, `MAX_REL=0` (bit-exact) |
+| `GETELEV` (bilinear elevation interpolation) | L21098-21203 | yes | 96 cases x 1 column, `MAX_REL=0` (bit-exact) |
+
+`P7S_ORACLE_PARITY_TOTAL_CASES=764`, `MISMATCHES=0`. The oracle driver fills
+`/METHD/` (`elev`, `nxm`, `nym`) and `/GRIDNEST/` (`nestfac = 1`,
+`rnxnest0 = rnynest0 = 0` for the single non-nested domain) from the case line and
+stubs `GETCELL`; the port takes the elevation grid as a 1-based accessor and the
+domain size/nesting as explicit inputs. `GETCELL` (L82482-82742) and `VWIDTH`
+(L21896-22178, the valley-width table producer, which calls nothing) are pinned in
+the anchor as the remaining gaps.
+
+### Semantics worth recording
+
+1. `TERAVG` is defined only for the four sector orientations (axis or diagonal);
+   the vendor leaves `ELAVG` untouched for anything else, which the port refuses.
+   The NE/SW and NW/SE branches also sum the "half-step" cells at doubled indices,
+   which the port reproduces.
+2. `TRELIEF` walks each of the four orientations in both directions, accumulating
+   the average-elevation change while the slope ratio stays within `BETA = 1.0`
+   of the first step, then combines them with the `rplus`/`rminus` rule and takes
+   the peak as `elev + max(reliefi, -reliefd)` over all orientations.
+3. `GETELEV` resolves the domain, applies the nested-grid scaling (1 and 0 for a
+   single domain) and interpolates bilinearly between cell centres.
+
+### Locked-case relief run (physical chain only)
+
+`cteas_p7s_probe --deck-relief MET.DAT puff.inp 0 513.3846439571 3533.7689269678
+70.8 89.152 0.9 1.396 0.02` runs the ported `TRELIEF` over the deck's real CALMET
+elevation field and feeds the result into the MCTADJ=2 constraints:
+
+```
+P7S_DECK_RELIEF_RUN=PASS HOUR=0 NX=50 NY=50 DX_M=100 ZI_M=230.951
+  CELL_I=25 CELL_J=25 RELIEF_NS_M=2 RELIEF_NESW_M=13.8 RELIEF_EW_M=7
+  RELIEF_SENW_M=4 RELIEF_PEAK_M=50.5 ELEV_CELL_M=47 STRAIN=1.00882
+  ZPNEW_M=70.8 FRACZ=0 UPSLOPE=false TRELIEF_STANDIN=false
+  VWIDTH_NOT_RECONSTRUCTED=true VALLEY_TABLE_ABSENT=true
+  PHYSICAL_CHAIN_ONLY=true NOT_A_PUFF_CON_COMPARISON=true
+```
+
+**`TRELIEF_STANDIN=false`**: the relief corners are the vendor algorithm's own
+values from the real elevation field, so the P7R stand-in is gone. The strain for
+this hour is `1.00882` (a small real-terrain value). `WALLTRAP` still reports no
+trapping because `VWIDTH` (the valley-width table) is not reconstructed, and the
+run says so explicitly. This is a physical-chain demonstration, **not** a
+comparison with the frozen `puff.con`.
+
+### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
+
+- `cteas_p7s_terrain_state_contract`: `TERAVG`'s four orientations on flat, ramp
+  and degenerate sectors plus the invalid-direction refusal; `TRELIEF`'s flat and
+  ramp relief with the peak; `GETELEV`'s flat, ramp, single-cell and
+  half-cell-centre cases plus every fail-closed path. PASS.
+- `cteas_p7s_source_parity`: anchor + the pinned `GETCELL`/`VWIDTH` spans + 26
+  quoted statements + the three matrices. PASS (764 cases).
+- `cteas_p7s_locked_case_relief`: the deck run above. PASS.
+- Local `ctest` 40/41 PASS; the only failure remains the pre-existing macOS
+  case-insensitive-filesystem failure of `cteas_p7_original_case_stage_contract`
+  (PASS on Linux).
+
+### Precise gaps
+
+1. **`VWIDTH`** (L21896-22178, 283 lines) builds `ivalw`/`dzval` from the relief
+   grid; without it `WALLTRAP` reports no trapping. It is the last piece of the
+   MCTADJ=2 path and is pinned in the anchor.
+2. **`GETCELL`** (L82482-82742) resolves the met domain (including nested grids);
+   the port takes the domain size and nesting explicitly instead.
+3. `SETPUF`'s `/CURRENT/` publication tail (`xb1/yb1/xe1/ye1`, `bidsq`,
+   `xfrise/zfrise`, `xshift`, `speedi/srat`, `temis`, `iage`) is still open.
+
+### Incomparability list after this round
+
+**Still one cause**: the overall fidelity of the advection/step integration (no
+release-cadence-to-concentration end-to-end run yet), the `VWIDTH` valley table
+and the CTEAS-only `CONC.DAT` header. The terrain path is now original end to end
+except for `VWIDTH`, and every other on-path piece (release scheduler P7O, plume
+rise P7N, step bookkeeping and `/CSIGMA/` P7P, sigma update P7Q, MCTADJ=2
+constraints P7R, terrain state P7S) carries original-source parity.
