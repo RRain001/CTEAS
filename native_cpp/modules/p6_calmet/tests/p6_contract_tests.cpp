@@ -118,12 +118,23 @@ int main() {
         inventory.n_surface_stations=1;
         inventory.n_upper_stations=1;
         expect(!inventory.can_attempt_full_reference_run(),
-               "no precipitation source incorrectly marked ready");
-        inventory.precipitation_input_verified=true;
-        inventory.n_precip_stations=1;
+               "precipitation mode not explicitly decided");
+        inventory.precipitation_mode_explicitly_confirmed=true;
         expect(inventory.can_attempt_full_reference_run(),
-               "complete synthetic availability inventory not accepted");
+               "valid P6 original NPSTA=0 reference should be runnable");
+        expect(!inventory.can_claim_wet_deposition_forcing(),
+               "dry-only P6 original incorrectly qualified for HTO wet deposition");
+        throws([&]{inventory.require_wet_deposition_forcing();},
+               "NPSTA=0 would silently validate wet deposition");
+        inventory.n_precip_stations=1;
+        expect(!inventory.can_attempt_full_reference_run(),
+               "unverified rainfall file incorrectly qualifies original P6");
+        inventory.precipitation_input_verified=true;
+        expect(inventory.can_attempt_full_reference_run() &&
+               inventory.can_claim_wet_deposition_forcing(),
+               "verified precipitation case incorrectly rejected");
         inventory.require_full_reference_ready();
+        inventory.require_wet_deposition_forcing();
 
         std::cout<<"PASS P6A_CONTRACTS_ONLY (no wind or micrometeorology physics claimed)\n";
         return 0;
