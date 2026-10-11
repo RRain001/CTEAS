@@ -662,7 +662,7 @@ int main(int argc,char** argv){
           " \"note\": \"therefore the emitted W faces are SLOPE-compensated but not FRADJ-compensated\"},\n";
     meta<<"    {\"stage\": \"SMOOTH/DIVCEL/W tail (DIAGNO L6119-L6148)\", \"status\": \"APPLIED_SLOPE_COMPENSATED_FRADJ_PENDING\","
           " \"product\": \"w_face_*.f32 (10 faces per column)\","
-          " \"note\": \"run on the SLOPE-corrected blended field with the deck NSMTH, so the boundaries are the L5748 snapshot except for the still-pending FRADJ (GAMMA) correction\"},\n"
+          " \"note\": \"run on the SLOPE-corrected blended field with the deck NSMTH, so the boundaries are the L5748 snapshot except for the still-pending FRADJ (GAMMA) correction\"},\n";
     meta<<"    {\"stage\": \"TOPOF2/IKINE route and O'Brien/IOBR=1 tail\", \"status\": \"NON_CASE_PATH\","
           " \"note\": \"the case deck sets IKINE=0 and IOBR=0\"}\n";
     meta<<"  ],\n";
