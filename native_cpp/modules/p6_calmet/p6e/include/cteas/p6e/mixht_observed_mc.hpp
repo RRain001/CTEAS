@@ -36,6 +36,13 @@ struct MixhtObservedMcInput {
     // magnitude 2 = Batchvarova-Gryning (MIXHBG). The sign only selects
     // the over-water scheme, so magnitude is what matters on land.
     int imixh=1;
+    // COMP calls WATER/WATERP (L4616-4622) immediately before MIXHT
+    // (L4692), and both call MIXHMC with the /tjump/ DPTT array as the
+    // actual argument, so the land DPTT the growth sees is the current
+    // hour's own DPTTP1. With this flag the composed real-case path
+    // reproduces that refresh; without it DPTT is carried across hours
+    // (the behaviour of the standalone MIXHT harness).
+    int dptt_refresh=0;
     int izicrlx=0,timestep_s=3600;
     float constn=2400.f,zimin=20.f,zimax=2500.f;
     float threshl=0.02f,dptmin=0.001f,dzzi=200.f;
@@ -154,6 +161,14 @@ inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
             m.threshold_wm2perm=a.threshl;
             m.zimax_m=a.zimax;m.htold_m=htold;
             m.dptt_k=r.dptt[k];
+            if(a.dptt_refresh) {
+                // Original pre-MIXHT refresh of the /tjump/ DPTT: the value
+                // handed to the growth is the current hour's DPTTP1.
+                constexpr float wto_rho=1.2f,wto_cp=996.f;
+                const float gclamp=std::max(gamma,a.dptmin);
+                const float buoy=wt-a.threshl*htold/(wto_rho*wto_cp);
+                if(buoy>0.f)m.dptt_k=std::sqrt(std::max(gclamp*a.twodte*buoy,0.f));
+            }
             m.tht_k=sounding.tht_k;m.thtp_k=sounding.thtp_k;
             m.izicrlx=a.izicrlx;m.timestep_s=a.timestep_s;
             m.tzicrlx_s=a.tzicrlx;
