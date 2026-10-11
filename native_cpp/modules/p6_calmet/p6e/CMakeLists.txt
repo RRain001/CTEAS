@@ -258,3 +258,38 @@ else()
  target_compile_options(p6e_realcase_options_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME p6e_realcase_option_profile_contract COMMAND p6e_realcase_options_tests)
+
+# E22 CALMET.DAT 2.1 output contract and truth-comparison harness.
+add_executable(p6e_calmet_dat21 src/calmet_dat21_tool_main.cpp)
+target_link_libraries(p6e_calmet_dat21 PRIVATE p6e_solar)
+if(MSVC)
+ target_compile_options(p6e_calmet_dat21 PRIVATE /W4 /WX)
+else()
+ target_compile_options(p6e_calmet_dat21 PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6e_calmet_dat21_output_contract
+  COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_calmet_dat21_contract.py"
+    --tool "$<TARGET_FILE:p6e_calmet_dat21>"
+    --harness "${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_calmet_dat21.py")
+
+# The frozen real CALMET.DAT 2.1 reference case is only present once
+# project/cases/hefei5km_2022_reference_case_20261011 is in the checkout.
+# When it is present the byte-exact round trip and the frozen SHA-256 become
+# part of the CTest run; when it is absent the synthetic contract still runs.
+set(P6E_REAL_MET_DAT
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat")
+set(P6E_REAL_MET_SHA256
+  "b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30")
+if(EXISTS "${P6E_REAL_MET_DAT}")
+  add_test(NAME p6e_calmet_dat21_real_reference_round_trip
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_calmet_dat21_contract.py"
+      --tool "$<TARGET_FILE:p6e_calmet_dat21>"
+      --harness "${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_calmet_dat21.py"
+      --real-reference "${P6E_REAL_MET_DAT}"
+      --real-reference-sha256 "${P6E_REAL_MET_SHA256}")
+  message(STATUS "P6E real CALMET.DAT 2.1 reference test: REGISTERED (frozen SHA-256 pinned)")
+else()
+  message(STATUS "P6E real CALMET.DAT 2.1 reference test: not registered (reference case not in this checkout)")
+endif()
