@@ -1,7 +1,11 @@
 # P6 CALMET 6.5.0 — 合肥 100 m 科研最小重构总计划
-Date: 2026-10-11. Status: **P6A_PASS_SOFTWARE, P6B_ORIGINAL_CALMET_REFERENCE_PASS, P6C_TERSET_FORTRAN_PARITY_PASS, P6D_FRADJ_ISOLATED_PARITY_PASS, P6_FULL_SOLVER_INCOMPLETE**.
+Date: 2026-10-11. Status: **P6A_PASS_SOFTWARE, P6B_ORIGINAL_CALMET_REFERENCE_PASS, P6C_PASS_SCOPED_HEFEI_2022_OBSERVATIONS, P6D_READY_FOR_INTEGRATION_NOT_PASS (FRADJ isolated PASS), P6E–G_NOT_COMPLETE, P6_FULL_SOLVER_INCOMPLETE, P6_CALPUFF_READY_FALSE**.
 Authority: user-chosen research-specific **minimal reconstruction**; no claim of full CALMET feature parity.
 Repository: `RRain001/CTEAS`; immutable foundation `60b7b1d93866fff772926b6ac32dc0af7235552b`; implementation branch `codex/cteas-p6-calmet-hefei-100m`. Do not edit any existing P1–P5 branch, source or the original `engine/vendor/src`.
+
+**2026-10-11 P6C 独立原版最终观测预处理验收 PASS（固定 2022 研究案例）**：在此前 GEO/UP/SURF、TERSET/DIAGI/VERTAV/PREPDI/FACET 原版数值证据之上，[原版 143h COMP + RDSN + CGAMMA 完整复算 CI](https://github.com/RRain001/CTEAS/actions/runs/38113874913) 通过：AA/BB 两物理缓冲 286 时次、RDSN 1,144 个真实观测字段及 858 个时次、CGAMMA 143 个真实源码调用（86 正常插值/51 当前对流/6 先前对流状态）全部 PASS，最大直减率误差 5.0e-11 K/m；临时只读插桩与原版 MET.DAT SHA 完全相同。专项 [RDSN/CGAMMA 审计](P6C_RDSN_CGAMMA_2022_AUDIT.md) 及 [A→G 最终阶段台账](P6_A_TO_G_SEQUENTIAL_EXECUTION_LEDGER.md) 为本阶段最新状态依据。**下面仍带有 P6C PARTIAL/COMP 未验证字样的是过往分期验收记录，已被本段最新结果覆盖。P6D 三维诊断风场集成允许开始但尚未 PASS；P6E–G 不得跳过。** 仅验收一地面虚拟站 + 探空站 58424、真实 143 小时的固定格式输入；降水 IPCODE 143/143 缺测、NPSTA=0 继续独立 HOLD，禁止湿沉降可用性宣称。
+
+
 
 **2026-10-11 P6C UP.DAT v2.1**：[P6C_UPDAT_RDUPN_2022_AUDIT.md](P6C_UPDAT_RDUPN_2022_AUDIT.md)：原版 `COMP` 对 v2.1 调用 `RDUPN`（不是老 `RDUP`）；真正 2022 年 P4 `UP.DAT` 的 13 条探空记录、785 层、6,280 原生 Fortran/C++ 读入与 U/V、高度转换字段 **PASS**。P6C 尚欠 `COMP` AA/BB 各时段资料选择、`VERTAV/FACET` 垂直插值及原版观测场集成对照，仍然不能标 P6C COMPLETE 或开启 P6D 整链。
 
