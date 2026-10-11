@@ -1974,3 +1974,61 @@ update, pinned at L10465-10473 / L10494-10519) is still not ported; the dump car
 its own end-of-step positions, so it is the next comparison target. GETCELL and
 SETPUF's `/CURRENT/` publication tail remain open (spans pinned in the P7W anchor).
 
+
+## 2026-10-12 P7X the inline COMP step integration; puff.con comparability statement
+
+### The inline step integration
+The three inline pieces P7U pinned are now ported and closed. They live inside
+`subroutine comp`, so they cannot be extracted as units: their spans are pinned by
+line number AND content hash in `reference/p7x_source_anchor.py` (gate-checked, so
+the oracle can never silently drift):
+
+- `cadence_old_puff` L10136-10147: `NSAM = NINT(WS*SMXI2+1)` with
+  `SMXI2 = SECDT/(XSAMLEN*XGRIDM)`, clamped by `MXSAM`, `XSAMI = 1/NSAM`,
+  `NSSTR = 1`, `TSAMP = SECDT*XSAMI`.
+- `cadence_new_puff` L10158-10318: for the constant point source (ISTYPE=1)
+  `NSAM = NINT(SECDT/TEMIT0)`, `NSSTR = IPNO`, `TSAMP = TEMIT0`; then
+  `REFTSAMP = TSAMP`, `TLEFT = 0` and `LSUBSAM = NSAM < MXSAM`. The variable-emission,
+  area, line and road paths (VARSAM/NEWAR1/NEWLN1/NEWVL1/NEWBC/NEWRD1) are **refused**.
+- `substep_length` L10548-10582: `FSTEP = WS*TSAMP/(XSAMLEN*XGRIDM)` for a puff or a
+  free slug while LSUBSAM; `TSAMP/FSTEP` for a full XSAMLEN substep (or when
+  `KSAM < NSAM`), and `0.5*TSAMP` for the last substep when `1 < FSTEP < 2`; a slug
+  attached to the source and a non-subsampled step are left alone.
+- `position_update` L10607-10619: `DX/DY = U/V*TSAMP` in metres then in outermost
+  met grid units, `DISTM = WS*TSAMP`, `XNEW/YNEW = XOLD/YOLD + DX/DY`.
+
+### One-step numerical comparison, extended (same dump, hour 202200100, 1,275 substeps)
+- `P7W_DGM_STEP_TSAMP_EFFECTIVE_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=0` (bit-exact)
+- `P7W_DGM_STEP_DISTM_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=3.769e-03 m MAX_REL=3.835e-05`
+- `P7W_DGM_STEP_XNEW_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=2.861e-05`
+- `P7W_DGM_STEP_YNEW_VENDOR_VS_PORT=CASES=1275 MISMATCHES=0 MAX_ABS=5.341e-05`
+- `P7W_DGM_STEP_NSAM_IDENTITY=CASES=1275 MISMATCHES=0` (`NSAM = NINT(SECDT/TSAMP)`)
+- `P7W_DGM_STEP_TSAMP_EQ_REFTSAMP=CASES=1275 MISMATCHES=0`
+- `P7W_DGM_STEP_TSAMP_NOT_ABOVE_REFERENCE=CASES=1275 MISMATCHES=0`
+- `P7X_STEP_INTEGRATION_CONTRACT=PASS CHECKS=39 FAILURES=0`
+
+Together with the P7W results (`PUFFDZ` bit-exact, `ADVECT` 0 mismatches, the
+`RISEWIND` adjustment applied on exactly the 107 substeps where COMP applies it, the
+adjusted transport wind and the calm flag all matching), the whole per-substep wind,
+rise and position chain now reproduces the vendor's own instrumented numbers.
+
+### puff.con comparability statement (final for this round)
+- **Structure**: comparable. The record framing and the per-receptor grid are the
+  P7E construction; the only structural difference from the vendor's file is the
+  CTEAS-only `CONC.DAT` header subset.
+- **Values, step chain**: comparable and verified. For hour `202200100` (1,275 real
+  substeps, puffs 1..54) the fields `ztop`, `zbot`, `uadv/vadv` (raw and after
+  RISEWIND), `ws`, `lcalm`, `tsamp_effective`, `distm`, `xnew`, `ynew`, `nsam`,
+  `tsamp`, `reftsamp` all match the original run (0 mismatches; `ztop/zbot` and
+  `tsamp_effective` bit-exact). The full 143-hour dump (254,687 records) carries the
+  same fields, so any hour can be compared with the same probe once sliced.
+- **Values, whole file**: NOT yet comparable, and the reason is assembly rather than
+  a missing unit. The reconstruction still lacks (a) the vertical dispersion update
+  and the `/CURRENT/` publication of SETPUF (so `zpb_out`/`ze1` and the `xb1..sze1`
+  block are not compared), (b) `GETCELL` (the nested-domain cell resolution; the
+  comparisons above take the vendor's own `ixs/iys/mdoms`), and (c) the end-to-end
+  driver that runs the reconstructed step loop over the case. The remaining
+  non-comparable item after those is the CTEAS-only `CONC.DAT` header subset.
+
+Spans for the still-open pieces are pinned in the P7W anchor: `GETCELL`
+L82482-82742, `SETPUF` L48198-48757.

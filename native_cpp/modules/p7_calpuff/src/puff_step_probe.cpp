@@ -10,6 +10,7 @@
 #include "cteas/puff/control.hpp"
 #include "cteas/puff/plume_rise.hpp"
 #include "cteas/puff/rise_wind.hpp"
+#include "cteas/puff/step_integration.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -319,6 +320,8 @@ int dgm_steps_mode(const std::string& dump_path, const std::string& met_path,
 
     Tally puffdz_top, puffdz_bottom, advect_u, advect_v;
     Tally adjusted_u, adjusted_v, adjusted_ws, adjusted_calm;
+    Tally step_length, step_distance, position_x, position_y, step_distance_m;
+    Tally cadence_nsam, cadence_tsamp, cadence_reftsamp;
     long risewind_applied = 0;
     long risewind_skipped = 0;
     long puffs = 0;
@@ -413,6 +416,51 @@ int dgm_steps_mode(const std::string& dump_path, const std::string& met_path,
                 }
                 compare(adjusted_ws, record.at(12), ws, 1.0e-4, "ws_adjusted", record);
                 compare(adjusted_calm, record.at(15), calm ? 1.0 : 0.0, 0.0, "lcalm", record);
+
+                // The inline step integration: the substep length the vendor used,
+                // then the end-of-step position from the adjusted transport wind.
+                cteas::puff::SubstepInputs substep;
+                substep.sampling_step_s = record.at(17);          // tsamp entering
+                substep.wind_speed_ms = ws;
+                substep.puff = record.lpuff != 0;
+                substep.free_slug = false;
+                substep.subsampling = record.nsam < 99;
+                substep.grid_spacing_m = summary.header.dx_m;
+                substep.x_sam_len = 1.0;
+                substep.substep_index = record.ksam;
+                substep.sampling_steps = record.nsam;
+                const auto computed_substep = cteas::puff::substep_length(substep);
+                compare(step_length, record.at(63), computed_substep.step_s, 1.0e-3,
+                        "tsamp_effective", record);
+                compare(step_distance, record.at(60), computed_substep.step_s * ws, 1.0e-2,
+                        "distm_from_step", record);
+
+                cteas::puff::AdvanceInputs advance_inputs;
+                advance_inputs.x_cells = record.at(1);
+                advance_inputs.y_cells = record.at(2);
+                advance_inputs.u_ms = u;
+                advance_inputs.v_ms = v;
+                advance_inputs.step_s = record.at(63);            // tsamp_effective
+                advance_inputs.grid_spacing_m = summary.header.dx_m;
+                advance_inputs.wind_speed_ms = ws;
+                const auto advance = cteas::puff::advance_puff(advance_inputs);
+                compare(position_x, record.at(39), advance.x_cells, 1.0e-4, "xnew", record);
+                compare(position_y, record.at(40), advance.y_cells, 1.0e-4, "ynew", record);
+                // DISTM is WS*TSAMP in REAL*4 on the vendor side; the transport
+                // wind already carries the RISEWIND float rounding, so the
+                // tolerance is the same 1e-4 relative band (about 0.01 m here).
+                compare(step_distance_m, record.at(60), advance.distance_m, 1.0e-2, "distm",
+                        record);
+
+                // The vendor's own cadence identities for a new point-source puff.
+                compare(cadence_nsam, static_cast<double>(record.nsam),
+                        std::round(static_cast<double>(control.required_int("NSECDT")) /
+                                   record.at(17)),
+                        1.0e-9, "nsam", record);
+                compare(cadence_tsamp, record.at(17), record.at(18), 1.0e-6, "tsamp_reftsamp",
+                        record);
+                compare(cadence_reftsamp, record.at(63) <= record.at(17) ? 1.0 : 0.0, 1.0, 0.0,
+                        "tsamp_not_exceeding_reference", record);
             }
 
             // PUFFDZ: the vendor's own inputs. SIGMA-Z is the value stored at the
@@ -477,6 +525,14 @@ int dgm_steps_mode(const std::string& dump_path, const std::string& met_path,
         report("VADV_ADJUSTED_VENDOR_VS_PORT", adjusted_v);
         report("WS_ADJUSTED_VENDOR_VS_PORT", adjusted_ws);
         report("LCALM_VENDOR_VS_PORT", adjusted_calm);
+        report("TSAMP_EFFECTIVE_VENDOR_VS_PORT", step_length);
+        report("DISTM_VENDOR_VS_PORT", step_distance_m);
+        report("XNEW_VENDOR_VS_PORT", position_x);
+        report("YNEW_VENDOR_VS_PORT", position_y);
+        report("DISTM_FROM_STEP_VS_WS_TIMES_TSAMP", step_distance);
+        report("NSAM_IDENTITY", cadence_nsam);
+        report("TSAMP_EQ_REFTSAMP", cadence_tsamp);
+        report("TSAMP_NOT_ABOVE_REFERENCE", cadence_reftsamp);
     }
     std::cout << "P7W_DGM_STEP_COMPARISON_IS_NOT_A_CONC_COMPARISON=true\n";
     return 0;
