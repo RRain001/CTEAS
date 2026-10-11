@@ -135,7 +135,7 @@ std::string hour_label(std::chrono::sys_seconds clock){
 }
 
 struct Arguments {
-    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir;
+    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,ziconv_file;
     int hours=143;
     fs::path out()const{return out_dir;}
 };
@@ -158,6 +158,7 @@ int main(int argc,char** argv){
         else if(flag=="--upper")args.upper=next();
         else if(flag=="--fixtures")args.fixture_dir=next();
         else if(flag=="--gamma")args.gamma_dir=next();
+        else if(flag=="--ziconv")args.ziconv_file=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
         else throw std::invalid_argument("unknown argument "+flag);
     }
@@ -197,6 +198,26 @@ int main(int argc,char** argv){
     if(!args.gamma_dir.empty()&&!fs::is_directory(args.gamma_dir))
         throw std::runtime_error("GAMMA directory does not exist: "+
                                  args.gamma_dir.string());
+    // Mixing height per hour. The original's SIMILT fills the surface-station
+    // profile only while zmid(k) <= zic and exits above it ("Above mixing
+    // height, exit", calmet.for L30345), leaving those levels to the upper-air
+    // sounding. P6E E29 exports the gridded ZICONV used by that branch; its
+    // accuracy is not certified, so the provenance is labelled in metadata.
+    std::vector<float> ziconv_hours;
+    if(!args.ziconv_file.empty()){
+        if(!fs::is_regular_file(args.ziconv_file))
+            throw std::runtime_error("ZICONV file does not exist: "+
+                                     args.ziconv_file.string());
+        const auto bytes=fs::file_size(args.ziconv_file);
+        if(bytes%std::size_t(4*cells)!=0||bytes/std::size_t(4*cells)<3)
+            throw std::runtime_error("ZICONV file must hold whole hourly "
+                                     "nx*ny float32 blocks");
+        std::ifstream stream(args.ziconv_file,std::ios::binary);
+        if(!stream)throw std::runtime_error("cannot open the ZICONV file");
+        ziconv_hours.assign(bytes/std::size_t(4),0.f);
+        stream.read(reinterpret_cast<char*>(ziconv_hours.data()),
+                    static_cast<std::streamsize>(bytes));
+    }
 
     const std::string deck=read_text(args.deck);
     const auto controls=deck_values(deck);
@@ -381,6 +402,34 @@ int main(int argc,char** argv){
             for(std::size_t k=0;k<9;++k)
                 station.surface_neutral_profile[k]=
                     LayerWind{profile.u_mps[k],profile.v_mps[k]};
+            // The original's SIMILT fills the surface-station profile only
+            // while zmid(k) <= zic and exits above the mixing height
+            // (calmet.for L30345 "Above mixing height, exit"); those levels
+            // keep the upper-air sounding instead of a surface extrapolation.
+            // Without a certified mixing height the profile is left missing
+            // above level 1 rather than invented.
+            float mixing_height_m=-1.f;
+            if(!ziconv_hours.empty()){
+                const std::size_t cell=std::size_t(ny/2)*std::size_t(nx)+
+                                       std::size_t(nx/2);
+                const std::size_t offset=h*std::size_t(nx)*std::size_t(ny)+cell;
+                if(offset>=ziconv_hours.size())
+                    throw std::runtime_error("ZICONV file has no block for "+hour_label(clock));
+                mixing_height_m=ziconv_hours[offset];
+            }
+            std::size_t levels_filled=1;
+            for(std::size_t k=1;k<9;++k){
+                const bool inside=mixing_height_m>0.f&&
+                                  mixing_height_m<9998.f&&
+                                  center_m[k]<=mixing_height_m;
+                if(!inside)
+                    station.surface_neutral_profile[k]=
+                        LayerWind{999999.f,999999.f};
+                else
+                    ++levels_filled;
+            }
+            station.similt_levels_filled=levels_filled;
+            station.mixing_height_m=mixing_height_m;
         }else if(icalm!=0){
             for(auto& wind:station.surface_neutral_profile)wind=LayerWind{0.f,0.f};
         }else{
