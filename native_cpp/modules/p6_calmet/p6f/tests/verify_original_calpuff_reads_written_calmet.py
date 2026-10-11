@@ -250,10 +250,12 @@ def listing_evidence(listing: pathlib.Path) -> dict:
 
 
 def normalised_listing(listing: pathlib.Path) -> list[str]:
-    """The listing without the wall-clock lines the runtime stamps."""
+    """The listing without the run-time stamps (wall clock and host timings)."""
+    volatile = ("Clock time:", "Elapsed Clock Time:", "CPU Time:")
     lines = []
     for line in listing.read_text(errors="replace").splitlines():
-        if "Clock time:" in line or re.match(r"^\s*Date:\s", line):
+        if any(token in line for token in volatile) or \
+                re.match(r"^\s*Date:\s", line):
             continue
         lines.append(line.rstrip())
     return lines
@@ -334,7 +336,7 @@ def main() -> int:
                            for index, (ours, theirs) in enumerate(
                                zip(got_listing, want_listing))
                            if ours != theirs]
-            print(f"listing lines ours={len(got_listing)} "
+            print(f"case A: listing lines ours={len(got_listing)} "
                   f"reference={len(want_listing)} first differences:")
             for index, ours, theirs in differences[:10]:
                 print(f"  line {index + 1}: ours={ours[:120]!r} "
