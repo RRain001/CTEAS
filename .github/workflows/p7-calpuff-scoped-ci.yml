@@ -58,3 +58,27 @@ jobs:
           cmake --build "$build" --parallel 2
           ctest --test-dir "$build" --output-on-failure
           echo "P7B_CONTROL_PARSER_CTEST=PASS"
+      - name: Compile unchanged original CALPUFF reference (P7A; no physics-pass claim)
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v gfortran
+          python3 native_cpp/modules/p7_calpuff/reference/build_original_calpuff.py \
+            --output "${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/original-fortran" \
+            --compiler gfortran
+      - name: Selected 2022 real MET.DAT I/O parity (opt-in immutable input)
+        shell: bash
+        env:
+          P7_FROZEN_MET_DAT: ${{ vars.P7_FROZEN_2022_MET_DAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${P7_FROZEN_MET_DAT:-}" ]; then
+            echo "P7B_REAL_MET21_REFERENCE=BLOCKED_NO_FROZEN_2022_INPUT"
+            exit 0
+          fi
+          test -s "$P7_FROZEN_MET_DAT"
+          build="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/build"
+          python3 native_cpp/modules/p7_calpuff/reference/compare_frozen_met21.py \
+            --met "$P7_FROZEN_MET_DAT" \
+            --native-bin "$build/cteas_p7_calmet21_inspect" \
+            --report "${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/met21-reference.json"

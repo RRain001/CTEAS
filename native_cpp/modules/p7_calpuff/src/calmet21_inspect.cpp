@@ -11,10 +11,14 @@ int main(int argc, char** argv) {
     try {
         const auto r=cteas::puff::Calmet21Reader::read(argv[1], {}, argc==3);
         std::cout<<"P7B_CALMET21_FIELD_DECODE=PASS\n"
-                 <<"NX="<<r.header.nx<<" NY="<<r.header.ny<<" NZ="<<r.header.nz<<"\n"
-                 <<"DX_M="<<r.header.dx_m<<" TZ="<<r.header.timezone<<"\n"
-                 <<"INTERVALS="<<r.intervals<<" HOURLY_FIELDS="<<r.hourly_fields
-                 <<" NONHOURLY_HEADER_RECORDS="<<r.metadata_records<<"\n"
+                 <<"NX="<<r.header.nx<<"\n"
+                 <<"NY="<<r.header.ny<<"\n"
+                 <<"NZ="<<r.header.nz<<"\n"
+                 <<"DX_M="<<r.header.dx_m<<"\n"
+                 <<"TZ="<<r.header.timezone<<"\n"
+                 <<"INTERVALS="<<r.intervals<<"\n"
+                 <<"HOURLY_FIELDS="<<r.hourly_fields<<"\n"
+                 <<"NONHOURLY_HEADER_RECORDS="<<r.metadata_records<<"\n"
                  <<"FIRST_UNIX_SEC="<<r.first_begin.unix_seconds
                  <<" END_UNIX_SEC="<<r.final_end.unix_seconds<<"\n"
                  <<"P7B_ORIGINAL_FORTRAN_NUMERICAL_PARITY=UNVERIFIED\n";
