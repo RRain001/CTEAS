@@ -41,6 +41,12 @@ jobs:
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
             --cpp build/p6e/p6e_surfvar_observed_reference \
             --out build/p6e/surfvar-observed-original-parity.json
+      - name: Original unmodified HEATFX sensible and shortwave source comparison
+        run: |
+          python3 native_cpp/modules/p6_calmet/p6e/reference/compare_original_heatfx.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --cpp build/p6e/p6e_heatfx_reference \
+            --out build/p6e/heatfx-original-parity.json
       - name: Save scientific gate evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,4 +56,5 @@ jobs:
             build/p6e/solar-original-parity.json
             build/p6e/pgtstb-original-parity.json
             build/p6e/surfvar-observed-original-parity.json
+            build/p6e/heatfx-original-parity.json
           if-no-files-found: warn

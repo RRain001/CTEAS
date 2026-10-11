@@ -70,3 +70,26 @@ P6E_E3_SURFVAR_ONE_STATION_SOURCE_PARITY=PASS;
 P6E_COMPLETE=FALSE; P6D_INTEGRATED=FALSE; P6_CALPUFF_READY=FALSE.
 
 Next physical components requiring full original parity: SURFVAR multistation and real P6C hourly fields, ELUSTR, HEATFX, MIXHT, TEMP3D and related selected cloud/RH/radiation paths. Eventually original 1h/6h/143h micrometeorological field comparison must be performed after P6D gate. Precipitation codes in real 2022 SURF are missing 143/143, original NPSTA=0. Original dry output IPCODE2D=0 must NOT be interpreted as valid observed zero rain; wet forcing remains unqualified.
+
+## E4 HEATFX physical kernel — submitted, pending source-parity CI
+
+Selected original CALMET v6.5.0 HEATFX (calmet.for L7999–8122)
+is implemented in an isolated C++20 module. It computes **short-wave
+flux at all cells**, even water, before skipping water sensible heat;
+sets land nighttime sensible heat to the original -0.1 W/m² marker
+without calculating nighttime energy balance; and calculates daytime
+land heat flux with the original Holtslag–van Ulden energy-budget
+constants, heat storage, anthropogenic flux, albedo and Bowen ratio.
+
+A frozen original-subroutine harness compiles the verbatim source and
+original hflux.met layout. Comparison: 24 synthetic cases × 20 grid
+cells × 2 fields = 960 components. Includes land vs water, multiple
+MCLOUD modes, fractional/observed cloud, twilight, daytime and
+nighttime. Predeclared tolerance: 0.02 W/m² absolute + 3e-5 relative
+for finite physical fluxes, exact equality for night/water sentinel.
+E4 is NOT PASS until the corresponding GitHub action reports PASS.
+
+Remaining: source-backed ELUSTR (u* and L), MIXHT / WSTARR
+(convective and mechanical mixing heights and w*), TEMP3D, real
+2022 multistation/surface and original 143h coupled 3D verification.
+No P6D branch, vendor source, shared P6 CMake, or default main edited.
