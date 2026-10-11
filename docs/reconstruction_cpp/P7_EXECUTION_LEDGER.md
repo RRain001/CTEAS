@@ -1413,3 +1413,106 @@ CTEAS-only `CONC.DAT` header. The release scheduler (P7O), the plume-rise path
 original-source parity. Explicitly out of scope and off this case's path:
 `MSHEAR=1`, `MSPLIT=1`, `MHFTSZ=1`, `MTILT=1`, building downwash, the numerical
 rise and (for the locked deck) CTSG.
+
+## 2026-10-12 P7Q SETPUF's sigma update (non-PRIME branch)
+
+Round status: the sigma update of `SETPUF` - the last piece P7P named - is
+reconstructed for the deck's path and parity-checked against the compiled
+**unmodified** vendor blocks.
+
+### Ported units and parity evidence
+
+| unit | vendor span | ported | parity |
+|---|---|---|---|
+| begin/mid/end sigma + virtuals (inline) | L48505-48536 | yes | 192 cases x 18 columns, `MAX_REL=8.5e-08` |
+| sigma-y final adjustments (inline) | L48570-48604 | yes | 144 cases x 6 columns, `MAX_REL=2.6e-13` |
+| sigma-z final adjustments (inline) | L48635-48668 | yes | 72 cases x 5 columns, `MAX_REL=2.2e-13` |
+
+`P7Q_ORACLE_PARITY_TOTAL_CASES=408`, `MISMATCHES=0`. All three blocks are
+extracted **verbatim** (15, 12 and 11 statements) into generated harnesses, and
+the pieces this round does not port are pinned by line: the PRIME wake branch
+(`WAKE_TAB`, L48445), the `MCTADJ=2` valley constraint (`WALLTRAP`, L48551) and
+strain (`CTADJ2`, L48622), plus the two sigma stores (`SIGYB` L48574, `SIGZB`
+L48639). The dispersion curves are injected (SIGTY/SIGTZ carry the P7D parity
+evidence) through a deterministic pair both sides share.
+
+### Semantics worth recording
+
+1. The begin/mid/end chain advances the sigmas with the step's half-distance and
+   half-time: the start-of-step sigma is converted to its virtual pair, the
+   midpoint is evaluated at `(vty+tmid, vdy+dmidkm)` and the end at
+   `(tm+tmid, dm+dmidkm)` - note that the end uses the midpoint's **time
+   argument**, not its virtual time.
+2. Sigma-z is carried through unchanged unless the puff is Gaussian in the
+   vertical (`mod(ICODE,2) == 1`); in that case the sigma-z virtuals are
+   *undefined* (stale) in the vendor, so the harness pre-zeroes them to make the
+   comparison well defined and the port returns zeros.
+3. The final adjustments enforce "sigmas must grow with time", store the
+   end-of-step sigma for the next step **before** adding the BID/SY0 quadrature,
+   then grow the reported sigmas by `sqrt(sigma**2 + sysq)` (sigma-y) and
+   `sqrt(sigma**2 + BIDFNL)` (sigma-z), and finally set the calm minimum sigmas
+   to the adjusted midpoint values.
+
+### Locked-case sigma run (physical chain only)
+
+`cteas_p7q_probe --deck-sigma MET.DAT puff.inp 0 513.3846439571 3533.7689269678
+70.8 1.0 1.0 100.0` runs the reconstructed sigma update for the deck's puff over
+the sampled step with the real met environment:
+
+```
+P7Q_DECK_SIGMA_RUN=PASS HOUR=0 STABILITY=4 URBAN=false SPEED_MS=1.39612
+  STEP_S=3600 STEP_DISTANCE_KM=5.02603 SIGMA_Y_START_M=1 SIGMA_Z_START_M=1
+  SYB1_M=1 SYM1_M=157.919 SYE1_M=294.387 SZB1_M=1 SZM1_M=58.3502
+  SZE1_M=89.1519 VTYE1_S=3607.48 VDYE1_KM=5.03647 VTZE1_S=3612.23
+  VDZE1_KM=5.04311 SIGYB_STORED_M=294.387 SIGZB_STORED_M=89.1519 SYSQ_M2=100
+  DECK_MCTADJ=2 MCTADJ2_ADJUSTMENTS_OMITTED=true
+  PRIME_WAKE_NOT_RECONSTRUCTED=true PHYSICAL_CHAIN_ONLY=true
+```
+
+The end-of-step sigmas (294.39 m / 89.15 m) match the independent P7N deck run
+(`SIGMA_Y_M=294.387`, `SIGMA_Z_M=89.1519`), which is a useful cross-check between
+the two rounds. The sigma update is a **per-puff** quantity: the 2500-receptor
+grid enters only through the sampling (P7E), so no per-receptor sigma exists to
+report. The deck selects `MCTADJ=2`, whose strain (`CTADJ2`) and valley
+(`WALLTRAP`) adjustments are NOT reconstructed; the run says so explicitly rather
+than hiding the difference. This is a physical-chain demonstration, **not** a
+comparison with the frozen `puff.con`.
+
+### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
+
+- `cteas_p7q_sigma_update_contract`: the begin/mid/end closed forms (including the
+  time-argument subtlety and the uniform-vertical shortcut), the precision
+  monotonicity fix, the store-before-quadrature ordering, the BID/SY0 quadrature,
+  the calm minima and every fail-closed path. PASS.
+- `cteas_p7q_source_parity`: anchor + three inline blocks + the five pinned
+  statements + 26 quoted statements + the three matrices. PASS (408 cases).
+- `cteas_p7q_locked_case_sigma`: the deck run above. PASS.
+- Local `ctest` 34/35 PASS; the only failure remains the pre-existing macOS
+  case-insensitive-filesystem failure of `cteas_p7_original_case_stage_contract`
+  (PASS on Linux).
+
+### Precise gaps
+
+1. **`MCTADJ=2` strain and valley constraints** (`CTADJ2` L20542-20835,
+   `WALLTRAP` L21745-21894) are on this deck's path and are the largest remaining
+   omission of the sigma update. `CTADJ2` adjusts the sigma-z by a strain factor
+   over the step and `WALLTRAP` constrains sigma-y in valleys; both need the
+   /GRID/ terrain state.
+2. **The PRIME wake branch** (`WAKE_TAB` L78403-78541, `IDW0` 3/4) is off this
+   deck (no building) but is needed for a general puff step.
+3. **`MHFTSZ=1`** (`HEFTRAN` L52621-52768) is off this deck; P7D already refuses
+   the Heffter sigma-z transition.
+4. `SETPUF`'s remaining tail (the `/CURRENT/` transfer, `ZFINAL`/`ZFRISE`, the
+   settling with `MTILT=1`) is covered by P7P for the counters and the position;
+   the `/CURRENT/` publication is still open.
+
+### Incomparability list after this round
+
+**Still one cause, narrowed to its smallest form so far**: the puff model is still
+the P7C prototype, now reduced to (a) the `MCTADJ=2` strain/valley adjustments of
+the sigma update and (b) the overall fidelity of the advection/step integration
+(no release-cadence-to-concentration end-to-end run yet), plus the CTEAS-only
+`CONC.DAT` header. The release scheduler (P7O), the plume rise (P7N), the step
+bookkeeping and `/CSIGMA/` selection (P7P) and the sigma update (this round) all
+carry original-source parity, and the two independent deck runs agree on the
+end-of-step sigmas.
