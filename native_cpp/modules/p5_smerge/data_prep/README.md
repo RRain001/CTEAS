@@ -1,3 +1,5 @@
+> **CURRENT P5 POLICY (2026-10-11):** See [ISD_LITE_HYBRID_WIND_POLICY.md](ISD_LITE_HYBRID_WIND_POLICY.md). The approved wind v2 discards the entire pair when either wind field is missing, holds the last *observed complete noncalm vector*, preserves original calm in a first-stage cleaned file, then replaces each original calm run by a constant shortest-arc midpoint WD and 0.5 m/s (calendar boundary copies nearest observed vector). All Scheme-C low-wind/zero-wind sections below are **historical only**, not active implementation. Full-ISD supplies only nonwind; ISD-Lite supplies wind. All nonwind variables now previous-value-fill missing source values.
+
 # P5 surface meteorological preparation — frozen CTEAS Python snapshot
 
 Source authority: RRain001/CTEAS main at 66e30ffb1ff4638a97af8a060748ce30b7578350 (2026-10-10). Original files stay untouched.
