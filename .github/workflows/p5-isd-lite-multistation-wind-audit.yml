@@ -142,6 +142,60 @@ jobs:
           if manifest['successes']<10:
               raise SystemExit('too few independent NOAA case-year samples')
           PY
+      - name: Install numerical policy test runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Independently replay final P5 wind stages on all twenty original NOAA files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -q numpy pandas
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          import pandas as pd
+          from native_cpp.modules.p5_smerge.data_prep.isd_lite_wind import parse_lite_winds
+          from native_cpp.modules.p5_smerge.data_prep.wind_policy_v2 import clean_then_replace_calms
+          all_results=[]
+          for p in sorted(Path("evidence/raw").glob("*.gz")):
+              usaf,wban,year_text=p.name[:-3].split("-")
+              year=int(year_text)
+              wind=parse_lite_winds(p,year,usaf+wban,validate_filename=False)
+              index=pd.date_range(f"{year}-01-01",f"{year}-12-31 23:00",freq="h")
+              df=pd.DataFrame({"deg":9999.0,"ms-1":9999.0},index=index)
+              presence=pd.Series(False,index=index)
+              for when,observed in wind.items():
+                  df.loc[when,"deg"] = 9999. if observed.direction_deg is None else observed.direction_deg
+                  df.loc[when,"ms-1"] = 9999. if observed.speed_mps is None else observed.speed_mps
+                  presence.loc[when]=True
+              cleaned,model,audit,stats=clean_then_replace_calms(df,"deg","ms-1",presence)
+              assert stats["raw_lite_record_hours"]==len(wind)
+              assert stats["original_calm_hours"]==stats["original_calm_0_0_hours"]+stats["original_calm_360_0_hours"]
+              assert stats["raw_absent_hours"]+stats["raw_lite_record_hours"]==len(index)
+              assert stats["original_wind_invalid_hours_including_absent"]+stats["original_calm_hours"]+stats["original_valid_positive_hours"]==len(index)
+              assert stats["cleaned_complete_wind_hours"]==stats["final_complete_wind_hours"]
+              assert ((audit["original_calms_C3_C4"]) & ((model["deg"]<=0)|(model["deg"]>360)|(model["ms-1"]<=0))).sum()==0
+              all_results.append({"station":usaf+"-"+wban,"year":year,"summary":stats})
+              print("P5_V2_REAL_STATION_YEAR_PASS",usaf+"-"+wban,year,
+                    "calms",stats["original_calm_hours"],
+                    "absent",stats["raw_absent_hours"],
+                    "invalid",stats["original_wind_invalid_hours_including_absent"],flush=True)
+          assert len(all_results)==20,len(all_results)
+          total=lambda key:sum(x["summary"][key] for x in all_results)
+          summary={"station_year_tests":len(all_results),"original_hours":total("raw_lite_record_hours"),
+                   "raw_absent_hours":total("raw_absent_hours"),
+                   "original_calm_hours":total("original_calm_hours"),
+                   "invalid_wind_hours_including_absent":total("original_wind_invalid_hours_including_absent"),
+                   "tests":all_results}
+          assert summary["original_hours"]==147503,summary["original_hours"]
+          Path("evidence/p5_v2_twenty_real_station_year_results.json").write_text(
+              json.dumps(summary,indent=2,ensure_ascii=False)+"\n")
+          print("P5_V2_REAL20_NOAA_REPLAY=PASS",json.dumps({
+              k:summary[k] for k in ("station_year_tests","original_hours",
+                                    "raw_absent_hours","original_calm_hours",
+                                    "invalid_wind_hours_including_absent")},sort_keys=True))
+          PY
       - name: Upload evidence from original station-year gzip files
         if: always()
         uses: actions/upload-artifact@v4
