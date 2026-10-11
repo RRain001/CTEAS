@@ -433,7 +433,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    float ha1,float ha2,float hb1,float hb2,
                    const std::string& wind_path,int mnmdav,float hafang,
                    const std::string& geo_path,float hc1,float hc2,float hc3,
-                   const std::string& state_prefix) {
+                   const std::string& state_prefix,float fcoriol) {
     const auto reference=read_calmet_dat21(reference_path);
     // Optional wind source: the frozen original U/V/W for the same intervals.
     std::optional<WindLevels> wind;
@@ -643,9 +643,15 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             mh.qh=heat_flux;mh.ustar=ustar;mh.el=el;mh.rho=density;
             mh.cmech.resize(cells);mh.fcori.resize(cells);
             for(std::size_t k=0;k<cells;++k) {
-                // FCORI=max(|2*(2*pi/86400)*sin(lat)|,0.25e-4), CMECH=CONSTB/sqrt(FCORI)
-                const float lat=0.0174533f*solar_grid.latitude_deg[k];
-                const float f=2.f*(6.2831853f/86400.f)*std::sin(lat);
+                // Original ZIPARM.FCORIOL rule (L9606-9616): a user value is
+                // used verbatim; only FCORIOL>998 selects the latitude-derived
+                // field f=2*(2*pi/86400)*sin(lat). Either way FCORI is floored
+                // at 0.25e-4 and CMECH=CONSTB/sqrt(FCORI).
+                float f=fcoriol;
+                if(fcoriol>998.f) {
+                    const float lat=0.0174533f*solar_grid.latitude_deg[k];
+                    f=2.f*(6.2831853f/86400.f)*std::sin(lat);
+                }
                 mh.fcori[k]=std::max(std::fabs(f),0.25e-4f);
                 mh.cmech[k]=1.41f/std::sqrt(mh.fcori[k]);
             }
@@ -1146,7 +1152,9 @@ int main(int argc,char** argv) {
                           static_cast<float>(std::stod(argument(argc,argv,"--hc1","5.31e-13"))),
                           static_cast<float>(std::stod(argument(argc,argv,"--hc2","60."))),
                           static_cast<float>(std::stod(argument(argc,argv,"--hc3","0.12"))),
-                          argument(argc,argv,"--state-prefix"));
+                          argument(argc,argv,"--state-prefix"),
+                          static_cast<float>(std::stod(
+                              argument(argc,argv,"--fcoriol","1.0e-4"))));
             return 0;
         }
         if(mode=="check") {
