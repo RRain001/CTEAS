@@ -119,6 +119,51 @@ def main() -> int:
         out_path = OUTPUT_DIR / f"{station_key}.csv"
         save_csv(out_path, header_lines or [], columns or [], clipped)
 
+    # User's CALMET input policy: for EACH calendar-hour in the active
+    # research interval there must be a complete, noncalm primary wind
+    # observation AFTER the approved P5 reconstruction. This is a P5 input
+    # guarantee only; it does not assert CALMET physics outside these inputs.
+    import json
+    import numpy as np
+    raw_dir = CASE_ROOT / "met" / "surface" / "isd_raw"
+    years = range(begin_dt.year, end_dt.year + 1)
+    for year in years:
+        manifest = raw_dir / f"station_selection_{year}.json"
+        if not manifest.is_file():
+            raise RuntimeError(f"P5 missing annual primary station manifest: {manifest}")
+        config = json.loads(manifest.read_text(encoding="utf-8"))
+        primary_sid = config.get("primary_sid")
+        primary_roles = [r for r in config["stations"]
+                         if r["sid"] == primary_sid and
+                            r.get("wind_treatment") == "COMPLETE_FILL_AND_CALM_REPLACE"]
+        if len(primary_roles) != 1:
+            raise RuntimeError(f"P5 {year}: exactly one annual primary expected")
+        key = f"{primary_sid[:6]}-{primary_sid[6:]}"
+        final = OUTPUT_DIR / f"{key}.csv"
+        if not final.is_file():
+            raise RuntimeError(f"P5 {year}: annual primary missing final output {final}")
+        _head, _cols, primary_df = read_station_csv(final)
+        rows = add_datetime(primary_df)
+        rows = rows.set_index("Datetime")
+        if rows.index.has_duplicates:
+            raise RuntimeError(f"P5 {year}: duplicate primary wind hours")
+        active_start = max(begin_dt, datetime(year, 1, 1))
+        active_end = min(end_dt, datetime(year, 12, 31, 23))
+        index = pd.date_range(active_start, active_end, freq="h")
+        sub = rows.reindex(index)
+        wd = pd.to_numeric(sub["deg"],errors="coerce")
+        ws = pd.to_numeric(sub["ms-1"],errors="coerce")
+        noncalm = (wd.gt(0) & wd.le(360) & ws.gt(0) &
+                   np.isfinite(wd) & np.isfinite(ws) & ws.lt(9999))
+        if not noncalm.all():
+            failing = index[~noncalm]
+            raise RuntimeError(f"P5_CALMET_PRIMARY_WIND_GAP year={year} "
+                               f"station={primary_sid} n={len(failing)} "
+                               f"first={failing[0]}: cannot guarantee active noncalm "
+                               "primary at every hourly model time")
+        print(f"P5_CALMET_PRIMARY_WIND_CLOCK_GUARD=PASS year={year} "
+              f"sid={primary_sid} hours={len(index)}", flush=True)
+
     print(f"任务完成, 数据保存路径: {OUTPUT_DIR}")
     return 0
 
