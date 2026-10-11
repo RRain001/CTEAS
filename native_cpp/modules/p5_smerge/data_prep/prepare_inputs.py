@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scoped P5 data preparation. Does not run original SMERGE or publish SURF.DAT."""
+"""P5 NOAA preparation and optional NATIVE C++20 SURF.DAT publication."""
 from __future__ import annotations
 
 import argparse
@@ -25,18 +25,25 @@ def commands(skip_download: bool, write_legacy_control: bool) -> list[list[str]]
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Prepare NOAA Global Hourly -> SMERGE GENERIC CSV; no Fortran execution."
+        description="Prepare NOAA GENERIC, optionally write original-compatible native C++ SURF.DAT."
     )
     parser.add_argument("--skip-download", action="store_true")
     parser.add_argument("--write-legacy-control", action="store_true",
                         help="Opt in to updating project/current/run/smerge/smerge.inp")
-    parser.add_argument("--expected-year", type=int, default=2022,
-                        help="Fail closed if case research_time does not match this year")
+    parser.add_argument("--expected-year", type=int, default=None,
+                        help="Optional single-year assertion; default supports multiyear studies")
+    parser.add_argument("--native-cpp-bin", type=Path,
+                        help="Run independent C++20 SURF.DAT writer and publish final station data; implies --write-legacy-control")
     parser.add_argument("--stack-lat", type=float, help="stack latitude")
     parser.add_argument("--stack-lon", type=float, help="stack longitude")
     parser.add_argument("--execute", action="store_true",
                         help="Opt in to writing project/current outputs; default prints plan only")
     args = parser.parse_args()
+    if args.native_cpp_bin is not None:
+        args.native_cpp_bin = args.native_cpp_bin.resolve()
+        if not args.native_cpp_bin.is_file():
+            parser.error(f"native C++ executable not found: {args.native_cpp_bin}")
+        args.write_legacy_control = True
     steps = commands(args.skip_download, args.write_legacy_control)
     if not args.skip_download and (args.stack_lat is not None or args.stack_lon is not None):
         if args.stack_lat is None or args.stack_lon is None:
@@ -84,10 +91,18 @@ def main() -> int:
         print(" ".join(cmd), flush=True)
         if args.execute:
             subprocess.run(cmd, cwd=REPO_ROOT, check=True)
+    if args.native_cpp_bin is not None:
+        native_cmd = [sys.executable, "-m", MODULE + ".run_smerge_and_monitor",
+                      "--native-cpp-bin", str(args.native_cpp_bin)]
+        print(" ".join(native_cmd), flush=True)
+        if args.execute:
+            subprocess.run(native_cmd, cwd=REPO_ROOT, check=True)
     if not args.execute:
-        print("DRY RUN: no network, files, SMERGE binary or SURF.DAT publication")
+        print("DRY RUN: no network, files, executable or SURF.DAT publication")
+    elif args.native_cpp_bin is None:
+        print("P5 GENERIC-ready preparation complete; supply --native-cpp-bin to publish SURF.DAT")
     else:
-        print("P5 GENERIC-ready preparation complete; original SMERGE reference not generated")
+        print("P5 NATIVE_CPP20_SURFDAT_COMPLETE=PASS")
     return 0
 
 
