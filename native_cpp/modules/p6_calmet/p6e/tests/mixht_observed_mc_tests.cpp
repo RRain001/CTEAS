@@ -48,4 +48,33 @@ int main(){
     assert(mixht_observed_mc(a).ziconv[0]>0.f);
     a.imixh=3;fails([&]{return mixht_observed_mc(a);});
     a.imixh=1;
+    // E37: the growth's DPTT input. The default keeps the carried memory;
+    // the COMP refresh mode hands the current hour's own DPTTP1 to the
+    // growth (the original's pre-MIXHT WATER/WATERP pass), which is what
+    // the internal-state dump shows at the station cell.
+    MixhtObservedMcTrace tr;
+    a.trace=&tr;a.trace_i=0;a.trace_j=0;
+    const auto carried=mixht_observed_mc(a);
+    assert(tr.hit&&tr.branch==4);
+    assert(tr.dptt_in==a.initial_dptt[0]);
+    assert(carried.dptt[0]==tr.dpttp1_k&&carried.dptt[0]!=a.initial_dptt[0]);
+    MixhtObservedMcInput b=a;b.dptt_refresh=1;
+    const auto refreshed=mixht_observed_mc(b);
+    assert(tr.dptt_in==refreshed.dptt[0]);
+    assert(refreshed.dptt[0]==carried.dptt[0]);
+    assert(refreshed.ziconv[0]!=carried.ziconv[0]);
+    // The refresh ignores the carried value, the default does not.
+    MixhtObservedMcInput c=b;c.initial_dptt[0]=5.f;
+    assert(mixht_observed_mc(c).ziconv[0]==refreshed.ziconv[0]);
+    MixhtObservedMcInput d=a;d.initial_dptt[0]=5.f;
+    assert(mixht_observed_mc(d).ziconv[0]!=carried.ziconv[0]);
+    // Trace reports the water skip and the stable land branch.
+    MixhtObservedMcTrace tw;
+    a.trace=&tw;a.trace_i=2;a.trace_j=0;
+    const auto water=mixht_observed_mc(a);
+    assert(tw.hit&&tw.branch==0&&water.zi[2]==-7777.f);
+    a.trace_i=1;
+    const auto stable=mixht_observed_mc(a);
+    assert(tw.hit&&tw.branch==1&&stable.ziconv[1]==0.f);
+    a.trace=nullptr;
 }

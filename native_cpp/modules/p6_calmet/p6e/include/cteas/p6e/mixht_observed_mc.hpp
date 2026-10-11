@@ -17,6 +17,18 @@
 #include <stdexcept>
 #include <vector>
 namespace cteas::p6e {
+// Optional per-cell trace of one MIXHT call. Diagnostic only: it records
+// the exact term values the kernel acted on, so they can be compared
+// against the original's internal-state dump term by term.
+// branch: 0 water skip, 1 stable land branch, 2 MIXHMC no-growth return,
+// 3 MIXHMC relaxation, 4 MIXHMC convective growth, 5 MIXHBG.
+struct MixhtObservedMcTrace {
+    bool hit=false;
+    int branch=-1;
+    float htold_m=0.f,wt_mks=0.f,gamma_mixdt=0.f,dptt_in=0.f;
+    float gamma_used=0.f,dpttp1_k=0.f,ziconv_m=0.f,dptt_out=0.f;
+    float tht_k=0.f,thtp_k=0.f,tave_k=0.f,bvf=0.f,hmech_m=0.f,zi_m=0.f;
+};
 struct MixhtObservedMcInput {
     std::size_t nx=0,ny=0;
     int water_first=50,water_last=60,iupt=-1;
@@ -24,6 +36,13 @@ struct MixhtObservedMcInput {
     // magnitude 2 = Batchvarova-Gryning (MIXHBG). The sign only selects
     // the over-water scheme, so magnitude is what matters on land.
     int imixh=1;
+    // COMP calls WATER/WATERP (L4616-4622) immediately before MIXHT
+    // (L4692), and both call MIXHMC with the /tjump/ DPTT array as the
+    // actual argument, so the land DPTT the growth sees is the current
+    // hour's own DPTTP1. With this flag the composed real-case path
+    // reproduces that refresh; without it DPTT is carried across hours
+    // (the behaviour of the standalone MIXHT harness).
+    int dptt_refresh=0;
     int izicrlx=0,timestep_s=3600;
     float constn=2400.f,zimin=20.f,zimax=2500.f;
     float threshl=0.02f,dptmin=0.001f,dzzi=200.f;
@@ -33,6 +52,10 @@ struct MixhtObservedMcInput {
     std::vector<int> justa,nearu,landuse;
     std::vector<float> qh,ustar,el,rho,cmech,fcori;
     std::vector<float> initial_zi,initial_ziconv,initial_dptt;
+    // Optional single-cell trace capture (see MixhtObservedMcTrace).
+    std::size_t trace_i=static_cast<std::size_t>(-1);
+    std::size_t trace_j=static_cast<std::size_t>(-1);
+    MixhtObservedMcTrace* trace=nullptr;
 };
 struct MixhtObservedMcResult {
     std::vector<float> zi,ziconv,dptt;
@@ -64,8 +87,11 @@ inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
     // Original Fortran loops i first, then j. Each cell is independent.
     for(std::size_t i=0;i<a.nx;++i)for(std::size_t j=0;j<a.ny;++j){
         const auto k=j*a.nx+i;
-        if(a.landuse[k]>=a.water_first&&a.landuse[k]<=a.water_last)
+        const bool tr=a.trace!=nullptr&&i==a.trace_i&&j==a.trace_j;
+        if(a.landuse[k]>=a.water_first&&a.landuse[k]<=a.water_last) {
+            if(tr){a.trace->hit=true;a.trace->branch=0;}
             continue; // water sentinel remains unchanged
+        }
         if(!std::isfinite(a.qh[k])||!std::isfinite(a.ustar[k])||
            a.ustar[k]<=0.f||!std::isfinite(a.el[k])||
            !std::isfinite(a.fcori[k])||a.fcori[k]<=0.f||
@@ -76,9 +102,12 @@ inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
             if(a.el[k]<=0.f)throw std::invalid_argument("MIXHT MC stable EL<=0");
             const float zi1=a.constn*std::pow(a.ustar[k],1.5f);
             const float zi2=0.4f*std::sqrt(a.ustar[k]*a.el[k]/a.fcori[k]);
+            const float entering=r.ziconv[k];
             r.zi[k]=std::max(a.zimin,std::min({zi1,zi2,a.zimax}));
             r.ziconv[k]=0.f;
             r.dptt[k]=0.f;
+            if(tr){a.trace->hit=true;a.trace->branch=1;a.trace->htold_m=entering;
+                   a.trace->ziconv_m=0.f;a.trace->dptt_out=0.f;a.trace->zi_m=r.zi[k];}
             continue;
         }
         const int nearest=a.nearu[k];
@@ -94,6 +123,12 @@ inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
                                   htold,a.dzzi,a.dptmin);
         const float wt=a.qh[k]/(a.rho[k]*cp);
         float gamma=sounding.dtheta_k_per_m;
+        if(tr){
+            a.trace->hit=true;a.trace->htold_m=htold;a.trace->wt_mks=wt;
+            a.trace->gamma_mixdt=sounding.dtheta_k_per_m;
+            a.trace->dptt_in=r.dptt[k];
+            a.trace->tht_k=sounding.tht_k;a.trace->thtp_k=sounding.thtp_k;
+        }
         if(a.imixh==2||a.imixh==-2){
             // Original MIXHT IMIXH=2 branch: Batchvarova-Gryning growth.
             // TK is the first face temperature of the selected sounding
@@ -117,6 +152,8 @@ inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
             r.ziconv[k]=std::min(a.zimax,conv.ziconv_m);
             // MIXHBG applies the DPTMIN floor to the caller's lapse rate.
             gamma=conv.gamma_kperm;
+            if(tr){a.trace->branch=5;a.trace->gamma_used=conv.gamma_kperm;
+                   a.trace->ziconv_m=r.ziconv[k];a.trace->dptt_out=r.dptt[k];}
         }else{
             MixhmcInput m;
             m.wt_mks=wt;
@@ -124,7 +161,16 @@ inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
             m.threshold_wm2perm=a.threshl;
             m.zimax_m=a.zimax;m.htold_m=htold;
             m.dptt_k=r.dptt[k];
+            if(a.dptt_refresh) {
+                // Original pre-MIXHT refresh of the /tjump/ DPTT: the value
+                // handed to the growth is the current hour's DPTTP1.
+                constexpr float wto_rho=1.2f,wto_cp=996.f;
+                const float gclamp=std::max(gamma,a.dptmin);
+                const float buoy=wt-a.threshl*htold/(wto_rho*wto_cp);
+                if(buoy>0.f)m.dptt_k=std::sqrt(std::max(gclamp*a.twodte*buoy,0.f));
+            }
             m.tht_k=sounding.tht_k;m.thtp_k=sounding.thtp_k;
+            if(tr)a.trace->dptt_in=m.dptt_k;
             m.izicrlx=a.izicrlx;m.timestep_s=a.timestep_s;
             m.tzicrlx_s=a.tzicrlx;
             m.dptmin_kperm=a.dptmin;
@@ -133,12 +179,17 @@ inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
             r.ziconv[k]=std::min(a.zimax,conv.ziconv_m);
             r.dptt[k]=conv.dptt_k;
             gamma=conv.gamma_kperm;
+            if(tr){a.trace->branch=2+conv.branch;a.trace->gamma_used=conv.gamma_kperm;
+                   a.trace->dpttp1_k=conv.dpttp1_k;
+                   a.trace->ziconv_m=r.ziconv[k];a.trace->dptt_out=r.dptt[k];}
         }
         const float tave=(sounding.thtp_k+sounding.tht_k)/2.f;
         if(!(tave>0.f))throw std::invalid_argument("MIXHT MC nonphysical mean temperature");
         const float bvf=std::pow(g*gamma/tave,0.25f);
         const float hmech=a.cmech[k]*a.ustar[k]/bvf;
         r.zi[k]=std::min(a.zimax,std::max({a.zimin,hmech,r.ziconv[k]}));
+        if(tr){a.trace->tave_k=tave;a.trace->bvf=bvf;a.trace->hmech_m=hmech;
+               a.trace->zi_m=r.zi[k];}
         if(!std::isfinite(r.zi[k])||!std::isfinite(r.ziconv[k])||
            !std::isfinite(r.dptt[k]))
             throw std::invalid_argument("MIXHT MC produced nonfinite height");
