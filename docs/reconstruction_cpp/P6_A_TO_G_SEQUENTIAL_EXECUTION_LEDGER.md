@@ -48,3 +48,13 @@
 ### P6C 实测 VERTAV / PREPDI / FACET 温度层面最新结果
 
 [原始 CALMET Fortran 2022 单元对照 CI](https://github.com/RRain001/CTEAS/actions/runs/38111692047) 对 `VERTAV` 的 234 个层平均 U/V（原版完整子程序提取），`PREPDI` 的 2,574 个分层逐时 U/V（原版指定时间插值源码片段与独立时次索引），`FACET+INTP` 的 130 个模型层界面温度（原版两个完整子程序提取）均 PASS。详见 [P6C_VERTAV_PREPDI_FACET_2022_AUDIT.md](P6C_VERTAV_PREPDI_FACET_2022_AUDIT.md)。注意：这并不证明 `COMP` 的全部状态机，也不能取代微气象模块和 P6D 诊断风场。正式标记维持 `P6C_PARTIAL`、`P6D–G_HOLD`。
+
+### P6C 2026-10-11 真实 COMP 双缓冲 + 三源联合输入进展（保持整阶段 PARTIAL）
+
+本次新增 `comp_buffered_timeline.hpp`、`comp_joint_main.cpp`、`check_joint_observation_2022.py`、`original_comp_runtime_trace.py`，以及软件测试与原版独立验证。详细审计 [P6C_COMP_JOINT_2022_AUDIT.md](P6C_COMP_JOINT_2022_AUDIT.md)。
+
+- [原版 Fortran 143 时段 COMP 双缓冲运行状态 PASS](https://github.com/RRain001/CTEAS/actions/runs/38112842109)：286 个物理 AA/BB 探空时次，429 个时间/秒相关检查，11 次 `JUSTA/JORDER` 切换与 C++ 一致，0 mismatches；临时插桩前后原版 MET.DAT SHA256 相同。没有修改 vendor Fortran 原文件。
+- [真实三源联合场候选链与原版数值核验 PASS](https://github.com/RRain001/CTEAS/actions/runs/38112477819)：GEO 50×50、SURF 143 小时、UP 13 探空；1/6/143 时段，143×9×2=2,574 U/V 与 5,148 个 AA/BB 层面温度关联值通过，地面站/时间/云量/温度/风有效性掩码一致。最大 U/V 误差约 `5e-10 m/s`。
+- **原版 `MAXSEP=14 h`** 是 `calmet.for` 的 `data maxsep/14/` 固定常量（L3654），不是 CALMET.INP 的可配置 24h。已纠正原生默认限制，测试 15 h 缺测 fail-closed；频率严格检查原版 `abs(IUPSEC)<NSECDT && IUPSEC != 0`。
+- 仍欠原版 `RDSN/CGAMMA` 联动及完整观测掩码/输入场执行状态验收。不能因 COMP 状态 PASS 就认定 `P6C_COMPLETE=TRUE`，也不能开始 P6D 整阶段。
+- P5 SURF 的降水 `IPCODE=9999` **143/143 缺测**；原版 `NPSTA=0`。`P6_WET_FORCING_VALIDATED=FALSE`、`P7_WET_DEPOSITION_VALIDATED=FALSE` 独立保持。
