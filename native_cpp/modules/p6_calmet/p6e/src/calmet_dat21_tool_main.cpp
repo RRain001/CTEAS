@@ -1263,6 +1263,39 @@ int main(int argc,char** argv) {
                           argument(argc,argv,"--mixht-trace"));
             return 0;
         }
+        if(mode=="dump-field") {
+            // Extract one CALMET.DAT 2.1 field as raw float32, hour-major,
+            // i fastest - the same layout as the --state-prefix exports, so
+            // a field of the frozen reference can be diffed per cell/hour
+            // against the chain's own (E39 follow-up).
+            const auto file=argument(argc,argv,"--file");
+            const auto field=argument(argc,argv,"--field");
+            const auto out_path=argument(argc,argv,"--out");
+            if(file.empty()||field.empty()||out_path.empty())
+                throw std::invalid_argument("dump-field needs --file, --field and --out");
+            const auto dataset=read_calmet_dat21(file);
+            std::vector<float> values;
+            for(std::size_t hour=0;hour<dataset.intervals;++hour)
+                for(std::size_t j=0;j<dataset.fields_per_hour;++j) {
+                    const auto& candidate=dataset.hourly[hour*dataset.fields_per_hour+j];
+                    std::string label=candidate.label;
+                    while(!label.empty()&&label.back()==' ')label.pop_back();
+                    if(label==field) {
+                        values.insert(values.end(),candidate.real_values.begin(),
+                                      candidate.real_values.end());
+                        break;
+                    }
+                }
+            if(values.empty())
+                throw std::invalid_argument("dump-field: field not found in "+file);
+            std::ofstream out_file(out_path,std::ios::binary);
+            if(!out_file)throw std::invalid_argument("dump-field: cannot write "+out_path);
+            out_file.write(reinterpret_cast<const char*>(values.data()),
+                           static_cast<std::streamsize>(values.size()*sizeof(float)));
+            std::cout<<"dump-field "<<field<<" values="<<values.size()
+                     <<" -> "<<out_path<<"\n";
+            return 0;
+        }
         if(mode=="check") {
             const auto file=argument(argc,argv,"--file");
             if(file.empty())throw std::invalid_argument("check needs --file");
