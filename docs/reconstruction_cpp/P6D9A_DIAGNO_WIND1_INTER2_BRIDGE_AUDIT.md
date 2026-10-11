@@ -42,6 +42,35 @@ The two real-case verdicts are not yet inside `scripts/local_gate.py`'s `p6d` st
 
 Both comparators compile the unchanged original routines with gfortran and are fail-closed, so they belong in the gate rather than only in local evidence.
 
+### The height-growing U/V error was the uncapped SIMILT surface profile (round 11)
+
+The P6G end-to-end run showed the reconstructed wind's error growing monotonically with height (level 1 `1.518e-03` m/s -> level 9 `13.507` m/s) and attributed it to the missing `SMOOTH`/`DIVCEL`/`WINDBC`. **Measured first, that attribution is wrong**: enabling the closed field changes the product by at most `5.9e-05` m/s (level 9 of hour 1), four orders below the reported error, so the tail is not the cause.
+
+The real chain of evidence:
+
+1. With a single station and `WO=1.0` both the frozen reference and my product are **horizontally uniform per level**, so the comparison reduces to the per-level station profile.
+2. The reference's per level equals the **upper-air sounding** interpolated at the CALMET level heights: at hour 1 my fixture's `upper_observed_profile` is `0.866781` at level 5 and `3.67967` at level 6 against the reference's `0.866` and `3.677` - exact to the reported precision.
+3. My product instead carried a **neutral SIMILT profile at all nine levels** and WIND1 combines the surface and upper columns by inverse distance; with both stations at the grid centre the weights are 0.5/0.5, so the upper-air shear was halved: level 9 read `0.716` where the sounding gives `1.017` and the reference `2.464`.
+4. The original's `SIMILT` fills the surface-station profile only while `zmid(k) <= zic` and then **exits above the mixing height** (`calmet.for` L30345, `c --> Above mixing height, exit / goto 2`); the levels above keep the upper-air values, and a station value that is missing simply drops out of WIND1's weighted sum.
+5. The mixing height is not invented here: P6E's E29 `ZICONV` export gives **150.3 m at hour 1** (344.3 / 531.5 / 791.7 / 958.1 / 985.4 m for hours 2-6), and that boundary is exactly what the reference shows at hour 1 - level 4 (120 m) still carries the surface value `-0.567` while level 5 (240 m) already carries the sounding's `0.866`.
+
+Implementation: `--ziconv <file>` (P6E E29 `<prefix>.ziconv.f32`, hour-major, labelled `ZICONV_SOURCE: P6E_CHAIN_INTERNAL_UNCALIBRATED` with its accuracy caveat in `metadata.json`), the surface column carrying the INTER2 missing sentinel above the mixing height, and a symmetric branch in WIND1 that drops the missing column and renormalizes the remaining weights (the mirror image of the already-verified `upper_layer_valid` branch). The ZICONV used for the recorded run came from the P6E chain driven by the **frozen** wind (case B), which is what keeps the reconstruction non-circular.
+
+Measured effect at hour 1 (U, `|product - frozen reference|`):
+
+| level | before | after |
+|---|---|---|
+| 2 | 0.03730 | 0.03730 |
+| 3 | 0.06616 | 0.06616 |
+| 4 | 0.08872 | 0.08872 |
+| 5 | 0.99700 | **0.00116** |
+| 6 | 2.32200 | **0.00271** |
+| 7 | 3.91500 | **0.00457** |
+| 8 | 3.65100 | **0.00426** |
+| 9 | 1.74900 | **0.00204** |
+
+Levels 2-4 are unchanged because they sit **inside** the mixing height, where the original uses the *stability-dependent* similarity profile (`STHEOR` with the surface fluxes and `temp2d`, the `IEXTRP = ±4` branch) while the selected WIND1 kernel is the **neutral** SIMILT. That residual (0.037-0.089 m/s at hour 1) is the next quantified gap, and it is reachable with data this producer already computes (`qh_*.f32`, `temp2d_*.f32`).
+
 ### The DIAGNO product is the closed field: SMOOTH + DIVCEL now reach U/V (round 11)
 
 The tail (`SMOOTH` -> `DIVCEL` -> `W`, `original_smooth_divcel_w`) was already executed and self-verified against the frozen routines, but only its **W faces** were written out; the U/V the tail computes were discarded. The end-to-end run against the frozen `met.dat` therefore compared the *pre-tail* INTER2 blend and its error grew monotonically with height (level 1 `1.518e-03` m/s -> level 9 `13.507` m/s), which is exactly the signature of a missing per-layer smoothing pass (the deck smooths 2 passes on level 1 and 4 on each level above).
