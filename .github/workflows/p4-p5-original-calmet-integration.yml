@@ -302,6 +302,50 @@ jobs:
               json.dumps(outcome,indent=2)+"\n")
           print("P5_ORIGINAL_SMERGE_CALMET_SPARSE_MULTISTATION=PASS",json.dumps(outcome))
           PY
+      - name: Native SURF.DAT sparse 2-station parity without legacy EOF marker and CALMET
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp project/current/run/smerge/surf.dat integration-evidence/reference-original-sparse-two-stations.dat
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,os
+          case=Path("project/current").resolve()
+          root=case/"run/smerge"
+          src=(root/"smerge.inp").read_text()
+          matches=re.findall(r"!\s*SFCMET\s*=\s*([^!]+?)\s*!",src,re.I)
+          edits=0
+          for old in matches:
+              raw=old.strip()
+              if "original_smerge_sparse_runtime" not in raw:continue
+              sparse=case/"met/surface/isd2smerge_ready"/Path(raw).name
+              if not sparse.is_file():
+                  raise RuntimeError(f"original sparse source absent {sparse}")
+              new=os.path.relpath(sparse,root)
+              src=src.replace(old,new+" ")
+              edits+=1
+          if edits!=1:raise RuntimeError(f"expected one SMERGE sparse EOF adapter {edits}")
+          src=re.sub(r"(!\s*SURFDAT\s*=\s*)[^!]+!",r"\g<1>native_sparse_raw.dat !",src,count=1)
+          native=root/"native_no_eof.inp"
+          native.write_text(src)
+          print("P5_NATIVE_SPARSE_NO_EOF_SOURCES=PASS",edits)
+          PY
+          /tmp/cteas-p5-native-build/cteas_p5_smerge \
+            project/current/run/smerge/native_no_eof.inp \
+            2>&1 | tee integration-evidence/native-sparse-run.log
+          cmp project/current/run/smerge/native_sparse_raw.dat \
+              integration-evidence/reference-original-sparse-two-stations.dat
+          echo "P5_NATIVE_SPARSE_NO_SENTINEL_BYTE_PARITY=PASS" | tee integration-evidence/native-sparse-status.txt
+          # Re-run using normal named C++ backend and publish to CALMET.
+          python3 -m native_cpp.modules.p5_smerge.data_prep.run_smerge_and_monitor \
+            --native-cpp-bin /tmp/cteas-p5-native-build/cteas_p5_smerge \
+            2>&1 | tee integration-evidence/native-publish-run.log
+          rm -f project/current/run/met/met.dat
+          python3 -m engine.run_met.run_met --case ci_original_calmet_p4_p5_2022 \
+            2>&1 | tee integration-evidence/native-sparse-calmet-run.log
+          test -s project/current/run/met/met.dat
+          cp project/current/run/met/met.lst integration-evidence/native-sparse-calmet.lst
+          echo "P5_NATIVE_SURFDAT_ORIGINAL_CALMET_SPARSE_MULTISTATION=PASS"
       - name: Retain diagnostics even on failure
         if: always()
         shell: bash
