@@ -18,8 +18,12 @@ def cut(lines,first,last,max_len=55):
     if len(start)!=1:raise RuntimeError(f"original CALMET slice start not unique: {first}")
     ix=start[0]
     final=[i for i in range(ix,min(len(lines),ix+max_len)) if lines[i].rstrip()==last]
-    if len(final)!=1:raise RuntimeError(f"original CALMET slice end not unique: {last}")
-    return ix+1,final[0]+1,"\n".join(lines[ix:final[0]+1])+"\n"
+    if not final:raise RuntimeError(f"original CALMET slice end missing: {last}")
+    # The outer original IF contains nested IFs whose ENDIF text matches.
+    # Our maximum source window ends before the next source block, so the
+    # last matching ENDIF is the original outer closing statement.
+    end=final[-1]
+    return ix+1,end+1,"\n".join(lines[ix:end+1])+"\n"
 
 HEADER=r"""      program originaldiagist
       include 'params.met'
