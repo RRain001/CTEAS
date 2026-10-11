@@ -57,13 +57,16 @@ std::map<std::string,std::vector<float>> deck_values(const std::string& text){
     for(auto it=std::sregex_iterator(text.begin(),text.end(),annotated);
         it!=std::sregex_iterator();++it){
         const std::string key=(*it)[1].str();
+        // Values arrive either space or comma separated ("0 , 2 , 4").
+        static const std::regex number(
+            R"([-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eEdD][-+]?[0-9]+)?)");
+        const std::string raw=(*it)[2].str();
         std::vector<float> numbers;
-        std::istringstream stream((*it)[2].str());
-        std::string token;
-        while(stream>>token){
-            if(token==",")continue;
-            try{numbers.push_back(std::stof(token));}
-            catch(const std::exception&){numbers.clear();break;}
+        for(auto n=std::sregex_iterator(raw.begin(),raw.end(),number);
+            n!=std::sregex_iterator();++n){
+            std::string token=n->str();
+            for(char& c:token)if(c=='d'||c=='D')c='e';
+            numbers.push_back(std::stof(token));
         }
         if(!numbers.empty()&&!values.count(key))values[key]=numbers;
     }
