@@ -1,0 +1,50 @@
+name: C++ input contracts
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/**'
+      - '.github/workflows/cpp-input-contracts.yml'
+      - 'calpuff_terrain_and_landuse_data_crop/hefei_5km/**'
+  push:
+    branches:
+      - 'codex/cpp20-p1-p2-foundation-20261010'
+    paths:
+      - 'native_cpp/**'
+      - '.github/workflows/cpp-input-contracts.yml'
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GDAL headers
+        run: sudo apt-get update && sudo apt-get install -y libgdal-dev
+      - name: Configure
+        run: cmake -S native_cpp -B /tmp/cteas-cpp-build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build /tmp/cteas-cpp-build -j2
+      - name: Unit tests
+        run: ctest --test-dir /tmp/cteas-cpp-build --output-on-failure
+      - name: Read immutable cropped source inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/cteas-cpp-build/cteas_geo_inspect terrain calpuff_terrain_and_landuse_data_crop/hefei_5km/china_srtm/srtm_60_06_hefei_5km.tif | tee /tmp/terrain.txt
+          /tmp/cteas-cpp-build/cteas_geo_inspect landuse calpuff_terrain_and_landuse_data_crop/hefei_5km/eurasia_asia_landuse/eausgs2_0la_hefei_5km.generic.txt | tee /tmp/landuse.txt
+          grep -q 'width=90 height=77' /tmp/terrain.txt
+          grep -q 'datum=ESR-S categories=38 points=57600' /tmp/landuse.txt
+      - name: Independently verify crop SHA-256
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('calpuff_terrain_and_landuse_data_crop/hefei_5km')
+          info=json.loads((root/'crop_info.json').read_text())
+          for item in [info['terrain'][0],info['landuse']['generic']]:
+              p=pathlib.Path(item['output'])
+              digest=hashlib.sha256(p.read_bytes()).hexdigest()
+              assert digest==item['sha256'],(p,digest,item['sha256'])
+              print(f'INPUT_SHA256_PASS {p.name}: {digest}')
+          PY
