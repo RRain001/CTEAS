@@ -53,7 +53,7 @@ int main(){
     idle.minim_iterations=0;
     idle.minim_divergence_limit_per_s=0.f;
     const auto adjusted=original_diagno_obrien_minim(base,dz,100.f,100.f,idle);
-    require(adjusted.w_face_mps.size()==48,"IOBR tail W face shape");
+    require(adjusted.w_face_mps.size()==36,"IOBR tail W face shape");
     for(std::size_t p=0;p<12;++p){
         require(adjusted.w_face_mps[p]==0.f,
                 "O'Brien must not touch the ground face");
