@@ -57,8 +57,7 @@ def _driver(block, obrien, minim_call):
         raise RuntimeError("DIAGNO driver unit 10 anchor drift")
     declared = declared.replace(
         "      close(10)\n",
-        "      read(10,*) zface1\n"
-        "      read(10,*) iobr,niter,divlim\n"
+        "      read(10,*) zface1,iobr,niter,divlim\n"
         "      close(10)\n", 1)
     # Original CELLZB(i)=ZFACE(i) (calmet.for L5151/L5157); the driver owns
     # ZFACE(1) so the O'Brien height ratio is exercised off the ground.
