@@ -1,6 +1,6 @@
 # Hefei 2022: first real numerical reference case
 
-Status: CASE_SPEC_LOCKED / FORTRAN_CONTROLS_UNVERIFIED / REFERENCE_NOT_CAPTURED.
+Status: CASE_SPEC_LOCKED / FORTRAN_CONTROLS_CAPTURED / REFERENCE_CAPTURED — artifact register with per-artifact, per-deck and per-vendor-source SHA-256: `docs/reconstruction_cpp/HEFEI_2022_REFERENCE_CAPTURE.md`, reproduced by `scripts/capture_hefei_2022_reference_case.py` (known caveats are listed in that register).
 Source of user requirements: `testcase.md` @ `66e30ffb1ff4638a97af8a060748ce30b7578350`; crop provenance: `calpuff_terrain_and_landuse_data_crop/hefei_5km/crop_info.json`.
 
 | Property | Intent, not assumed legacy control |
