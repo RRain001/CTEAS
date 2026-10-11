@@ -45,6 +45,12 @@ def read_original(path):
         v.append(float(parts[4]))
     return u, v
 
+def report_windows(windows):
+    return {label: {**stats,
+                    "status": "PASS" if stats["worst_abs_error_mps"] <= ABS_TOL
+                    else "FAIL"}
+            for label, stats in windows.items()}
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--vendor", required=True, type=Path)
@@ -67,11 +73,18 @@ def main():
     if not labels:
         raise RuntimeError("producer emitted no hourly labels")
     per_hour = {}
+    per_level_abs = [0.0] * NZ
+    per_level_rel = [0.0] * NZ
+    windows = {label: {"components": 0, "worst_abs_error_mps": 0.0,
+                       "worst_rel_error": 0.0}
+               for label in ("1h", "6h", "143h")}
     total = 0
     worst_abs = 0.0
     worst_rel = 0.0
     failures = []
-    for label in labels:
+    window_for = lambda index: ("1h" if index < 1 else
+                                "6h" if index < 6 else "143h")
+    for hour_index, label in enumerate(labels):
         fixture = args.fixtures / f"wind1_driver_{label}.inp"
         reference = args.out / f"original_{label}.txt"
         if not fixture.exists():
@@ -90,8 +103,24 @@ def main():
                 error = abs(a - b)
                 if error > hour_abs:
                     hour_abs = error
+                level = index // N
+                per_level_abs[level] = max(per_level_abs[level], error)
                 if abs(a) > 1.0e-3:
-                    hour_rel = max(hour_rel, error / abs(a))
+                    ratio = error / abs(a)
+                    hour_rel = max(hour_rel, ratio)
+                    per_level_rel[level] = max(per_level_rel[level], ratio)
+                for window in ("1h", "6h", "143h"):
+                    if window == "1h" and hour_index >= 1:
+                        continue
+                    if window == "6h" and hour_index >= 6:
+                        continue
+                    stats = windows[window]
+                    stats["components"] += 1
+                    stats["worst_abs_error_mps"] = max(
+                        stats["worst_abs_error_mps"], error)
+                    if abs(a) > 1.0e-3:
+                        stats["worst_rel_error"] = max(
+                            stats["worst_rel_error"], error / abs(a))
                 if error > ABS_TOL and len(failures) < 12:
                     failures.append({"hour": label, "component": name,
                                      "index": index, "original": a,
@@ -101,7 +130,8 @@ def main():
         worst_rel = max(worst_rel, hour_rel)
         per_hour[label] = {"max_abs_error_mps": hour_abs,
                            "max_rel_error": hour_rel}
-    passed = not failures
+    passed = not failures and all(
+        stats["status"] == "PASS" for stats in report_windows(windows).values())
     report = {
         "status": ("PASS_REALCASE_STEP_ONE_ORIGINAL_WIND1_PLUS_SIMILT"
                    if passed else "FAIL"),
@@ -118,6 +148,11 @@ def main():
         "worst_abs_error_mps": worst_abs,
         "worst_rel_error": worst_rel,
         "hours": per_hour,
+        "levels": [{"level": k + 1,
+                    "max_abs_error_mps": per_level_abs[k],
+                    "max_rel_error": per_level_rel[k]}
+                   for k in range(NZ)],
+        "windows": report_windows(windows),
         "first_failures": failures,
     }
     (args.out / "realcase-step-one-parity.json").write_text(
