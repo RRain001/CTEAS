@@ -432,12 +432,12 @@ int main(int argc,char** argv){
             tail.u_mps=blended_u;tail.v_mps=blended_v;
             tail.ub_west_east_mps.assign(9*2*ny,0.f);
             tail.vb_south_north_mps.assign(9*2*nx,0.f);
-            for(std::size_t k=0;k<9;++k)for(std::size_t j=0;j<ny;++j){
+            for(std::size_t k=0;k<9;++k)for(std::size_t j=0;j<static_cast<std::size_t>(ny);++j){
                 tail.ub_west_east_mps[k*2*ny+j]=blended_u[k*2500+j*50];
                 tail.ub_west_east_mps[k*2*ny+ny+j]=
                     blended_u[k*2500+j*50+49];
             }
-            for(std::size_t k=0;k<9;++k)for(std::size_t i=0;i<nx;++i){
+            for(std::size_t k=0;k<9;++k)for(std::size_t i=0;i<static_cast<std::size_t>(nx);++i){
                 tail.vb_south_north_mps[k*2*nx+i]=blended_v[k*2500+i];
                 tail.vb_south_north_mps[k*2*nx+nx+i]=
                     blended_v[k*2500+49*50+i];
