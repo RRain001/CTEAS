@@ -194,6 +194,32 @@ def main():
                                         "--candidate",reference])
         assert full.returncode==0, full.stdout
         assert json.loads(full.stdout)["status"]=="PASS"
+        # ---- 5b. real-input partial candidate mode ------------------------
+        observations=root/"observations.csv"
+        observations.write_text("hour_index,air_temperature_k,humidity_pct\n"+
+                                "1,279.25,52\n2,281.75,46\n3,276.50,87\n")
+        candidate=root/"realcase-candidate.dat"
+        emitted_real=run([tool,"emit-realcase","--reference",reference,
+                          "--observations",observations,"--out",candidate])
+        assert emitted_real.returncode==0, emitted_real.stderr
+        real_report=json.loads(emitted_real.stdout)
+        assert real_report["produced_fields"]==["TEMPK","IRH","T-LEV  1"], real_report
+        assert len(real_report["missing_sentinel_fields"])==LABELS_PER_HOUR-3
+        partial=json.loads(compare(tool,reference,candidate).stdout)
+        for field in partial["fields"]:
+            expected=HOURS*CELLS if field["label"] in ("TEMPK","IRH","T-LEV  1") else 0
+            assert field["denominator"]==expected, field
+            if expected==0:
+                assert field["missing_candidate"]==HOURS*CELLS, field
+        partial_harness=harness(harness_path,tool,["--reference",reference,
+            "--reference-sha256",digest,"--candidate",candidate])
+        assert partial_harness.returncode in (0,1), partial_harness.stdout
+        assert json.loads(partial_harness.stdout)["status"] in ("PASS","FAIL_NUMERIC")
+        bad_observations=root/"short-observations.csv"
+        bad_observations.write_text("hour_index,air_temperature_k,humidity_pct\n1,279.0,52\n")
+        assert run([tool,"emit-realcase","--reference",reference,
+                    "--observations",bad_observations,
+                    "--out",root/"no.dat"]).returncode!=0
         real_note="real_reference=not supplied"
         # ---- 6. optional frozen real CALMET.DAT 2.1 reference -------------
         if args.real_reference:
