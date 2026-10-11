@@ -2301,3 +2301,81 @@ come from the wind or the geometry and must come from `QH`.
 `P6E_EL_REAL_CASE=0 exceedances`, `P6E_WSTAR_REAL_CASE=0 exceedances`;
 `P6E_18_OWNED_FIELDS_REAL_CASE=PASS` (total exceedances 0);
 `P6E_FULL=NOT_PASS` (the 27 P6D-owned wind fields remain P6D's).
+
+## E43 the frozen full-field verdict is a gate step; `P6E_FULL` stated in both wind regimes
+
+### Gate-visible acceptance
+
+`tests/verify_real_2022_full_field_reference.py` is registered as the CTest
+**`p6e_calmet_dat21_real_full_field_reference`**, so the local gate no longer
+depends on an ad-hoc run.  It reproduces the E42 acceptance end to end on the
+frozen case:
+
+1. `p6e_p6c_hourly_bridge <SURF.DAT> <UP.DAT> 58424 hourly.csv`
+2. `p6e_calmet_dat21 emit-realcase --reference met.dat --observations
+   hourly.csv --wind-file met.dat --geo-file GEO.DAT`
+3. `dump-field --field QSW` on the frozen reference and the candidate must be
+   **bit-identical for all 143 hours** (`dQSW == 0`, hours 6/9/33 included)
+4. `reference/compare_calmet_dat21.py --reference-sha256
+   b1823cda…37d30` must be `PASS` with **0 total exceedances** over the 18
+   P6E-owned fields.
+
+It is fail-closed: a missing case input exits `BLOCKED` (3), a drifted frozen
+`met.dat` (sha256 pinned) exits `FAIL` (1) - never a silent skip.  The frozen
+case directory is resolved from the checkout first and, on the shared gate
+host, from `$CTEAS_GATE_ROOT/driver/project/cases/...`, because the `p6e`
+feature branch predates the tracked `project/` tree.  CTest runs it inside the
+gate's existing `ctest` step, so `scripts/local_gate.py`'s p6e entry did not
+need a new command; the three-step chain is nevertheless kept verbatim in the
+test so a reviewer can replay it by hand.
+
+Verified in the authoritative gate: `ctest 26/26 passed`, with
+`24/26 p6e_calmet_dat21_real_full_field_reference ... Passed 197.22 sec`
+reporting `dQSW_zero_hours = 143`, `qsw_max_abs_error = 0`,
+`total_exceedances = 0`, `owned_fields = 18`, `el_exceedances = 0`,
+`wstar_exceedances = 0`, `status = PASS`.
+
+### `P6E_FULL`: the two wind regimes, stated separately
+
+**Regime B - original CALMET.DAT wind driving (the official, gate-checked
+regime).**  The frozen `met.dat`'s own `U-LEV/V-LEV/WFACE` are fed back as the
+wind source, isolating P6E's physics from P6D's wind reconstruction.
+
+| scope | 1 h | 6 h | 143 h |
+|---|---|---|---|
+| coupling tests | `p6e_p6c_143h_formatted_input_cli`, `p6e_calmet_dat21_output_contract` | `p6e_e18_real_2022_p6c_observed_temp3d_smoke`, `p6e_p6c_143h_mixht_temp3d_sequential_invariants` | `p6e_calmet_dat21_real_full_field_reference` |
+| verdict | synthetic CLI contracts PASS | real-2022 P6C observed replay PASS | **PASS, 0 exceedances** over the 18 P6E-owned fields |
+
+143 h detail: `QSW` 0/357,500 differ (bit-exact); `TEMPK`, `RHO`, `IRH`
+bit-exact (max abs 0); `T-LEV 1..6`, `8`, `9`, `IPGT` bit-exact; `T-LEV 7`
+max 3.05e-5 K; `ZI` max 3.05e-4 m; `USTAR` max 1.19e-7 m/s; `EL` max 0.078 m
+(0 exceedances, was 630 cells / 10,733.6 m); `WSTAR` max 1.19e-7 m/s
+(0 exceedances, was 39 cells / 2.0588e-4 m/s).
+
+**Regime A - P6D-reconstructed wind driving: BLOCKED.**  The chain needs a
+CALMET.DAT 2.1 whose `U-LEV/V-LEV/WFACE` carry P6D's diagnostic wind for the
+same 143 intervals, fed to `emit-realcase --wind-file`.  P6D's real-case
+output currently exists only as raw per-hour, per-level float32 dumps
+(`p6d-realcase/blend_u_YYYY-MM-DD_HH.f32`, `blend_v_…`, `w_face_…`; 9 levels x
+2500 cells x 4 bytes per file).  **The P6D -> CALMET.DAT 2.1 wind bridge does
+not exist in either track yet**; it is P6D-owned (P6E deliberately does not
+touch the D9A chain files).
+
+Attribution split, quantified:
+
+- 18 P6E-owned fields: **0 exceedances** under regime B (i.e. with the
+  original wind), so the P6E segment contributes **zero** residual of its own.
+- 27 wind fields (`U-LEV/V-LEV/WFACE` x 9 levels): P6D-owned, used as an
+  *input*; P6E produces none of them.
+- Therefore, once regime A is runnable, any field that exceeds tolerance
+  there is attributable **entirely to the wind input** (P6D segment): every
+  P6E kernel that consumes the wind (`PGTSTB`, `ELUSTR`/`LSTARR`,
+  `AVETMP`, `TEMP3D`, `MIXHT`, `WSTARR`) is independently source-locked and
+  regime-B-exact, and the sunrise-hours sensitivity of `ELUSTR`/`MIXHT` to
+  the wind is a *propagated consequence* of a different wind, not an
+  independent P6E error.
+
+**Current roadmap status:** `P6E_18_OWNED_FIELDS_REAL_CASE=PASS_REAL_CASE`
+(regime B, original wind driving - the only regime the frozen reference can
+verify); `P6E_FULL=BLOCKED` on the P6D wind bridge; the 27 wind fields stay
+`P6D_OWNED`.
