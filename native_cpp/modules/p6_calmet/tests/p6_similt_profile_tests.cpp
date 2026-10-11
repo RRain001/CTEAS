@@ -43,11 +43,17 @@ int main(){
   // Stability changes the profile: unstable mixes faster than stable.
   const auto unstable=original_similt_profile(base(-30.f,1000.f));
   const auto stable=original_similt_profile(base(30.f,1000.f));
-  // Compare speeds, not components: the stability-dependent turning angle
-  // rotates the vector, so a component can shrink while the speed grows.
-  if(!(std::hypot(unstable.u_mps[5],unstable.v_mps[5])>
-       std::hypot(stable.u_mps[5],stable.v_mps[5])))
-    throw std::runtime_error("SIMILT unstable speed must exceed stable");
+  // Speeds, not components (the turning angle rotates the vector), and the
+  // measured ordering of the original's profiles aloft is stable > neutral >
+  // unstable: the Beljaars-Holtslag stable PSIUD is strongly negative, which
+  // steepens the log profile, while the unstable branch mixes it flat.
+  const float speed_unstable=std::hypot(unstable.u_mps[5],unstable.v_mps[5]);
+  const float speed_stable=std::hypot(stable.u_mps[5],stable.v_mps[5]);
+  const float speed_neutral=std::hypot(
+      original_similt_profile(base(10000.f,1000.f)).u_mps[5],
+      original_similt_profile(base(10000.f,1000.f)).v_mps[5]);
+  if(!(speed_stable>speed_neutral&&speed_neutral>speed_unstable))
+    throw std::runtime_error("SIMILT stability ordering stable>neutral>unstable");
   // The mixing-height cutoff stops the extrapolation (L30319 exit).
   const auto shallow=original_similt_profile(base(-30.f,50.f));
   if(shallow.levels_filled!=2)
