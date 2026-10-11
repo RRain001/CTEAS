@@ -631,3 +631,70 @@ sign, `WATER`/`WATERP`/`MIXHT2` prognostic callers, `ILAPSE=1` MM5
 2022 hourly COMP field comparison. `P6E_FULL` remains **NOT PASS**;
 2022 precipitation `IPCODE` is still missing 143/143, so wet forcing stays
 unqualified.
+
+## E21 real-case CALMET option profile: semantics, 2-D paths, output contract
+
+The reference cold-start deck
+`project/cases/smoke5d_coldstart_20260701/run/met/met.inp` selects
+`IRTYPE=1`, `IMIXH=1`, `THRESHL=0.0`, `IZICRLX=1`, `ISURFT=-1`, `IUPT=-1`,
+`ITPROG=0`, `NOOBS=0`, `NOWSTA=0`, `NM3D=0`, `LCALGRD=T` over 50×50 @1 km
+with `NZ=9`. E19/E20's Batchvarova–Gryning work is a **non-critical-path
+side branch**: the real deck is Maul–Carson.
+
+- `include/cteas/p6e/realcase_profile.hpp` adds a fail-closed option gate
+  (`validate_realcase_profile`) that encodes the validated envelope and
+  rejects, with an explicit reason, every combination P6E has not
+  source-validated: `ITPROG!=0`, `NM3D!=0` (MM5 `ILAPSE=1` `MIXDT2`),
+  `NOOBS!=0`, `NOWSTA!=0` (over-water stations), `ISURFT!=-1`,
+  `|IMIXH|∉{1,2}`, `IZICRLX∉{0,1}` and negative threshold fluxes. It
+  returns the convective scheme, the upper-air lapse source, the 2-D
+  surface-temperature flag, the per-cell lapse-station flag and whether the
+  land relaxation branch is reachable at all.
+- **The key real-deck consequence is stated and proven**: with `THRESHL=0`
+  the net buoyancy flux is `WT-WTO = WT`, so the `IZICRLX=1` relaxation
+  `ZIC = ZICEQ + (HTOLD-ZICEQ)*exp(-NSECDT/TZICRLX)` is *unreachable* over
+  land. The real deck therefore runs `IZICRLX=1` with no relaxation ever
+  applying.
+
+`tests/realcase_options_tests.cpp` (`p6e_realcase_option_profile_contract`)
+drives the composed chain MIXHT→TEMP3D on a 2-D 50×50 / NZ=9 field:
+
+- `IZICRLX=0` and `IZICRLX=1` at `THRESHL=0` produce **bit-identical**
+  `ZI`/`ZICONV`/`DPTT` (semantic consistency with the real deck);
+- `IUPT=-1` really resolves the lapse station per cell — the ≥1,000 cells
+  mapped to the steeper sounding grow a strictly taller convective layer
+  than the cells mapped to the shallower one;
+- `ISURFT=-1` really carries a 2-D spatially varying surface temperature:
+  the field is not a single station value (7 distinct values over 2,500
+  cells) and TEMP3D preserves it **exactly** on the first model layer for
+  every cell, with all 22,500 level-major values finite and physical;
+- water sentinels stay untouched, `zimin/zimax` bounds hold, output is
+  deterministic, and non-monotonic soundings, all-missing soundings,
+  wrong TEMP3D extents and negative convective heights all fail closed.
+
+`reference/compare_original_mixht_observed_mc.py` gains a third fixture
+block with the **exact real-case option tuple** (`IMIXH=1`, `THRESHL=0.0`,
+`IZICRLX=1`, `IUPT=-1`, 2-D per-cell station assignment). Cases 28 → **60**
+(28 `IMIXH=1` + 20 `IMIXH=2` + 12 real-case tuple) = **1,200 grid outputs,
+3,600 scalar comparisons**, 0 mismatches, same frozen thresholds
+0.07 m / 0.07 m / 0.004 K absolute with 8e-5 relative.
+
+Measured on the dedicated host (GCC 12.3.0), **20/20 CTest**:
+
+- `max_abs_error_IMIXH1_MC` = `[4.690036803367548e-9, 4.690036803367548e-9,
+  4.630074101896753e-12]` — still bit-identical to the pre-E20 accepted run;
+- `max_abs_error_IMIXH2_BG` = `[3.464e-3 m, 8.942e-3 m, 4.640e-13 K]` —
+  unchanged from E20;
+- `realcase_option_profile.max_abs_error_ZI_ZICONV_DPTT` =
+  `[4.690036803367548e-9 m, 4.690036803367548e-9 m, 4.890254867717658e-13 K]`;
+- `relaxation_branch_cells = 0` and
+  `original_source_izicrlx_0_vs_1_identical = true` — the unmodified
+  original `MIXHT`/`MIXHMC` produce byte-identical output for `IZICRLX=0`
+  and `IZICRLX=1` at `THRESHL=0`, which is the source-level proof of the
+  inertness claim above.
+
+**Scope / NOT claimed:** synthetic fields; no over-water `OCD` scheme, no
+`WATER`/`WATERP`/`MIXHT2`, no `ILAPSE=1` `MIXDT2`, no `MIXHTST`, no
+`IAVEZI` averaging, no P6D wind coupling and no actual 2022 hourly COMP
+field comparison. `P6E_FULL` remains **NOT PASS**; 2022 precipitation
+`IPCODE` is still missing 143/143, so wet forcing stays unqualified.
