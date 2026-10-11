@@ -24,6 +24,7 @@ import compare_original_diagno_final_segment as diag
 import compare_original_diagno_obrien_minim as obr
 import compare_original_diagno_d9a_fradj as fradj
 import compare_original_diagno_d9a_slope as upstream
+import compare_original_diagno_d9a_topof2 as kinematic
 
 SOURCE_BLOB="437f43bb7f0e51a1919e56664663e1a046986ed0"
 NX=NY=50
@@ -38,6 +39,12 @@ RADIUS=(.05,12.,12.,12.,.6,1.5)
 ZFACE1_M=0.
 MINIM_ITERATIONS=3
 MINIM_DIVLIM=0.
+# Original IKINE=1 pre-blend kinematic route controls: ALPHA is the empirical
+# topographic coefficient and the real deck's namelist MINIM pair (unused by
+# the frozen deck because it has IKINE=0).
+ALPHA=0.1
+KINEMATIC_NITER=50
+KINEMATIC_DIVLIM=5.e-6
 
 def run(args):
     p=subprocess.run([str(x) for x in args],capture_output=True,text=True,timeout=180)
@@ -69,13 +76,15 @@ def compile_references(vendor,out):
     orig_o,obrien_meta=obr.compile_reference(vendor,out,base)
     orig_f,fradj_meta=fradj.compile_reference(vendor,out,base)
     orig_u,upstream_meta=upstream.compile_reference(vendor,out,base)
-    return (orig_w,orig_i,orig_d,orig_o,orig_f,orig_u),dict(
+    orig_k,kinematic_meta=kinematic.compile_reference(vendor,out,base)
+    return (orig_w,orig_i,orig_d,orig_o,orig_f,orig_u,orig_k),dict(
         wind1_original_sha=SOURCE_BLOB,
         inter2_original=[s for _,s in interp_src],
         final_original=meta,
         obrien_original=obrien_meta,
         fradj_original=fradj_meta,
-        upstream_original=upstream_meta)
+        upstream_original=upstream_meta,
+        kinematic_original=kinematic_meta)
 
 def generate_synthetic(scene):
     name=scene["name"]
@@ -96,7 +105,7 @@ def generate_synthetic(scene):
     return land,observation_weight,station_u,station_v
 
 def write_bridge(path,scene,land,weights,sta_u,sta_v,obrien=False,froude=False,
-                 slope=False):
+                 slope=False,kin=False):
     planes=fradj.fields(scene)
     slope_planes=upstream.fields(scene,land)
     with path.open("w") as f:
@@ -118,10 +127,13 @@ def write_bridge(path,scene,land,weights,sta_u,sta_v,obrien=False,froude=False,
         for k in range(NZ):line(sta_u[k*2:k*2+2])
         for k in range(NZ):line(sta_v[k*2:k*2+2])
         # Original IOBR, CELLZB(1)=ZFACE(1), NITER and DIVLIM controls, then
-        # the original IFRADJ and ISLOPE selectors with their fixtures.
+        # the original IFRADJ and ISLOPE selectors with their fixtures. The
+        # IKINE record is last; the fixture record order is not the DIAGNO
+        # call order, the C++ bridge applies the stages in source order.
         line([ZFACE1_M,1 if obrien else 0,MINIM_ITERATIONS,MINIM_DIVLIM])
         fradj.write_bridge_fields(f,1 if froude else 0,*planes)
         upstream.write_bridge_fields(f,1 if slope else 0,slope_planes,land)
+        kinematic.write_bridge_fields(f,1 if kin else 0,ALPHA,planes)
 
 def read_original_wind(path):
     rows=[line.split() for line in path.read_text().splitlines()]
@@ -197,8 +209,8 @@ def main():
     sha=hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()
     if sha!=SOURCE_BLOB:raise RuntimeError("Original vendor CALMET source changed")
     (original_wind,original_inter,original_final,original_obrien,
-     original_fradj,original_upstream),meta=(compile_references(args.vendor,
-                                                               args.out))
+     original_fradj,original_upstream,original_kinematic),meta=(
+        compile_references(args.vendor,args.out))
     results={}
     # Independent original first guess, then two independent INTER2
     # components, then actual original final DIAGNO SMOOTH/DIVCEL/W block.
@@ -243,7 +255,8 @@ def main():
         cpp_bc=folder/"boundary.cpp"
         cpp_prepared=folder/"prepared.cpp.csv"
         # The one-call C++ run never reads original output files.
-        run([args.cpp,inp,cpp_w,cpp_blend,cpp_final,cpp_bc,cpp_prepared])
+        run([args.cpp,inp,cpp_w,cpp_blend,cpp_final,cpp_bc,cpp_prepared,
+             folder/"w_faces.disabled.csv"])
         run([original_wind,inp,ref_w])
         comparison_first=wind1.compare(ref_w,cpp_w,name)
         u,v=read_original_wind(ref_w)
@@ -262,7 +275,7 @@ def main():
         cpp_prepared_obrien=folder/"prepared.obrien.cpp.csv"
         run([args.cpp,obrien_inp,folder/"wind1.obrien.cpp",
              folder/"blend.obrien.cpp.csv",cpp_final_obrien,cpp_bc_obrien,
-             cpp_prepared_obrien])
+             cpp_prepared_obrien,folder/"w_faces.disabled.csv"])
         obrien_in=folder/"obrien.original.inp"
         obrien_out=folder/"obrien.original"
         obrien_bc=folder/"obrien.boundary.original"
@@ -297,7 +310,7 @@ def main():
         cpp_bc_froude=folder/"boundary.froude.cpp"
         run([args.cpp,froude_inp,folder/"wind1.froude.cpp",
              folder/"blend.froude.cpp.csv",cpp_final_froude,cpp_bc_froude,
-             cpp_prepared_froude])
+             cpp_prepared_froude,folder/"w_faces.disabled.csv"])
         comparison_froude_step=fradj.compare(fradj_out,cpp_prepared_froude,u,v)
         f_observed,f_bc_u,f_bc_v,f_segment,f_bounds,_=original_tail(
             folder,".froude",step_u,step_v)
@@ -331,7 +344,8 @@ def main():
         cpp_bc_upstream=folder/"boundary.upstream.cpp"
         run([args.cpp,upstream_inp,folder/"wind1.upstream.cpp",
              folder/"blend.upstream.cpp.csv",cpp_final_upstream,
-             cpp_bc_upstream,cpp_prepared_upstream])
+             cpp_bc_upstream,cpp_prepared_upstream,
+             folder/"w_faces.disabled.csv"])
         comparison_upstream_step=upstream.compare(
             upstream_out,cpp_prepared_upstream,step_u,step_v)
         u_observed,u_bc_u,u_bc_v,u_segment,u_bounds,_=original_tail(
@@ -344,6 +358,43 @@ def main():
             comparison_upstream_step["max_abs_errors"])
         comparison_upstream_blend=compare_blend(
             u_observed["u"],u_observed["v"],folder/"blend.upstream.cpp.csv")
+        # Original IKINE=1 pre-blend kinematic route (completeness branch; the
+        # real deck has IKINE=0): literal W zeroing L5619-L5620, literal TOPOF2
+        # L5621-L5622 and the literal pre-blend MINIM call L5628-L5629 using
+        # the literal L5598-L5600 WINDBC snapshot, all before FRADJ/SLOPE.
+        terrain,highest,lapse,temperature=fradj.fields(scene)
+        kinematic_in=folder/"kinematic.original.inp"
+        kinematic_uv=folder/"kinematic.original"
+        kinematic_w=folder/"kinematic.original.w"
+        kinematic.write_case(kinematic_in,ZFACE1_M,DZ,terrain,lapse,
+                             temperature,ALPHA,KINEMATIC_NITER,
+                             KINEMATIC_DIVLIM,u,v)
+        run([original_kinematic,kinematic_in,kinematic_uv,kinematic_w])
+        k_rows=kinematic.read_uv(kinematic_uv)
+        kinematic_u=[float(row[3]) for row in k_rows]
+        kinematic_v=[float(row[4]) for row in k_rows]
+        k_inp=folder/"bridge.kinematic.in"
+        write_bridge(k_inp,scene,land,weights,station_u,station_v,kin=True)
+        cpp_prepared_kinematic=folder/"prepared.kinematic.cpp.csv"
+        cpp_final_kinematic=folder/"final.kinematic.cpp.csv"
+        cpp_bc_kinematic=folder/"boundary.kinematic.cpp"
+        cpp_w_kinematic=folder/"w_faces.kinematic.csv"
+        run([args.cpp,k_inp,folder/"wind1.kinematic.cpp",
+             folder/"blend.kinematic.cpp.csv",cpp_final_kinematic,
+             cpp_bc_kinematic,cpp_prepared_kinematic,cpp_w_kinematic])
+        comparison_kinematic_w=kinematic.compare_w(kinematic_w,cpp_w_kinematic)
+        comparison_kinematic_uv=kinematic.compare_uv(kinematic_uv,
+                                                    cpp_prepared_kinematic)
+        k_observed,k_bc_u,k_bc_v,k_segment,k_bounds,_=original_tail(
+            folder,".kinematic",kinematic_u,kinematic_v)
+        comparison_kinematic=diag.compare(k_segment,cpp_final_kinematic,
+                                          k_bounds,cpp_bc_kinematic)
+        comparison_kinematic["original_topof2_max_abs_error_mps"]=(
+            comparison_kinematic_w["max_abs_error_mps"])
+        comparison_kinematic["original_topof2_nonzero_faces"]=(
+            comparison_kinematic_w["nonzero_original_faces"])
+        comparison_kinematic_blend=compare_blend(
+            k_observed["u"],k_observed["v"],folder/"blend.kinematic.cpp.csv")
         results[name]=dict(first_guess=comparison_first,
                            inter2=comparison_blend,final=comparison_final,
                            obrien=comparison_obrien,
@@ -354,7 +405,11 @@ def main():
                                        boundary_input_south_north=f_bc_v[0]),
                            upstream=dict(step_one=comparison_upstream_step,
                                          inter2=comparison_upstream_blend,
-                                         final=comparison_upstream))
+                                         final=comparison_upstream),
+                           kinematic=dict(topof2_w=comparison_kinematic_w,
+                                          step_one=comparison_kinematic_uv,
+                                          inter2=comparison_kinematic_blend,
+                                          final=comparison_kinematic))
 
     froude_adjusted=sum(r["froude"]["final"]
                         ["original_froude_adjusted_components"]
@@ -375,7 +430,12 @@ def main():
           r["froude"]["final"]["status"]=="PASS" and
           r["upstream"]["step_one"]["status"]=="PASS" and
           r["upstream"]["inter2"]["status"]=="PASS" and
-          r["upstream"]["final"]["status"]=="PASS"
+          r["upstream"]["final"]["status"]=="PASS" and
+          r["kinematic"]["topof2_w"]["status"]=="PASS" and
+          r["kinematic"]["topof2_w"]["nonzero_original_faces"]>0 and
+          r["kinematic"]["step_one"]["status"]=="PASS" and
+          r["kinematic"]["inter2"]["status"]=="PASS" and
+          r["kinematic"]["final"]["status"]=="PASS"
           for r in results.values()) and froude_adjusted>0 and
         upstream_changed>0)
     counters=dict(
@@ -411,11 +471,23 @@ def main():
         upstream_boundary_components=sum(r["upstream"]["final"]
                                          ["boundary_comparisons"]
                                          for r in results.values()),
-        upstream_changed_step_one_components=upstream_changed
+        upstream_changed_step_one_components=upstream_changed,
+        kinematic_topof2_w_faces=sum(r["kinematic"]["topof2_w"]
+                                     ["compared_faces"]
+                                     for r in results.values()),
+        kinematic_step_one_components=sum(r["kinematic"]["step_one"]
+                                          ["compared_components"]
+                                          for r in results.values()),
+        kinematic_final_uv_div_w_components=sum(r["kinematic"]["final"]
+                                                ["uv_div_w_comparisons"]
+                                                for r in results.values()),
+        kinematic_boundary_components=sum(r["kinematic"]["final"]
+                                          ["boundary_comparisons"]
+                                          for r in results.values())
     )
     report=dict(
         status="PASS_D9A_SELECTED_CHAINED_ORIGINAL_SOURCES" if complete else "FAIL",
-        scope="synthetic identity upstream WIND1 original -> original INTER2 U/V -> original SMOOTH/DIVCEL/W, replayed with and without the original IOBR=1 O'Brien/MINIM tail, with the original IFRADJ=1 Froude terrain adjustment, and with the original IFRADJ=1+ISLOPE=1 upstream sequence of the real case deck; no TOPOF2/heat, not real 2022 full DIAGNO",
+        scope="synthetic identity upstream WIND1 original -> original INTER2 U/V -> original SMOOTH/DIVCEL/W, replayed with and without the original IOBR=1 O'Brien/MINIM tail, with the original IKINE=1 pre-blend TOPOF2+MINIM kinematic route, with the original IFRADJ=1 Froude terrain adjustment, and with the original IFRADJ=1+ISLOPE=1 upstream sequence of the real case deck; no HEATFX/ELUSTR/STHEOR/ADJUST, not real 2022 full DIAGNO",
         vendor_blob=sha,original_reference=meta,
         obrien_controls=dict(cellzb_origin_m=ZFACE1_M,minim_iterations=MINIM_ITERATIONS,
                              minim_divergence_limit_per_s=MINIM_DIVLIM,iobr=1),
@@ -423,6 +495,10 @@ def main():
                              critfn=fradj.CRITFN,cellzb_origin_m=ZFACE1_M,
                              envelope_margin_m=fradj.ENVELOPE_MARGIN_M,
                              slope_and_heat_stages_enabled=False),
+        kinematic_controls=dict(ikine=1,alpha=ALPHA,niter=KINEMATIC_NITER,
+                                divlim_per_s=KINEMATIC_DIVLIM,
+                                cellzb_origin_m=ZFACE1_M,
+                                real_case_path=False),
         upstream_controls=dict(iwf_cod=1,ifradj=1,islope=1,ikine=0,iobr=0,
                                isurft=upstream.chain_fradj.ISURFT,
                                tinf_k=upstream.chain_fradj.TINF_K,
