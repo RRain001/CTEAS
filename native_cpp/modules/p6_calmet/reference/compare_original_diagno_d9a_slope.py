@@ -223,7 +223,9 @@ def write_case(path, zface1_m, dz_m, terrain, highest, lapse, temperature,
                      f"{chain_fradj.TINF_K:.9f} {chain_fradj.CRITFN:.9f} "
                      f"{WATER_FIRST} {WATER_LAST}\n")
         handle.write(" ".join(f"{value:.9f}" for value in dz_m) + "\n")
-        for field in (terrain, highest, lapse, temperature, minimum,
+        # Same plane order as the driver reads: HTOPO, GAMMA, TEMP2D, HMAX,
+        # HMIN, DISTHMAX, DISTHMIN, QH, ILANDU.
+        for field in (terrain, lapse, temperature, highest, minimum,
                       distance_max, distance_min, heat):
             for offset in range(0, N, NX):
                 handle.write(" ".join(f"{value:.8f}"
