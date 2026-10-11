@@ -142,6 +142,48 @@ jobs:
           test -s project/current/met/surface/final/stations.csv
           sha256sum project/current/met/surface/final/surf.dat > integration-evidence/surf.sha256
           cp project/current/run/smerge/smerge.lst integration-evidence/original-smerge.lst
+      - name: Native C++ P5 SURF.DAT byte parity with independent unchanged SMERGE
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p5_smerge -B /tmp/cteas-p5-native-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/cteas-p5-native-build -j2
+          ctest --test-dir /tmp/cteas-p5-native-build --output-on-failure
+          cp project/current/run/smerge/surf.dat integration-evidence/reference-original-surf.dat
+          /tmp/cteas-p5-native-build/cteas_p5_smerge project/current/run/smerge/smerge.inp \
+            2>&1 | tee integration-evidence/p5-native-run.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import difflib,json
+          original=Path("integration-evidence/reference-original-surf.dat").read_bytes()
+          generated=Path("project/current/run/smerge/surf.dat").read_bytes()
+          a=original.decode("utf-8",errors="replace").splitlines()
+          b=generated.decode("utf-8",errors="replace").splitlines()
+          mismatches=[]
+          for i,(x,y) in enumerate(zip(a,b),1):
+              if x!=y:
+                  mismatches.append({"line":i,"original":x,"native":y})
+                  if len(mismatches)>=30:break
+          results={"original_bytes":len(original),"native_bytes":len(generated),
+                   "original_lines":len(a),"native_lines":len(b),
+                   "byte_identical":original==generated,"first_differences":mismatches}
+          Path("integration-evidence/p5-native-byte-parity.json").write_text(json.dumps(results,indent=2)+"\n")
+          print("P5_NATIVE_SMERGE_PARITY",json.dumps(results))
+          if original!=generated:raise SystemExit("P5 native SURF.DAT differs from original Fortran")
+          print("P5_NATIVE_SURFDAT_BYTE_PARITY=PASS")
+          PY
+          # Publish NATIVE output, including existing post-SMERGE cloud
+          # consistency workaround, to feed the UNCHANGED CALMET binary.
+          python3 - <<'PY'
+          from pathlib import Path
+          from native_cpp.modules.p5_smerge.data_prep.run_smerge_and_monitor import (
+              publish_final_surface_outputs,fill_missing_cloud_cover_in_surfdat)
+          inp=Path("project/current/run/smerge/smerge.inp").read_text()
+          surf=Path("project/current/run/smerge/surf.dat")
+          target,stations=publish_final_surface_outputs(inp,surf)
+          changed=fill_missing_cloud_cover_in_surfdat(target)
+          print("P5_NATIVE_OUTPUT_PUBLISHED_FOR_ORIGINAL_CALMET",target,stations,changed)
+          PY
       - name: Execute UNCHANGED original CTEAS CALMET Python flow and original Fortran binary
         shell: bash
         run: |
