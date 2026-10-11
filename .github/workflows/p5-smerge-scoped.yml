@@ -22,6 +22,14 @@ jobs:
       - name: Test
         run: ctest --test-dir /tmp/cteas-p5-build --output-on-failure
 
+      - name: Release build and real runtime asserts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p5_smerge -B /tmp/cteas-p5-release -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/cteas-p5-release -j2
+          ctest --test-dir /tmp/cteas-p5-release --output-on-failure
+
       - name: Validate scoped NOAA station/field/missing policies
         run: |
           python3 -m pip install --disable-pip-version-check pandas numpy
