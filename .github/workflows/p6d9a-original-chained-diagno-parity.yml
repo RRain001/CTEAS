@@ -151,9 +151,11 @@ jobs:
             native_cpp/modules/p6_calmet/CMakeLists.txt \
             native_cpp/modules/p6_calmet/reference/compare_original_diagno_d9a_chained.py \
             native_cpp/modules/p6_calmet/reference/compare_original_diagno_obrien_minim.py \
+            native_cpp/modules/p6_calmet/reference/compare_original_diagno_d9a_fradj.py \
             native_cpp/modules/p6_calmet/include/cteas/p6/diagno_d9a_selected_bridge.hpp \
             native_cpp/modules/p6_calmet/include/cteas/p6/diagno_obrien_minim.hpp \
             native_cpp/modules/p6_calmet/tests/p6_diagno_obrien_minim_tests.cpp \
+            native_cpp/modules/p6_calmet/tests/p6_diagno_fradj_route_tests.cpp \
             engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
             engine/vendor/src/CALMET_v6.5.0_L150223/params.met; do
             test -s "$path" || { echo "::error::Missing $path"; exit 1; }
