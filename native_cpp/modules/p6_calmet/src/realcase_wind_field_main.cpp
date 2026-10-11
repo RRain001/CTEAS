@@ -198,26 +198,6 @@ int main(int argc,char** argv){
     if(!args.gamma_dir.empty()&&!fs::is_directory(args.gamma_dir))
         throw std::runtime_error("GAMMA directory does not exist: "+
                                  args.gamma_dir.string());
-    // Mixing height per hour. The original's SIMILT fills the surface-station
-    // profile only while zmid(k) <= zic and exits above it ("Above mixing
-    // height, exit", calmet.for L30345), leaving those levels to the upper-air
-    // sounding. P6E E29 exports the gridded ZICONV used by that branch; its
-    // accuracy is not certified, so the provenance is labelled in metadata.
-    std::vector<float> ziconv_hours;
-    if(!args.ziconv_file.empty()){
-        if(!fs::is_regular_file(args.ziconv_file))
-            throw std::runtime_error("ZICONV file does not exist: "+
-                                     args.ziconv_file.string());
-        const auto bytes=fs::file_size(args.ziconv_file);
-        if(bytes%std::size_t(4*cells)!=0||bytes/std::size_t(4*cells)<3)
-            throw std::runtime_error("ZICONV file must hold whole hourly "
-                                     "nx*ny float32 blocks");
-        std::ifstream stream(args.ziconv_file,std::ios::binary);
-        if(!stream)throw std::runtime_error("cannot open the ZICONV file");
-        ziconv_hours.assign(bytes/std::size_t(4),0.f);
-        stream.read(reinterpret_cast<char*>(ziconv_hours.data()),
-                    static_cast<std::streamsize>(bytes));
-    }
 
     const std::string deck=read_text(args.deck);
     const auto controls=deck_values(deck);
@@ -353,6 +333,27 @@ int main(int argc,char** argv){
         // two stations in this case the original uses min(NINTR2, NWIND).
         for(std::size_t k=0;k<9;++k)
             nintrp[k]=std::max(1,std::min(static_cast<int>(it->second[k]),2));
+    }
+
+    // Mixing height per hour. The original's SIMILT fills the surface-station
+    // profile only while zmid(k) <= zic and exits above it ("Above mixing
+    // height, exit", calmet.for L30345), leaving those levels to the upper-air
+    // sounding. P6E E29 exports the gridded ZICONV used by that branch; its
+    // accuracy is not certified, so the provenance is labelled in metadata.
+    std::vector<float> ziconv_hours;
+    if(!args.ziconv_file.empty()){
+        if(!fs::is_regular_file(args.ziconv_file))
+            throw std::runtime_error("ZICONV file does not exist: "+
+                                     args.ziconv_file.string());
+        const auto bytes=fs::file_size(args.ziconv_file);
+        if(bytes%std::size_t(4*(std::size_t(nx)*std::size_t(ny)))!=0||bytes/std::size_t(4*(std::size_t(nx)*std::size_t(ny)))<3)
+            throw std::runtime_error("ZICONV file must hold whole hourly "
+                                     "nx*ny float32 blocks");
+        std::ifstream stream(args.ziconv_file,std::ios::binary);
+        if(!stream)throw std::runtime_error("cannot open the ZICONV file");
+        ziconv_hours.assign(bytes/std::size_t(4),0.f);
+        stream.read(reinterpret_cast<char*>(ziconv_hours.data()),
+                    static_cast<std::streamsize>(bytes));
     }
     const auto envelope=terset(geo.terrain_m,nx,ny,grid_m,grid_m,terrad_km);
     write_f32(args.out()/"terset_hmax.f32",envelope.maximum_m);
