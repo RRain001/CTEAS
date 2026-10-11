@@ -494,6 +494,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     // Exported chain state (hour-major, i-fastest) when --state-prefix is set.
     std::vector<float> exported_ziconv,exported_zi;
     std::vector<float> exported_pre_ziconv,exported_pre_zi;
+    std::vector<float> exported_qh,exported_ustar,exported_el;
     for(std::size_t hour=0;hour<reference.intervals;++hour) {
         const auto& observation=observations[hour];
         surf.stations[0].temp_k=static_cast<float>(observation.air_temperature_k);
@@ -693,6 +694,10 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             previous_ziconv=ziconv;
             previous_dptt=mixing.dptt;
             if(!state_prefix.empty()) {
+                // Term-by-term diagnostics for the E34 station-cell table.
+                exported_qh.insert(exported_qh.end(),heat_flux.begin(),heat_flux.end());
+                exported_ustar.insert(exported_ustar.end(),ustar.begin(),ustar.end());
+                exported_el.insert(exported_el.end(),el.begin(),el.end());
                 exported_ziconv.insert(exported_ziconv.end(),
                                        ziconv.begin(),ziconv.end());
                 exported_zi.insert(exported_zi.end(),
@@ -802,6 +807,9 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                        static_cast<std::streamsize>(values.size()*sizeof(float)));
             if(!file)throw std::invalid_argument("short write to "+path);
         };
+        write_binary(state_prefix+".q_flux.f32",exported_qh);
+        write_binary(state_prefix+".ustar.f32",exported_ustar);
+        write_binary(state_prefix+".el.f32",exported_el);
         write_binary(state_prefix+".ziconv.f32",exported_ziconv);
         write_binary(state_prefix+".zi.f32",exported_zi);
         if(exported_pre_ziconv.size()==exported_ziconv.size()) {
