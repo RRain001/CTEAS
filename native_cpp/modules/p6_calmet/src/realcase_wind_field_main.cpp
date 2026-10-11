@@ -366,6 +366,7 @@ int main(int argc,char** argv){
     const std::size_t stations_written=1;
     std::ofstream index(args.out()/"produced_hours.txt");
     if(!index)throw std::runtime_error("cannot write produced_hours.txt");
+    std::size_t similt_levels_min=9,similt_levels_max=0;
     int written=0;
     float speed_min=1.e9f,speed_max=-1.e9f;
     for(std::size_t h=0;h<labels.size()&&written<args.hours;++h){
@@ -726,6 +727,8 @@ int main(int argc,char** argv){
             }
         }
         index<<hour_label(clock)<<"\n";
+        similt_levels_min=std::min(similt_levels_min,station.similt_levels_filled);
+        similt_levels_max=std::max(similt_levels_max,station.similt_levels_filled);
         ++written;
     }
     index.close();
@@ -751,6 +754,12 @@ int main(int argc,char** argv){
           " \"terset_hmax.f32\": \"m\", \"terset_hmin.f32\": \"m\","
           " \"terset_disthmax.f32\": \"m\", \"terset_disthmin.f32\": \"m\"},\n";
     meta<<"  \"missing_sentinel\": "<<MISSING<<",\n";
+    meta<<"  \"similt_mixing_height\": {\"status\": \""<<(ziconv_hours.empty()?"MIXING_HEIGHT_NOT_SUPPLIED":"APPLIED_FROM_P6E_ZICONV")<<"\", "
+          "\"source\": \""<<(ziconv_hours.empty()?"none":args.ziconv_file.string())<<"\", "
+          "\"provenance\": \"ZICONV_SOURCE: P6E_CHAIN_INTERNAL_UNCALIBRATED (accuracy not certified)\", "
+          "\"rule\": \"the original SIMILT fills the surface-station profile only while zmid(k) <= zic and exits above the mixing height (calmet.for L30345); the levels above keep the upper-air sounding and are written as the INTER2 missing sentinel\", "
+          "\"levels_filled_min\": "<<similt_levels_min<<", \"levels_filled_max\": "<<similt_levels_max<<", "
+          "\"consequence_when_absent\": \"without it the surface-station profile is a neutral extrapolation at all nine levels, which dilutes the upper-air shear (measured at hour 1 against the frozen reference: level 9 was 0.716 m/s where the reference and the sounding give 2.464 and 1.017 m/s)\"},\n";
     meta<<"  \"iextrp_rmin2\": {\"IEXTRP\": "<<iextrp
         <<", \"level1_exclusion_applied\": "<<(iextrp<=0?"true":"false")
         <<", \"level1_exclusion_source\": \"PREPDI calmet.for L14099 IF (IEXTRP .LE. 0) I1=2; probe reference/probe_original_prepdi_iextrp_level1.py, literal block sha256 9dba46c137d7635bc53113a70d2b91c110bc897a5a43f563be43bc787d41d8e5\", "
@@ -775,6 +784,7 @@ int main(int argc,char** argv){
     meta<<", \"SOLAR grid sine of elevation (interval start)\"";
     meta<<", \"HEATFX sensible heat flux (mcloud=1 station cloud)\"";
     meta<<", \"SLOPE slope flow added to the step-one winds\"";
+    meta<<", \"SIMILT vertical extrapolation capped at the mixing height (L30345)\" ";
     meta<<", \"original INTER2 two-component blend (WO=1.0)\" " ;
     meta<<", \"DIAGNO SMOOTH (1-2-1, deck NSMTH passes per layer)\" ";
     meta<<", \"DIAGNO DIVCEL (no-divergence projection with the WINDBC boundaries)\" ";
