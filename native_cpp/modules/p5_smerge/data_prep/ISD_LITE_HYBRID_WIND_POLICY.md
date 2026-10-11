@@ -54,6 +54,24 @@ This guarantees at least one noncalm model-input station per modeled
 hour, not scientific accuracy. Partial wind vectors and long data gaps
 are explicitly auditable.
 
+### Original Fortran SMERGE sparse file EOF compatibility
+
+The original vendor SMERGE v5.7.0 JDAT=8 reader was empirically
+tested with a 144-hour, two-station case. When the auxiliary's final
+original record stopped before the CALMET run ended, SMERGE could raise
+Fortran Read-past-ENDFILE in RDWRITS even though interior missing hours
+were handled with 9999. This is an ORIGINAL READER limitation.
+
+Therefore, ONLY when targeting the original Fortran binary, the P5
+control builder may create a separate temporary file under
+run/smerge/original_smerge_sparse_runtime/ containing an extra all-9999
+terminal record at the FINAL MODELED HOUR. It does NOT insert any
+interior missing hours, does NOT replace calm winds, and does NOT
+overwrite the sparse auxiliary in isd2smerge_ready/. The extra
+terminal record is an I/O guard, NOT a real observation or
+meteorological imputation. A future true native SMERGE writer can
+handle sparse time axes without requiring this legacy adapter.
+
 ## Sources and coverage
 - Download full NOAA Global Hourly ISD CSV and official same-station/year
   ISD-Lite gzip. Full ISD supplies all nonwind fields; ISD-Lite exclusively
