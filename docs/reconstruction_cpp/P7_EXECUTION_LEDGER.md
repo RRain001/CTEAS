@@ -267,3 +267,63 @@ required raw hour==23; P7B correctly normalizes seconds with 3600.
 P7C now gates on normalized absolute Unix seconds, not raw Fortran
 packed-hour bytes. This fixes the actual observed real source mismatch
 without weakening the historic original input time interval.
+
+## 2026-10-11 P7 2022 Hefei 50x50/100 m case execution ledger
+
+`cteas_p7_2022_case_ledger` (library `cteas_p7_case_ledger`) is the
+machine-checked execution ledger of the frozen 2022 reference case. It
+takes `--met MET.DAT --control CALPUFF.INP` plus optional
+`--concentration`, `--listing`, `--report` and
+`--expect-{met,control}-sha256` pins, and prints deterministic JSON
+(`gate=P7_HFEI_2022_CASE_EXECUTION_LEDGER`) to stdout; the human summary
+line goes to stderr.
+
+Statuses and exit codes are fail closed:
+- `ACCEPTED_CANONICAL_2022_PENDING_ORIGINAL_EXECUTION` / exit 0: every
+  frozen-spec and cross-file assertion passed and no original
+  concentration file is present, so the original 2022 run is still pending.
+- `ACCEPTED_CANONICAL_2022_ORIGINAL_OUTPUT_PRESENT` / exit 0: same, with an
+  original concentration artifact pinned for provenance only.
+- `BLOCKED_MISSING_INPUTS` / exit 3: mandatory MET.DAT/control (or an
+  explicitly requested artifact) is absent. No ledger rows are invented and
+  nothing is asserted about the case.
+- `REJECTED_NOT_CANONICAL_2022` / exit 4: any refusal row failed. It covers
+  absent sign/contract, non-50x50x9 grid, spacing other than 100 m, non
+  `UTC+0000` zone, zero surface/upper or nonzero precipitation stations,
+  interval count other than 143, endpoints other than 2022-01-01 00:00Z and
+  2022-01-06 23:00Z, MET origin outside the +-3.5 km 2022 crop window,
+  control date/grid/`ABTZ`/single-point-source departure, missing grid
+  origin, control grid outside the MET domain, MET control-time mismatch,
+  and any caller SHA-256 pin mismatch.
+
+Refusal rows record `expected` and `observed`, so a foreign or historical
+case cannot be relabelled: the immutable 2023 case
+`project/cases/smoke5d_coldstart_20260701` is refused with
+`DX_M=1000.000`, `INTERVALS=119`, `FIRST_UNIX_SEC=1672531200`,
+`END_UNIX_SEC=1672959600` and a MET origin 38.4 km/18.3 km away, while its
+control still resolves `METDAT` to the identical immutable blob. The
+2022 case itself reports MET.DAT `origin=510884.644/3531268.927` as the
+selected domain lower face and passes every row.
+
+CTest:
+- `cteas_p7_2022_case_ledger_contract`: synthetic CALMET.DAT 2.1 fixtures
+  written by the test (canonical 143-interval 100 m fixture accepted, plus
+  in-place header/field mutations, a truncated file, a 1 km 119-interval
+  2023-like fixture, control mutations, pin mismatch, blocked inputs) and
+  SHA-256 FIPS 180-4 vectors. Exit 0 requires the accept rows to pass and
+  every refusal row to fail exactly where expected.
+- `cteas_p7_2022_ledger_real_2023_refusal`: real-data gate over the
+  immutable 2023 case; skips with an explicit line when the case is absent
+  (sparse CI checkout) and is executed with `--require` by
+  `.github/workflows/p7-calpuff-scoped-ci.yml`.
+
+The Gregorian date helper is now shared by the CALMET.DAT reader and the
+ledger (`include/cteas/puff/gregorian.hpp`) instead of being duplicated.
+
+This ledger is **input identity and provenance only**: it makes no CALMET
+or CALPUFF physics claim, no dispersion or concentration parity claim, and
+no tritium-release or wet-deposition claim (`MWET=0` and zero precipitation
+stations are part of the selected scope). `P7_FROZEN_2022_MET_DAT`,
+`P7_FROZEN_2022_PUFF_INP` and both SHA256 repository variables remain
+unset, so the 2022 50x50/100 m case is still
+`BLOCKED_NO_FROZEN_2022_CASE`, and P7D/P7E/P7F/P7G stay unchanged.

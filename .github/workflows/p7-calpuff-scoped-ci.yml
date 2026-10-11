@@ -243,6 +243,14 @@ jobs:
             project/cases/smoke5d_coldstart_20260701/run/puff/puff.inp \
             project/cases/smoke5d_coldstart_20260701/run/met/met.dat \
             --historical-2023
+      - name: P7 2022 ledger refuses the real historical 2023 case (fail closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 native_cpp/modules/p7_calpuff/tests/case_ledger_real_2023_tests.py \
+            --binary "$scratch/build/cteas_p7_2022_case_ledger" \
+            --report "$scratch/historical-2023/2022-ledger-refusal.json" --require
       - name: Selected 2022 real MET.DAT I/O parity (opt-in immutable input)
         shell: bash
         env:
@@ -259,6 +267,34 @@ jobs:
             --met "$P7_FROZEN_MET_DAT" \
             --native-bin "$build/cteas_p7_calmet21_inspect" \
             --report "${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/met21-reference.json"
+      - name: P7 2022 frozen case execution ledger (opt-in immutable inputs)
+        shell: bash
+        env:
+          P7_FROZEN_MET_DAT: ${{ vars.P7_FROZEN_2022_MET_DAT }}
+          P7_FROZEN_PUFF_INP: ${{ vars.P7_FROZEN_2022_PUFF_INP }}
+          P7_FROZEN_MET_SHA256: ${{ vars.P7_FROZEN_2022_MET_SHA256 }}
+          P7_FROZEN_PUFF_SHA256: ${{ vars.P7_FROZEN_2022_PUFF_SHA256 }}
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if [ -z "${P7_FROZEN_MET_DAT:-}" ] && [ -z "${P7_FROZEN_PUFF_INP:-}" ] && \
+             [ -z "${P7_FROZEN_MET_SHA256:-}" ] && [ -z "${P7_FROZEN_PUFF_SHA256:-}" ]; then
+            echo "P7_2022_EXECUTION_LEDGER=BLOCKED_NO_FROZEN_2022_CASE"
+            exit 0
+          fi
+          for item in "$P7_FROZEN_MET_DAT" "$P7_FROZEN_PUFF_INP"; do test -s "$item"; done
+          for sha in "$P7_FROZEN_MET_SHA256" "$P7_FROZEN_PUFF_SHA256"; do
+            [[ "$sha" =~ ^[a-fA-F0-9]{64}$ ]] || {
+              echo "::error::P7 2022 ledger requires both pinned input SHA256 values."
+              exit 1
+            }
+          done
+          "$scratch/build/cteas_p7_2022_case_ledger" \
+            --met "$P7_FROZEN_MET_DAT" --control "$P7_FROZEN_PUFF_INP" \
+            --expect-met-sha256 "$P7_FROZEN_MET_SHA256" \
+            --expect-control-sha256 "$P7_FROZEN_PUFF_SHA256" \
+            --report "$scratch/2022-execution-ledger.json"
+          echo "P7_2022_EXECUTION_LEDGER_STATUS_ACCEPTED_NOT_A_PHYSICS_PARITY_TEST"
       - name: Original CALPUFF 143-interval reference run (only frozen 2022 inputs)
         shell: bash
         env:
