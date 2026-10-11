@@ -25,49 +25,24 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include "cteas/p6e/coordlib_pj09z0.hpp"
 #include "cteas/p6e/solar.hpp"
 namespace cteas::p6e {
 struct SurfaceSolarGrid {
     std::size_t nx=0,ny=0;
     std::vector<float> latitude_deg,longitude_east_deg;
 };
-// Inverse transverse Mercator for the case projection (UTM north zones,
-// WGS-84). Series inverse, accurate to ~1e-9 deg; the P6E QSW real-case
-// comparison is insensitive to the remaining difference against COORDLIB.
-inline void utm_north_to_latlon(int zone,double easting_m,double northing_m,
-                                double& latitude_deg,double& longitude_east_deg) {
-    if(zone<1||zone>60)throw std::invalid_argument("UTM zone outside 1..60");
-    constexpr double a=6378137.0,flattening=1.0/298.257223563;
-    constexpr double k0=0.9996,false_easting=500000.0;
-    const double e2=flattening*(2.0-flattening);
-    const double ep2=e2/(1.0-e2);
-    const double e1=(1.0-std::sqrt(1.0-e2))/(1.0+std::sqrt(1.0-e2));
-    const double x=(easting_m-false_easting)/k0;
-    const double y=northing_m/k0;
-    const double mu=y/(a*(1.0-e2/4.0-3.0*e2*e2/64.0-5.0*e2*e2*e2/256.0));
-    const double phi1=mu+(3.0*e1/2.0-27.0*e1*e1*e1/32.0)*std::sin(2.0*mu)+
-        (21.0*e1*e1/16.0-55.0*e1*e1*e1*e1/32.0)*std::sin(4.0*mu)+
-        (151.0*e1*e1*e1/96.0)*std::sin(6.0*mu)+
-        (1097.0*e1*e1*e1*e1/512.0)*std::sin(8.0*mu);
-    const double sinphi=std::sin(phi1),cosphi=std::cos(phi1);
-    const double tanphi=std::tan(phi1);
-    const double n1=a/std::sqrt(1.0-e2*sinphi*sinphi);
-    const double r1=a*(1.0-e2)/std::pow(1.0-e2*sinphi*sinphi,1.5);
-    const double t1=tanphi*tanphi,c1=ep2*cosphi*cosphi;
-    const double d=x/n1;
-    const double lat=phi1-(n1*tanphi/r1)*(d*d/2.0-
-        (5.0+3.0*t1+10.0*c1-4.0*c1*c1-9.0*ep2)*d*d*d*d/24.0+
-        (61.0+90.0*t1+298.0*c1+45.0*t1*t1-252.0*ep2-3.0*c1*c1)*
-        d*d*d*d*d*d/720.0);
-    const double lon=(d-(1.0+2.0*t1+c1)*d*d*d/6.0+
-        (5.0-2.0*c1+28.0*t1-3.0*c1*c1+8.0*ep2+24.0*t1*t1)*
-        d*d*d*d*d/120.0)/cosphi;
-    constexpr double rad_to_deg=57.2957795130823208768;
-    latitude_deg=lat*rad_to_deg;
-    longitude_east_deg=(zone-1)*6.0-180.0+3.0+lon*rad_to_deg;
-}
-// Per-cell latitude / east longitude of the grid cell centres. (XORIG,YORIG)
-// is the SW corner of cell (1,1) in the same metres as DGRID.
+// Per-cell latitude / east longitude of the grid cell centres, bit-for-bit
+// equal to the original CALMET chain `MICROI -> GLOBE1 -> GLOBE -> COORDS ->
+// GTPZ0 -> PJ01Z0 -> PJ09Z0` (COORDLIB GCTP 2.0.2).
+//
+// (XORIG,YORIG) and DGRID are in METRES, as stored in the CALMET.DAT 2.1
+// control record (XORIGR = 1000*xorigkm).  MICROI keeps the projection origin
+// in KILOMETRES (`xmap0 = xorigkm`) and forms each cell centre in REAL*4:
+//     xkm = xmap0 + (float(i)-0.5)*dgrid*0.001        (i, j are 1-based)
+// which `GLOBE`/`COORDS` then scale by 1000 m/km before the COORDLIB inverse.
+// `xorigkm` is recovered from the stored metres by an exact-division round
+// trip so the REAL*4 cell-centre arithmetic is reproduced, not approximated.
 inline SurfaceSolarGrid surface_solar_grid(std::size_t nx,std::size_t ny,
                                            int utm_zone,float xorigin_m,
                                            float yorigin_m,float dgrid_m) {
@@ -75,18 +50,21 @@ inline SurfaceSolarGrid surface_solar_grid(std::size_t nx,std::size_t ny,
        !std::isfinite(dgrid_m)||dgrid_m<=0.f||
        !std::isfinite(xorigin_m)||!std::isfinite(yorigin_m))
         throw std::invalid_argument("surface solar grid extent invalid");
+    const UtmProjection projection=utm_north_projection(utm_zone);
+    const float xmap0=static_cast<float>(static_cast<double>(xorigin_m)*0.001);
+    const float ymap0=static_cast<float>(static_cast<double>(yorigin_m)*0.001);
     SurfaceSolarGrid g;
     g.nx=nx;g.ny=ny;
     g.latitude_deg.resize(nx*ny);
     g.longitude_east_deg.resize(nx*ny);
     for(std::size_t i=0;i<nx;++i)
         for(std::size_t j=0;j<ny;++j) {
-            const double easting=static_cast<double>(xorigin_m)+
-                (static_cast<double>(i)+0.5)*static_cast<double>(dgrid_m);
-            const double northing=static_cast<double>(yorigin_m)+
-                (static_cast<double>(j)+0.5)*static_cast<double>(dgrid_m);
+            const float xkm=xmap0+(static_cast<float>(i+1U)-0.5F)*dgrid_m*0.001F;
+            const float ykm=ymap0+(static_cast<float>(j+1U)-0.5F)*dgrid_m*0.001F;
             double lat=0.0,lon=0.0;
-            utm_north_to_latlon(utm_zone,easting,northing,lat,lon);
+            utm_north_to_latlon_deg(projection,
+                                    static_cast<double>(xkm)*1000.0,
+                                    static_cast<double>(ykm)*1000.0,lat,lon);
             g.latitude_deg[j*nx+i]=static_cast<float>(lat);
             g.longitude_east_deg[j*nx+i]=static_cast<float>(lon);
         }

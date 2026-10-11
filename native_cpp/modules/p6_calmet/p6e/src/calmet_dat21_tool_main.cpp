@@ -496,6 +496,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     std::vector<float> exported_ziconv,exported_zi;
     std::vector<float> exported_pre_ziconv,exported_pre_zi;
     std::vector<float> exported_qh,exported_ustar,exported_el;
+    std::vector<float> exported_qsw,exported_wstar;
     // The cell carrying the surface station (XSSTA/YSSTA are metres from the
     // SW corner of cell (1,1)). The original processes exactly this cell
     // twice per hour (ELUSTR2 -> MIXHTST before the grid MIXHT), which is
@@ -730,6 +731,14 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                 exported_qh.insert(exported_qh.end(),heat_flux.begin(),heat_flux.end());
                 exported_ustar.insert(exported_ustar.end(),ustar.begin(),ustar.end());
                 exported_el.insert(exported_el.end(),el.begin(),el.end());
+                // E39 diagnostics: the two fields whose residuals are still
+                // open (EL through QH, WSTAR through wt^(1/3)) need their own
+                // inputs recorded next to the state they produced.
+                if(!heatfx_shortwave_field.empty())
+                    exported_qsw.insert(exported_qsw.end(),
+                                        heatfx_shortwave_field.begin(),
+                                        heatfx_shortwave_field.end());
+
                 exported_ziconv.insert(exported_ziconv.end(),
                                        ziconv.begin(),ziconv.end());
                 exported_zi.insert(exported_zi.end(),
@@ -747,6 +756,11 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             sw.initial_wstar_ms.assign(cells,0.f);
             sw.landuse=reference.statics.ilandu;
             wstar_field=wstarr(sw);
+            // WSTAR is produced after the state export point, so it is
+            // recorded here (hour-major, i fastest, same as the others).
+            if(!state_prefix.empty())
+                exported_wstar.insert(exported_wstar.end(),
+                                      wstar_field.begin(),wstar_field.end());
             // TEMP3D L31159-31709 with the explicit AA/BB times so every hour
             // of the real case is bracketed (12Z -> next-day-00Z included).
             Temp3dObservedInput t3;
@@ -842,6 +856,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         write_binary(state_prefix+".q_flux.f32",exported_qh);
         write_binary(state_prefix+".ustar.f32",exported_ustar);
         write_binary(state_prefix+".el.f32",exported_el);
+        write_binary(state_prefix+".qsw.f32",exported_qsw);
+        write_binary(state_prefix+".wstar.f32",exported_wstar);
         write_binary(state_prefix+".ziconv.f32",exported_ziconv);
         write_binary(state_prefix+".zi.f32",exported_zi);
         if(exported_pre_ziconv.size()==exported_ziconv.size()) {
@@ -1245,6 +1261,39 @@ int main(int argc,char** argv) {
                           std::stoi(argument(argc,argv,"--imixh","1")),
                           std::stoi(argument(argc,argv,"--dptt-refresh","1")),
                           argument(argc,argv,"--mixht-trace"));
+            return 0;
+        }
+        if(mode=="dump-field") {
+            // Extract one CALMET.DAT 2.1 field as raw float32, hour-major,
+            // i fastest - the same layout as the --state-prefix exports, so
+            // a field of the frozen reference can be diffed per cell/hour
+            // against the chain's own (E39 follow-up).
+            const auto file=argument(argc,argv,"--file");
+            const auto field=argument(argc,argv,"--field");
+            const auto out_path=argument(argc,argv,"--out");
+            if(file.empty()||field.empty()||out_path.empty())
+                throw std::invalid_argument("dump-field needs --file, --field and --out");
+            const auto dataset=read_calmet_dat21(file);
+            std::vector<float> values;
+            for(std::size_t hour=0;hour<dataset.intervals;++hour)
+                for(std::size_t j=0;j<dataset.fields_per_hour;++j) {
+                    const auto& candidate=dataset.hourly[hour*dataset.fields_per_hour+j];
+                    std::string label=candidate.label;
+                    while(!label.empty()&&label.back()==' ')label.pop_back();
+                    if(label==field) {
+                        values.insert(values.end(),candidate.real_values.begin(),
+                                      candidate.real_values.end());
+                        break;
+                    }
+                }
+            if(values.empty())
+                throw std::invalid_argument("dump-field: field not found in "+file);
+            std::ofstream out_file(out_path,std::ios::binary);
+            if(!out_file)throw std::invalid_argument("dump-field: cannot write "+out_path);
+            out_file.write(reinterpret_cast<const char*>(values.data()),
+                           static_cast<std::streamsize>(values.size()*sizeof(float)));
+            std::cout<<"dump-field "<<field<<" values="<<values.size()
+                     <<" -> "<<out_path<<"\n";
             return 0;
         }
         if(mode=="check") {
