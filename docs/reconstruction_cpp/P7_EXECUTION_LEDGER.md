@@ -805,3 +805,42 @@ original-source parity" was **not reached**; only the support blocks (`ROTATE`,
 re-verified `QATR`/`TFAC`) carry parity evidence. The next round should start by
 locating `MUNU`, `BI`, `BJIL`, `BJI`, `FLOPUFF`, `CTPAR` and `PUFfC` spans by
 their call sites, then port `CTSG` with the lower-segment branch.
+
+## 2026-10-11 P7K CTSG kernel units located by call site
+
+The plain-name anchor patterns used for `QATR`/`TFAC`/`ROTATE` did not match the
+remaining CTSG kernel units, so they are now located by scanning every vendor
+routine header (any `function`/`subroutine` declaration, optional type prefix,
+flexible indentation). `reference/p7k_source_anchor.py` records the exact span,
+SHA-256 and call closure of each unit and `--check` fails on any drift; the gate
+and the workflow run that check.
+
+| unit | span | lines | sha256 prefix | calls |
+|---|---|---|---|---|
+| `bi` | L22229-22263 | 35 | `917e2da3b8b2547a` | - |
+| `bji` | L22265-22316 | 52 | `53e3010313a89e13` | - |
+| `bjil` | L22318-22363 | 46 | `e34ab5ac71fdd8c4` | - |
+| `ctpar` | L22505-22839 | 335 | `00dee71ee0419be6` | `axis`, `hilrot`, `munu`, `path`, `rotate` |
+| `ctrec` | L22841-22921 | 81 | `279397a1d0f7ad5e` | `munu`, `rotate` |
+| `ctsg` | L22923-23112 | 190 | `3f1011394e50` (P7H anchor) | `ctpar`, `ctrec`, `lower`, `puffc`, `upper` |
+| `flopuff` | L23178-23656 | 479 | `5dccb500891d` | (own closure, not yet scanned) |
+| `lower` | L24657-24863 | 207 | `688c6978246d` | `bi`, `bjil`, `munu` |
+| `munu` | L24865-24967 | 103 | `348cec20d84b` | - |
+| `puffc` | L25286-25404 | 119 | `b739807ef741` | - |
+| `upper` | L25815-26001 | 187 | `9e24496fb8da` | `bi`, `bji`, `flopuff`, `qatr`, `to` |
+| `rotate` | L25522-25549 | 28 | `ce0f8fc51d2c` | - (ported, parity 45 cases) |
+| `qatr` | L25406-25520 | 115 | `2cded8ebe7da` | - (ported, parity 80 cases) |
+| `tfac` | L25765-25813 | 49 | `fe35527fd872` | - (ported, parity 14 cases) |
+
+`munu` (vertical distribution index) and `puffc` are self-contained; `bi`,
+`bji` and `bjil` are the reflection-series helpers; `ctrec` is `munu` + a
+rotation; `ctsg` dispatches to `ctpar`/`lower`/`upper`/`puffc`. The real-case
+branch selection (`MCTADJ=2`, `NHILL=0`, `MSLUG=0`, `MSHEAR=0`, `MPDF=0`)
+resolves to the lower-segment kernel, whose remaining inputs are the
+`/CTPASS/` state (`Hd`, `zi`, `ppcoef`, plume/slug geometry) and `BI`/`BJIL`.
+
+Status of the round: **`CTSG`/`CTREC`/`MUNU` are located and pinned but not yet
+ported**, so the F1 chain still ends at `VCBAR` and the incomparability list
+stays at two causes. The next round's port order is now mechanical: `munu` ->
+`bi`/`bjil` -> `lower` -> `puffc` -> `ctrec` -> `ctsg` (lower branch), then wire
+`VCBAR -> CTSG` and re-run the real receptor grid.

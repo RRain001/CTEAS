@@ -90,6 +90,8 @@ TRACKS: dict[str, dict] = {
             {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/p7e_parity_tests.py",
                      "--probe", "{build}/cteas_p7e_probe", "--repo-root", ".",
                      "--require", "--require-case"]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/reference/p7k_source_anchor.py",
+                     "--check", "native_cpp/modules/p7_calpuff/reference/p7k_source_anchor.json"]},
             {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/p7i_parity_tests.py",
                      "--probe", "{build}/cteas_p7i_tests", "--repo-root", ".", "--require"]},
             {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/p7h_parity_tests.py",
