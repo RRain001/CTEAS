@@ -58,6 +58,10 @@ TRACKS: dict[str, dict] = {
                      "--vendor", VENDOR_CALMET, "--cpp", "{build}/cteas_p6_d9a_source_trace",
                      "--out", "{out}/p6d-chained"],
              "requires": [VENDOR_CALMET]},
+            {"cmd": ["python3", "native_cpp/modules/p6_calmet/reference/compare_original_similt_profile.py",
+                     "--vendor", VENDOR_CALMET, "--cpp", "{build}/cteas_p6_similt_profile",
+                     "--out", "{out}/p6d-verdict-similt"],
+             "requires": [VENDOR_CALMET]},
             # Real-case producer + its two original-source verdicts (requested by
             # the P6D track in PR #23; comparators compile the unchanged original
             # routines with gfortran and are fail-closed).
