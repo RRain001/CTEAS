@@ -3,6 +3,8 @@ Date: 2026-10-11. Status: **P6A_PASS_SOFTWARE, P6B_ORIGINAL_CALMET_REFERENCE_PAS
 Authority: user-chosen research-specific **minimal reconstruction**; no claim of full CALMET feature parity.
 Repository: `RRain001/CTEAS`; immutable foundation `60b7b1d93866fff772926b6ac32dc0af7235552b`; implementation branch `codex/cteas-p6-calmet-hefei-100m`. Do not edit any existing P1–P5 branch, source or the original `engine/vendor/src`.
 
+**顺序执行台账（用户明确要求 P6A→P6G 严格逐阶段验收）**：[P6_A_TO_G_SEQUENTIAL_EXECUTION_LEDGER.md](P6_A_TO_G_SEQUENTIAL_EXECUTION_LEDGER.md)。当前 P6C 仍未完成；已通过的独立 `FRADJ` 单元对照不等于 P6D 阶段验收，不允许跳过 P6C 的真实资料读取与时间/高度处理。
+
 ## 0. Current evidence, critical distinction
 
 - Original P6: `engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for`, Git blob `437f43bb7f0e51a1919e56664663e1a046986ed0`, ~1.46 MB; `calmet.inp` Git blob `8f0a6b6d2150c56d0e3724f3972aed67f7a00fcc` (control file SHA256 `159161afd6db598a73614acc9525179ff9c842df80402403f06c4a5611f30da7`); `cpl.txt` Git blob `c0d9fa57734bfcf7cf108bd7505e7f76cf79412c`, relevant `*.met` common blocks. The compiler's routine inventory and original control text are initial anchors. **This is an inventory, not a completed line-by-line physical-code audit.**
