@@ -537,3 +537,39 @@ search, does not run the `WATER`/`MIXHT2` prognostic callers, and does not
 compare 2022 hourly COMP fields. `P6E_FULL` remains **NOT PASS**; 2022
 precipitation `IPCODE` is still missing 143/143, so wet forcing stays
 unqualified.
+
+## 2026-10-11 E19 CI acceptance (lhy-desktop-2)
+
+Commit **`4995166`** on `codex/cteas-p6e-surface-boundary-layer-20261011`:
+`p6e-solar-original` **SUCCESS** on the dedicated runner
+(`runner_name=lhy-desktop-2`, GCC **12.3.0** selected by the workflow),
+[run 38130128225 / job 114443431983](https://github.com/RRain001/CTEAS/actions/runs/38130128225/job/114443431983).
+
+- **19/19 CTest PASS** (`100% tests passed, 0 tests failed out of 19`),
+  including the new `p6e_mixhbg_software`, with `-Wall -Wextra -Wpedantic
+  -Werror` C++20.
+- All **18** independent original-Fortran comparison steps PASS, including
+  the new step *"Original unmodified Batchvarova-Gryning MIXHBG convective
+  height source parity"*.
+- E19 CI numbers are bit-identical to the local reproduction:
+  `status=PASS`, 240 cases / 480 fields, coverage 72 collapse + 5 retention
+  + 24 relaxation + 139 growth (48 deep-limit `EL <= -500 m`), 0
+  exceedances, max `|dZICBG| = 2.563476840009571e-3 m`, max
+  `|dGAMMA| = 4.900160138765486e-15 K/m`, original blob
+  `437f43bb7f0e51a1919e56664663e1a046986ed0`, vendor sha256
+  `430381b4fb87f15127e20b13cc3e99be8a0e0fccf1d5821110af7f980558d134`,
+  unmodified MIXHBG source lines 11304–11557.
+- E5/E6/E7 re-confirmed on CI in the same job with exactly the locally
+  reproduced numbers (E5 1,800 scalars / 0 mismatches; E6 600 values,
+  max `|dw*| = 4.920064355928844e-12 m/s`, 0 mismatches; E7 1,200 fields,
+  max `|dZI| = 3.800096237682737e-09 m`, 0 mismatches).
+- A duplicate **push**-triggered job for the same commit
+  (run 38130123911) shows `cancelled` because the workflow
+  `concurrency` group `cancel-in-progress` keeps only the newest run.
+  That is superseding, **not** a scientific failure; the authoritative
+  job is the SUCCESS above.
+
+`P6E_E1_TO_E14_E19_SELECTED_ORIGINAL_SOURCE_PATHS=PASS`;
+`P6E_E15_TO_E18_INTEGRATION=PASS`; **`P6E_FULL=NOT_PASS`** (no
+2022 hourly original field parity, no `IMIXH=2` composed-MIXHT wiring,
+no `ILAPSE=1` MM5 `MIXDT2`, 143/143 precipitation codes missing).
