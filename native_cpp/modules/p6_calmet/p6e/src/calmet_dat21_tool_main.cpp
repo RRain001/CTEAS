@@ -439,7 +439,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    const std::string& wind_path,int mnmdav,float hafang,
                    const std::string& geo_path,float hc1,float hc2,float hc3,
                    const std::string& state_prefix,float fcoriol,
-                   bool skip_avemix) {
+                   bool skip_avemix,int imixh) {
     const auto reference=read_calmet_dat21(reference_path);
     // Optional wind source: the frozen original U/V/W for the same intervals.
     std::optional<WindLevels> wind;
@@ -639,7 +639,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             mh.nx=static_cast<std::size_t>(h.nx);
             mh.ny=static_cast<std::size_t>(h.ny);
             mh.water_first=h.iwat1;mh.water_last=h.iwat2;mh.iupt=-1;
-            mh.imixh=1;mh.izicrlx=1;mh.timestep_s=3600;
+            mh.imixh=imixh;mh.izicrlx=1;mh.timestep_s=3600;
             mh.constn=2400.f;mh.zimin=50.f;mh.zimax=3000.f;
             mh.threshl=0.f;mh.dptmin=0.001f;mh.dzzi=200.f;
             mh.onedte=4140.f;mh.twodte=1080.f;mh.tzicrlx=800.f;
@@ -1209,7 +1209,8 @@ int main(int argc,char** argv) {
                           argument(argc,argv,"--state-prefix"),
                           static_cast<float>(std::stod(
                               argument(argc,argv,"--fcoriol","1.0e-4"))),
-                          std::stoi(argument(argc,argv,"--skip-avemix","0"))!=0);
+                          std::stoi(argument(argc,argv,"--skip-avemix","0"))!=0,
+                          std::stoi(argument(argc,argv,"--imixh","1")));
             return 0;
         }
         if(mode=="check") {

@@ -1772,3 +1772,60 @@ original executable; with that single array the remaining questions are
 decidable term by term. Without it, `ZI`/`WSTAR`/`T-LEV 5-7` cannot be
 validated bit-exactly against this file, and the bounds above are the honest
 statement.
+
+## E36 DGM internal-state dump: the first divergence is inside the convective growth
+
+DGM supplied a write-only instrumented rerun of the **unmodified** original
+CALMET 6.5.0 that exports the state `CALMET.DAT` does not record, proven
+non-invasive (its `MET.DAT` is byte-identical to the frozen reference,
+sha256 `b1823cda...`). Insertion points (vendor lines): 4686 post-`ELUSTR`,
+4690 entering `MIXHT`, 4699 post-`MIXHT`/pre-`AVEMIX`, 4717 post-`AVEMIX`,
+4750 post-`WSTARR`; fields `QH/USTAR/EL/RHO/TEMP2D`, `ZICONV/DPTT`,
+`ZI/ZICONV/DPTT`, `ZI/ZICONV`, `WSTAR/ZICONV`.
+
+### First divergence, per cell (station cell 0-based i=25,j=25)
+
+| stage | reference | P6E | difference |
+|---|---|---|---|
+| kpt=2 entering `MIXHT` (hour index 6) | `ZICONV = 955.1234` | 958.1030 | **+2.98 m (agree)** |
+| kpt=3 post-`MIXHT` | `ZICONV = 1222.6008` | 985.6176 | **-236.98 m (diverge)** |
+| kpt=4 post-`AVEMIX` | `ZICONV = 1036.4363`, `ZI = 1036.4363` | 985.3740 | -51.06 m |
+
+**The divergence starts inside the `MIXHT` convective growth**, not in
+`ELUSTR`/`HEATFX`/`QH` (kpt=1/kpt=2 agree) and not in `AVEMIX` (the gap is
+already present at kpt=3, and `AVEMIX` shrinks it rather than creating it).
+
+### The reference's growth is exactly the source formula with MY lapse rate
+
+Solving the `MIXHMC` growth with the reference's own kpt=1/kpt=2 values -
+`wt = QH/(RHO*996) = 0.10149`, `htold = 955.1234`, `DPTT_in = 0.424532`,
+`ONEDTE = 4140`, `TWODTE = 1080` - reproduces its post-`MIXHT`
+`ZICONV = 1222.6008` **exactly**, and the `DPTT_out = sqrt(gamma*TWODTE*wt)`
+relation then implies a lapse of **0.001644 K/m**, which is *the same number*
+the P6E `MIXDT` computes from the bridge sounding for that hour (ratio
+**1.000** at hours 6, 9, 31, 33 and 54). So the reference's sounding bracket,
+lapse, `htold`, `wt`, `DPTT` and the `ONEDTE`/`TWODTE` constants are all
+consistent with the P6E chain's inputs - and its growth is the textbook
+`MIXHMC` growth.
+
+**Consequence: the divergence is in the P6E side's `MIXHT` invocation for those
+hours, not in the reference.** The P6E post-`MIXHT` value (985.6) is not
+reproducible from the same formula with the same inputs (which would give
+1222.6); it sits only ~27 m above `htold`, i.e. the growth that this chain
+actually applied is roughly one tenth of the source's. The next increment is a
+direct audit of what the P6E caller passes into the growth branch for those
+hours (branch selection, `dptt`, `htold`, `wt`, `gamma` as seen *inside* the
+kernel - none of which the current exports record at that granularity).
+
+`DPTT` observation, for the record: the reference's `DPTT` is unchanged across
+`MIXHT` in 129 of 142 hours (including all five failing hours) while `ZICONV`
+grows in 53 - consistent with the solved relation above (`DPTT_out` equals
+`DPTT_in` because the lapse and `wt` are nearly stationary across the hour),
+so it is not evidence of a different closure. The alternative closure was tested
+anyway: running this chain with `IMIXH=2` (`--imixh 2`, the E20 Batchvarova-
+Gryning wiring) makes the comparison **40x worse** (total exceedances
+10,711 -> 423,918), confirming the deck's `IMIXH=1` echo.
+
+**Bounds unchanged, tolerances untouched:** `ZI` <= 51.06 m / 4.9 % relative
+(1.26 % of cells), `WSTAR` <= 0.0263 m/s / 1.9 % (1.4 %), `T-LEV 5-7` <=
+2.51669 K (713 cells), `EL` 630 cells.
