@@ -1,3 +1,18 @@
+> **P5 C++ NATIVE SURF.DAT WRITER NOW IMPLEMENTED (2026-10-11).**
+> \`native_cpp/modules/p5_smerge/p5_surf_main.cpp\` writes a complete native
+> formatted SURF.DAT for \`JDAT=8 IOFORM=2 IOPACK=0 LPREV=F LPCALC=F UTC\`,
+> reading the same SMERGE.INP and GENERIC data as the unchanged vendor.
+> Independent original SMERGE vs native C++ full-file byte parity:
+> [synthetic two-station 721 bytes](https://github.com/RRain001/CTEAS/actions/runs/38110709094);
+> [real Hefei six-day 13,841 bytes + original CALMET reading NATIVE output](https://github.com/RRain001/CTEAS/actions/runs/38110709086).
+> Compile with \`cmake -S native_cpp/modules/p5_smerge -B /tmp/p5-native -DCMAKE_BUILD_TYPE=Debug\`
+> then \`cmake --build /tmp/p5-native\`; publish with
+> \`python3 -m native_cpp.modules.p5_smerge.data_prep.run_smerge_and_monitor --native-cpp-bin /tmp/p5-native/cteas_p5_smerge\`.
+> **Unsupported:** IOFORM=1, packed IOPACK, LPREV, other JDAT/UTC offset and
+> nondefault pressure estimation. The older provenance/snapshot sections below
+> are HISTORICAL and do not describe this native writer; see
+> [audited P5 status](../../../docs/reconstruction_cpp/P5_SMERGE_IMPLEMENTATION_STATUS.md).
+>
 > **CURRENT P5 POLICY (2026-10-11):** See [ISD_LITE_HYBRID_WIND_POLICY.md](ISD_LITE_HYBRID_WIND_POLICY.md). The approved wind v2 discards the entire pair when either wind field is missing, holds the last *observed complete noncalm vector*, preserves original calm in a first-stage cleaned file, then replaces each original calm run by a constant shortest-arc midpoint WD and 0.5 m/s (calendar boundary copies nearest observed vector). All Scheme-C low-wind/zero-wind sections below are **historical only**, not active implementation. Full-ISD supplies only nonwind; ISD-Lite supplies wind. All nonwind variables now previous-value-fill missing source values.
 
 # P5 surface meteorological preparation — frozen CTEAS Python snapshot
