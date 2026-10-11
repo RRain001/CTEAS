@@ -259,6 +259,53 @@ def detect_time_range_from_any_source_hour(csv_path: Path) -> Tuple[datetime, da
     return min(times), max(times)
 
 
+def stage_original_smerge_terminal_record(
+    filled: List[Tuple[str, str, Path]], end_dt: datetime
+) -> List[Tuple[str, str, Path]]:
+    """Legacy Fortran RDWRITS needs an ending row when a station ends early.
+
+    Return file handles for ORIGINAL SMERGE only. Stage at most ONE terminal
+    9999 marker per sparse source, at the last modeled UTC hour, to avoid
+    Fortran Read-past-ENDFILE. Never reindex or impute any interior
+    missing hour. Source files in isd2smerge_ready/ remain byte-identical.
+    This is an I/O compatibility adapter, NOT the reconstructed SMERGE model.
+    """
+    runtime_dir = OUTPUT_DIR / "original_smerge_sparse_runtime"
+    runtime = []
+    for usaf, wban, original in filled:
+        first, last = detect_time_range_from_any_source_hour(original)
+        if last > end_dt:
+            raise ValueError(f"station has source hour beyond run ending: {original}")
+        if last == end_dt:
+            runtime.append((usaf, wban, original))
+            continue
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        with original.open("r", encoding="utf-8", newline="") as fd:
+            header = [next(fd) for _ in range(3)]
+            data = fd.read()
+        columns = [x.strip() for x in header[2].strip().split(",")]
+        index = {key: i for i, key in enumerate(columns)}
+        if not {"Month", "Day", "Year", "Hour"}.issubset(index):
+            raise ValueError(f"source GENERIC date schema missing: {original}")
+        fields = ["9999"] * len(columns)
+        for key, value in (("Month",end_dt.month),("Day",end_dt.day),
+                           ("Year",end_dt.year),("Hour",end_dt.hour*100)):
+            fields[index[key]] = str(value)
+        dst = runtime_dir / original.name
+        # Runtime-only END marker. No new 19:00 is created inside a
+        # gap in the immutable sparse source file.
+        with dst.open("w", encoding="utf-8", newline="") as fd:
+            fd.writelines(header)
+            fd.write(data)
+            if data and not data.endswith("\n"):
+                fd.write("\n")
+            fd.write(",".join(fields)+"\n")
+        print(f"P5_SMERGE_EOF_RUNTIME_SENTINEL source={original} "
+              f"runtime_only={dst} original_last={last} sentinel={end_dt}")
+        runtime.append((usaf, wban, dst))
+    return runtime
+
+
 def detect_global_period(filled: List[Tuple[str, str, Path]]) -> Tuple[datetime, datetime]:
     """Detect global start/end from all filled station files based on wind direction."""
     starts: List[datetime] = []
@@ -392,14 +439,15 @@ def main() -> int:
         return 1
 
     elev_map = parse_history_elevations(ISD_HISTORY)
-    station_block_lines, _missing = build_station_blocks(filled, elev_map)
-    content = build_sections(filled, elev_map)
+    start_dt, end_dt = detect_global_period(filled)
+    runtime_filled = stage_original_smerge_terminal_record(filled, end_dt)
+    station_block_lines, _missing = build_station_blocks(runtime_filled, elev_map)
+    content = build_sections(runtime_filled, elev_map)
 
     OUTPUT_TXT.write_text(content, encoding='utf-8')
-    start_dt, end_dt = detect_global_period(filled)
     print(f'数据符合研究时间范围: {start_dt} -> {end_dt} (UTC+0000)')
 
-    update_smerge_inp(SMERGE_INP, len(filled), station_block_lines, start_dt, end_dt)
+    update_smerge_inp(SMERGE_INP, len(runtime_filled), station_block_lines, start_dt, end_dt)
     return 0
 
 
