@@ -14,8 +14,10 @@ import subprocess
 import tempfile
 from pathlib import Path
 BLOB="437f43bb7f0e51a1919e56664663e1a046986ed0"
-CASES,NX,NY,NS,NLEV=48,5,4,2,10
+CASES,NX,NY,NS,NLEV=60,5,4,2,10
 CASES_MC=28
+CASES_BG=20
+CASES_RC=12
 ABS=(0.07,0.07,0.004)
 REL=0.00008
 PARAMS="""      integer mxnx,mxny,mxus,mxlev,io6
@@ -160,7 +162,7 @@ def fixture():
                 rows.append(f"{heat} {us} {el} {rho} "
                             f"{90.+10.*(i%3)} 0.00007 {use} {near} "
                             f"-7777.0 {zic} {jump}")
-    for c in range(CASES-CASES_MC):
+    for c in range(CASES_BG):
         iupt=2 if c%4==0 else -1
         counts["iupt_override"]+=iupt>0
         zimin=20.+5.*(c%2);zimax=1500.+100.*(c%5)
@@ -220,7 +222,72 @@ def fixture():
            counts["bg_growth"],counts["bg_deep"],counts["bg_aa"],
            counts["bg_bb"]) < 5:
         raise RuntimeError("MIXHT BG branch coverage insufficient")
+    rc_counts=dict(rc_day=0,rc_stable=0,rc_water=0,rc_aa=0,rc_bb=0,
+                   rc_relaxation=0,rc_relax_reachable=0)
+    rc_rows,_=realcase_rows(1,rc_counts)
+    rows.extend(rc_rows)
+    counts.update(rc_counts)
+    if min(counts["rc_day"],counts["rc_stable"],counts["rc_water"],
+           counts["rc_aa"],counts["rc_bb"]) < 10:
+        raise RuntimeError("MIXHT real-case option tuple coverage insufficient")
+    if counts["rc_relax_reachable"] != 0:
+        raise RuntimeError("THRESHL=0 must make the IZICRLX relaxation unreachable")
     return "\n".join(rows)+"\n",counts
+
+def realcase_rows(izicrlx,counts):
+    """Exact real-deck option tuple: IMIXH=1, THRESHL=0.0, IZICRLX, IUPT=-1."""
+    heights=(0.,50.,100.,180.,300.,450.,650.,900.,1250.,1800.)
+    qh=(-0.1,0.,30.,80.,150.)
+    rows=[]
+    for c in range(CASES_RC):
+        zimax=1200.+100.*(c%3)
+        rows.append(f"-1 2400.0 20.0 {zimax} 0.0 0.001 200. "
+                    f"4140. 1080. {izicrlx} 800. 3600 1")
+        justa=[1 if (st+c)%2==0 else -1 for st in range(NS)]
+        for x in justa:rows.append(str(x))
+        for buf in range(2):
+            for st in range(NS):
+                for k,h in enumerate(heights):
+                    temp=303.-0.0075*h+0.9*st+buf*1.8+c*0.01+0.1*(k%3)
+                    rows.append(f"{h:.4f} {temp:.6f}")
+        for i in range(NX):
+            for j in range(NY):
+                near=1+((i+j+c)%NS)
+                use=55 if (i+2*j+c)%7==0 else 12
+                heat=qh[(i+3*j+c)%len(qh)]
+                if use==55:
+                    heat,el,us,rho,zic,jump=(-7777.,)*6
+                    counts["rc_water"]+=1
+                else:
+                    el=(20.+5.*((i+j)%4)) if heat<0. else -(40.+20.*((i+j)%5))
+                    us=0.15+0.02*((i+j)%4)
+                    rho=1.15
+                    zic=60.+10.*((i+j)%5)
+                    jump=0.3
+                    if heat<0:counts["rc_stable"]+=1
+                    else:counts["rc_day"]+=1
+                station=near-1
+                oldbuffer=0 if justa[station]>0 else 1
+                counts["rc_aa" if oldbuffer==0 else "rc_bb"]+=use!=55 and heat>=0
+                if use!=55 and heat>=0:
+                    # THRESHL=0 => WTO=0, so the IZICRLX relaxation needs
+                    # 0 < WT <= WTO = 0, which can never happen.
+                    cp=996.
+                    wt=heat/(rho*cp)
+                    wto=0.0*max(zic,20.0)/(rho*cp)
+                    if wt>0. and (wt-wto)<=0.:
+                        counts["rc_relax_reachable"]+=1
+                        if izicrlx!=0:counts["rc_relaxation"]+=1
+                rows.append(f"{heat} {us} {el} {rho} "
+                            f"{90.+10.*(i%3)} 0.00007 {use} {near} "
+                            f"-7777.0 {zic} {jump}")
+    return rows,counts
+
+def fixture_realcase(izicrlx):
+    counts=dict(rc_day=0,rc_stable=0,rc_water=0,rc_aa=0,rc_bb=0,
+                rc_relaxation=0,rc_relax_reachable=0)
+    rows,_=realcase_rows(izicrlx,counts)
+    return f"{CASES_RC} {NX} {NY} {NS} {NLEV}\n"+"\n".join(rows)+"\n"
 def parse(txt):
     out=[]
     for line in txt.splitlines():
@@ -254,13 +321,23 @@ def main():
              "-ffixed-line-length-none","-I"+str(d),
              d/"original.for",d/"driver.for","-o",d/"original"])
         expected=parse(run([d/"original"],test))
+        # Source-level proof that THRESHL=0 makes IZICRLX=1 inert: the same
+        # real-case option tuple with IZICRLX=0 and IZICRLX=1 must produce
+        # byte-identical output from the unmodified original subroutines.
+        probe0=fixture_realcase(0)
+        probe1=fixture_realcase(1)
+        inert=(run([d/"original"],probe0)==run([d/"original"],probe1))
+    if not inert:
+        raise RuntimeError("original MIXHT IZICRLX relaxation not inert at THRESHL=0")
     actual=parse(run([x.cpp],test))
     errs=[0.,0.,0.];errs_mc=[0.,0.,0.];errs_bg=[0.,0.,0.]
+    errs_rc=[0.,0.,0.]
     first=[];bad=0
     for (a,f),(b,v) in zip(expected,actual):
         if a!=b:raise RuntimeError("MIXHT MC output order mismatch")
         water=f[0]==-7777.
-        bucket=errs_mc if a[0]<=CASES_MC else errs_bg
+        bucket=(errs_mc if a[0]<=CASES_MC else
+                errs_bg if a[0]<=CASES_MC+CASES_BG else errs_rc)
         for k in range(3):
             err=abs(f[k]-v[k]);errs[k]=max(errs[k],err)
             bucket[k]=max(bucket[k],err)
@@ -273,13 +350,23 @@ def main():
         cases=CASES,grids=CASES*NX*NY,scalar_comparisons=3*CASES*NX*NY,
         distribution=counts,max_abs_error_ZI_ZICONV_DPTT=errs,
         max_abs_error_IMIXH1_MC=errs_mc,max_abs_error_IMIXH2_BG=errs_bg,
+        realcase_option_profile=dict(
+            irtype=1,imixh=1,threshl_wm2perm=0.0,izicrlx=1,iupt=-1,
+            isurft=-1,itprog=0,noobs=0,nowsta=0,nm3d=0,
+            cases=CASES_RC,cells=CASES_RC*NX*NY,
+            max_abs_error_ZI_ZICONV_DPTT=errs_rc,
+            relaxation_branch_cells=counts["rc_relaxation"],
+            relaxation_unreachable_at_zero_threshold=True,
+            original_source_izicrlx_0_vs_1_identical=inert),
         frozen_abs_tolerance=ABS,frozen_rel_tolerance=REL,
         mismatches=bad,first_mismatches=first,
         original_git_blob=sha,original_sha256=hashlib.sha256(raw).hexdigest(),
         unmodified_original_subroutines_lines=loc,
         scope="Selected CALMET full MIXHT grid path with original IMIXH=1 "
-              "(MIXHMC) and IMIXH=2 (MIXHBG) closures, AA/BB JUSTA, IUPT; "
-              "synthetic only, no water/OCD scheme, no 2022 COMP or wet forcing")
+              "(MIXHMC) and IMIXH=2 (MIXHBG) closures, AA/BB JUSTA, IUPT, "
+              "plus the real-case option tuple IMIXH=1/THRESHL=0/IZICRLX=1/"
+              "IUPT=-1; synthetic only, no water/OCD scheme, no 2022 COMP "
+              "or wet forcing")
     x.out.parent.mkdir(parents=True,exist_ok=True)
     x.out.write_text(json.dumps(result,indent=2)+"\n")
     print(json.dumps(result,indent=2))

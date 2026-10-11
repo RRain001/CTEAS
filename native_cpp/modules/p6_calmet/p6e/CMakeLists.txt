@@ -248,3 +248,13 @@ else()
  target_compile_options(p6e_mixhbg_reference PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME p6e_mixhbg_software COMMAND p6e_mixhbg_tests)
+
+# E21 real-case CALMET option profile contract (MIXHT->TEMP3D composed chain).
+add_executable(p6e_realcase_options_tests tests/realcase_options_tests.cpp)
+target_link_libraries(p6e_realcase_options_tests PRIVATE p6e_solar)
+if(MSVC)
+ target_compile_options(p6e_realcase_options_tests PRIVATE /W4 /WX)
+else()
+ target_compile_options(p6e_realcase_options_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6e_realcase_option_profile_contract COMMAND p6e_realcase_options_tests)
