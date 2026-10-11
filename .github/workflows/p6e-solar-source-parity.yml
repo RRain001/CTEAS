@@ -10,6 +10,10 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# Avoid duplicate push/PR source-parity runs piling up on one machine.
+concurrency:
+  group: p6e-micromet-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   p6e-solar-original:
     # GitHub-hosted minutes exhausted; use the repository's registered runner
@@ -51,7 +55,9 @@ jobs:
             exit 1
           fi
       - name: Checkout required source when github.com is reachable
+        id: checkout
         if: steps.source_network.outputs.github == 'yes'
+        continue-on-error: true
         uses: actions/checkout@v4
         with:
           filter: blob:none
@@ -59,7 +65,7 @@ jobs:
             native_cpp/modules/p6_calmet/p6e
             engine/vendor/src/CALMET_v6.5.0_L150223
       - name: Bootstrap exact commit sources via GitHub REST when git transport is blocked
-        if: steps.source_network.outputs.github != 'yes' && steps.source_network.outputs.api == 'yes'
+        if: (steps.source_network.outputs.github != 'yes' || steps.checkout.outcome == 'failure') && steps.source_network.outputs.api == 'yes'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -115,6 +121,15 @@ jobs:
               p.write_bytes(data)
           print("REST source bootstrap PASS: SHA=", sha, "verified blobs=", len(files))
           PY
+      - name: Require complete immutable source set
+        shell: bash
+        run: |
+          test -f native_cpp/modules/p6_calmet/p6e/CMakeLists.txt || {
+            echo "::error::P6E CMake source not retrieved via checkout or REST"; exit 1;
+          }
+          test -f engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for || {
+            echo "::error::Original CALMET vendor source not retrieved"; exit 1;
+          }
       - name: Identify lhy-desktop and verify toolchain
         shell: bash
         run: |
