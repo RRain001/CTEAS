@@ -449,7 +449,7 @@ int main(int argc,char** argv){
             flux.soil_heat_fraction=geo.hcg;
             flux.anthropogenic_wm2=geo.qf;
             flux.initial_qh.assign(2500,0.f);
-            heat_flux=cteas::p6e::heatfx(flux).qh;
+            heat_flux=cteas::p6e::heatfx(flux).sensible_wm2;
         }
         std::vector<float> corrected_u=first.ug_mps,corrected_v=first.vg_mps;
         {
