@@ -251,7 +251,7 @@ jobs:
           if any(k not in c for k in required):
               raise SystemExit("CALMET rendered input missing original SW grid origin")
           Path("integration-evidence/p6c-grid-origin.txt").write_text(
-              c["XORIGKM"]+" "+c["YORIGKM"]+"\\n")
+              c["XORIGKM"]+" "+c["YORIGKM"]+"\n")
           PY
           read -r ORIGIN_X ORIGIN_Y < integration-evidence/p6c-grid-origin.txt
           python3 native_cpp/modules/p6_calmet/reference/compare_fortran_readge.py \
