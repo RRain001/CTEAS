@@ -351,6 +351,42 @@ def main() -> int:
         meta_json = json.loads((label_meta / "metadata.json").read_text())
         meta_json["hour_label"] = "MIDDLE"
         (label_meta / "metadata.json").write_text(json.dumps(meta_json))
+        # The verification gate is data-driven: a variant the metadata marks
+        # NOT_SOURCE_VERIFIED is refused unless it is accepted explicitly.
+        unverified = root / "unverified"
+        unverified.mkdir()
+        for item in fields.iterdir():
+            (unverified / item.name).write_bytes(item.read_bytes())
+        for label in labels:
+            for kind in ("u", "v"):
+                source = fields / f"wind1_{kind}_{label}.f32"
+                (unverified / f"blend_{kind}_{label}.f32").write_bytes(
+                    source.read_bytes())
+        meta_json = json.loads((unverified / "metadata.json").read_text())
+        meta_json["blend"] = {"verification": "NOT_SOURCE_VERIFIED: synthetic"}
+        (unverified / "metadata.json").write_text(json.dumps(meta_json))
+        expect_error("unverified_variant_refused",
+                     [args.tool, "write-from-p6d", "--fields", unverified,
+                      "--variant", "blend", "--statics-from", statics,
+                      "--out", root / "x.dat"],
+                     "NOT_SOURCE_VERIFIED")
+        accepted = root / "unverified-accepted.dat"
+        result = run([args.tool, "write-from-p6d", "--fields", unverified,
+                      "--variant", "blend", "--w-field", "w_face",
+                      "--statics-from", statics, "--accept-unverified-variant",
+                      "--out", accepted, "--report", root / "unverified.json"])
+        if result.returncode != 0 or "P6F_WRITE_FROM_P6D_WRITTEN" not in result.stdout:
+            print(result.stdout + result.stderr)
+            fail("the explicit --accept-unverified-variant did not write the "
+                 "variant")
+        recorded = json.loads((root / "unverified.json").read_text())
+        if "NOT_SOURCE_VERIFIED" not in recorded["blend_verification"] or \
+                recorded["variant_source_verified"] or \
+                not recorded["accept_unverified_variant"]:
+            fail("the report does not record the unverified-variant acceptance")
+        negatives["unverified_variant_refused"] = True
+        negatives["unverified_variant_accepted_with_flag"] = True
+
         expect_error("bad_hour_label",
                      [args.tool, "write-from-p6d", "--fields", label_meta,
                       "--statics-from", statics, "--out", root / "x.dat"],

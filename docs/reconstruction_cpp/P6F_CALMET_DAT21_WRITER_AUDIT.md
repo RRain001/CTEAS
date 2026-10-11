@@ -158,10 +158,16 @@ cteas_p6f_calmet_dat21_writer write-from-p6d \
   `metadata.json` (`blend.verification`) instead of on a hard-coded list. A variant whose verdict
   starts with `NOT_SOURCE_VERIFIED` is refused unless `--accept-unverified-variant` is passed, and
   the report always records `blend_verification`, `fradj_status`, `variant_source_verified` and
-  `w_face_source_verified`. At P6D head `d300a9326` both delivered U/V products pass their own
-  original-source replays (`wind1_u/v`: original `WIND1`+`SIMILT`, worst 2.53e-05 m/s over 6,435,000
-  components; `blend_u/v`: original `INTER2`, worst 4.22e-05 m/s), so both are accepted; the
-  `NOT_SOURCE_VERIFIED` refusal path stays covered by the adapter tests.
+  `w_face_source_verified`. This was exercised on real metadata, not only in tests: the directory
+  used for the case C run (`/home/lhy/build/p6d/rw11`, read 2026-10-12) carries
+  `blend.verification = "NOT_SOURCE_VERIFIED: the 143-hour comparison against the unchanged original
+  INTER2 FAILED (worst 10.36 m/s) …"`, and `write-from-p6d --variant blend` on it was refused; the
+  documented run therefore uses `--variant wind1`, whose verdict is
+  `PASS_REALCASE_STEP_ONE_ORIGINAL_WIND1_PLUS_SIMILT` (worst 2.53e-05 m/s over 6,435,000 components).
+  P6D report a producer-side fix at their head `d300a9326` (blend PASS, worst 4.22e-05 m/s); when a
+  regenerated directory carries that verdict in its metadata the same command accepts `--variant
+  blend` with no code change, which is exactly what the adapter test covers (refusal, plus the
+  explicit `--accept-unverified-variant` opt-in path).
 - **What the composition is not**: `w_face_*` is SLOPE-compensated but not FRADJ-compensated
   (`FRADJ: PENDING_GAMMA` in the P6D metadata) until `GAMMA`/`CGAMMA` lands, so it is QA/plumbing
   data; and composing a reconstruction with the *original* 2-D fields is an integration step, not a
@@ -188,7 +194,7 @@ CALPUFF 7.2.1** from the tracked vendor sources with the repository's own refere
 |---|---|---|
 | A | the writer's re-serialisation of the frozen `met.dat` (byte-identical, pinned SHA-256) | 143 hours; `puff.con` **byte-identical** to the tracked original reference output and `puff.lst` identical beyond its two wall-clock lines; the listing echoes our header (`metfm=1`, `irlg=143`, `nsecdt=3600`, `abtz=UTC+0000`, `ibdathr=202200100`, `iedathr=202200623`, `zface = 0.00000000 … 3000.000`) and ends at `Year: 2022 Month: 1 Day: 6 Julian day: 6 Hour: 23 Second: 0` |
 | B | the same file with **changed values** from `cteas_p6f_calmet_dat21_perturb` (wind x1.25, ZI x1.5, TEMPK +5 K; structure, masks, units and time labels untouched) | 143 hours, no fatal marker, identical time-window echo, and different finite non-negative concentrations (mean 0.032848 → 0.029406, max 5.1697 → 4.6693, non-zero cells 42,685 → 42,670) - legal *and* read, not merely hash-equal |
-| C | `write-from-p6d` on the **real P6D** product (`wind1_*` U/V with the P6D original-source verdict, `w_face_*`, plus the case's 2-D fields) | 143 hours, no fatal marker, finite non-negative concentrations (mean 0.031191, max 7.8652, 52,911 non-zero cells) |
+| C | `write-from-p6d` on the **real P6D** product (`/home/lhy/build/p6d/rw11`: `wind1_*` U/V whose P6D verdict is `PASS_REALCASE_STEP_ONE_ORIGINAL_WIND1_PLUS_SIMILT`, `w_face_*`, plus the case's 2-D fields) | 143 hours, no fatal marker, finite non-negative concentrations (mean 0.031191, max 7.8652, 52,911 non-zero cells) |
 | D | a structurally broken file (the frozen file truncated by 10 bytes) | **rejected**: the original aborts (`Error termination. Backtrace:`, return code 2) instead of producing a clean successful run |
 
 The build is pinned in the report: GNU Fortran 11.4.0, the `modules.for`/`calpuff.for` SHA-256 values
@@ -224,8 +230,9 @@ build by reproducing the tracked reference `puff.con` byte for byte.
   `ilandu_negative_cells` instead of failing (the independent cross-check in the byte-identity test
   reproduces `ilandu_max=20` and `ilandu_over_nlu_cells=2500`). Land-use validity remains a
   caller/upstream concern.
-- The P6D U/V products carry their own original-source verdicts and are written as delivered
-  (`wind1_*`: original `WIND1`+`SIMILT`; `blend_*`: original `INTER2`), while `slope_corrected_*` and
+- The P6D U/V products are written as delivered and carry their own original-source verdicts in the
+  metadata this adapter reads (`wind1_*`: original `WIND1`+`SIMILT`; `blend_*`: as published by P6D,
+  which was still `NOT_SOURCE_VERIFIED` in the directory used here). `slope_corrected_*` and
   `w_face_*` are SLOPE-compensated but not FRADJ-compensated (`FRADJ: PENDING_GAMMA`): they are
   QA/plumbing values and are labelled as such in the report.
 - The E22 header is consumed only as an independent decoder through an explicit include path, and the
