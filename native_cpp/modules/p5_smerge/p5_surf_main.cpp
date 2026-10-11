@@ -155,14 +155,17 @@ void write_one_hour(std::ostream& out,const HourlyRecord& rec){
  auto printed_end=end;
  bool midnight=rec.utc.hour==0;
  if(midnight)printed_end-=hours{1};
- auto formatted_time=[&](sys_seconds t,bool end_hour_24){
+ auto formatted_time=[&](sys_seconds t,bool end_hour_24,bool first){
   const year_month_day ymd{floor<days>(t)};
   const auto hr=duration_cast<hours>(t-floor<days>(t)).count();
   out<<std::setw(4)<<int(ymd.year())<<std::setw(4)<<doy(t)
-     <<std::setw(4)<<(end_hour_24?24:int(hr))<<std::setw(5)<<0<<"   ";
+     <<std::setw(4)<<(end_hour_24?24:int(hr))<<std::setw(5)<<0;
+  // Fortran sequential formatted records trim trailing X edit descriptors.
+  // Only the delimiter between two time groups remains in the file.
+  if(first)out<<"   ";
  };
- formatted_time(start,false);
- formatted_time(printed_end,midnight);
+ formatted_time(start,false,true);
+ formatted_time(printed_end,midnight,false);
  out<<"\n";
  for(const auto& r:rec.by_station){
   const auto v=output_point(r);
