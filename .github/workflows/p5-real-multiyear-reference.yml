@@ -37,7 +37,7 @@ jobs:
           gfortran -O0 -std=legacy -fno-automatic -fno-align-commons \
             -fallow-argument-mismatch -ffixed-line-length-none \
             -I/tmp/p5-real-fortran-include "$src/SMERGE.FOR" -o /tmp/p5-real-original-smerge
-          cmake -S native_cpp/modules/p5_smerge -B /tmp/p5-real-cpp -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p5_smerge -B /tmp/p5-real-cpp -DCMAKE_BUILD_TYPE=Debug
           cmake --build /tmp/p5-real-cpp -j2
           ctest --test-dir /tmp/p5-real-cpp --output-on-failure
           sha256sum "$src/SMERGE.FOR" > real-multiyear-evidence/original-fortran-source.sha256
