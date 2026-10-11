@@ -588,15 +588,19 @@ int main(int argc,char** argv){
                 for(std::size_t k=0;k<9;++k)
                     inter2<<station_values[component][k]<<" "
                           <<station_values[component][9+k]<<"\n";
+                // Original driver reads the step-one field and the observation
+                // weights level by level, one grid row per record.
                 const std::vector<float>& guess=component==0?corrected_u:corrected_v;
-                for(std::size_t row=0;row<50;++row){
-                    for(std::size_t i=0;i<50;++i)
-                        inter2<<guess[row*50+i]<<(i==49?"\n":" ");
-                }
-                for(std::size_t row=0;row<50;++row){
-                    for(std::size_t i=0;i<50;++i)
-                        inter2<<1.0f<<(i==49?"\n":" ");
-                }
+                for(std::size_t k=0;k<9;++k)
+                    for(std::size_t row=0;row<50;++row){
+                        for(std::size_t i=0;i<50;++i)
+                            inter2<<guess[k*2500+row*50+i]<<(i==49?"\n":" ");
+                    }
+                for(std::size_t k=0;k<9;++k)
+                    for(std::size_t row=0;row<50;++row){
+                        for(std::size_t i=0;i<50;++i)
+                            inter2<<1.0f<<(i==49?"\n":" ");
+                    }
             }
         }
         index<<hour_label(clock)<<"\n";
