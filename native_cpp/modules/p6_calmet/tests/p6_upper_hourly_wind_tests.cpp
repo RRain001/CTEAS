@@ -39,17 +39,14 @@ int main(){
    auto last=calmet_prepdi_hour(profiles,start+hours{23},winds);
    check(last.prior_sounding==1&&last.following_sounding==2,
          "PREPDI late within next 12h interval");
+   auto at_start=calmet_prepdi_hour(profiles,start,winds);
+   check(at_start.prior_sounding==0 && at_start.past_seconds==0,
+         "PREPDI exact initial 00 sounding is mathematically bracketed");
    bool failed=false;
-   try{(void)calmet_prepdi_hour(profiles,start,winds);}
-   catch(const std::invalid_argument&){failed=true;}
-   // No prior sounding for the reference 00 endpoint under exclusive
-   // first bracket rule; the actual CALMET output starts after 00.
-   check(failed,"PREPDI first clock 00 must be explicitly scoped");
-   failed=false;
    try{(void)calmet_prepdi_hour(profiles,start+hours{25},winds);}
    catch(const std::invalid_argument&){failed=true;}
    check(failed,"PREPDI unbracketed hour must fail");
-   profiles.soundings[2].end=start+hours{36};
+   profiles.soundings[2].end=start+hours{37};
    failed=false;
    try{(void)calmet_prepdi_hour(profiles,start+hours{13},winds);}
    catch(const std::invalid_argument&){failed=true;}
