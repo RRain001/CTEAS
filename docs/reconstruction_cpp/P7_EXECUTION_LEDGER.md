@@ -1730,3 +1730,67 @@ and the CTEAS-only `CONC.DAT` header. The terrain path is now original end to en
 except for `VWIDTH`, and every other on-path piece (release scheduler P7O, plume
 rise P7N, step bookkeeping and `/CSIGMA/` P7P, sigma update P7Q, MCTADJ=2
 constraints P7R, terrain state P7S) carries original-source parity.
+
+## 2026-10-12 P7T VWIDTH: the valley-width table (VALLEY_TABLE_ABSENT cleared)
+
+Round status: `VWIDTH` (calpuff.for L21896-22178), the producer of the `/GRID/`
+valley-width table `ivalw(mxvalz,...)` and `dzval` that `WALLTRAP` consumes, is
+reconstructed and parity-checked against the compiled **unmodified** vendor unit.
+
+### Parity evidence
+
+| unit | vendor span | ported | parity |
+|---|---|---|---|
+| `VWIDTH` (valley widths + layer thickness) | L21896-22178 | yes | 20 cases x 251 columns, `MAX_REL=0` (bit-exact) |
+
+`P7T_VWIDTH_ORACLE_PARITY=PASS`, `MISMATCHES=0`; `VWIDTH` calls nothing, so it is
+extracted whole and compiled unmodified, with the elevation grid supplied as a
+1-based accessor and the vendor parameters (`MXVALZ`, `DZMIN = 10`, `QAHIT = 0.5`)
+as explicit inputs.
+
+### Semantics worth recording
+
+1. `DZVAL` starts at `max(DZMIN, (zmax-zmin)/MXVALZ)` and is **re-resolved** (with
+   the whole table cleared and the scan restarted, the vendor's backward `goto 1`)
+   whenever a level above the first finds no width anywhere (`lwidth` false) and
+   `DZVAL > DZMIN`.
+2. Per cell and level the routine marches N, S, E and W to the first strip whose
+   elevation reaches `ztarget = elev + k*DZVAL`, requiring `NINT(span*QAHIT)+1`
+   hits in the strip; the south and west marches only run when the north and east
+   sides found a wall.
+3. The reported width is `max(lookNS, lookEW)` when exactly one side is valid and
+   `min(lookNS, lookEW)` when both are valid or both invalid; `-1` means "no
+   valley". The vendor's fatal "width of 0 or 1" check is reproduced as a refusal.
+
+### Locked-case valley run (physical chain only)
+
+`cteas_p7t_probe --deck-valley MET.DAT puff.inp 0 513.3846439571 3533.7689269678
+70.8` runs `TRELIEF` and `VWIDTH` over the deck's real CALMET elevation field and
+then `WALLTRAP` with the real widths:
+
+```
+P7T_DECK_VALLEY_RUN=PASS HOUR=0 NX=50 NY=50 DX_M=100 ZI_M=230.951 CELL_I=25
+  CELL_J=25 DZVAL_M=10 DEFINED_WIDTHS=353 WIDTH_L1_CELLS=-1 WIDTH_L2_CELLS=-1
+  WALLTRAP_TRAPPED=false WALLTRAP_SYE_M=200 TRELIEF_STANDIN=false
+  VWIDTH_RECONSTRUCTED=true VALLEY_TABLE_ABSENT=false
+  PHYSICAL_CHAIN_ONLY=true NOT_A_PUFF_CON_COMPARISON=true
+```
+
+**`VALLEY_TABLE_ABSENT=false`**: the valley table is now the vendor algorithm's
+own output over the real terrain (353 defined widths over the 50x50 grid at
+`DZVAL = 10 m`). At the stack's own cell no valley is resolved at the first two
+levels (the local terrain is open), so `WALLTRAP` still reports no trapping there,
+which is the correct behaviour for that cell. This is a physical-chain
+demonstration, **not** a comparison with the frozen `puff.con`.
+
+### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
+
+- `cteas_p7t_valley_width_contract`: the flat-terrain null widths and `DZMIN`
+  fallback, a symmetric valley (wall cells null, the centre cell two or more
+  cells wide) and every fail-closed path. PASS.
+- `cteas_p7t_source_parity`: anchor + 20 quoted statements + the matrix. PASS
+  (20 cases x 251 columns).
+- `cteas_p7t_locked_case_valley`: the deck run above. PASS.
+- Local `ctest` 43/44 PASS; the only failure remains the pre-existing macOS
+  case-insensitive-filesystem failure of `cteas_p7_original_case_stage_contract`
+  (PASS on Linux).

@@ -505,3 +505,33 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7s_probe --deck-relief "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
             0 513.3846439571 3533.7689269678 70.8 89.152 0.9 1.396 0.02)
 endif()
+
+# P7T: VWIDTH, the valley-width table producer consumed by WALLTRAP.
+add_library(cteas_p7_valley_width STATIC src/terrain_width.cpp)
+target_include_directories(cteas_p7_valley_width PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_valley_width PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_valley_width PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7t_tests tests/p7t_tests.cpp)
+target_link_libraries(cteas_p7t_tests PRIVATE cteas_p7_valley_width)
+if(MSVC)
+  target_compile_options(cteas_p7t_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7t_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7t_valley_width_contract COMMAND cteas_p7t_tests)
+
+add_executable(cteas_p7t_probe src/terrain_width_probe.cpp)
+target_link_libraries(cteas_p7t_probe PRIVATE cteas_p7_valley_width cteas_p7_terrain
+  cteas_p7_terrain_state cteas_p7_calmet21 cteas_p7_control)
+add_test(NAME cteas_p7t_source_parity
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7t_parity_tests.py"
+          --probe "$<TARGET_FILE:cteas_p7t_probe>"
+          --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7t_locked_case_valley
+    COMMAND cteas_p7t_probe --deck-valley "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
+            0 513.3846439571 3533.7689269678 70.8)
+endif()
