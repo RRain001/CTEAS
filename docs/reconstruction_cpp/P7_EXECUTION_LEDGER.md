@@ -613,3 +613,70 @@ possible:
    static records that the CALMET.DAT reader does not decode yet.
 4. The writer emits the CTEAS header subset (version + comments), so the
    original post-processing toolchain cannot read these files yet.
+
+## 2026-10-11 P7G CALMET static fields decoded (Z0 / ILANDU / ELEV / XLAI / NEARS)
+
+Closes the "per-cell dry-deposition inputs missing" gap of the P7E round. The
+original CALMET.DAT 2.1 OUTHD static section is written before the first hourly
+field (CALMET `calmet.for` L12482-12536, anchored):
+
+| record | label | contents |
+|---|---|---|
+| NCOM+4 | `ZFACE` | `nz+1` REAL*4 cell face heights |
+| NCOM+5/6 | `XSSTA`/`YSSTA` | surface station coordinates (when `nssta >= 1`) |
+| NCOM+7/8 | `XUSTA`/`YUSTA` | upper air station coordinates |
+| NCOM+9/10 | `XPSTA`/`YPSTA` | precipitation station coordinates |
+| NCOM+11 | `Z0` | `nx*ny` REAL*4 roughness lengths |
+| NCOM+12 | `ILANDU` | `nx*ny` **INTEGER** land use categories (`WRTI2D`) |
+| NCOM+13 | `ELEV` | `nx*ny` REAL*4 elevations |
+| NCOM+14 | `XLAI` | `nx*ny` REAL*4 leaf area indices |
+| NCOM+15 | `NEARS` | `nx*ny` **INTEGER** nearest station indices |
+
+`Calmet21Reader` now decodes these records instead of skipping them
+(`Calmet21Static` in `calmet21.hpp`): the label must be exact and the payload
+length must match the documented field, otherwise the file is malformed and the
+read fails; `Z0`, `ELEV` and `XLAI` must be finite and within physical bounds
+(0-100 m, -1000-10000 m, 0-20), `ILANDU` categories within 0-1000, and
+`ILANDU`/`NEARS` are read as INTEGER exactly as `WRTI2D` writes them.
+
+Locked-case evidence (`project/cases/hefei5km_2022_reference_case_20261011`,
+`met.dat` sha256 `b1823cda...`), CTest
+`cteas_p7g_locked_case_static_decode` with pinned digests:
+
+```
+P7G_STATIC Z0   COUNT=2500 MIN=0.25  MAX=0.25  MEAN=0.25    DIGEST=7401557581232649795
+P7G_STATIC XLAI COUNT=2500 MIN=3     MAX=3     MEAN=3       DIGEST=14015295161301286211
+P7G_STATIC ELEV COUNT=2500 MIN=25    MAX=59.5  MEAN=42.9157 DIGEST=16152187619603912443
+P7G_STATIC_LAND_USE_DIGEST=3196964006486516483 NEAREST_DIGEST=14033661785612014883
+P7G_REAL_MET_STATIC_DECODE=PASS INTERVALS=143 HOURLY_FIELDS=6435
+```
+
+The decoded fields immediately feed the dry-deposition path: the probe mode
+`cteas_p7f_drydep_probe --real-cell MET.DAT PUFF.INP 25 25 0` builds the
+VDCOMP environment from the real file (land use, `Z0`, `XLAI`, `USTAR`, `EL`,
+`QSW`, `TEMPK`, `ZI`, `WSTAR`) and reports, for the locked case:
+
+```
+P7G_REAL_CELL_VD=PASS CELL=25,25 HOUR=0 LAND_USE=20 Z0_M=0.25 XLAI=3 USTAR=0.246525
+  EL=-49.495 QSW=194.594 TEMPK=279.15 ZI=230.977 WSTAR=0.484167 RA=29.5576 DIFFK=11.1832
+  H-3_VD=0.00198035 H-3_FRACDRY=0.970734 HE-3_VD=0 HE-3_FRACDRY=1 NOT_A_MODEL_RUN=true
+```
+
+i.e. H-3 deposits at 0.198 cm/s with 2.9 % removed per 3600 s step at that cell
+and hour, while HE-3 (flagged with no dry removal in the deck) stays at zero.
+This is a coefficient evaluation on real inputs, not a model run: it still uses
+the caller-supplied vertical factor and does not advance any puff.
+
+Remaining incomparability causes after this round (was four, now two):
+
+1. CTSG (the concentration kernel) and `VCBar` are still missing, so no
+   receptor concentration exists for a real puff. `VCBar` is scoped as
+   `function vcbar(ip,mfact0,hlid,ppcoef,lcalm)` at `calpuff.for`
+   L53866-54088 (223 lines, span sha256 prefix `4c6aa6584979`) and it calls
+   `ctadj`, `getelev` and `hlidmax` plus the `/PUFF/`, `/GRID/`, `/CURRENT/`
+   and `/FLAGS/` state; CTSG additionally needs terrain factors, upper/lower
+   layer splits, slug and shear/PDF paths.
+2. Puff advection is still the P7C prototype (no release cadence, split/merge,
+   plume rise, `SIGMA()`/`HEFTRAN` restart or terrain interaction), and the
+   writer emits only the CTEAS header subset, so the frozen `puff.con` values
+   still cannot be reproduced or compared.
