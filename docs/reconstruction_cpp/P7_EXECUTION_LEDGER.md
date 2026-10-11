@@ -159,3 +159,16 @@ success. When present, the runner hashes the supplied source files,
 runs the untouched original Fortran binary with a bounded timeout,
 checks listing and concentration output, and writes provenance.
 Successful real original run still does not certify new C++ physics.
+
+## P7 dedicated Runner-3 HTTPS source retrieval hardening
+
+Due to repeated `github.com:443` timeouts after verified Runner assignment,
+the P7 workflow now probes both Git and authenticated private GitHub API.
+When Git transport is unavailable or checkout fails but REST is available,
+it bootstraps only the P7 submodule and unmodified original CALPUFF vendor
+source files from the **exact PR merge commit Git tree** using the Actions
+read-only token. Every blob is SHA1-verified with canonical Git object framing,
+stale module/vendor trees are removed, and required files are checked before
+any source audit/Fortran execution. Unavailable Git and REST transports
+remain hard failures with no invented C++/Fortran pass. P6 and other runners
+are not modified. CI verdict pending.
