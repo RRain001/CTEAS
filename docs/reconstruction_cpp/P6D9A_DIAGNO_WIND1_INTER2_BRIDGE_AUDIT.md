@@ -63,11 +63,13 @@ Measured effect at hour 1 (U, `|product - frozen reference|`):
 | 2 | 0.03730 | 0.03730 |
 | 3 | 0.06616 | 0.06616 |
 | 4 | 0.08872 | 0.08872 |
-| 5 | 0.99700 | **0.00116** |
-| 6 | 2.32200 | **0.00271** |
-| 7 | 3.91500 | **0.00457** |
-| 8 | 3.65100 | **0.00426** |
-| 9 | 1.74900 | **0.00204** |
+| 5 | 0.99700 | **0.00000** |
+| 6 | 2.32200 | **0.00000** |
+| 7 | 3.91500 | **0.00001** |
+| 8 | 3.65100 | **0.00001** |
+| 9 | 1.74900 | **0.00000** |
+
+The same round also exposed a placement trap worth recording: capping the **WIND1** surface column instead of the **DIAGI/INTER2** one is wrong and the step-one verdict catches it (the original's WIND1 SIMILT is deliberately neutral and uncapped, L36171). The cap belongs to the column `DIAGI` builds for the objective analysis.
 
 Levels 2-4 are unchanged because they sit **inside** the mixing height, where the original uses the *stability-dependent* similarity profile (`STHEOR` with the surface fluxes and `temp2d`, the `IEXTRP = ±4` branch) while the selected WIND1 kernel is the **neutral** SIMILT. That residual (0.037-0.089 m/s at hour 1) is the next quantified gap, and it is reachable with data this producer already computes (`qh_*.f32`, `temp2d_*.f32`).
 
