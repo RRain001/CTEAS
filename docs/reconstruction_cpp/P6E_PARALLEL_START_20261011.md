@@ -1467,3 +1467,66 @@ carry when it is regenerated.
 `ZI` FAIL on 1.26 %; `WSTAR` FAIL on 1.4 %; `T-LEV 2..9` BLOCKED on the
 TEMP3D time-bracket generalisation; `U-LEV/V-LEV/WFACE` P6D-owned;
 `P6E_FULL=NOT_PASS`.
+
+## E31 residual characterisation: the convective-growth branch is the last target
+
+### What the numbers say
+
+| field | exceedances | hours affected | worst case | bound |
+|---|---|---|---|---|
+| `ZI` | 4,488 / 357,500 (1.26 %) | 42 (concentrated in 5-9, 30-34, 53-55) | 51.06 m at cell 1276 (reference 1036.4 m) | <= 51.06 m / 4.9 % relative |
+| `WSTAR` | 4,880 / 357,500 (1.4 %) | 48 (same hours) | 0.02628 m/s (reference 1.3785 m/s) | <= 0.0263 m/s / 1.9 % relative |
+
+Both residuals are **localised to the strong-convection daylight hours** (the
+middle of the day, when `MIXHMC` grows the convective layer) and both peak at
+the same cell, 1276 - the grid centre, i.e. the surface/upper-air station
+cell.
+
+### Candidates judged (second, independent evidence)
+
+- **(a) AA/BB physical-slot mapping - falsified twice.** The hours where
+  `JUSTA` differs from the first hour are 12-23 (the 12Z turnovers), and the
+  failing `ZI` hours are 5-9, 30-34 and 53-55: the **overlap is empty**. A
+  wrong older/newer selection would corrupt exactly the turnover windows.
+  Combined with E30's evidence (98.7 % of cells inside a 0.07 m gate), the
+  mapping is not the cause.
+- **(b) `DPTT`/`ZICONV` memory initialisation - not indicated.** The first-hour
+  deviations were fully reproduced by the `CMECH` factor (E30); the current
+  residual has no first-hour signature and no turnover signature.
+- **(c) the convective-growth branch (`MIXHMC` + the `MIXDT` lapse rate) -
+  now the only candidate consistent with the evidence**: the failures appear
+  only when the convective height dominates, and `WSTAR` (which consumes
+  `ZICONV` alone) is bit-for-bit unaffected by the mechanical-path fix. The
+  audit of the `MIXDT` bracket (sounding height datum `height_lgl_m` vs the
+  original's `ICONVRT` handling, `DZZI` layer) and of the `DPTT` propagation
+  order is the next step; it is **not** closed, so `ZI`/`WSTAR` stay **FAIL**
+  with the bounds above and no tolerance was relaxed.
+
+### Export regenerated
+
+The E29 state export was regenerated on this commit; `ZICONV` is
+byte-identical to the previous export (`8f03d2e8...`, unchanged by the
+`FCORIOL` fix, as expected because the convective height does not use
+`CMECH`/`FCORI`), while `ZI` changed (`42d19f9a...`). The JSON metadata's
+accuracy caveat is now generated and carries the current figure: the `ZI` in
+the export disagrees with the frozen reference on **4,488 of 357,500 cells
+(1.26 %, max abs 51.06 m, concentrated in 42 daylight hours)**.
+
+Artifacts: `ziconv` sha256
+`8f03d2e86ce30453cf96e6fdbba1d303ad4a2e5a748576f9d014cf5bf56b65b1`, `zi`
+sha256 `42d19f9ab41de7c6280b0f88fe78ff3dd88be547cf1deb48013e05e0ba35586d`,
+metadata sha256 `9b70a907f7009624e5efa5ed37141e53377f024f04c7546c1a0b09e3217c776d`.
+
+### TEMP3D generalisation still open
+
+`T-LEV 2..9` remain unproduced. The E14 kernel only models the same-day
+00Z/12Z bracket (`current_hour_utc` 0..12), while 11 of the 143 real hours
+need the 12Z -> next-day-00Z bracket. The generalisation required is the
+original's `DELTSEC`-based `JTOGO`/`JPAST` handling (TEMP3D L31183-31260), after
+which the AA/BB face temperatures already transported by the bridge
+(`aa_face_t`/`bb_face_t`, 20 faces per hour) can drive it.
+
+**Status:** six fields bit-exact or PASS; `EL` FAIL 630 cells (bounded);
+`ZI` FAIL 1.26 % (bounded, <= 51.06 m); `WSTAR` FAIL 1.4 % (bounded,
+<= 0.0263 m/s); `T-LEV 2..9` BLOCKED on the TEMP3D bracket generalisation;
+`U-LEV/V-LEV/WFACE` P6D-owned; `P6E_FULL=NOT_PASS`.
