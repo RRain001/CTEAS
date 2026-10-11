@@ -15,7 +15,9 @@ int main(int argc,char** argv){
   if(!(f>>in.nstations>>lvary>>in.rmin_km>>in.rmax1_km>>
        in.rmax2_km>>in.rmax3_km>>in.r1_km>>in.r2_km>>
        in.edit>>in.editl))throw std::runtime_error("invalid INTER2 control");
-  in.lvary=lvary!=0;
+  if(in.nstations<1||in.nstations>479||(lvary!=0&&lvary!=1))
+    throw std::invalid_argument("unsupported INTER2 station count/LVARY");
+  in.lvary=lvary==1;
   auto read=[&](auto& v,std::size_t n) {
     v.resize(n);for(auto& a:v)if(!(f>>a))
       throw std::runtime_error("truncated INTER2 fields");
