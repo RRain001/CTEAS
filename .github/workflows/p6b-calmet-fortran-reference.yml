@@ -252,9 +252,10 @@ jobs:
           required=["XORIGKM","YORIGKM","NSECDT"]
           if any(k not in c for k in required):
               raise SystemExit("CALMET original controls missing SW grid or timestep")
-          matches=re.findall(r"!\s*MAXSEP\s*=\s*(\d+)\s*!",met.read_text(),re.I)
-          if len(matches)!=1:
-              raise SystemExit("CALMET rendered MAXSEP hour limit missing/ambiguous")
+          source=Path("engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for")
+          matches=re.findall(r"(?im)^\s*data\s+maxsep\s*/\s*(\d+)\s*/\s*$",source.read_text())
+          if matches!=["14"]:
+              raise SystemExit("Original fixed CALMET COMP DATA MAXSEP/14/ drifted")
           Path("integration-evidence/p6c-grid-origin.txt").write_text(
               " ".join([c["XORIGKM"],c["YORIGKM"],c["NSECDT"],matches[0]])+"\n")
           PY

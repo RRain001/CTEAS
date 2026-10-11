@@ -22,7 +22,8 @@ def instrument(source:Path,out:Path):
     if sha(source)!=ORIGINAL_SHA:
         raise ValueError("vendor source SHA drift; trace insertion not permitted")
     lines=source.read_text().splitlines(keepends=True)
-    if len(lines)<4412 or lines[4267].rstrip()!=ANCHOR or       "if(abs(iupsec).lt.nsecdt.and.iupsec.ne.0) then" not in lines[4150] or       "if(jdelta.gt.maxsep*3600) then" not in lines[4235] or       "justa(iu) = -1" not in lines[4365] or       "justa(iu) = +1" not in lines[4292]:
+    if len(lines)<4412 or lines[4267].rstrip()!=ANCHOR or       "if(abs(iupsec).lt.nsecdt.and.iupsec.ne.0) then" not in lines[4150] or       "if(jdelta.gt.maxsep*3600) then" not in lines[4235] or       "justa(iu) = -1" not in lines[4365] or       "justa(iu) = +1" not in lines[4292] or\
+       "data maxsep/14/" not in lines[3653]:
         raise ValueError("source COMP anchors do not match pinned v6.5.0")
     out.parent.mkdir(parents=True,exist_ok=True)
     out.write_text("".join(lines[:4267])+ADD+"".join(lines[4267:]))

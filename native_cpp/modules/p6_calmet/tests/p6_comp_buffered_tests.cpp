@@ -55,7 +55,7 @@ int main(){
   try{(void)state.hour(start+hours{24});}
   catch(const std::invalid_argument&){bad=true;}
   check(bad,"missing upper lookahead rejected");
-  upper.soundings[2].end=start+hours{37};
+  upper.soundings[2].end=start+hours{27};
   CompBufferedTimeline gap(upper,layers,temps);
   (void)gap.hour(start+hours{11});
   bad=false;

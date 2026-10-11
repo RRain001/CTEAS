@@ -46,7 +46,7 @@ int main(){
    try{(void)calmet_prepdi_hour(profiles,start+hours{25},winds);}
    catch(const std::invalid_argument&){failed=true;}
    check(failed,"PREPDI unbracketed hour must fail");
-   profiles.soundings[2].end=start+hours{37};
+   profiles.soundings[2].end=start+hours{27};
    failed=false;
    try{(void)calmet_prepdi_hour(profiles,start+hours{13},winds);}
    catch(const std::invalid_argument&){failed=true;}

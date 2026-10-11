@@ -24,7 +24,7 @@ inline UpperHour calmet_prepdi_hour(
     const Upper2022& profiles,std::chrono::sys_seconds clock,
     const std::vector<std::vector<LayerWind>>& layer_averages,
     int min_sounding_separation_seconds=3600,
-    int max_sounding_separation_seconds=86400){
+    int max_sounding_separation_seconds=14*3600){
     const auto& ss=profiles.soundings;
     if(ss.size()<2||layer_averages.size()!=ss.size())
         throw std::invalid_argument("PREPDI needs >=2 complete soundings");

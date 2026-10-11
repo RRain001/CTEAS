@@ -27,7 +27,7 @@ public:
                          const std::vector<std::vector<LayerWind>>& layers,
                          const std::vector<std::vector<float>>& face_temperatures,
                          int min_separation_s=3600,
-                         int max_separation_s=86400)
+                         int max_separation_s=14*3600)
         : profiles_(profiles), layers_(layers), faces_(face_temperatures),
           min_sep_(min_separation_s), max_sep_(max_separation_s) {
         if(profiles_.soundings.size()<2 ||
@@ -100,7 +100,7 @@ private:
 
 inline std::vector<CompBufferedHour> comp_selected_2022_hours(
     const Upper2022& upper,const std::vector<float>& zfaces,
-    int nsecdt=3600,int maxsep_hours=24) {
+    int nsecdt=3600,int maxsep_hours=14) {
     using namespace std::chrono;
     std::vector<std::vector<LayerWind>> layers;
     std::vector<std::vector<float>> temperatures;
