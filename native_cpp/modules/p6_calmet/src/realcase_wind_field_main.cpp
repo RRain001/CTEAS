@@ -607,11 +607,12 @@ int main(int argc,char** argv){
     meta<<"{\n";
     meta<<"  \"product\": \"p6d_realcase_wind_fields\",\n";
     meta<<"  \"partial\": true,\n";
-    meta<<"  \"status\": \"PARTIAL_WIND1_STEP_ONE_AND_TERSET_ENVELOPE\",\n";
+    meta<<"  \"status\": \"PARTIAL_WIND1_BLEND_SLOPE_TEMP2D_QH_TERSET\",\n";
     meta<<"  \"case_dir\": \""<<args.case_dir.string()<<"\",\n";
     meta<<"  \"grid\": {\"nx\": "<<nx<<", \"ny\": "<<ny<<", \"nz\": "<<nz
         <<", \"grid_spacing_m\": "<<grid_m
-        <<", \"layout\": \"k-major, j-major, i-fastest\", \"dtype\": \"float32 little-endian\"},\n";
+        <<", \"layout\": \"i_fastest\", \"layout_note\": \"index = i + nx*(j + ny*k), i fastest\""
+        <<", \"dtype\": \"float32\", \"byte_order\": \"little\"},\n";
     meta<<"  \"levels\": {\"zface_m\": [";
     for(std::size_t k=0;k<10;++k)meta<<(k?", ":"")<<zface[k];
     meta<<"], \"thickness_m\": [";
@@ -624,7 +625,7 @@ int main(int argc,char** argv){
           " \"terset_disthmax.f32\": \"m\", \"terset_disthmin.f32\": \"m\"},\n";
     meta<<"  \"missing_sentinel\": "<<MISSING<<",\n";
     meta<<"  \"hourly_labels\": "<<written<<",\n";
-    meta<<"  \"hour_label\": \"YYYY-MM-DD_HH (UTC), the label is the hour END\",\n";
+    meta<<"  \"hour_label\": \"END\", \"hour_label_note\": \"YYYY-MM-DD_HH in UTC; the label is the hourly interval end\",\n";
     meta<<"  \"surface_wind_speed_range_mps\": ["<<speed_min<<", "<<speed_max<<"],\n";
     meta<<"  \"blend\": {\"product\": \"blend_u_*.f32 / blend_v_*.f32\", "
           "\"stage\": \"original INTER2 two-component blend on the step-one field\", "
