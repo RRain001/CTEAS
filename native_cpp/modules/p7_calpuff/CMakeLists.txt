@@ -57,3 +57,6 @@ add_test(NAME cteas_p7_calmet21_typed_field_contract COMMAND cteas_p7_calmet21_t
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME cteas_p7_original_case_stage_contract
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/original_reference_staging_tests.py")
+
+add_test(NAME cteas_p7_historical_2023_scope_contract
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/legacy_2023_scope_tests.py")

@@ -210,6 +210,23 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/reference/build_original_calpuff.py \
             --output "${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/original-fortran" \
             --compiler "$fc"
+      - name: Get immutable historical 2023 MET.DAT / puff.inp / puff.con
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p7_calpuff/reference/fetch_legacy_2023_case.py --root "$GITHUB_WORKSPACE"
+      - name: Verify real original 2023 CALPUFF and P7B binary reader (NOT 2022)
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 native_cpp/modules/p7_calpuff/reference/legacy_2023_case.py \
+            --repo "$GITHUB_WORKSPACE" \
+            --original-binary "$scratch/original-fortran/calpuff-original.x" \
+            --native-inspector "$scratch/build/cteas_p7_calmet21_inspect" \
+            --output "$scratch/historical-2023" --timeout 600
       - name: Selected 2022 real MET.DAT I/O parity (opt-in immutable input)
         shell: bash
         env:

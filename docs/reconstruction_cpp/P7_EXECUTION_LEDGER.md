@@ -172,3 +172,26 @@ stale module/vendor trees are removed, and required files are checked before
 any source audit/Fortran execution. Unavailable Git and REST transports
 remain hard failures with no invented C++/Fortran pass. P6 and other runners
 are not modified. CI verdict pending.
+
+## P7 independently frozen 2023 CALMET/CALPUFF historical reference
+
+The ORIGINAL case `project/cases/smoke5d_coldstart_20260701` is verified
+in Git to contain immutable blobs:
+- `run/met/met.dat`: 53,927,996 bytes, Git blob `cd0af6fed77639a5e7205bc1fc4f9e4421b41926`.
+- `run/puff/puff.inp`: 83,305 bytes, Git blob `67dcdb856c0af92d30de346d4877af3b7d80db6f`.
+- `run/puff/puff.con`: 1,653,584 bytes, Git blob `2a0c1a0dabf50e1e61badaa526780cc623150dc3`.
+
+This is **Jan 1–5, 2023, 50×50 at 1 km**, not Jan 1–6, 2022 at
+100 m. It can validate a real CALMET.DAT reader, run unchanged original
+CALPUFF and yield genuine reference concentration evidence **without P6**.
+The case's original control has `MWET=0, NDECAY=0`: it is not a
+wet-deposition or tritium radioactive-decay parity benchmark.
+
+The separate read-only `legacy_2023_case.py` script enforces original
+Git blob SHA1 identities and freezes original source/control details.
+It runs the compiled untouched Fortran original in an isolated scratch
+directory. The historical `puff.con` comparison reports exact bytes
+if present; record-envelope differences remain explicitly unverified
+scientifically, and only a future C++ concentration output can establish
+P7E numerical parity. The native `Calmet21Reader` must decode real
+2023 hourly fields to pass. No historical data can satisfy the P7 2022 gate.
