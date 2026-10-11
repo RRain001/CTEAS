@@ -42,6 +42,41 @@ The two real-case verdicts are not yet inside `scripts/local_gate.py`'s `p6d` st
 
 Both comparators compile the unchanged original routines with gfortran and are fail-closed, so they belong in the gate rather than only in local evidence.
 
+### Round 16: DGM's two answers, and the two fixes they enable
+
+**Fix 1 - the ZI cutoff flip (closes `U-LEV 6`).** DGM's instrumented original run shows that the value SIMILT receives is *not* the grid `ZI`: `ELUSTR2` overwrites its local `zii` through `MIXHTST`/`MIXHT2ST` (L6882-L6887) before the call at L6894, and the processed layer count differs in **50 of the 143 hours** (hour 82: grid `ZI` 659.966 m vs `zii` 153.341 m; the largest divergence at nh 10: 1009.95 m vs `ZII = ZIMIN = 50 m`). The producer now takes `--zii-cell <file>` (143 float32, built from `dgm_p6d_requests_2022/dgm_cell.json`) and uses it for the cutoff, falling back to the grid `ZI` only when absent. Measured at hour 80: level 6 `dU` 1.8280 -> **0.00006**, `dV` 0.3244 -> **0.00001**.
+
+**Fix 2 - the real station coordinates (closes the tilt, and with it every W face).** DGM showed the tilt is already present in `UG` before the SLOPE addition, and that `USLOPE/VSLOPE` are identically zero at levels 2-9 on this domain - so the tilt comes from the initial-guess/analysis line, not from SLOPE. The producer previously forced both stations to the declared grid centre; the station tables actually place them ~3 m apart (surface `583210` at 31.939774444/117.141610855, upper `58424` at 31.9398/117.1416), which makes the inverse-square weights differ slightly across the domain. The producer now projects both stations from their own tables (branch-local equirectangular projection, documented in the source) and feeds those positions to WIND1, INTER2 and both comparator fixtures. Measured: `U-LEV 3`'s spatial spread 0.000166 -> **0.010014** against the reference's 0.010594.
+
+**End-to-end AUX (worst over 143 hours, 357,500 cells/level, tolerance `1e-4+1e-5*|ref|`)**:
+
+| field | round 15 | round 16 |
+|---|---|---|
+| `U-LEV 2` | 0.0315449 | **0.0279876** |
+| `V-LEV 2` | 0.0325136 | **0.0128908** |
+| `U-LEV 3` | 0.0330477 | **0.00180769** |
+| `V-LEV 3` | 0.0362592 | **0.0019834** |
+| `U-LEV 4` | 0.0419641 | **0.00229454** |
+| `V-LEV 4` | 0.0397687 | **0.00217557** |
+| `U-LEV 5` | 0.0491858 | **0.00269222** |
+| `V-LEV 5` | 0.0400119 | **0.00219202** |
+| `U-LEV 6` | 1.8483 | **0.00229311** |
+| `V-LEV 6` | 0.327975 | **0.00248528** |
+| `U-LEV 7` | 1.82837e-05 PASS | **1.43051e-06 PASS** |
+| `V-LEV 7` | 1.21593e-05 PASS | **1.90735e-06 PASS** |
+| `U-LEV 8` | 2.90871e-05 PASS | **2.86102e-06 PASS** |
+| `V-LEV 8` | 2.09808e-05 PASS | **1.90735e-06 PASS** |
+| `U-LEV 9` | 4.00543e-05 PASS | **4.76837e-06 PASS** |
+| `V-LEV 9` | 2.09808e-05 PASS | **1.90735e-06 PASS** |
+| `WFACE 1` | 0.000265361 | 0.000265361 (36 exceedances) |
+| `WFACE 2` | 0.00381483 | **0.000265025** |
+| `WFACE 3` | 0.0122024 | **0.000717808** |
+| `WFACE 4` | 0.0301354 | **0.00180031** |
+| `WFACE 5` | 0.0850985 | **0.0039018** |
+| `WFACE 6..9` | 0.158155..0.158162 | **0.00851096..0.00851186** |
+
+The W faces improved 18-180x in max-abs and 5-70x in exceedance count (e.g. `WFACE 9`: 178k -> 24.6k cells); the remaining WFACE tail is the level-1 wind residual and the level-2 profile term. Still open: `U-LEV 1`/`V-LEV 1` at 0.00156724/0.00132203 (1,450/905 cells) and `U-LEV 2` at 0.0279876 (64,283 cells).
+
 ### Round 15: the `U-LEV 6` value is a ZI cutoff flip at one level, and the tilt correlates with the terrain envelope
 
 **Correction first**: round 14's per-level table for the worst hour was built with a truncated hour label, so its *product* column came from hour 01 while its *reference* column came from the worst hour. The corrected table (hour `2022-01-04_09`, index 80) is:
