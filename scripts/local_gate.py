@@ -190,8 +190,16 @@ def main() -> int:
     rc, driver_sha = sh(["git", "-C", str(repo), "rev-parse", "HEAD"], repo, env)
     evidence["driver_sha"] = driver_sha.strip() if rc == 0 else None
 
-    rc, log = sh(["git", "-C", str(repo), "fetch", "--prune", "--quiet", "origin",
-                  "+refs/heads/*:refs/remotes/origin/*"], repo, env)
+    # Retry: a concurrent fetch (e.g. an agent's own `git fetch` in the same
+    # driver checkout) updates the same remote-tracking refs and can make this
+    # fail with a ref-lock error.  Never report BLOCKED for that.
+    for attempt in range(1, 4):
+        rc, log = sh(["git", "-C", str(repo), "fetch", "--prune", "--quiet", "origin",
+                      "+refs/heads/*:refs/remotes/origin/*"], repo, env)
+        if rc == 0:
+            break
+        print(f"fetch attempt {attempt} failed (rc={rc}); retrying")
+        time.sleep(2 * attempt)
     if rc != 0:
         print(f"BLOCKED: git fetch failed (rc={rc}): {log.strip()[:300]}")
         _write(args, evidence, started)
