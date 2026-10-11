@@ -101,7 +101,7 @@ inline Surface2022 read_surface_2022(const std::string& path) {
         surf_require(!(id>>excess),"unexpected extra SURF station");
     }
     result.hourly.reserve(143);
-    auto expected=sys_days{year{2022}/January/1};
+    sys_seconds expected=sys_days{year{2022}/January/1};
     for(int record=0;record<143;++record) {
         std::istringstream ts(surf_line(in,"missing SURF hourly timestamp"));
         int sy=0,sj=0,sh=0,ss=0,ey=0,ej=0,eh=0,es=0;
