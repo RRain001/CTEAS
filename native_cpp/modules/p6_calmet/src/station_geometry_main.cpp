@@ -43,7 +43,7 @@ int main(int argc,char** argv){
             out<<"S,"<<n+1<<','<<m.relative_x_km<<','<<m.relative_y_km
                <<','<<m.wind_station_cell.i<<','<<m.wind_station_cell.j
                <<','<<m.bounded_surface_cell.i<<','<<m.bounded_surface_cell.j
-               <<','<<m.upper_reference_cell.i<<','<<m.upper_reference_cell.j
+               <<",0,0"
                <<','<<m.zlogsta<<'\n';
         }
         for(std::size_t n=0;n<upper.size();++n){
