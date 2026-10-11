@@ -1,5 +1,6 @@
 #include "cteas/puff/calmet21.hpp"
 #include "cteas/puff/fortran_records.hpp"
+#include "cteas/puff/gregorian.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -47,17 +48,8 @@ std::string ascii(const std::vector<std::uint8_t>& v, std::size_t p, std::size_t
 void check(bool valid, const std::string& message) {
     if (!valid) throw std::runtime_error("P7B CALMET21 " + message);
 }
-// Gregorian date to days since 1970-01-01, with leap-century correctness.
-// The selected CALMET 2.1 date range is 1900–2100.
-std::int64_t days_from_civil(int year, unsigned month, unsigned day) {
-    year -= (month <= 2U) ? 1 : 0;
-    const int era = (year >= 0 ? year : year - 399) / 400;
-    const unsigned yoe = static_cast<unsigned>(year - era * 400);
-    const unsigned month_shifted = month > 2U ? month - 3U : month + 9U;
-    const unsigned doy = (153U * month_shifted + 2U) / 5U + day - 1U;
-    const unsigned doe = yoe * 365U + yoe / 4U - yoe / 100U + doy;
-    return static_cast<std::int64_t>(era) * 146097 + static_cast<int>(doe) - 719468;
-}
+// Gregorian dates are converted by the shared cteas::puff::days_from_civil
+// helper so the CALMET.DAT reader and the P7 case ledger cannot drift apart.
 Calmet21Time timestamp(std::int32_t packed, std::int32_t seconds) {
     Calmet21Time t;
     t.year = packed / 100000;
