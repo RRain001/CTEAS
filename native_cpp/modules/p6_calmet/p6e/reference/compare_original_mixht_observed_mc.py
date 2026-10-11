@@ -126,7 +126,10 @@ def fixture():
         for i in range(NX):
             for j in range(NY):
                 k=i+2*j+c
-                use=55 if (i+2*j+c)%7==0 else 12
+                # Deliberately avoid coupling water-mask periodicity to
+                # the QH stable (-0.1) period of 7; that masked every
+                # QH<0 cell in the initial nominal joint test.
+                use=55 if (i+2*j+c)%9==0 else 12
                 heat=qh[k%len(qh)]
                 if use==55:counts["water"]+=1
                 elif heat<0:counts["stable"]+=1
@@ -143,6 +146,9 @@ def fixture():
                 rows.append(f"{heat} {us} {el} {rho} "
                             f"{90.+10.*(i%3)} 0.00007 {use} {near} "
                             f"-7777.0 {zic} {jump}")
+    if min(counts["stable"],counts["day"],counts["water"],
+           counts["aa"],counts["bb"],counts["iupt_override"]) < 10:
+        raise RuntimeError("MIXHT MC branch coverage insufficient")
     return "\n".join(rows)+"\n",counts
 def parse(txt):
     out=[]
