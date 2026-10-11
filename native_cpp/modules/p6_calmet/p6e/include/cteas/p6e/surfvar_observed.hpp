@@ -1,11 +1,25 @@
 #pragma once
 // CALMET 6.5.0 SURFVAR (L12544-13064) highly scoped selected dry path.
 // NOOBS=0, ITPROG=0, IRHPROG=0, NPSTA=0, NSSTA=1, NOWSTA=0,
-// IALL=1, IAVET=0, land-only temperature interpolation.
+// land-only single-station interpolation.
+//
+// IALL (source L12544, L12610, L12878-12883):
+//   IALL=0  temperature only; the routine RETURNS before RH/IPCODE, so the
+//           caller's IRH2D/IPCODE2D are left untouched.
+//   IALL=1  temperature + RH + IPCODE. This is the COMP real-case call
+//           (L4567 passes IALL=1); DIAGNO's terrain pre-step passes IALL=0
+//           (L5610).
+//   IALL=2  all surface variables but WITHOUT the IAVET temperature average.
+//   TEMP2D is IDENTICAL for IALL=0 and IALL=1: the only IALL conditions that
+//   touch temperature are `if(iall.ne.2)temp2d(i,j)=tprog(i,j,1)` (ITPROG=2
+//   only) and `if(iavet.eq.1.and.iall.ne.2)call avetmp(...)`.
+// IAVET (source L12878-12881): when 1, AVETMP upwind-averages TEMP2D using the
+//   diagnostic wind field, so U/V become a required input.
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
+#include "cteas/p6e/avetmp.hpp"
 namespace cteas::p6e {
 struct ObservedSurface {
     std::size_t nx=0,ny=0;
@@ -13,16 +27,24 @@ struct ObservedSurface {
     int station_rh_percent=9999;
     int npsta=0,noobs=0,itprog=0,irhprog=0,nowsta=0;
     bool land_only=true,average_temperature=false;
+    // IALL as in the original; default 1 is the COMP real-case call.
+    int iall=1;
+    // Required only when average_temperature (IAVET=1) and iall!=2.
+    std::vector<float> u_ms,v_ms;
+    float dgrid_m=100.f;
+    int mnmdav=1;
+    float hafang_deg=30.f;
 };
 struct SurfaceState {
     std::size_t nx,ny;
     std::vector<float> temp_k;
+    // Empty when IALL=0, because the original returns before filling them.
     std::vector<int> rh_percent,ipcode;
 };
 inline SurfaceState surfvar_one_station(const ObservedSurface& s) {
     if(s.nx==0||s.ny==0||s.nx>static_cast<std::size_t>(-1)/s.ny||
        s.npsta!=0||s.noobs!=0||s.itprog!=0||s.irhprog!=0||
-       s.nowsta!=0||!s.land_only||s.average_temperature)
+       s.nowsta!=0||!s.land_only||(s.iall!=0&&s.iall!=1&&s.iall!=2))
         throw std::invalid_argument("SURFVAR unsupported selected-case switch");
     if(!std::isfinite(s.station_temp_k)||
        s.station_temp_k<180.0f||s.station_temp_k>350.0f||
@@ -34,9 +56,22 @@ inline SurfaceState surfvar_one_station(const ObservedSurface& s) {
     // all cells select that station, regardless of radius or IRAD.
     // Missing observed RH invokes original 80% land fallback.
     const int rh=s.station_rh_percent==9999?80:s.station_rh_percent;
+    std::vector<float> temperature(n,s.station_temp_k);
+    if(s.average_temperature&&s.iall!=2) {
+        // IAVET=1: SURFVAR L12878-12881 calls AVETMP with the diagnostic wind.
+        if(s.u_ms.size()!=n||s.v_ms.size()!=n)
+            throw std::invalid_argument(
+                "SURFVAR IAVET=1 requires the diagnostic u/v field");
+        AvetmpInput a;
+        a.nx=s.nx;a.ny=s.ny;a.mnmdav=s.mnmdav;a.hafang_deg=s.hafang_deg;
+        a.dgrid_m=s.dgrid_m;a.u_ms=s.u_ms;a.v_ms=s.v_ms;
+        a.temperature_k=temperature;
+        temperature=avetmp(a);
+    }
+    if(s.iall==0)return {s.nx,s.ny,std::move(temperature),{},{} };
     // Original default initialized IPCODE2D=0; NPSTA=0 skips rain input.
     // This is NOT qualified meteorological precipitation forcing.
-    return {s.nx,s.ny,std::vector<float>(n,s.station_temp_k),
+    return {s.nx,s.ny,std::move(temperature),
             std::vector<int>(n,rh),std::vector<int>(n,0)};
 }
 } // namespace cteas::p6e

@@ -197,20 +197,20 @@ def main():
         # ---- 5b. real-input partial candidate mode ------------------------
         observations=root/"observations.csv"
         observations.write_text(
-            "hour_index,air_temperature_k,humidity_pct,opaque_cloud_tenths\n"+
-            "1,279.25,52,0\n2,281.75,46,0\n3,276.50,87,0\n")
+            "hour_index,air_temperature_k,pressure_mb,humidity_pct,opaque_cloud_tenths\n"+
+            "1,279.25,1028.2,52,0\n2,281.75,1027.9,46,0\n3,276.50,1025.1,87,0\n")
         candidate=root/"realcase-candidate.dat"
         emitted_real=run([tool,"emit-realcase","--reference",reference,
                           "--observations",observations,"--out",candidate])
         assert emitted_real.returncode==0, emitted_real.stderr
         real_report=json.loads(emitted_real.stdout)
-        assert real_report["produced_fields"]==["TEMPK","IRH","T-LEV  1","QSW"], real_report
+        assert real_report["produced_fields"]==["TEMPK","IRH","T-LEV  1","QSW","RHO"], real_report
         assert real_report["base_timezone_hours"]==0, real_report
         assert real_report["shortwave_constants"]["ha1"]==990.0, real_report
-        assert len(real_report["missing_sentinel_fields"])==LABELS_PER_HOUR-4
+        assert len(real_report["missing_sentinel_fields"])==LABELS_PER_HOUR-5
         partial=json.loads(compare(tool,reference,candidate).stdout)
         for field in partial["fields"]:
-            expected=HOURS*CELLS if field["label"] in ("TEMPK","IRH","T-LEV  1","QSW") else 0
+            expected=HOURS*CELLS if field["label"] in ("TEMPK","IRH","T-LEV  1","QSW","RHO") else 0
             assert field["denominator"]==expected, field
             if expected==0:
                 assert field["missing_candidate"]==HOURS*CELLS, field
@@ -220,7 +220,7 @@ def main():
         assert json.loads(partial_harness.stdout)["status"] in ("PASS","FAIL_NUMERIC")
         bad_observations=root/"short-observations.csv"
         bad_observations.write_text(
-            "hour_index,air_temperature_k,humidity_pct,opaque_cloud_tenths\n1,279.0,52,0\n")
+            "hour_index,air_temperature_k,pressure_mb,humidity_pct,opaque_cloud_tenths\n1,279.0,1028.2,52,0\n")
         assert run([tool,"emit-realcase","--reference",reference,
                     "--observations",bad_observations,
                     "--out",root/"no.dat"]).returncode!=0
