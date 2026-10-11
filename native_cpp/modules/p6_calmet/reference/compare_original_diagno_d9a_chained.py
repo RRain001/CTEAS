@@ -40,8 +40,14 @@ ZFACE1_M=0.
 MINIM_ITERATIONS=3
 MINIM_DIVLIM=0.
 # Original IKINE=1 pre-blend kinematic route controls: ALPHA is the empirical
-# topographic coefficient and the real deck's namelist MINIM pair (unused by
-# the frozen deck because it has IKINE=0).
+# topographic coefficient and NITER the real deck's namelist iteration cap
+# (both unused by the frozen deck because it has IKINE=0). DIVLIM is set to a
+# deterministic 0 so both implementations execute the same number of
+# Gauss-Seidel iterations: with the deck's DIVLIM=5e-6 the original's
+# convergence test (DIVMAX<=DIVLIM) is threshold-sensitive and the two runs can
+# exit at different iterations. Measured: at DIVLIM=0 the calm scene agrees to
+# 2.4e-06 m/s, while at DIVLIM=5e-6 the same scene spreads to 2.8e-03 m/s even
+# though the two active scenes stay within 7.2e-06 m/s in both settings.
 ALPHA=0.1
 KINEMATIC_NITER=50
 KINEMATIC_DIVLIM=0.
@@ -499,7 +505,8 @@ def main():
         kinematic_controls=dict(ikine=1,alpha=ALPHA,niter=KINEMATIC_NITER,
                                 divlim_per_s=KINEMATIC_DIVLIM,
                                 cellzb_origin_m=ZFACE1_M,
-                                real_case_path=False),
+                                real_case_path=False,
+                                divlim_note="deterministic iteration count; the deck's DIVLIM=5e-6 makes the original convergence test threshold-sensitive, measured calm-scene spread 2.8e-03 m/s"),
         upstream_controls=dict(iwf_cod=1,ifradj=1,islope=1,ikine=0,iobr=0,
                                isurft=upstream.chain_fradj.ISURFT,
                                tinf_k=upstream.chain_fradj.TINF_K,
