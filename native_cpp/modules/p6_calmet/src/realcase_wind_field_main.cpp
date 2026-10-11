@@ -651,8 +651,6 @@ int main(int argc,char** argv){
     meta<<"    {\"stage\": \"HEATFX -> QH (DIAGNO L5676-L5715)\", \"status\": \"APPLIED\","
           " \"product\": \"qh_*.f32\","
           " \"note\": \"mcloud=1 uses the station cloud amount (0 tenths for every case hour); coefficients from met.lst (ha1=990, ha2=-30, hb1=-0.75, hb2=3.4, hc1=5.31e-13, hc2=60, hc3+1=1.12)\"},\n";
-    meta<<"    {\"stage\": \"FRADJ (L5643-L5644)\", \"status\": \"NEEDS_CALLER_PLANES\","
-          " \"missing\": [\"GAMMA\", \"TEMP2D\", \"HMAX (provided here as terset_hmax.f32)\"]},\n";
     meta<<"    {\"stage\": \"SLOPE (L5722-L5723)\", \"status\": \"APPLIED\","
           " \"product\": \"slope_corrected_u/v_*.f32\","
           " \"note\": \"chain-computed QH, TEMP2D and TERSET envelope; the corrected step one feeds the blend and the W tail\"},";
