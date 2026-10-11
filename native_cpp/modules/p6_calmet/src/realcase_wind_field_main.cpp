@@ -640,6 +640,11 @@ int main(int argc,char** argv){
           " \"terset_hmax.f32\": \"m\", \"terset_hmin.f32\": \"m\","
           " \"terset_disthmax.f32\": \"m\", \"terset_disthmin.f32\": \"m\"},\n";
     meta<<"  \"missing_sentinel\": "<<MISSING<<",\n";
+    meta<<"  \"iextrp_rmin2\": {\"IEXTRP\": "<<iextrp
+        <<", \"level1_exclusion_applied\": "<<(iextrp<=0?"true":"false")
+        <<", \"level1_exclusion_source\": \"PREPDI calmet.for L14099 IF (IEXTRP .LE. 0) I1=2; probe reference/probe_original_prepdi_iextrp_level1.py, literal block sha256 9dba46c137d7635bc53113a70d2b91c110bc897a5a43f563be43bc787d41d8e5\", "
+          "\"effect_measured\": \"level 1 of the first-guess field changes by up to 0.45 m/s against a run without the exclusion while levels 2-9 stay bit-identical\", "
+          "\"RMIN2\": \"-1.0 in the deck; original PREPDI L5831 skips a surface station only when FMIN < RMIN2, which cannot happen for a negative RMIN2, so with RMIN2=-1.0 no surface station is ever skipped. This case has one surface station, so the rule is satisfied but inert; multi-surface-station cases would need it modelled\"},\n";
     meta<<"  \"hourly_labels\": "<<written<<",\n";
     meta<<"  \"hour_label\": \"END\", \"hour_label_note\": \"YYYY-MM-DD_HH in UTC; the label is the hourly interval end\",\n";
     meta<<"  \"surface_wind_speed_range_mps\": ["<<speed_min<<", "<<speed_max<<"],\n";
