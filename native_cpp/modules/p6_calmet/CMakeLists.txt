@@ -216,3 +216,13 @@ else()
   target_compile_options(cteas_p6_similt_neutral_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME p6d_original_similt_neutral_software COMMAND cteas_p6_similt_neutral_tests)
+
+# P6D8A scoped WIND1 surface/upper observation wiring; not full WIND1 parity.
+add_executable(cteas_p6_wind1_hour_tests tests/p6_wind1_selected_station_hour_tests.cpp)
+target_link_libraries(cteas_p6_wind1_hour_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_wind1_hour_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_wind1_hour_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6d8_wind1_selected_hour_observation_contract COMMAND cteas_p6_wind1_hour_tests)
