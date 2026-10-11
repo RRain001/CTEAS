@@ -97,3 +97,12 @@ P7B replaces bit_cast with standards-conforming memcpy and chrono calendar
 with integer Gregorian-to-epoch conversion; CI selects newer installed
 g++-12/g++-11 when available and retries HTTPS preflight. These corrections
 are **not accepted** until a new job builds and all CTests run successfully.
+
+## P7A GNU Fortran toolchain diagnostic
+
+Runner-3 job 38122867540 proved P7B 4/4 CTest PASS with GCC 12.3.
+The legacy default `/usr/bin/gfortran` does not support
+`-fallow-argument-mismatch` (first actual compiler diagnostic).
+Original reference CI now prefers installed `gfortran-12`, then
+`gfortran-11`, before falling back to the default binary, logging exact
+compiler version; reference build status stays UNVERIFIED until execution.

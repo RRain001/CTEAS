@@ -77,10 +77,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          command -v gfortran
+          if command -v gfortran-12 >/dev/null 2>&1; then
+            fc="$(command -v gfortran-12)"
+          elif command -v gfortran-11 >/dev/null 2>&1; then
+            fc="$(command -v gfortran-11)"
+          else
+            fc="$(command -v gfortran)"
+          fi
+          "$fc" --version | head -n 1
           python3 native_cpp/modules/p7_calpuff/reference/build_original_calpuff.py \
             --output "${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/original-fortran" \
-            --compiler gfortran
+            --compiler "$fc"
       - name: Selected 2022 real MET.DAT I/O parity (opt-in immutable input)
         shell: bash
         env:
