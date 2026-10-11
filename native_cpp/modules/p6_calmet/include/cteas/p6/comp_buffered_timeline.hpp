@@ -99,7 +99,8 @@ private:
 };
 
 inline std::vector<CompBufferedHour> comp_selected_2022_hours(
-    const Upper2022& upper,const std::vector<float>& zfaces) {
+    const Upper2022& upper,const std::vector<float>& zfaces,
+    int nsecdt=3600,int maxsep_hours=24) {
     using namespace std::chrono;
     std::vector<std::vector<LayerWind>> layers;
     std::vector<std::vector<float>> temperatures;
@@ -107,7 +108,10 @@ inline std::vector<CompBufferedHour> comp_selected_2022_hours(
         layers.push_back(calmet_vertav(s,zfaces));
         temperatures.push_back(calmet_facet_temperatures(s,zfaces));
     }
-    CompBufferedTimeline state(upper,layers,temperatures);
+    if(maxsep_hours<1 || maxsep_hours>100 || nsecdt<1 ||
+       nsecdt>maxsep_hours*3600)
+        throw std::invalid_argument("COMP invalid original NSECDT/MAXSEP control");
+    CompBufferedTimeline state(upper,layers,temperatures,nsecdt,maxsep_hours*3600);
     const auto start=sys_seconds{sys_days{year{2022}/January/1}};
     std::vector<CompBufferedHour> hours;
     hours.reserve(143);
