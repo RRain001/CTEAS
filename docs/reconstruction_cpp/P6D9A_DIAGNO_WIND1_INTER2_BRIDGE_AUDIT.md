@@ -41,6 +41,10 @@ Verified on the frozen case (`hefei5km_2022_reference_case_20261011`): 143/143 h
 
 `FRADJ` (L5643-L5644) is the only real-path stage still not applied in the producer: it needs the gridded `GAMMA`, and the original `CGAMMA` derives it with `ZICONV` from the convective boundary-layer trace (P6E's MIXHT/WSTARR family). Until that exists the producer leaves `GAMMA` caller-supplied and marks the stage `PENDING_GAMMA`; wiring it is a one-line addition to the existing chain because the FRADJ kernel and its original-source parity already exist.
 
+### Real-case numeric verdict (blend): FAIL
+
+`reference/compare_original_d9a_realcase_blend.py` compiles the unchanged original `INTER2` (frozen vendor blob) and replays its driver on all 143 hours of INTER2 fixtures, comparing cell by cell against `blend_u/v_*.f32`: **143/143 hours exceed the 2e-4 m/s tolerance, worst absolute error 10.36 m/s, worst relative error 1648**. Element-by-element inspection shows the fixture inputs (station values per level, step-one field, unit weights, landuse, radii, `NINTRP`) and the two weighting expressions (`wt = wo/RS^2` for observations, `wt3 = 1/R^2` for the step-one term) agree, so the remaining suspects are the station-selection/limit branch and this case's influence configuration (`RMIN=0.1`, `RMAX1=100`, `RMAX2=200`, `RMAX3=200`, `R1=50`, `R2=100` km over a 5 km domain with two stations). Not resolved at this head; `metadata.json` records `blend.verification = NOT_SOURCE_VERIFIED`.
+
 ### Real-case numeric verdict (step one)
 
 `reference/compare_original_d9a_realcase_step_one.py` compiles the **unchanged** original `WIND1`+`SIMILT` (vendor blob `437f43bb7f0e51a1919e56664663e1a046986ed0`; `wind1_source.for` sha256 `5aba624838f275ca85b018482d6873de7de014a298e65111008b15bb1b67a412`, `similt_source.for` sha256 `b52427a2b52298b5a1a456efc1444c7d0a331dbf471e609b676fe744bb98850b`), replays the driver on all 143 producer fixtures and compares cell by cell against `wind1_u/v_*.f32`: **143 hours, 6,435,000 components compared, worst absolute error 2.53e-05 m/s** (tolerance 2e-4 m/s), worst relative error 1.10e-03, zero mismatches, status `PASS_REALCASE_STEP_ONE_ORIGINAL_WIND1_PLUS_SIMILT`.
@@ -60,7 +64,7 @@ Verified on the frozen case (`hefei5km_2022_reference_case_20261011`): 143/143 h
 | real Hefei 2022 step-one U/V | `IMPLEMENTED_SCOPED`, `PASS_REAL_CASE` | 143 hours, 6,435,000 components vs the unchanged original WIND1+SIMILT, worst 2.53e-05 m/s |
 | real Hefei 2022 blended U/V + W faces | `IMPLEMENTED_SCOPED`, `PARTIAL` | 143 hours of INTER2 blend and of the uncompensated-terrain SMOOTH/DIVCEL/W tail; the terrain-corrected tail and `P6D_FULL_2022_UVW` stay `NOT_PASS` until TEMP2D/QH are wired |
 | real-case SURFVAR -> `TEMP2D`, HEATFX -> `QH`, SLOPE | `IMPLEMENTED_SCOPED` | chain-computed per hour from the case tree; SLOPE's kernel keeps its own chained original-source parity (real-deck upstream route). FRADJ stays `PENDING_GAMMA` (see above) |
-| real-case INTER2 blend | `IMPLEMENTED_SCOPED` | resolved: the bridge's 22500-cell array is the original `WO(i,j,k)` grid, and RDWT fills 1.0 for `IPROG=0` with no `WT.DAT`, which is exactly this deck; the blend runs in the producer with the deck radii, NINTR2 and GEO landuse |
+| real-case INTER2 blend | `IMPLEMENTED_SCOPED`, `FAIL_REFERENCE` | the `WO(i,j,k)` mapping is resolved (`RDWT` fills 1.0 for `IPROG=0` with no `WT.DAT`), but the 143-hour original-source comparison FAILS (worst 10.36 m/s), so `blend_u/v` and everything built on them are marked NOT_SOURCE_VERIFIED |
 
 ## Hard limits and open dependencies
 
