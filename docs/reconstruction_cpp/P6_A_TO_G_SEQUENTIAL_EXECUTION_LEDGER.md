@@ -104,3 +104,11 @@ DIAGNO L6119–6148 的选定片段完整通过 SMOOTH→全层 DIVCEL→由下�
 独立证据：[原版真实 143h RDSN/COMP PASS](https://github.com/RRain001/CTEAS/actions/runs/38113500059)；[原版真实 143h CGAMMA 与完整 P6B 回归 PASS](https://github.com/RRain001/CTEAS/actions/runs/38113874913)；[专项最终报告](P6C_RDSN_CGAMMA_2022_AUDIT.md)。通过了 1h→6h→143h 地形、地面观测、探空原始字段与垂直/时间风温插值源对照；`COMP` 物理 AA/BB 286 个时次、`RDSN` 1,144 个原版实际地面气象值、858 个时间关联值及 143 个 `CGAMMA` 直减率均为 **0 超限项**。温度直减率三路径样本为普通插值 86、当时次干绝热 51、先前对流记忆修正 6。插桩前后原版 `MET.DAT` SHA256 严格相等。
 
 **决策：`P6C_SELECTED_CASE=PASS_SCOPED_HEFEI_2022_OBSERVATIONS`，P6D 的完整三维诊断风场集成可以开始，但绝不把已经 PASS 的孤立 `FRADJ` 误称为 P6D 完成。** P6E–P6G 仍未验收，`P6_CALPUFF_READY=FALSE`。湿驱动方面，真实 SURF `IPCODE=9999` 143/143、`NPSTA=0`：`P6_WET_FORCING_VALIDATED=FALSE`，`P7_WET_DEPOSITION_VALIDATED=FALSE`，与 P6C 选定配置通过彼此独立。
+
+### DGM 原版内部状态导出：写只插桩重跑（2026-10-12）
+
+详见 [DGM_INTERNAL_STATE_DUMP_20261012.md](DGM_INTERNAL_STATE_DUMP_20261012.md)。用与冻结案例**完全相同的输入**，对**未修改**的原版 CALMET 6.5.0 加**只写**插桩（`subroutine comp` 内 5 个点 + 文件末尾追加 `DGMSTATE`，vendor `calmet.for` sha256 `430381b4…` 未变），同一编译器同一组 flag 编译两份二进制并各自跑完 **143 个一小时区间**：**插桩前后 `MET.DAT` SHA256 同为 `b1823cda…`，且等于冻结参考**（未插桩那份不产生任何 dump 文件，否则 fail-closed）。
+
+导出 `CALMET.DAT` 不记录的内部状态：整网 50×50 逐小时 `ZICONV`/`DPTT`/`ZI`/`QH`/`USTAR`/`EL`/`RHO`/`TEMP2D`/`WSTAR`（`dgm_state.bin` sha256 `e6b8ab30…`，715 条记录 = 143 小时 × 5 点；元数据与台站 3×3 邻域另附）。dump 第 4/5 点的 `ZI`/`WSTAR` 与冻结 `met.dat` 自身字段**逐格完全相等（143×2,500 格最大绝对差 0.0）**，证明 dump 就是产生冻结参考的同一内部状态。
+
+结论：P6E 的三处残差**不在 `QH`**（台站 3×3 内 `QH` 相对跨度约 1e-4），而在 `DPTT` 记忆——`DIAGNO`→`STHEOR`→`ELUSTR2`→`MIXHTST` 先为地面站所在格单独刷新 `DPTT`（经 `/TJMP/` 直写），随后整网 `MIXHT` 再使用它；其余各格进入 `MIXHT` 时携带的是**上一小时**的 `DPTT`。用 dump 自身数值代入原版 `MIXHMC` 公式，可把台站格与邻格的 pre-`AVEMIX` `ZICONV` 复现到 1e-4 m（第 6 小时 985.4585 / 1222.6009 / 1006.5546 全中；把台站格的“新” `DPTT` 代进邻格也会得到同样的凸起）。`AVEMIX` 再把 1222.60 m 平滑为冻结文件中的 1036.44 m，`WSTAR` 与 `T-LEV 5–7` 同源。本节只记录该证据，不改变既有 `P6E=HOLD` 等阶段结论。
