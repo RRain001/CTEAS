@@ -821,7 +821,8 @@ int main(int argc,char** argv){
                       <<rmax3_km<<" "<<r1_km<<" "<<r2_km<<" 999999 999998\n";
                 for(std::size_t k=0;k<9;++k)
                     inter2<<nintrp[k]<<(k==8?"\n":" ");
-                inter2<<static_cast<float>(surface_x_km)<<" "
+                inter2<<std::setprecision(17)
+                      <<static_cast<float>(surface_x_km)<<" "
                       <<static_cast<float>(upper_x_km)<<"\n";
                 inter2<<static_cast<float>(surface_y_km)<<" "
                       <<static_cast<float>(upper_y_km)<<"\n";
