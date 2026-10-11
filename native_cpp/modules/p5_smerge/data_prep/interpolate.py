@@ -3,6 +3,7 @@ import os
 import re
 import numpy as np
 import pandas as pd
+from .wind_policy_v2 import clean_then_replace_calms, WindPolicyError
 
 
 def read_station_csv(file_path):
@@ -60,7 +61,7 @@ def fill_continuous_by_gap_rule(series):
     A missing sequence at the beginning remains missing (9999 on output).
     The precipitation and cloud treatment is intentionally unchanged.
     """
-    s = pd.to_numeric(series, errors="coerce").replace(9999, np.nan)
+    s = pd.to_numeric(series, errors="coerce").replace([9999, -9999], np.nan)
     return s.ffill()
 
 
@@ -234,21 +235,14 @@ def write_wind_audit(file_path, audit, summary):
     base, ext = os.path.splitext(file_path)
     audit_path = f"{base}_wind_audit{ext}"
     out = audit.copy()
-    for column in ("wind_direction_fill_source_utc", "wind_speed_fill_source_utc"):
-        out[column] = out[column].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    for column in ("previous_valid_noncalm_utc", "calm_left_valid_utc", "calm_right_valid_utc"):
+        if column in out.columns:
+            out[column] = out[column].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     out.insert(0, "at_utc", out.index.strftime("%Y-%m-%dT%H:%M:%SZ"))
     out.to_csv(audit_path, index=False)
 
     payload = dict(summary)
     payload["station_file"] = os.path.basename(file_path)
-    for key in ("leading_missing", "boundary_calm_segments"):
-        payload[key] = [
-            {
-                name: (value.strftime("%Y-%m-%dT%H:%M:%SZ") if hasattr(value, "strftime") else value)
-                for name, value in item.items()
-            }
-            for item in payload[key]
-        ]
     summary_path = f"{base}_wind_audit.json"
     with open(summary_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, ensure_ascii=False)
@@ -276,59 +270,88 @@ def process_one_station(file_path, strict=False):
     wdir_col = "deg" if "deg" in df.columns else ("Wdir10m" if "Wdir10m" in df.columns else None)
     wspd_col = "ms-1" if "ms-1" in df.columns else ("Wspeed10m" if "Wspeed10m" in df.columns else None)
 
-    # 连续变量补值规则
-    for col in [temp_col, rh_col, pressure_col]:
+    # All nonwind variables: previous valid value, unlimited carry.
+    # Never treat source-missing precipitation/cloud as a real zero or
+    # invent a default cloud-ceiling height. Genuine no-cloud 999 is kept.
+    nonwind = [temp_col, rh_col, pressure_col, precip_col, ccover_col, cheight_col]
+    for col in nonwind:
         if col and col in df.columns:
             df[col] = fill_continuous_by_gap_rule(df[col])
 
-    # 风场：方案 C，保留真实/前向填充的低风速；静风数值处理交由 CALMET
-    audit = summary = None
-    if wdir_col and wspd_col and wdir_col in df.columns and wspd_col in df.columns:
-        df, audit, summary = fill_wind_forward_calm(df, wdir_col, wspd_col, strict=strict)
+    # The original-hour presence must come from ISD-Lite, not the UNION
+    # of two source datasets. An hour with raw Lite -9999 still counts.
+    from pathlib import Path
+    source = Path(file_path)
+    source_audit = source.with_name(source.stem + "_isd_lite_source_audit.csv")
+    if not source_audit.is_file():
+        raise WindPolicyError(f"missing mandatory raw ISD-Lite hourly presence: {source_audit}")
+    provenance = pd.read_csv(source_audit)
+    if not {"at_utc", "lite_report_present"}.issubset(provenance.columns):
+        raise WindPolicyError("ISD-Lite provenance required columns missing")
+    source_times = pd.to_datetime(provenance["at_utc"], utc=True).dt.tz_localize(None)
+    raw_presence = pd.Series(provenance["lite_report_present"].astype(bool).to_numpy(),
+                             index=pd.DatetimeIndex(source_times))
+    if not raw_presence.index.is_unique:
+        raise WindPolicyError("duplicated original source UTC hour")
+    if (raw_presence.index.difference(df.index)).size:
+        raise WindPolicyError("ISD-Lite provenance contains hour outside reconstructed year")
 
-    # 指定列缺失值固定填充
-    if precip_col and precip_col in df.columns:
-        df[precip_col] = pd.to_numeric(df[precip_col], errors="coerce").replace(-9999, np.nan).fillna(9999)
-    if pressure_col and pressure_col in df.columns:
-        df[pressure_col] = pd.to_numeric(df[pressure_col], errors="coerce").replace(-9999, np.nan).fillna(9999)
-    if ccover_col and ccover_col in df.columns:
-        df[ccover_col] = pd.to_numeric(df[ccover_col], errors="coerce").replace(-9999, np.nan).fillna(9999)
-    if cheight_col and cheight_col in df.columns:
-        df[cheight_col] = (
-            pd.to_numeric(df[cheight_col], errors="coerce")
-            .replace(-9999, np.nan)
-            .fillna(722)
-            .astype(int)
-        )
+    if not (wdir_col and wspd_col):
+        raise WindPolicyError("missing required GENERIC wind columns")
+    cleaned, modeled, audit, summary = clean_then_replace_calms(
+        df, wdir_col, wspd_col, raw_presence, strict=strict)
+    df = modeled
+
+    # The copied P5 serializer writes stage-1 + stage-2 files; final
+    # downstream GENERIC still uses *_filled.csv for compatibility.
+    cleaned_for_export = cleaned.copy()
+    for col in [wdir_col, wspd_col]:
+        cleaned_for_export[col] = cleaned_for_export[col].fillna(9999)
+    for col in [wdir_col, wspd_col]:
+        df[col] = df[col].fillna(9999)
 
     # 按原始第三行列顺序输出
     out_cols = [c for c in columns if c in df.columns]
     df_out = df[out_cols].copy()
+    df_cleaned = cleaned_for_export[out_cols].copy()
 
     # 整数列格式化
     for int_col in ["Year", "Month", "Day", "Hour"]:
         if int_col in df_out.columns:
             df_out[int_col] = df_out[int_col].astype(int)
+            df_cleaned[int_col] = df_cleaned[int_col].astype(int)
 
+    df_out.attrs["stage1_cleaned_df"] = df_cleaned
     return header_lines, df_out, audit, summary
 
 
 def save_station_csv(file_path, header_lines, df_out):
+    """Keep auditable stage-1 + stage-2 files and old downstream final path."""
     base, ext = os.path.splitext(file_path)
-    output_path = f"{base}_filled{ext}"
-    with open(output_path, "w", encoding="utf-8", newline="") as f:
-        for line in header_lines:
-            f.write(line + "\n")
-        df_out.to_csv(f, index=False, header=False)
-    return output_path
+    cleaned = df_out.attrs.get("stage1_cleaned_df")
+    if cleaned is None:
+        raise WindPolicyError("stage-1 cleaned wind file is mandatory")
+    paths = {
+        "cleaned": f"{base}_cleaned{ext}",
+        "calm_interpolated": f"{base}_calm_interpolated{ext}",
+        "final": f"{base}_filled{ext}",
+    }
+    for role, data in (("cleaned", cleaned),
+                       ("calm_interpolated", df_out),
+                       ("final", df_out)):
+        with open(paths[role], "w", encoding="utf-8", newline="") as out:
+            for header in header_lines:
+                out.write(header + "\n")
+            data.to_csv(out, index=False, header=False)
+    return paths["final"]
 
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="P5 Scheme C: preserve observed wind, defer calm numerics to CALMET")
+    parser = argparse.ArgumentParser(description="P5 v2: annual whole-vector ffill, then original-calm replacement")
     parser.add_argument("--strict", action="store_true",
-                        help="缺少前置观测时要求失败；静风风向不执行弧插值")
+                        help="缺少前置非静风观测时要求失败")
     args = parser.parse_args()
 
     workdir = "."
