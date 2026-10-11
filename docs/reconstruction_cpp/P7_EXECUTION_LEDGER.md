@@ -1304,3 +1304,112 @@ plus the CTEAS-only `CONC.DAT` header. Both the plume-rise path (P7N) and the
 release scheduler (P7O) of the locked deck are reconstructed with original-source
 parity. Explicitly out of scope and off this case's path: `MSHEAR=1`, `MSPLIT=1`,
 `MHFTSZ=1`, building downwash, the numerical rise and (for the locked deck) CTSG.
+
+## 2026-10-12 P7P SETPUF step bookkeeping and SETCSIG
+
+Round status: the per-step bookkeeping of `SETPUF` - the piece P7O named as its
+entry point - is reconstructed and parity-checked against the compiled
+**unmodified** vendor source, together with the `/CSIGMA/` selection state.
+
+### Ported units and parity evidence
+
+| unit | vendor span | ported | parity |
+|---|---|---|---|
+| SETPUF step bookkeeping (inline) | L48373-48399 | yes | 320 cases x 13 columns, `MAX_REL=3.4e-08` |
+| SETPUF state update (inline) | L48706-48723 | yes | 64 cases x 6 columns, `MAX_REL=4.2e-13` |
+| `SETCSIG` (/CSIGMA/ selection) | L52504-52619 | yes | 32 cases x 22 columns, `MAX_REL=2.0e-08` |
+
+`P7P_ORACLE_PARITY_TOTAL_CASES=416`, `MISMATCHES=0`. Both inline blocks are
+extracted **verbatim** (16 and 10 statements) into generated harnesses; the
+`TMTOTB` increment (L48718), the `XTOTB` increment (L48717) and the end-of-step
+position store (L48723) are pinned by line as well. `TAULY` is a hard-failing
+stub in the oracle (`MTAULY=1` is off this deck) and `SETCSIG`'s SIGTY call is
+exercised through a deterministic curve pair that both sides share (the vendor
+curves themselves carry the P7D parity evidence).
+
+### What the block does (and what it deliberately does not)
+
+The step bookkeeping sets the travel distance and time at the begin/end of the
+step, the midpoint distance/time, the mean transport speed and its km/s form, and
+the CALM determination: below `WSCALM` the sigma-v/w dispersion options are forced
+to 1 and both the downwash code and the final-rise distance are cleared. The
+state update applies gravitational settling **only when `MTILT=1`** (the deck has
+`MTILT=0`, so the settling term is read but never applied), then advances
+`XTOTB`/`TMTOTB` and stores the end-of-step position. `SETCSIG` copies its
+arguments into `/CSIGMA/`, conditions the stability class to 6, and computes the
+Heffter transition pair with `SIGTY(SYH,0,0)`.
+
+Not reconstructed and refused by the callers: `SETPUF`'s sigma update (the
+`SIGTY`/`SIGTZ` calls with their virtuals at the start/midpoint/end of the step
+and the `MHFTSZ=1` Heffter branch), the rise-table/`WAKE_TAB` handling, the
+`MCTADJ=2` height adjustment (`CTADJ2`, L20542-20835) and the PRIME wake
+treatment; `TAULY` and `MTAULY=1`.
+
+### Locked-case step run (physical chain only)
+
+`cteas_p7p_probe --deck-step MET.DAT puff.inp 0 513.3846439571 3533.7689269678
+70.8` runs the reconstructed step bookkeeping and `/CSIGMA/` selection for the
+sampled hour:
+
+```
+P7P_DECK_STEP_RUN=PASS HOUR=0 STABILITY=4 URBAN=false SPEED_MS=1.39612
+  ZI_M=230.977 STEP_S=3600 STEP_DISTANCE_M=5026.03 CALM=false UAVG_MS=1.39612
+  UKPS=0.00139612 XTTB1_M=0 XTTE1_M=5026.03 TB1_S=0 TE1_S=3600 DMIDKM=2.51301
+  TMID_S=1800 IDOPTYS=3 IRUS=0 KSTABS=4 SZH_M=550 THFTY_S=7257.12
+  DHFTY_KM=10.1318 XPB_KM=511.063 YPB_KM=3538.227 ZPB_M=70.8 XTOTB_M=5026.03
+  TMTOTB_S=3600 SIGMA_UPDATE_NOT_RECONSTRUCTED=true PHYSICAL_CHAIN_ONLY=true
+  NOT_A_PUFF_CON_COMPARISON=true
+```
+
+i.e. the locked hour is not calm, the puff advances 5.026 km in 3600 s, the
+midpoint is at 2.513 km / 1800 s, the dispersion option stays at the deck's
+`MDISP=3`, and the Heffter transition for this environment is `THFTY=7257 s`
+(`DHFTY=10.13 km`) with `SZH=550 m` from the deck's `SYTDEP`. This is a
+physical-chain demonstration, **not** a comparison with the frozen `puff.con`.
+
+### Gate evidence (Linux, lhy-desktop, g++-12 + gfortran-11)
+
+`LOCAL_GATE_P7=PASS sha=ca991a3b7 ok=27 blocked=0 failed=0` with the authoritative
+local gate, `100% tests passed, 0 tests failed out of 32` (including the three new
+P7P CTest entries). The same matrices against the compiled unmodified vendor
+source with `GNU Fortran (Ubuntu 11.4.0) 11.4.0` are identical to macOS: step
+bookkeeping 320x13 `MAX_REL=3.426e-08`, state update 64x6 `MAX_REL=4.213e-13`,
+`SETCSIG` 32x22 `MAX_REL=1.981e-08` - 416 cases, `MISMATCHES=0`.
+
+### CTest evidence (local worktree, macOS gfortran 16.2.0, Debug -Werror)
+
+- `cteas_p7p_step_bookkeeping_contract`: closed forms for the step bookkeeping
+  (including the calm override of the dispersion options, the downwash/rise
+  clearing and the midpoint terms), the state update with and without `MTILT`, the
+  ground clipping, the `/CSIGMA/` selection and the Heffter pair, and every
+  fail-closed path. PASS.
+- `cteas_p7p_source_parity`: anchor + two inline blocks + the three pinned
+  statements + 32 quoted statements + the three matrices. PASS (416 cases).
+- `cteas_p7p_locked_case_step`: the deck run above. PASS.
+- Local `ctest` 31/32 PASS; the only failure remains the pre-existing macOS
+  case-insensitive-filesystem failure of `cteas_p7_original_case_stage_contract`
+  (PASS on Linux).
+
+### Precise gaps and the next-round entry point
+
+1. **`SETPUF`'s sigma update** (L48434-48667): the `SIGTY`/`SIGTZ` calls at the
+   start/midpoint/end of the step with their virtuals, the PRIME `WAKE_TAB`
+   branch, the `MHFTSZ=1` Heffter branch (`HEFTRAN`) and the sigma-z enhancement
+   terms. This is now the largest remaining piece of the puff model; the
+   bookkeeping it consumes, the curves (`SIGTY`/`SIGTZ`, P7D), the `SIGMA()`
+   restart wrapper (P7M) and the `/CSIGMA/` state (this round) are all ported.
+2. **`CTADJ2`** (L20542-20835) is the `MCTADJ=2` height adjustment and
+   **`WAKE_TAB`** (L78403-78541) the PRIME wake table; both are off this deck
+   (no building) but are needed for a general puff step.
+3. **`RLSMET`** (L18172-18379) and **`PTLAPS`/`LCALGRD`** (L18421-18559) remain the
+   prerequisites for the met-based `WSNEW` and the stable rise branches.
+
+### Incomparability list after this round
+
+**Still one cause, narrowed again**: the puff model is still the P7C prototype -
+now reduced to `SETPUF`'s sigma update (plus the advection step around it) and the
+CTEAS-only `CONC.DAT` header. The release scheduler (P7O), the plume-rise path
+(P7N), the step bookkeeping and `/CSIGMA/` selection (this round) all carry
+original-source parity. Explicitly out of scope and off this case's path:
+`MSHEAR=1`, `MSPLIT=1`, `MHFTSZ=1`, `MTILT=1`, building downwash, the numerical
+rise and (for the locked deck) CTSG.
