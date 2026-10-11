@@ -149,11 +149,21 @@ def build_fields_dir(root: pathlib.Path, nx: int, ny: int, nz: int,
 def verify_wind_mapping(data: bytes, meta: dict, fields_dir: pathlib.Path,
                         variant: str, w_field: str, labels: list[str],
                         index: int) -> None:
-    """Every U/V/W face in the file must equal the P6D plane value."""
+    """Every U/V/W face in the file must equal the P6D plane value.
+
+    The expectation is rebuilt from the *documented* P6D plane index
+    `i + nx*(j + ny*k)` (the layout metadata declares), not from any assumption
+    about how the writer indexes the array, so a permuted read fails here.
+    """
     nx, ny, nz = meta["nx"], meta["ny"], meta["nz"]
     cells = nx * ny
     records = records_by_label(data, RECORD_HEADER_BYTES + 4 * cells)
-    per_label = {"U-LEV": "u", "V-LEV": "v", "WFACE": "w"}
+
+    def plane_index(cell: int, level: int) -> int:
+        i = cell % nx
+        j = cell // nx
+        return i + nx * (j + ny * level)
+
     for label in labels:
         u = list(struct.unpack(f"<{cells * nz}f",
                                (fields_dir / f"{variant}_u_{label}.f32").read_bytes()))
@@ -168,13 +178,16 @@ def verify_wind_mapping(data: bytes, meta: dict, fields_dir: pathlib.Path,
                 values = struct.unpack_from(f"<{cells}f", record,
                                             RECORD_HEADER_BYTES)
                 if kind == "U-LEV":
-                    expected = [u[cell * nz + level - 1] for cell in range(cells)]
+                    expected = [u[plane_index(cell, level - 1)]
+                                for cell in range(cells)]
                 elif kind == "V-LEV":
-                    expected = [v[cell * nz + level - 1] for cell in range(cells)]
+                    expected = [v[plane_index(cell, level - 1)]
+                                for cell in range(cells)]
                 else:
                     # CALMET.DAT writes W at the top face of layer k, so the P6D
                     # face k+1 becomes WFACE(k); the ground face is not written.
-                    expected = [w[cell * (nz + 1) + level] for cell in range(cells)]
+                    expected = [w[plane_index(cell, level)]
+                                for cell in range(cells)]
                 for cell in range(cells):
                     if struct.pack("<f", values[cell]) != struct.pack("<f", expected[cell]):
                         fail(f"{name} of {label} differs from the P6D plane at "
@@ -256,7 +269,9 @@ def main() -> int:
                                      (fields / f"w_face_{labels[0]}.f32").read_bytes()))
         top = struct.unpack_from(f"<{nx * ny}f", records["WFACE  9"][0],
                                  RECORD_HEADER_BYTES)
-        if struct.pack("<f", top[0]) != struct.pack("<f", w_plane[nz]):
+        # Cell 0 of the top face in the documented plane layout
+        # (i + nx*(j + ny*k) with i=j=0 and face k=nz).
+        if struct.pack("<f", top[0]) != struct.pack("<f", w_plane[nx * ny * nz]):
             fail("WFACE 9 is not the P6D top face")
         evidence["wind_only"] = {"bytes": len(data), "sha256": payload["out_sha256"],
                                  "fields_per_interval": expected_fields,
