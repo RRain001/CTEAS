@@ -17,24 +17,62 @@ jobs:
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
-      - name: Preflight self-hosted Linux toolchain (no privileged writes)
+      - name: Resolve modern C++20 and Fortran toolchains on self-hosted runner
         shell: bash
         run: |
           set -euo pipefail
           echo "runner=$RUNNER_NAME os=$RUNNER_OS arch=$RUNNER_ARCH"
           uname -a
-          for tool in cmake c++ gfortran python3; do
-            if ! command -v "$tool" >/dev/null 2>&1; then
-              echo "::error::Missing $tool on self-hosted runner; request host admin to install this package"
+          for tool in cmake python3; do command -v "$tool" || exit 1; done
+          # Prefer already-installed Ubuntu 22.04 versioned packages.
+          # Only use sudo non-interactively when compiler prerequisites are absent.
+          find_cpp() {
+            for binary in g++-13 g++-12 g++-11 clang++-17 clang++-16 clang++-15; do
+              if command -v "$binary" >/dev/null 2>&1; then
+                echo "$binary"
+                return 0
+              fi
+            done
+            return 1
+          }
+          find_fortran() {
+            for binary in gfortran-13 gfortran-12 gfortran-11; do
+              if command -v "$binary" >/dev/null 2>&1; then
+                echo "$binary"
+                return 0
+              fi
+            done
+            return 1
+          }
+          cpp="$(find_cpp || true)"
+          fort="$(find_fortran || true)"
+          if [[ -z "$cpp" || -z "$fort" ]]; then
+            if ! sudo -n true 2>/dev/null; then
+              echo "::error::Runner requires g++-11 and gfortran-11 (Ubuntu 22.04); sudo -n unavailable. Ask administrator to install them."
               exit 1
             fi
-            command -v "$tool"
-          done
+            sudo -n apt-get update -qq
+            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-11 gfortran-11
+            cpp="$(find_cpp || true)"
+            fort="$(find_fortran || true)"
+          fi
+          if [[ -z "$cpp" || -z "$fort" ]]; then
+            echo "::error::Cannot resolve C++20 and modern Fortran compilers"
+            exit 1
+          fi
+          command -v "$cpp"
+          command -v "$fort"
+          "$cpp" --version | head -1
+          "$fort" --version | head -1
           cmake --version | head -1
-          c++ --version | head -1
-          gfortran --version | head -1
           python3 --version
-
+          # Source-verification Python scripts explicitly invoke 'gfortran'.
+          # Use a job-private versioned compiler shim instead of rewriting code
+          # or changing global /usr/bin/gfortran on the research host.
+          mkdir -p "$RUNNER_TEMP/cteas-p6d-tools"
+          ln -sfn "$(command -v "$fort")" "$RUNNER_TEMP/cteas-p6d-tools/gfortran"
+          echo "$RUNNER_TEMP/cteas-p6d-tools" >> "$GITHUB_PATH"
+          echo "CXX=$(command -v "$cpp")" >> "$GITHUB_ENV"
       - name: Strict C++20 build and all P6 regression CTests
         run: |
           cmake -S native_cpp/modules/p6_calmet -B /tmp/cteas-inter2-build -DCMAKE_BUILD_TYPE=Debug
