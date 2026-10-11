@@ -191,3 +191,14 @@ neutral/unstable, calm/normal/strong winds, roughness/temperature
 and water skip. Do not mark E8 PASS until exact original-source CI runs.
 Still pending: daytime MIXHT with real upper-air soundings, TEMP3D,
 selected SURFVAR multistation, full 2022 hourly field coupling.
+
+## E9 prognostic CLOUD3 cloud fraction (source comparison pending)
+
+Added isolated original CALMET L30683–30735 RH-based prognostic
+`CLOUD3` 850mb cloud-fraction kernel, with original >=99% RH
+saturation branch. The source-locked full original Fortran subroutine
+comparison fixes 32 cases x 20 cells = 640 scalar values across RH
+0–100%, including the 98–99% transition and saturation. This is
+not acceptance of MCLOUD3/4 selected hourly 2022 COMP, nor a
+substitute for diagnosed station cloud observations.
+No claim of E9 PASS until original CI finishes.
