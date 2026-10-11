@@ -124,7 +124,7 @@ def check_source(vendor:Path):
     ]
     anchors={}
     for line in required:
-        hits=[k+1 for k,s in enumerate(lines) if s.rstrip()==line]
+        hits=[k+1 for k,s in enumerate(lines) if s.strip()==line.strip()]
         if len(hits)!=1:raise RuntimeError(f"original READGE/FILLGEO source line missing or ambiguous: {line!r}: {hits}")
         anchors[line.strip()]=hits[0]
     return {"calmet_source_sha256":sha(vendor/"calmet.for"),"READGE_and_FILLGEO_lines":anchors}
