@@ -99,9 +99,13 @@ def parse_lite_winds(path: Path, year: int, station_id: str | None = None,
             speed = speed_code / 10.0 if speed_code != -9999 else None
             flags: list[str] = []
             if speed == 0.0:
-                if direction not in (None, 0.0):
-                    flags.append("ZERO_SPEED_DIRECTION_INCONSISTENT")
-                direction = 0.0
+                # Do not destroy the source distinction: (0,0) is standard
+                # calm and (360,0) is the user's second accepted calm code.
+                # Stage 1 normalizes BOTH to (0,0); provenance stays intact.
+                if direction == 360.0:
+                    flags.append("CALM_360_ZERO_NORMALIZE_IN_CLEANING")
+                elif direction != 0.0:
+                    flags.append("ZERO_SPEED_NONCALM_BEARING_INVALID")
             elif speed is not None and speed > 0 and direction == 0.0:
                 flags.append("NONZERO_SPEED_DIRECTION_ZERO_INVALID")
                 direction = None
