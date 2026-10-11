@@ -96,7 +96,7 @@ def build_source(vendor:Path,output:Path):
     last=next(i for i,l in enumerate(lines) if l.startswith("      subroutine diagno("))
     diagi=lines[first:last]
     one=cut(diagi,"      if(idiopt(2).eq.0 .and. noobs.eq.0)then",
-            "       endif",24)
+            "      endif",24)
     two=cut(diagi,"      if (noobs.lt.2) then","      end if",32)
     three=cut(diagi,"      do n=1,nssta","      end do",24)
     midpoint=[(i,l) for i,l in enumerate(lines)
