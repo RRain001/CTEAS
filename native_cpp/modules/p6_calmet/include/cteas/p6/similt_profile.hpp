@@ -52,9 +52,9 @@ struct SimiltProfileInput {
 struct SimiltProfileOutput {
     std::array<float,9> u_mps{};
     std::array<float,9> v_mps{};
-    // Number of levels SIMILT wrote; the levels above keep their prior content
-    // (missing for a station column, i.e. the original's "above mixing height"
-    // exit). Level 1 is always written.
+    // Number of levels SIMILT wrote (levels 1..levels_filled, i.e. ZMID(1) up
+    // to ZMID(levels_filled)); the levels above keep their prior content
+    // (missing for a station column, the original's "above mixing height" exit).
     std::size_t levels_filled=1;
 };
 
@@ -121,16 +121,13 @@ inline SimiltProfileOutput original_similt_profile(const SimiltProfileInput& in)
     const float cutoff=std::max(in.mixing_height_m+0.001f,
                                 in.minimum_mixing_height_m);
     SimiltProfileOutput out;
-    // The original SIMILT loop writes US(K-1,NS) for K=2.. and therefore never
-    // touches index 1: the caller's value there is the observed anemometer wind
-    // (already at ZMID(1) in the real path). Keep that contract explicit.
-    out.u_mps[0]=in.anemometer_u_mps;
-    out.v_mps[0]=in.anemometer_v_mps;
-    for(std::size_t k=2;k<=9;++k){
+    for(std::size_t k=2;k<=10;++k){
+        // Original loop K=2..NZP1 writes US(K-1,NS), i.e. C++ index K-2 at
+        // ZMID(K-1); the test uses ZFACE(K).
         // L30319: "above mixing height, exit" - the levels above keep their
         // prior content instead of a surface extrapolation.
-        if(!(in.zface_m[k]<=cutoff))break;
-        const float mid=0.5f*(in.zface_m[k-1]+in.zface_m[k]);
+        if(!(in.zface_m[k-1]<=cutoff))break;
+        const float mid=0.5f*(in.zface_m[k-2]+in.zface_m[k-1]);
         const float xlnzz0=std::log(mid/in.roughness_m);
         const double psim=std::abs(elinv)<0.00005
             ?0.0:original_psiud(double(mid)/double(eladj));
@@ -147,11 +144,11 @@ inline SimiltProfileOutput original_similt_profile(const SimiltProfileInput& in)
             if(wd<=0.f)wd=360.f+wd;
         }
         const float wdrad=deg2rad*wd;
-        out.u_mps[k-1]=-ws*std::sin(wdrad);
-        out.v_mps[k-1]=-ws*std::cos(wdrad);
-        if(!finite(out.u_mps[k-1])||!finite(out.v_mps[k-1]))
+        out.u_mps[k-2]=-ws*std::sin(wdrad);
+        out.v_mps[k-2]=-ws*std::cos(wdrad);
+        if(!finite(out.u_mps[k-2])||!finite(out.v_mps[k-2]))
             throw std::invalid_argument("SIMILT: nonfinite extrapolated wind");
-        out.levels_filled=k;
+        out.levels_filled=k-1;
     }
     return out;
 }
