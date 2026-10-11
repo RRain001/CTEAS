@@ -573,3 +573,61 @@ Commit **`4995166`** on `codex/cteas-p6e-surface-boundary-layer-20261011`:
 `P6E_E15_TO_E18_INTEGRATION=PASS`; **`P6E_FULL=NOT_PASS`** (no
 2022 hourly original field parity, no `IMIXH=2` composed-MIXHT wiring,
 no `ILAPSE=1` MM5 `MIXDT2`, 143/143 precipitation codes missing).
+
+## E20 original IMIXH=2 selection wired into the composed MIXHT grid path
+
+E19 validated the Batchvarova–Gryning kernel standalone; E20 closes the
+documented "unsupported `IMIXH=2` path" gap in the *composed* E13 grid
+path. `include/cteas/p6e/mixht_observed_mc.hpp` now selects the original
+convective-growth closure exactly as `calmet.for` L10579-10610/L10622-10653
+does:
+
+- new `MixhtObservedMcInput::imixh` (`±1` Maul–Carson `MIXHMC`, `±2`
+  Batchvarova–Gryning `MIXHBG`); the sign only selects the over-water
+  scheme, so the land path dispatches on `|IMIXH|`;
+- `MIXHBG` receives `WT = QH/(RHO*996)`, the `MIXDT` lapse rate, `THRESHL`,
+  `ZIMAX/ZIMIN`, `USTAR`, `EL`, `HTOLD = ZICONV(old)`, `IZICRLX`,
+  `TZICRLX`, `DPTMIN` and `NSECDT`, and — as in the source —
+  `TK = tzaa/tzbb(kusta,1)`, the **first face temperature of the selected
+  AA/BB sounding**, not `TEMP2D`;
+- `MIXHBG` returns the `DPTMIN`-floored lapse rate, which then feeds the
+  original mechanical height `hmech = cmech*ustar/bvf` (identical to the
+  `MIXHMC` path because `MIXDT` already floors the lapse rate);
+- **`DPTT` is left untouched** on the `|IMIXH|=2` path — only `MIXHMC`
+  updates the potential-temperature jump — and `ZICONV` is bounded by the
+  original `amin1(zimax,ziconv)` after the call, which also neutralizes
+  `MIXHBG`'s own trailing `min`/`max` quirk;
+- fail-closed: an unselectable `IMIXH` and a non-physical sounding surface
+  temperature both throw instead of silently degrading.
+
+`reference/compare_original_mixht_observed_mc.py` now compiles **four**
+unmodified original subroutines (`MIXHT`, `MIXDT`, `MIXHMC`, `MIXHBG` +
+`FBG`) with the vendor `ZIPARM/UPMET/GEN` includes; the previous `MIXHBG`
+fail-stop stub is gone and `imixh` is read per case. Cases grew from 28 to
+**48** (28 unchanged `IMIXH=1` + 20 `IMIXH=2`): **960 grid outputs, 2,880
+scalar comparisons**, 0 mismatches, same frozen thresholds
+0.07 m / 0.07 m / 0.004 K absolute with 8e-5 relative.
+
+Fail-closed `IMIXH=2` coverage gate (no run starts if unmet): 288 daytime
+land cells (223 growth, 24 collapse, 8 exact zero-net-buoyancy retention,
+33 equilibrium relaxation, of which **48 deep-limit `EL <= -500 m`**),
+75 nocturnal land cells, 37 water sentinels, 108 older-AA and 180 older-BB
+cells, 3 timestep lengths and both `IZICRLX` modes.
+
+Measured on the dedicated host (GCC 12.3.0) and, unchanged, on CI:
+`status=PASS`, 0 mismatches, and the per-mode breakdown proves the
+regression is zero:
+
+- `max_abs_error_IMIXH1_MC` = `[4.690036803367548e-9 m, 4.690036803367548e-9
+  m, 4.630074101896753e-12 K]` — **bit-identical to the accepted E13 run**,
+  i.e. the Maul–Carson path did not move;
+- `max_abs_error_IMIXH2_BG` = `[3.464e-3 m ZI, 8.942e-3 m ZICONV,
+  4.640e-13 K DPTT]`.
+
+**Scope / NOT claimed:** synthetic cases only, land plus unchanged water
+sentinels. Still open: the over-water OCD scheme selected by the `IMIXH`
+sign, `WATER`/`WATERP`/`MIXHT2` prognostic callers, `ILAPSE=1` MM5
+`MIXDT2`, `MIXHTST`, averaged mixing heights (`IAVEZI`) and the actual
+2022 hourly COMP field comparison. `P6E_FULL` remains **NOT PASS**;
+2022 precipitation `IPCODE` is still missing 143/143, so wet forcing stays
+unqualified.

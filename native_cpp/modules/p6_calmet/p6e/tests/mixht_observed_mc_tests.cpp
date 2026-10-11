@@ -32,4 +32,20 @@ int main(){
     assert(std::isfinite(mixht_observed_mc(a).zi[0]));
     a.iupt=3;fails([&]{return mixht_observed_mc(a);});
     a.iupt=-1;a.nearu[0]=3;fails([&]{return mixht_observed_mc(a);});
+    a.nearu[0]=1;
+    // IMIXH=2 selects the original Batchvarova-Gryning growth and, unlike
+    // MIXHMC, never updates the potential-temperature jump.
+    a.imixh=2;a.el[0]=-120.f;
+    const auto bg=mixht_observed_mc(a);
+    assert(bg.ziconv[0]>0.f&&bg.ziconv[0]<=a.zimax);
+    assert(bg.dptt[0]==a.initial_dptt[0]);
+    assert(bg.zi[0]>=a.zimin&&bg.zi[0]<=a.zimax);
+    // Positive L collapses the convective height exactly, as in the source.
+    a.el[0]=120.f;
+    assert(mixht_observed_mc(a).ziconv[0]==0.f);
+    // The sign of IMIXH only selects the over-water scheme.
+    a.imixh=-2;a.el[0]=-120.f;
+    assert(mixht_observed_mc(a).ziconv[0]>0.f);
+    a.imixh=3;fails([&]{return mixht_observed_mc(a);});
+    a.imixh=1;
 }

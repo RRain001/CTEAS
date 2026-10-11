@@ -1,9 +1,13 @@
 #pragma once
-// Selected CALMET 6.5.0 MIXHT, exact original IMIXH=1 Maul-Carson
-// land branch, with AA/BB older-sounding choice JUSTA and IUPT override.
-// Source CALMET v6.5.0 L10411-10682. BG (IMIXH=2), water physics,
-// complete COMP AA/BB buffer lifetime and averaged heights are NOT here.
+// Selected CALMET 6.5.0 MIXHT grid path over LAND with the AA/BB
+// older-sounding choice JUSTA and the IUPT override. Both original
+// convective-growth closures are selectable exactly as in the source:
+//   |IMIXH|=1 Maul-Carson (MIXHMC), |IMIXH|=2 Batchvarova-Gryning (MIXHBG).
+// Source CALMET v6.5.0 L10411-10682. Water-cell physics, the IMFXIH sign
+// distinction over water, complete COMP AA/BB buffer lifetime and averaged
+// heights are NOT here.
 #include "cteas/p6e/mixdt.hpp"
+#include "cteas/p6e/mixhbg.hpp"
 #include "cteas/p6e/mixhmc.hpp"
 #include <algorithm>
 #include <array>
@@ -16,6 +20,10 @@ namespace cteas::p6e {
 struct MixhtObservedMcInput {
     std::size_t nx=0,ny=0;
     int water_first=50,water_last=60,iupt=-1;
+    // Original MIXHT IMIXH: magnitude 1 = Maul-Carson (MIXHMC),
+    // magnitude 2 = Batchvarova-Gryning (MIXHBG). The sign only selects
+    // the over-water scheme, so magnitude is what matters on land.
+    int imixh=1;
     int izicrlx=0,timestep_s=3600;
     float constn=2400.f,zimin=20.f,zimax=2500.f;
     float threshl=0.02f,dptmin=0.001f,dzzi=200.f;
@@ -36,6 +44,7 @@ inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
        a.sounding[0].size()!=a.justa.size() ||
        (a.iupt!= -1 && (a.iupt<1||
         static_cast<std::size_t>(a.iupt)>a.justa.size())) ||
+       (a.imixh!=1&&a.imixh!=-1&&a.imixh!=2&&a.imixh!=-2) ||
        !std::isfinite(a.zimin)||a.zimin<0.f||
        !std::isfinite(a.zimax)||a.zimax<a.zimin||
        !std::isfinite(a.constn)||a.constn<=0.f||
@@ -80,25 +89,54 @@ inline MixhtObservedMcResult mixht_observed_mc(const MixhtObservedMcInput& a) {
         // Fortran JUSTA>0: AA older; otherwise BB older.
         const auto buffer=a.justa[sk]>0?0U:1U;
         const float htold=r.ziconv[k];
-        const auto sounding=mixdt(a.sounding[buffer][sk],
+        const auto& older=a.sounding[buffer][sk];
+        const auto sounding=mixdt(older,
                                   htold,a.dzzi,a.dptmin);
-        MixhmcInput m;
-        m.wt_mks=a.qh[k]/(a.rho[k]*cp);
-        m.gamma_kperm=sounding.dtheta_k_per_m;
-        m.threshold_wm2perm=a.threshl;
-        m.zimax_m=a.zimax;m.htold_m=htold;
-        m.dptt_k=r.dptt[k];
-        m.tht_k=sounding.tht_k;m.thtp_k=sounding.thtp_k;
-        m.izicrlx=a.izicrlx;m.timestep_s=a.timestep_s;
-        m.tzicrlx_s=a.tzicrlx;
-        m.dptmin_kperm=a.dptmin;
-        m.twodte_s=a.twodte;m.onedte_s=a.onedte;
-        const auto conv=mixhmc_lapse2(m);
-        r.ziconv[k]=std::min(a.zimax,conv.ziconv_m);
-        r.dptt[k]=conv.dptt_k;
+        const float wt=a.qh[k]/(a.rho[k]*cp);
+        float gamma=sounding.dtheta_k_per_m;
+        if(a.imixh==2||a.imixh==-2){
+            // Original MIXHT IMIXH=2 branch: Batchvarova-Gryning growth.
+            // TK is the first face temperature of the selected sounding
+            // (tzbb/tzaa(kusta,1)); MIXHBG does not update DPTT.
+            const float tk=older.temp_k[0];
+            if(!std::isfinite(tk)||tk<=0.f)
+                throw std::invalid_argument("MIXHT BG invalid sounding surface temperature");
+            MixhbgInput b;
+            b.wt_mks=wt;
+            b.gamma_kperm=gamma;
+            b.threshold_wm2perm=a.threshl;
+            b.zimax_m=a.zimax;b.zimin_m=a.zimin;
+            b.ustar_ms=a.ustar[k];
+            b.el_m=a.el[k];
+            b.zicbgold_m=htold;
+            b.tk_k=tk;
+            b.izicrlx=a.izicrlx;b.timestep_s=a.timestep_s;
+            b.tzicrlx_s=a.tzicrlx;
+            b.dptmin_kperm=a.dptmin;
+            const auto conv=mixhbg_lapse2(b);
+            r.ziconv[k]=std::min(a.zimax,conv.ziconv_m);
+            // MIXHBG applies the DPTMIN floor to the caller's lapse rate.
+            gamma=conv.gamma_kperm;
+        }else{
+            MixhmcInput m;
+            m.wt_mks=wt;
+            m.gamma_kperm=gamma;
+            m.threshold_wm2perm=a.threshl;
+            m.zimax_m=a.zimax;m.htold_m=htold;
+            m.dptt_k=r.dptt[k];
+            m.tht_k=sounding.tht_k;m.thtp_k=sounding.thtp_k;
+            m.izicrlx=a.izicrlx;m.timestep_s=a.timestep_s;
+            m.tzicrlx_s=a.tzicrlx;
+            m.dptmin_kperm=a.dptmin;
+            m.twodte_s=a.twodte;m.onedte_s=a.onedte;
+            const auto conv=mixhmc_lapse2(m);
+            r.ziconv[k]=std::min(a.zimax,conv.ziconv_m);
+            r.dptt[k]=conv.dptt_k;
+            gamma=conv.gamma_kperm;
+        }
         const float tave=(sounding.thtp_k+sounding.tht_k)/2.f;
         if(!(tave>0.f))throw std::invalid_argument("MIXHT MC nonphysical mean temperature");
-        const float bvf=std::pow(g*sounding.dtheta_k_per_m/tave,0.25f);
+        const float bvf=std::pow(g*gamma/tave,0.25f);
         const float hmech=a.cmech[k]*a.ustar[k]/bvf;
         r.zi[k]=std::min(a.zimax,std::max({a.zimin,hmech,r.ziconv[k]}));
         if(!std::isfinite(r.zi[k])||!std::isfinite(r.ziconv[k])||

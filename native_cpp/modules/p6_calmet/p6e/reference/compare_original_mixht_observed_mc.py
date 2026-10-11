@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Pinned unchanged MIXHT+MIXDT+MIXHMC full daytime/night selected path.
+"""Pinned unchanged MIXHT+MIXDT+MIXHMC+MIXHBG full selected path.
 
-The entire three original subroutines are compiled from the pinned
-original unchanged Fortran source. MIXHBG, MIXDT2 and OUT fail-stop
+Both original convective-growth closures are compiled from the pinned
+original unchanged Fortran source (IMIXH=1 Maul-Carson via MIXHMC and
+IMIXH=2 Batchvarova-Gryning via MIXHBG+FBG). MIXDT2 and OUT fail-stop
 stubs deliberately rule out unsupported pathways. Not COMP/2022 parity.
 """
 import argparse
@@ -13,7 +14,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 BLOB="437f43bb7f0e51a1919e56664663e1a046986ed0"
-CASES,NX,NY,NS,NLEV=28,5,4,2,10
+CASES,NX,NY,NS,NLEV=48,5,4,2,10
+CASES_MC=28
 ABS=(0.07,0.07,0.004)
 REL=0.00008
 PARAMS="""      integer mxnx,mxny,mxus,mxlev,io6
@@ -34,13 +36,12 @@ DRIVER="""      program original_mixht_mc_observed
       logical ldbhr
       read(*,*)cases,nx,ny,ns,nlev
       if(nx.ne.5.or.ny.ne.4.or.ns.ne.2.or.nlev.ne.10)stop 66
-      imixh=1
       watlow=50
       wathigh=60
       ldbhr=.false.
       do c=1,cases
         read(*,*)iupt,constn,zimin,zimax,threshl,dptmin,dzzi,
-     1           onedte,twodte,izicrlx,tzicrlx,nsecdt
+     1           onedte,twodte,izicrlx,tzicrlx,nsecdt,imixh
         do st=1,ns
           read(*,*)justa(st)
           nlaa(st)=nlev
@@ -74,9 +75,6 @@ DRIVER="""      program original_mixht_mc_observed
         enddo
       enddo
       end
-      subroutine mixhbg
-      stop 91
-      end
       subroutine mixdt2
       stop 92
       end
@@ -91,7 +89,8 @@ def source(raw):
     rows=raw.decode("utf-8").splitlines(keepends=True)
     specs=(("      subroutine mixht(","      subroutine mixhtst(",230,320),
            ("      subroutine mixdt(","      subroutine mixdt2(",185,220),
-           ("      subroutine mixhmc(","      subroutine openot",150,240))
+           ("      subroutine mixhmc(","      subroutine openot",150,240),
+           ("      subroutine mixhbg (","      subroutine mixhmc(",200,320))
     portions=[];loc=[]
     for first,last,low,high in specs:
         aa=[i for i,v in enumerate(rows) if v.lower().startswith(first)]
@@ -105,16 +104,31 @@ def fixture():
     heights=(0.,50.,100.,180.,300.,450.,650.,900.,1250.,1800.)
     qh=(-0.1,0.,5.,35.,90.,160.,400.)
     ht=(80.,120.,240.,400.)
+    # (QH, EL, USTAR, RHO, ZICONVOLD, DPTT) scenarios for the IMIXH=2 set:
+    # unstable EL on daytime cells, stable EL on nocturnal cells, plus the
+    # exact zero-net-buoyancy retention and the EL <= -500 m deep limit.
+    scen=((200.,-120.,0.4,1.2,200.,0.5),
+          (60.,-40.,0.3,1.2,100.,0.2),
+          (5.,-800.,0.5,1.2,300.,0.0),
+          (0.,-100.,0.3,1.2,250.,0.4),
+          (30.,-60.,0.25,1.1,150.,0.1),
+          (400.,-300.,0.8,1.3,400.,1.0),
+          (-0.1,25.,0.2,1.2,0.,0.),
+          (-0.1,60.,0.4,1.14,0.,0.),
+          (12.,-500.,0.2,1.2,100.,0.3),
+          (10.,-20.,0.15,1.05,50.,0.))
     rows=[f"{CASES} {NX} {NY} {NS} {NLEV}"]
-    counts=dict(water=0,stable=0,day=0,aa=0,bb=0,iupt_override=0)
-    for c in range(CASES):
+    counts=dict(water=0,stable=0,day=0,aa=0,bb=0,iupt_override=0,
+                bg_water=0,bg_stable=0,bg_day=0,bg_aa=0,bg_bb=0,
+                bg_collapse=0,bg_retain=0,bg_relax=0,bg_growth=0,bg_deep=0)
+    for c in range(CASES_MC):
         iupt=2 if c%3==0 else -1
         counts["iupt_override"]+=iupt>0
         zimin=20.+5.*(c%2);zimax=1500.+100.*(c%5)
         thresh=(0.,0.02,0.10)[c%3]
         relax=c%2
         rows.append(f"{iupt} 2400.0 {zimin} {zimax} {thresh} "
-                    f"0.001 200. 4140. 1080. {relax} 800. 3600")
+                    f"0.001 200. 4140. 1080. {relax} 800. 3600 1")
         justa=[1 if (st+c)%2==0 else -1 for st in range(NS)]
         for x in justa:rows.append(str(x))
         for buf in range(2):
@@ -146,9 +160,66 @@ def fixture():
                 rows.append(f"{heat} {us} {el} {rho} "
                             f"{90.+10.*(i%3)} 0.00007 {use} {near} "
                             f"-7777.0 {zic} {jump}")
+    for c in range(CASES-CASES_MC):
+        iupt=2 if c%4==0 else -1
+        counts["iupt_override"]+=iupt>0
+        zimin=20.+5.*(c%2);zimax=1500.+100.*(c%5)
+        thresh=(0.,0.02,0.10)[c%3]
+        relax=c%2
+        # The exact zero-net-buoyancy retention branch needs THRESH=0; the
+        # relaxation branch needs THRESH>0, so never combine IZICRLX=1 with
+        # a zero threshold (the original equilibrium height is 0/0 there).
+        if relax==1 and thresh==0.:thresh=0.005
+        step=(600,1800,3600)[c%3]
+        rows.append(f"{iupt} 2400.0 {zimin} {zimax} {thresh} "
+                    f"0.001 200. {step*1.15:.4f} {step*0.3:.4f} "
+                    f"{relax} 800. {step} 2")
+        justa=[1 if (st+c)%2==0 else -1 for st in range(NS)]
+        for x in justa:rows.append(str(x))
+        for buf in range(2):
+            for st in range(NS):
+                for k,h in enumerate(heights):
+                    z=h
+                    temp=303.-0.0075*z+0.9*st+buf*1.8+c*0.01+0.1*(k%3)
+                    rows.append(f"{z:.4f} {temp:.6f}")
+        for i in range(NX):
+            for j in range(NY):
+                heat,el,us,rho,zic,jump=scen[(i+NX*j+c)%len(scen)]
+                use=55 if (i+2*j+c)%11==0 else 12
+                if use==55:
+                    heat,el,us,rho,zic,jump=-7777.,-7777.,-7777.,-7777.,-7777.,-7777.
+                    counts["bg_water"]+=1
+                elif heat<0:
+                    counts["bg_stable"]+=1
+                else:
+                    counts["bg_day"]+=1
+                    h0=max(zic,zimin)
+                    wto=thresh*h0/(1.2*1005.)
+                    wptp=heat/(rho*996.)-wto
+                    if relax==1:
+                        label="bg_relax" if wptp<=0. else "bg_growth"
+                    else:
+                        if wptp<0.:label="bg_collapse"
+                        elif wptp==0.:label="bg_retain"
+                        else:label="bg_growth"
+                    counts[label]+=1
+                    if label=="bg_growth" and el<=-500.:counts["bg_deep"]+=1
+                near=1+((i+j+c)%NS)
+                station=(iupt-1) if iupt>0 else near-1
+                oldbuffer=0 if justa[station]>0 else 1
+                counts["aa" if oldbuffer==0 else "bb"]+=use!=55 and heat>=0
+                counts["bg_aa" if oldbuffer==0 else "bg_bb"]+=use!=55 and heat>=0
+                rows.append(f"{heat} {us} {el} {rho} "
+                            f"{90.+10.*(i%3)} 0.00007 {use} {near} "
+                            f"-7777.0 {zic} {jump}")
     if min(counts["stable"],counts["day"],counts["water"],
            counts["aa"],counts["bb"],counts["iupt_override"]) < 10:
         raise RuntimeError("MIXHT MC branch coverage insufficient")
+    if min(counts["bg_stable"],counts["bg_day"],counts["bg_water"],
+           counts["bg_collapse"],counts["bg_retain"],counts["bg_relax"],
+           counts["bg_growth"],counts["bg_deep"],counts["bg_aa"],
+           counts["bg_bb"]) < 5:
+        raise RuntimeError("MIXHT BG branch coverage insufficient")
     return "\n".join(rows)+"\n",counts
 def parse(txt):
     out=[]
@@ -184,12 +255,15 @@ def main():
              d/"original.for",d/"driver.for","-o",d/"original"])
         expected=parse(run([d/"original"],test))
     actual=parse(run([x.cpp],test))
-    errs=[0.,0.,0.];first=[];bad=0
+    errs=[0.,0.,0.];errs_mc=[0.,0.,0.];errs_bg=[0.,0.,0.]
+    first=[];bad=0
     for (a,f),(b,v) in zip(expected,actual):
         if a!=b:raise RuntimeError("MIXHT MC output order mismatch")
         water=f[0]==-7777.
+        bucket=errs_mc if a[0]<=CASES_MC else errs_bg
         for k in range(3):
             err=abs(f[k]-v[k]);errs[k]=max(errs[k],err)
+            bucket[k]=max(bucket[k],err)
             fail=(f[k]!=v[k]) if water else err>ABS[k]+REL*abs(f[k])
             if fail:
                 bad+=1
@@ -198,11 +272,14 @@ def main():
     result=dict(status="PASS" if bad==0 else "FAIL",
         cases=CASES,grids=CASES*NX*NY,scalar_comparisons=3*CASES*NX*NY,
         distribution=counts,max_abs_error_ZI_ZICONV_DPTT=errs,
+        max_abs_error_IMIXH1_MC=errs_mc,max_abs_error_IMIXH2_BG=errs_bg,
         frozen_abs_tolerance=ABS,frozen_rel_tolerance=REL,
         mismatches=bad,first_mismatches=first,
         original_git_blob=sha,original_sha256=hashlib.sha256(raw).hexdigest(),
         unmodified_original_subroutines_lines=loc,
-        scope="Selected CALMET full MIXHT grid path IMIXH=1, AA/BB JUSTA, IUPT; synthetic only, no BG, no 2022 COMP or wet forcing")
+        scope="Selected CALMET full MIXHT grid path with original IMIXH=1 "
+              "(MIXHMC) and IMIXH=2 (MIXHBG) closures, AA/BB JUSTA, IUPT; "
+              "synthetic only, no water/OCD scheme, no 2022 COMP or wet forcing")
     x.out.parent.mkdir(parents=True,exist_ok=True)
     x.out.write_text(json.dumps(result,indent=2)+"\n")
     print(json.dumps(result,indent=2))

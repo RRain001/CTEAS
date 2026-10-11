@@ -12,7 +12,7 @@ int main(){
         x.nx=static_cast<std::size_t>(nx);x.ny=static_cast<std::size_t>(ny);
         if(!(std::cin>>x.iupt>>x.constn>>x.zimin>>x.zimax>>
              x.threshl>>x.dptmin>>x.dzzi>>x.onedte>>x.twodte>>
-             x.izicrlx>>x.tzicrlx>>x.timestep_s))return 3;
+             x.izicrlx>>x.tzicrlx>>x.timestep_s>>x.imixh))return 3;
         x.justa.resize(static_cast<std::size_t>(ns));
         for(auto& order:x.justa)if(!(std::cin>>order))return 4;
         for(auto& buffer:x.sounding){
