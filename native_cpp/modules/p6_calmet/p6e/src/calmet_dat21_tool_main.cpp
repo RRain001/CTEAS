@@ -779,7 +779,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         meta+="  \"wind_source\": "+json_string(wind_path)+",\n";
         meta+="  \"geo_source\": "+json_string(geo_path)+",\n";
         meta+="  \"candidate_artifact\": "+json_string(out_path)+",\n";
-        meta+="  \"difference_from_met_dat_ZI\": \"CALMET.DAT carries ZI (max of convective and mechanical, after AVEMIX averaging); ZICONV is the internal convective height that CGAMMA consumes. This export provides both from the P6E chain; the ZI field here still disagrees with the frozen reference on 62% of cells (audit open), so use ZICONV for wiring until that is resolved.\",\n";
+        meta+="  \"difference_from_met_dat_ZI\": \"CALMET.DAT carries ZI (max of convective and mechanical, after AVEMIX averaging); ZICONV is the internal convective height that CGAMMA consumes. This export provides both from the P6E chain; the ZI field here still disagrees with the frozen reference on 4488 of 357500 cells (1.26%, max abs 51.06 m, concentrated in 42 daylight hours), so use ZICONV for wiring until the convective-growth audit closes.\",\n";
         meta+="  \"hour_labels\": [";
         for(std::size_t hour=0;hour<reference.intervals;++hour) {
             const auto& begin=reference.hourly[hour*reference.fields_per_hour].begin;
