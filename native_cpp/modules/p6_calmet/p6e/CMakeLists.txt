@@ -293,3 +293,32 @@ if(EXISTS "${P6E_REAL_MET_DAT}")
 else()
   message(STATUS "P6E real CALMET.DAT 2.1 reference test: not registered (reference case not in this checkout)")
 endif()
+
+# E25 AVETMP upwind spatial averaging (IAVET=1) and airden surface density.
+add_executable(p6e_avetmp_tests tests/avetmp_tests.cpp)
+add_executable(p6e_avetmp_reference src/avetmp_reference_main.cpp)
+target_link_libraries(p6e_avetmp_tests PRIVATE p6e_solar)
+target_link_libraries(p6e_avetmp_reference PRIVATE p6e_solar)
+if(MSVC)
+ target_compile_options(p6e_avetmp_tests PRIVATE /W4 /WX)
+ target_compile_options(p6e_avetmp_reference PRIVATE /W4 /WX)
+else()
+ target_compile_options(p6e_avetmp_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+ target_compile_options(p6e_avetmp_reference PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6e_avetmp_software COMMAND p6e_avetmp_tests)
+
+# Original-source AVETMP parity runs whenever a Fortran compiler is present.
+find_program(P6E_GFORTRAN NAMES gfortran-13 gfortran-12 gfortran-11 gfortran)
+if(P6E_GFORTRAN)
+  add_test(NAME p6e_avetmp_original_source_parity
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_original_avetmp.py"
+      --vendor "${CMAKE_CURRENT_SOURCE_DIR}/../../../../engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for"
+      --cpp "$<TARGET_FILE:p6e_avetmp_reference>"
+      --gfortran "${P6E_GFORTRAN}"
+      --out "${CMAKE_CURRENT_BINARY_DIR}/avetmp-original-parity.json")
+  message(STATUS "P6E AVETMP original-source parity test: REGISTERED (${P6E_GFORTRAN})")
+else()
+  message(STATUS "P6E AVETMP original-source parity test: not registered (no Fortran compiler)")
+endif()
