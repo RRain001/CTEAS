@@ -16,6 +16,11 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
     steps:
+      - name: GitHub HTTPS network preflight for self-hosted checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -4 -I -L --connect-timeout 10 --max-time 20 --retry 2 --retry-delay 2 https://github.com/ >/dev/null
       - uses: actions/checkout@v4
       - uses: ./.github/actions/cteas-linux-toolchain
       - name: Compile original Fortran smoke, C++20 chrono and P6 CTest
