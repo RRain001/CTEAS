@@ -246,14 +246,19 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           from native_cpp.modules.p6_calmet.reference.inspect_calmet_control import parse
-          c=parse(Path("project/current/run/met/met.inp"))
-          required=["XORIGKM","YORIGKM"]
+          import re
+          met=Path("project/current/run/met/met.inp")
+          c=parse(met)
+          required=["XORIGKM","YORIGKM","NSECDT"]
           if any(k not in c for k in required):
-              raise SystemExit("CALMET rendered input missing original SW grid origin")
+              raise SystemExit("CALMET original controls missing SW grid or timestep")
+          matches=re.findall(r"!\s*MAXSEP\s*=\s*(\d+)\s*!",met.read_text(),re.I)
+          if len(matches)!=1:
+              raise SystemExit("CALMET rendered MAXSEP hour limit missing/ambiguous")
           Path("integration-evidence/p6c-grid-origin.txt").write_text(
-              c["XORIGKM"]+" "+c["YORIGKM"]+"\n")
+              " ".join([c["XORIGKM"],c["YORIGKM"],c["NSECDT"],matches[0]])+"\n")
           PY
-          read -r ORIGIN_X ORIGIN_Y < integration-evidence/p6c-grid-origin.txt
+          read -r ORIGIN_X ORIGIN_Y NSECDT MAXSEP < integration-evidence/p6c-grid-origin.txt
           python3 native_cpp/modules/p6_calmet/reference/compare_fortran_readge.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
             --geo project/current/geo/makegeo/geo.dat \
@@ -265,7 +270,7 @@ jobs:
             project/current/met/surface/final/surf.dat \
             project/current/met/upperair/final/up_58424.dat \
             integration-evidence/p6c-joint-observation.csv \
-            58424 "$ORIGIN_X" "$ORIGIN_Y"
+            58424 "$ORIGIN_X" "$ORIGIN_Y" "$NSECDT" "$MAXSEP"
           python3 native_cpp/modules/p6_calmet/reference/check_joint_observation_2022.py \
             --joint integration-evidence/p6c-joint-observation.csv \
             --original-geo integration-evidence/p6c-joint-geo-original/reference_fortran_fields.txt \
