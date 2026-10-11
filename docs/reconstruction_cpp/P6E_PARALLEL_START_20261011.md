@@ -304,3 +304,25 @@ BB, source-choosing IUPT, water and stable cells are covered.
 selected path passes, it does not validate `IMIXH=2`
 Batchvarova-Gryning, `COMP` vertical integration, 2022 true
 soundings/1h→6h→143h or `TEMP3D`.
+
+## E14 TEMP3D observed surface+upper-air 3D field (verification pending)
+
+New selected all-land original CALMET TEMP3D subroutine path:
+`ITPROG=0`, `NOWSTA=0`, 2 upper-air sites, AA/BB 00/12Z
+bracket within one UTC day, and `IRAD=1/2` spatial weighting.
+Time-interpolates grid-face sounding temperatures, interpolates
+upper-air temperature across sites, then forms vertical cell
+temperatures with the original three ways of placing `ZICONV`:
+above boundary layer, below the whole cell, or crossing a face
+within the cell; separately preserves surface T.
+
+Independent source comparator compiles **unchanged full original
+TEMP3D 31159-31709**, with exact same-day synthetic time helper
+stubs and narrowly mocked COMMON state for land-only:
+24 cases × 5×4 cells ×6 levels = **2880 scalar comparisons**,
+frozen 0.0005 K absolute and 1e-5 relative thresholds.
+
+This does not qualify `ITPROG` prognostic temperature, water
+temperature gradients, observation interpolation across day/year,
+source 2022 real COMP selected hourly vertical geometry or full
+P6E. E14 CI pending.

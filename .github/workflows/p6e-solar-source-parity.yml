@@ -235,6 +235,12 @@ jobs:
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
             --cpp build/p6e/p6e_mixht_observed_mc_reference \
             --out build/p6e/mixht-observed-mc-original-parity.json
+      - name: Original TEMP3D all-land observed AA BB face-temperature numerical parity
+        run: |
+          python3 native_cpp/modules/p6_calmet/p6e/reference/compare_original_temp3d_observed_land.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --cpp build/p6e/p6e_temp3d_observed_land_reference \
+            --out build/p6e/temp3d-observed-land-original-parity.json
       - name: Save scientific gate evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -254,4 +260,5 @@ jobs:
             build/p6e/mixhmc-original-parity.json
             build/p6e/mixdt-original-parity.json
             build/p6e/mixht-observed-mc-original-parity.json
+            build/p6e/temp3d-observed-land-original-parity.json
           if-no-files-found: warn
