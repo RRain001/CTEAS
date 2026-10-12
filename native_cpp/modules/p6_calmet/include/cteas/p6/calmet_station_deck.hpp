@@ -80,11 +80,15 @@ inline DeckStationPair original_calmet_station_deck(
         if(surface)(void)station_deck_float(height);
 
         // Do NOT promote the subtract/multiply to double. Retain the
-        // REAL*4 intermediate arithmetic of the original selected route.
-        const float dx_km=station.utm_x_km-xorig_km;
-        const float dy_km=station.utm_y_km-yorig_km;
-        station.local_x_m=dx_km*1000.f;
-        station.local_y_m=dy_km*1000.f;
+        // REAL*4 evaluation order of the original READCF selected route.
+        // calmet.for READCF L27073-27076, L27128-27133 and L27183-27188:
+        //   XORIGR=1000.*XORIGKM
+        //   XSSTA =1000.*XKM-XORIGR   (same for Y and upper air).
+        // Crucial: multiplication is performed before subtraction in REAL*4.
+        const float xorigr=1000.f*xorig_km;
+        const float yorigr=1000.f*yorig_km;
+        station.local_x_m=(1000.f*station.utm_x_km)-xorigr;
+        station.local_y_m=(1000.f*station.utm_y_km)-yorigr;
         if(!std::isfinite(station.local_x_m)||
            !std::isfinite(station.local_y_m))
             throw std::invalid_argument("invalid relative CALMET station position");
