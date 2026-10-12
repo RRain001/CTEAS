@@ -80,6 +80,12 @@ c ---------------------------------------------------------------------
             count+=1
     if count!=254687:
         raise RuntimeError("ZI stream row count mismatch")
+    # Pinned to the first independent 143h original write-only capture.
+    # This is an extra input reference, not a native historical-ZI solution.
+    original_zi_sha="3a7e519c91f26c17a649a7292435d37b09beef55f3d5d9765aace777781a14c4"
+    actual_zi_sha=base.sha256_file(extra)
+    if actual_zi_sha!=original_zi_sha:
+        raise RuntimeError(f"original ZI oracle drift: {actual_zi_sha}")
     result={
         "status":"ORIGINAL_PUFFDZ_HISTORICAL_ZI_READ_ONLY_CAPTURED",
         "records":count,

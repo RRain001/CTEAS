@@ -134,7 +134,8 @@ int main(int argc,char** argv) {
         std::cout<<"P7_NATIVE_PUFFDZ=PASS HOURS="<<nh
                  <<" DETERMINATE="<<compared
                  <<" SKIPPED_UNDETERMINED="<<skipped
-                 <<" HISTORICAL_ZI_ORIGINAL_MISSING=YES\n";
+                 <<" HISTORICAL_ZI_ORIGINAL_MISSING="
+                 <<(original_zi_available?"NO":"YES")<<"\n";
         return 0;
     }catch(const std::exception& e) {
         std::cerr<<"P7_NATIVE_PUFFDZ=FAIL "<<e.what()<<"\n";
