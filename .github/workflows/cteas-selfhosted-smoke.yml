@@ -5,6 +5,11 @@ on:
       - '.github/actions/cteas-linux-toolchain/**'
       - '.github/workflows/cteas-selfhosted-smoke.yml'
   workflow_dispatch:
+    inputs:
+      runner_acceptance:
+        description: "Run only infrastructure checks across all 13 new runners"
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -12,8 +17,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   self-hosted-p6-cmake-ctest:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    if: inputs.runner_acceptance != true && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS')
+    runs-on: [cteas-managed, cteas-light, Linux, X64]
     timeout-minutes: 20
     steps:
       - name: GitHub HTTPS network preflight for self-hosted checkout
@@ -34,3 +39,118 @@ jobs:
           cmake -S native_cpp/modules/p6_calmet -B "$build" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$build" --parallel 2
           ctest --test-dir "$build" --output-on-failure
+
+  runner-infrastructure-acceptance:
+    if: github.event_name == 'workflow_dispatch' && inputs.runner_acceptance == true
+    strategy:
+      fail-fast: false
+      max-parallel: 13
+      matrix:
+        include:
+          - index: 4
+            pool: light
+            label: cteas-r04
+            cpu: 2
+            memory: 3
+          - index: 5
+            pool: light
+            label: cteas-r05
+            cpu: 2
+            memory: 3
+          - index: 6
+            pool: light
+            label: cteas-r06
+            cpu: 2
+            memory: 3
+          - index: 7
+            pool: light
+            label: cteas-r07
+            cpu: 2
+            memory: 3
+          - index: 8
+            pool: light
+            label: cteas-r08
+            cpu: 2
+            memory: 3
+          - index: 9
+            pool: light
+            label: cteas-r09
+            cpu: 2
+            memory: 3
+          - index: 10
+            pool: light
+            label: cteas-r10
+            cpu: 2
+            memory: 3
+          - index: 11
+            pool: light
+            label: cteas-r11
+            cpu: 2
+            memory: 3
+          - index: 12
+            pool: compute
+            label: cteas-r12
+            cpu: 6
+            memory: 12
+          - index: 13
+            pool: compute
+            label: cteas-r13
+            cpu: 6
+            memory: 12
+          - index: 14
+            pool: compute
+            label: cteas-r14
+            cpu: 6
+            memory: 12
+          - index: 15
+            pool: reserve
+            label: cteas-r15
+            cpu: 4
+            memory: 6
+          - index: 16
+            pool: reserve
+            label: cteas-r16
+            cpu: 4
+            memory: 6
+    runs-on: [cteas-managed, "${{ format('cteas-{0}', matrix.pool) }}", "${{ matrix.label }}", Linux, X64]
+    timeout-minutes: 5
+    env:
+      EXPECTED_INDEX: ${{ matrix.index }}
+      EXPECTED_CPU: ${{ matrix.cpu }}
+      EXPECTED_MEMORY: ${{ matrix.memory }}
+    steps:
+      - name: Verify isolated account, work directory, compilers and cgroup limits
+        shell: bash
+        run: |
+          set -euo pipefail
+          start=$(date -u +%s)
+          expected=$(printf '/opt/cteas-runners/runner-%02d/_work' "$EXPECTED_INDEX")
+          test "$RUNNER_NAME" = "lhy-desktop-$EXPECTED_INDEX"
+          test "$(id -un)" = "$(printf 'cteas-r%02d' "$EXPECTED_INDEX")"
+          test "$(realpath "$GITHUB_WORKSPACE")" = "$expected/CTEAS/CTEAS"
+          test "$(realpath "$RUNNER_TEMP")" = "$expected/_temp"
+          test "$CMAKE_BUILD_PARALLEL_LEVEL" = "$EXPECTED_CPU"
+          test "$OMP_NUM_THREADS" = "$EXPECTED_CPU"
+          cg=$(awk -F: '$1 == "0" {print $3}' /proc/self/cgroup)
+          root="/sys/fs/cgroup$cg"
+          read -r quota period < "$root/cpu.max"
+          test "$quota" -eq "$((period * EXPECTED_CPU))"
+          test "$(cat "$root/memory.max")" -eq "$((EXPECTED_MEMORY * 1024 * 1024 * 1024))"
+          test "$(cat "$root/memory.swap.max")" = 0
+          if sudo -n true 2>/dev/null; then echo 'Unexpected sudo access'; exit 1; fi
+          curl -fsS --connect-timeout 10 --max-time 20 https://api.github.com/ -o /dev/null
+          g++ --version | head -1
+          gfortran --version | head -1
+          cmake --version | head -1
+          temp=$(mktemp -d "$RUNNER_TEMP/infra-smoke.XXXXXX")
+          trap 'find "$temp" -maxdepth 1 -type f -delete; rmdir "$temp"' EXIT
+          printf '#include <iostream>\nint main(){std::cout << 123;}\n' > "$temp/hello.cpp"
+          printf 'program hello\nprint *, 123\nend program hello\n' > "$temp/hello.f90"
+          g++ -std=c++20 "$temp/hello.cpp" -o "$temp/cpp"
+          gfortran "$temp/hello.f90" -o "$temp/fortran"
+          test "$("$temp/cpp")" = 123
+          "$temp/fortran" | grep -q 123
+          # Keep all 13 jobs occupied long enough to measure actual overlap.
+          sleep 30
+          finish=$(date -u +%s)
+          echo "INFRA_RESULT runner=$RUNNER_NAME start=$start finish=$finish cpu=$EXPECTED_CPU memory_gib=$EXPECTED_MEMORY work=$expected cgroup=$cg"
