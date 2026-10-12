@@ -33,6 +33,7 @@
 #include "cteas/p6/upper_hourly_wind.hpp"
 #include "cteas/p6/wind1_selected_firstguess.hpp"
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -107,7 +108,7 @@ void write_f32(const fs::path& path,const std::vector<float>& data){
     std::ofstream out(path,std::ios::binary);
     if(!out)throw std::runtime_error("cannot write "+path.string());
     for(float value:data){
-        const std::uint32_t raw=*reinterpret_cast<const std::uint32_t*>(&value);
+        const std::uint32_t raw=std::bit_cast<std::uint32_t>(value);
         out.write(reinterpret_cast<const char*>(&raw),4);
     }
 }
@@ -938,7 +939,7 @@ int main(int argc,char** argv){
             : "PENDING_REALCASE_REVALIDATION_AFTER_METINP_STATION_GEOMETRY_FIX: supersedes prior results obtained with the branch-local equirectangular projection")
             <<"\"},\n";
     meta<<"  \"inter2\": {\"product\": \"inter2_u/v_*.f32 = the pre-tail INTER2 stage\", "
-          "\"verification\": \"PENDING_REALCASE_REVALIDATION_AFTER_METINP_STATION_GEOMETRY_FIX: standalone INTER2 kernel equivalence is separately evidenced, while actual-case geometry has changed"},\n";
+          "\"verification\": \"PENDING_REALCASE_REVALIDATION_AFTER_METINP_STATION_GEOMETRY_FIX: standalone INTER2 kernel equivalence is separately evidenced, while actual-case geometry has changed\"},\n";
     meta<<"  \"stages_applied_in_chain\": [";
     meta<<"\"WIND1 selected first guess (IEXTRP=-4 neutral SIMILT)\"";
     meta<<", \"SURFVAR 2-D surface temperature (ISURFT<0, IALL=0, IAVET=1)\"";
