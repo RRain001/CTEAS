@@ -369,9 +369,15 @@ void test_frozen_structure(const fs::path& root, const std::string& frozen_path)
             period.end_julian = 1 + static_cast<int>((hour + 1U) / 24U);
             period.end_hour = static_cast<int>((hour + 1U) % 24U);
             writer.write_period_record(period);
-            cteas::puff::ConcGridDescriptor descriptor;
-            descriptor.x_origin_km = 510.885;
-            descriptor.y_origin_km = 3531.269;
+            // The original WROUT1 header uses MET.DAT grid origins in
+            // metres and a single REAL4 0.001 multiplier, not a float cast
+            // of the 3-decimal puff.inp kilometre text.
+            const auto descriptor = cteas::puff::original_met_grid_descriptor(
+                510885.0F, 3531269.0F);
+            require(descriptor.group_index == 1 &&
+                    descriptor.x_origin_km == static_cast<double>(510.885009765625F) &&
+                    descriptor.y_origin_km == static_cast<double>(3531.269287109375F),
+                    "WROUT1 original metadata must use REAL4 MET origin and group one");
             writer.write_grid_descriptor(descriptor);
             writer.write_species_field("H-3", 1, 50, 50, values);
         }
