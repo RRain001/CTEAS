@@ -73,6 +73,9 @@ jobs:
             /native_cpp/modules/p7_calpuff/**
             /engine/vendor/src/CALPUFF_v7.2.1_L150618/**
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/qapnts.dat
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/qarecg.dat
+            /project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
       - name: Bootstrap exact commit P7 source from authenticated GitHub REST
         if: (steps.transport.outputs.github != 'yes' || steps.checkout.outcome == 'failure') && steps.transport.outputs.api == 'yes'
         shell: bash
@@ -89,6 +92,8 @@ jobs:
           prefix = "native_cpp/modules/p7_calpuff/"
           vendor = "engine/vendor/src/CALPUFF_v7.2.1_L150618/"
           frozen_deck = "project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp"
+          qa_points = "project/cases/hefei5km_2022_reference_case_20261011/run/puff/qapnts.dat"
+          qa_receptors = "project/cases/hefei5km_2022_reference_case_20261011/run/puff/qarecg.dat"
           url_base = "https://api.github.com/repos/" + repo
           root = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
           def get(path):
@@ -107,7 +112,7 @@ jobs:
           selected = [item for item in tree["tree"]
                       if item["type"] == "blob" and
                       (item["path"].startswith(prefix) or item["path"].startswith(vendor)
-                        or item["path"] == frozen_deck)]
+                        or item["path"] in (frozen_deck, qa_points, qa_receptors))]
           if len(selected) < 80:
               raise RuntimeError("P7 source tree unexpectedly incomplete: " + str(len(selected)))
           # Do not trust existing artifacts from a previous job/commit.
@@ -135,7 +140,7 @@ jobs:
               names = list(pool.map(fetch_one, selected))
           for must in (prefix+"CMakeLists.txt", prefix+"reference/source_audit.py",
                        vendor+"calpuff.for", vendor+"modules.for", vendor+"calpuff.inp",
-                       frozen_deck):
+                       frozen_deck, qa_points, qa_receptors):
               if must not in names:
                   raise RuntimeError("Required original/P7 source missing: " + must)
           print("P7_SOURCE_BOOTSTRAP=PASS GIT_TREE_SHA=" + sha +
@@ -151,7 +156,9 @@ jobs:
                         engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
                         engine/vendor/src/CALPUFF_v7.2.1_L150618/modules.for \
                         engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.inp \
-                        project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp; do
+                        project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+                        project/cases/hefei5km_2022_reference_case_20261011/run/puff/qapnts.dat \
+                        project/cases/hefei5km_2022_reference_case_20261011/run/puff/qarecg.dat; do
             test -s "$GITHUB_WORKSPACE/$needed" || {
               echo "::error::Missing mandatory P7 original or native source: $needed"
               exit 1
@@ -186,6 +193,10 @@ jobs:
           ctest --test-dir "$build" -N -R '^cteas_p7c_locked_original_point_input$' |
             grep -Eq 'Test[[:space:]]*#[0-9]+: cteas_p7c_locked_original_point_input'
           ctest --test-dir "$build" -R '^cteas_p7c_locked_original_point_input$' --output-on-failure
+          ctest --test-dir "$build" -N -R '^cteas_p7_original_2022_qa_real4_coordinates$' |
+            grep -Eq 'Test[[:space:]]*#[0-9]+: cteas_p7_original_2022_qa_real4_coordinates'
+          ctest --test-dir "$build" -R '^cteas_p7_original_2022_qa_real4_coordinates$' --output-on-failure
+          echo "P7_MODE_A_ORIGINAL_QA_2500_RECEPTORS=PASS"
           echo "P7_MODE_A_LOCKED_SOURCE_INPUT=PASS"
           echo "P7B_CONTROL_PARSER_CTEST=PASS"
       - name: Compile unchanged original CALPUFF reference (P7A; no physics-pass claim)
