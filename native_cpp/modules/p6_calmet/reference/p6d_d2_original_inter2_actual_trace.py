@@ -25,6 +25,7 @@ SELECTED = ((26, 26), (1, 26), (1, 1), (13, 13))
 # Zero other physics instructions altered. Fixed vendor source line anchors.
 ANCHORS = {
     5593: "      endif",
+    5640: "C",
     36018: "         nstat = nssta + nowsta + nusta",
     5726: "C",
     5732: "  300 CONTINUE",
@@ -33,10 +34,12 @@ ANCHORS = {
     8568: "      wt3 = 1./(R**2)",
 }
 BEFORE = {5593: "         end if",
+          5640: "",
           36018: "c        --total number of stations (sfc+upper air)",
           5726: "C     ADD THE SLOPE FLOW COMPONENT TO THE HORIZONTAL WIND FIELD",
           8243: "      DOUBLE PRECISION WT"}
-AFTER = {5593: "C", 36018: "", 8247: "C", 8568: "c"}
+AFTER = {5593: "C", 5640: "C ---- APPLY THE MELSAR FROUDE NUMBER ADJUSTMENT",
+         36018: "", 8247: "C", 8568: "c"}
 
 DECL = """
 c --- P6D D-2 diagnostic only, no original arithmetic changed
@@ -69,6 +72,28 @@ c --- Write-only field values before original IPROG=0 weighted result
      3          field2(i,j,k),r,wt3,nk,nintrp(k)
          enddo
       endif
+"""
+
+
+GAMMA_HELPER = """
+c ----------------------------------------------------------------------
+c --- P6D D-2: original 50x50 GAMMA at FRADJ boundary (write-only)
+c ----------------------------------------------------------------------
+      subroutine d2gamdump(gamma,nx,ny)
+      include 'params.met'
+      integer nx,ny,i,j
+      real gamma(mxnx,mxny)
+      logical first
+      save first
+      data first/.true./
+      if(first)then
+         open(94,file='p6d_gamma_original.f32',form='unformatted',
+     1        access='stream',status='replace')
+         first=.false.
+      endif
+      write(94) ((gamma(i,j),i=1,nx),j=1,ny)
+      return
+      end
 """
 
 
@@ -182,6 +207,7 @@ def instrument(source: Path, out: Path):
         if ln in AFTER:
             assert lines[ln].rstrip("\r\n") == AFTER[ln], (ln, lines[ln])
     additions = {36018: "      call d2windraw(us,vs,nstat)\n",
+                 5640: "      call d2gamdump(gamma,nx,ny)\n",
                  5593: "      call d2upstream(7,ndathrb,nsecb,ug,vg,qh,temp2d,\n     1                nx,ny,nz)\n",
                  5726: "      call d2upstream(8,ndathrb,nsecb,ug,vg,qh,temp2d,\n     1                nx,ny,nz)\n",
                  5732: "      call d2upstream(9,ndathrb,nsecb,ug,vg,qh,temp2d,\n     1                nx,ny,nz)\n",
@@ -189,7 +215,7 @@ def instrument(source: Path, out: Path):
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(("".join(
         line + additions.get(i, "") for i, line in enumerate(lines, 1)
-    ) + UPSTREAM_HELPER + WIND1_INPUT_HELPER).encode("latin1"))
+    ) + UPSTREAM_HELPER + WIND1_INPUT_HELPER + GAMMA_HELPER).encode("latin1"))
     return hashlib.sha256(out.read_bytes()).hexdigest()
 
 
@@ -255,13 +281,24 @@ def main():
     run_dir = staging/"run/met"
     original_run = dgm._run(original_bin, run_dir)
     trace = run_dir/"p6d_inter2_actual.txt"
-    if trace.exists() or (run_dir/"p6d_upstream_actual.txt").exists() or (run_dir/"p6d_wind1_input_original.txt").exists():
+    if (trace.exists() or (run_dir/"p6d_upstream_actual.txt").exists() or
+        (run_dir/"p6d_wind1_input_original.txt").exists() or
+        (run_dir/"p6d_gamma_original.f32").exists()):
         raise RuntimeError("untouched original unexpectedly emitted diagnostic trace")
     instrumented_run = dgm._run(instrument_bin, run_dir)
     if original_run["met_dat_sha256"] != MET_SHA or instrumented_run["met_dat_sha256"] != MET_SHA:
         raise RuntimeError("Original/instrumented MET.DAT does not match frozen digest")
     if not trace.exists():
         raise RuntimeError("instrumented real CALMET did not emit INTER2 trace")
+    gamma_raw=run_dir/"p6d_gamma_original.f32"
+    if not gamma_raw.is_file() or gamma_raw.stat().st_size!=143*50*50*4:
+        raise RuntimeError("missing or invalid 143h original GAMMA grid")
+    import math, struct
+    gamma_vals=struct.unpack("<357500f",gamma_raw.read_bytes())
+    if not all(math.isfinite(v) and abs(v)<9999 for v in gamma_vals):
+        raise RuntimeError("nonfinite or invalid original GAMMA")
+    gamma_out=out/"original_gamma_143h.f32"
+    shutil.copy2(gamma_raw,gamma_out)
     wind_raw=run_dir/"p6d_wind1_input_original.txt"
     if not wind_raw.is_file():
         raise RuntimeError("instrumented CALMET missing actual pre-WIND1 station columns")
@@ -311,6 +348,9 @@ def main():
         "upstream_csv_sha256": dgm.sha256_file(upstream_csv),
         "wind1_station_input_rows": len(raw_rows),
         "wind1_station_input_sha256": dgm.sha256_file(wind_csv),
+        "original_gamma_bytes": gamma_out.stat().st_size,
+        "original_gamma_sha256": dgm.sha256_file(gamma_out),
+        "original_gamma_layout": "143h x 50 x 50 float32 little-endian, i fastest",
         "upstream_scope": "original DIAGNO kpt7 immediately after WIND1, kpt8 before slope addition (also QH/TEMP2D), and kpt9 after slope addition; four cells two levels all 143 hours",
         "selected_cells_1based": list(SELECTED),
         "columns": headers,
