@@ -45,6 +45,17 @@ void negative_tests() {
     lifecycle.retire(7);
     require(!lifecycle.contains(7) && lifecycle.active_count()==0U,
             "retired puff is still reachable");
+    NewPuffInputs emitted{};
+    emitted.source_x_km=25.0;
+    emitted.source_y_km=25.0;
+    emitted.effective_height_m=136.40403747558594F;
+    lifecycle.introduce_point_source(8,emitted);
+    const auto fresh=lifecycle.state(8);
+    require(fresh.x_cells==25.0F && fresh.y_cells==25.0F &&
+            fresh.z_m==136.40403747558594F &&
+            fresh.travel_time_s==0.0F && fresh.total_distance_m==0.0F,
+            "native POINTS1 source did not initialize REAL4 grid and zeroed SWAP state");
+    lifecycle.retire(8);
 }
 }
 int main(int argc,char** argv) {
@@ -61,6 +72,22 @@ int main(int argc,char** argv) {
                 "unsupported source/meteorology mode");
         const auto grid=deck.required_float_list("DGRIDKM");
         require(grid.size()==1U && grid.front()==0.1,"not original 100m grid");
+        const auto source_values=deck.required_float_list("X");
+        const auto original_x=deck.required_float_list("XORIGKM");
+        const auto original_y=deck.required_float_list("YORIGKM");
+        require(source_values.size()==10U && original_x.size()==1U &&
+                original_y.size()==1U, "frozen original point source or origin missing");
+        // Source projected coordinates and origin came from frozen puff.inp
+        // and have already been independently validated against original
+        // MET.DAT; reproduce the REAL4 subtraction/division boundary.
+        const float source_x=static_cast<float>(
+            (static_cast<float>(source_values[0])-static_cast<float>(original_x[0]))/
+            static_cast<float>(grid[0]));
+        const float source_y=static_cast<float>(
+            (static_cast<float>(source_values[1])-static_cast<float>(original_y[0]))/
+            static_cast<float>(grid[0]));
+        require(source_x==25.0F && source_y==25.0F,
+                "locked original source is not met-grid cell (25,25)");
         const float spacing=100.0F;
         std::ifstream input(argv[2],std::ios::binary);
         require(static_cast<bool>(input),"cannot open locked original DGM");
@@ -97,8 +124,21 @@ int main(int argc,char** argv) {
             // in between and transitions to the next hour, must begin with
             // the previous *native* stored REAL4 state.
             if(!life.contains(id)) {
+                // A newly released point puff must start from C++ POINTS1,
+                // not the DGM's XOLD/YOLD or cumulative distance/age. The
+                // initial effective height still comes from the original
+                // rise reference until autonomous vertical coupling exists.
+                require(original.i[12]==0 && f[0]==source_x && f[1]==source_y &&
+                        f[19]==0.0F && f[20]==0.0F,
+                        "first-seen puff violates original POINTS1 source release");
+                NewPuffInputs released{};
+                released.source_x_km=source_x;
+                released.source_y_km=source_y;
+                released.effective_height_m=f[2];
+                released.sigma_y_source_m=f[21];
+                released.sigma_z_source_m=f[22];
+                life.introduce_point_source(id,released);
                 ++episodes;
-                life.introduce(id,{f[0],f[1],f[2],f[19],f[20]});
             } else {
                 const auto state=life.state(id);
                 if(state.x_cells!=f[0] || state.y_cells!=f[1] ||
@@ -153,7 +193,9 @@ int main(int argc,char** argv) {
                  <<" CROSS_HOUR_NATIVE_LINKS="<<cross_hour_native_links
                  <<" INITIAL_WIND_ORACLE=true VERTICAL_STATE_ORACLE=true"
                  <<" HOUR_BOUNDARY_STATE_RESEEDED_FROM_FORTRAN=false"
-                 <<" INITIAL_UNSEEN_PUFF_STATE_FROM_FORTRAN=true"
+                 <<" NATIVE_POINT_SOURCE_XY_FROM_PUFF_INP=true"
+                 <<" NATIVE_INITIAL_AGE_AND_DISTANCE_ZERO=true"
+                 <<" SOURCE_RELEASE_HEIGHT_FROM_FORTRAN=true"
                  <<" FULL_AUTONOMOUS_COMP=NOT_YET_AVAILABLE\n";
     }catch(const std::exception& err) {
         std::cerr<<"P7_FIRST_HOUR_PERSISTED_LIFECYCLE=FAIL "<<err.what()<<'\n';
