@@ -23,11 +23,6 @@ STAGES={
     "final_v":(1e-4,1e-5),
     "final_w":(1e-5,1e-5),
 }
-def compare(s,n,report,h,label):
-    if len(s)!=len(n):raise RuntimeError(f"stage size mismatch: {label}")
-    for name,(ref,calc) in ((h,(s,n)),):
-        pass
-
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--source",type=Path,required=True)
