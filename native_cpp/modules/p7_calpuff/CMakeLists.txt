@@ -923,3 +923,16 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7_DGM_HOUR0}")
     COMMAND cteas_p7_native_vertical_tests
       "${P7G_LOCKED_CASE_MET}" "${P7_DGM_HOUR0}")
 endif()
+
+# Vendor VMASS L11667-11950 native REAL*4 vertical mass redistribution.
+add_library(cteas_p7_vmass STATIC src/original_vmass.cpp)
+target_include_directories(cteas_p7_vmass PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_vmass PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_vmass PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7_vmass_tests tests/original_vmass_tests.cpp)
+target_link_libraries(cteas_p7_vmass_tests PRIVATE cteas_p7_vmass)
+add_test(NAME cteas_p7_native_vmass_source_branch_mass_contract
+         COMMAND cteas_p7_vmass_tests)
