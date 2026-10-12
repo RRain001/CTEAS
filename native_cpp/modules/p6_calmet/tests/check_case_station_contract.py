@@ -87,8 +87,8 @@ def main(case: Path) -> None:
 
     # SURF.DAT formatted station ID record, independent of CSV identity.
     with (case / "met/surface/final/surf.dat").open(encoding="utf-8") as f:
-        head = [next(f) for _ in range(8)]
-    assert head[7].split() == [station(inp, "SS1")[0]]
+        head = [next(f) for _ in range(7)]
+    assert head[6].split() == [station(inp, "SS1")[0]]
     upper = single_csv(case / "met/upperair/final/stations.csv")
     assert (case / f"met/upperair/final/up_{upper['station_id']}.dat").is_file()
 
