@@ -397,7 +397,8 @@ def main() -> int:
          "--geo-file", geo_dat, "--out", candidate_a,
          "--report", work / "A/candidate.json"]
     if args.export_native_comp_state:
-        p6e_A_cmd.extend(["--state-prefix", work / "A/native_comp"])
+        p6e_A_cmd.extend(["--state-prefix", work / "A/native_comp",
+                             "--station-flux-csv", p6d_fields / "station_elustr2.csv"])
     _, elapsed = run(p6e_A_cmd, work / "logs/p6e_A.log", "p6e-A")
     timings["p6e_A_s"] = elapsed
 
