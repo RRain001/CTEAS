@@ -19,6 +19,8 @@ struct DeckStation {
     std::string name;
     float utm_x_km{},utm_y_km{};
     float local_x_m{},local_y_m{};
+    float time_zone_hours{};
+    float anemometer_height_m{}; // Only SS records provide this field
 };
 
 struct DeckStationPair {
@@ -100,8 +102,13 @@ inline DeckStationPair original_calmet_station_deck(
             throw std::invalid_argument("invalid CALMET station ID");
         station.utm_x_km=station_deck_float(x);
         station.utm_y_km=station_deck_float(y);
-        (void)station_deck_float(tz);
-        if(surface)(void)station_deck_float(height);
+        station.time_zone_hours=station_deck_float(tz);
+        if(surface) {
+            station.anemometer_height_m=station_deck_float(height);
+            if(station.anemometer_height_m<=0.f)
+                throw std::invalid_argument(
+                    "CALMET SS1 anemometer height must be positive");
+        }
 
         // Do NOT promote the subtract/multiply to double. Retain the
         // REAL*4 evaluation order of the original READCF selected route.
