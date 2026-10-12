@@ -669,28 +669,6 @@ int main(int argc,char** argv){
             origin_x_km*1000.0,origin_y_km*1000.0,grid_m);
         const auto sinalpc=cteas::p6e::sinalpc_grid(solar_grid,julian_day,
             begin_hour,0);
-        std::vector<float> heat_flux;
-        {
-            cteas::p6e::HeatFluxInput flux;
-            flux.nx=nx;flux.ny=ny;
-            flux.mcloud=1;
-            flux.water_first=geo.iwat1;flux.water_last=geo.iwat2;
-            flux.ha1=990.f;flux.ha2=-30.f;flux.hb1=-0.75f;flux.hb2=3.4f;
-            flux.hc1=5.31e-13f;flux.hc2=60.f;flux.hc3p1=1.12f;
-            flux.station_cloud={obs->opaque_cloud_tenths};
-            flux.nearest.assign(2500,1);
-            flux.landuse=geo.landuse;
-            flux.sun=sinalpc;
-            flux.temp_k=surface_state.temp_k;
-            flux.cloud_grid.assign(2500,0.1f*
-                static_cast<float>(obs->opaque_cloud_tenths));
-            flux.albedo=geo.albedo;
-            flux.bowen=geo.bowen;
-            flux.soil_heat_fraction=geo.hcg;
-            flux.anthropogenic_wm2=geo.qf;
-            flux.initial_qh.assign(2500,0.f);
-            heat_flux=cteas::p6e::heatfx(flux).sensible_wm2;
-        }
         std::vector<float> corrected_u=first.ug_mps,corrected_v=first.vg_mps;
         // Original DIAGNO MUST apply IFRADJ (L5643) before adding SLOPE
         // (L5722-L5732). These source-ordered stages are not commutative.
@@ -721,6 +699,30 @@ int main(int argc,char** argv){
         if(fradj_applied)
             write_f32(args.out()/("fradj_corrected_u_"+hour_label(clock)+".f32"),
                       corrected_u);
+        // CALMET DIAGNO L5686-5711: HEATFX/ELUSTR belong AFTER FRADJ.
+        // QH is input to SLOPE, so this is not just a cosmetic move.
+        std::vector<float> heat_flux;
+        {
+            cteas::p6e::HeatFluxInput flux;
+            flux.nx=nx;flux.ny=ny;
+            flux.mcloud=1;
+            flux.water_first=geo.iwat1;flux.water_last=geo.iwat2;
+            flux.ha1=990.f;flux.ha2=-30.f;flux.hb1=-0.75f;flux.hb2=3.4f;
+            flux.hc1=5.31e-13f;flux.hc2=60.f;flux.hc3p1=1.12f;
+            flux.station_cloud={obs->opaque_cloud_tenths};
+            flux.nearest.assign(2500,1);
+            flux.landuse=geo.landuse;
+            flux.sun=sinalpc;
+            flux.temp_k=surface_state.temp_k;
+            flux.cloud_grid.assign(2500,0.1f*
+                static_cast<float>(obs->opaque_cloud_tenths));
+            flux.albedo=geo.albedo;
+            flux.bowen=geo.bowen;
+            flux.soil_heat_fraction=geo.hcg;
+            flux.anthropogenic_wm2=geo.qf;
+            flux.initial_qh.assign(2500,0.f);
+            heat_flux=cteas::p6e::heatfx(flux).sensible_wm2;
+        }
         // Original DIAGNO applies Mahrt slope flow after FRADJ.
         {
             SlopeInput slope;
