@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cteas/puff/original_precision.hpp"
 #include <cmath>
 #include <stdexcept>
 
@@ -11,14 +12,14 @@ namespace cteas::puff {
 // precision division. These are intentionally separate from original
 // puff.inp's independently rounded XORIGKM/YORIGKM.
 struct OriginalMetGridFrame {
-    float x_origin_m = 0.0f;
-    float y_origin_m = 0.0f;
-    float spacing_m = 0.0f;
+    VendorPointCommonReal x_origin_m = 0.0f;
+    VendorPointCommonReal y_origin_m = 0.0f;
+    VendorPointCommonReal spacing_m = 0.0f;
 };
 
 struct OriginalQaXYkm {
-    float x_km = 0.0f;
-    float y_km = 0.0f;
+    VendorPointCommonReal x_km = 0.0f;
+    VendorPointCommonReal y_km = 0.0f;
 };
 
 inline void validate_original_met_frame(const OriginalMetGridFrame& frame) {
