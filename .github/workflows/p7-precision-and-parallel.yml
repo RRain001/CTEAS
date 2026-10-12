@@ -369,6 +369,10 @@ jobs:
             --metadata native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep.json \
             --out "$six"
           test -s "$six"
+          # The full original 143h DGM has already been SHA verified by the
+          # extractor. Keep the 89MB data in RUNNER_TEMP, never commit it.
+          ln -s "$base/oracle/case/run/puff/dgm_puffstep.bin" \
+            native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_full_143hours.bin
           if command -v g++-12 >/dev/null 2>&1; then
             cpp="$(command -v g++-12)"
           elif command -v g++-11 >/dev/null 2>&1; then
@@ -389,6 +393,17 @@ jobs:
           "$base/cpp/cteas_p7_first_hour_lifecycle_tests" \
             project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp "$six" 6
           echo "P7_SIX_HOUR_NATIVE_LIFECYCLE=PASS"
+          fulltest=cteas_p7_143_hour_oracle_fed_motion_state_real4
+          ctest --test-dir "$base/cpp" -N -R "^${fulltest}$" |
+            grep -Eq "Test[[:space:]]*#[0-9]+: ${fulltest}$" || {
+              echo "::error::143h original-fed motion-state test not registered"
+              exit 1
+            }
+          ctest --test-dir "$base/cpp" -R "^${fulltest}$" --output-on-failure
+          "$base/cpp/cteas_p7_first_hour_lifecycle_tests" \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            "$base/oracle/case/run/puff/dgm_puffstep.bin" 143
+          echo "P7_143H_ORACLE_FED_MOTION=PASS SELF_CONTAINED_MET_AND_OUTPUT=NO"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
