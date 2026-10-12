@@ -276,6 +276,15 @@ jobs:
           ctest --test-dir "$build" -N -R '^cteas_p7_original_grid_preprocess_contract$' |
             grep -Eq 'Test[[:space:]]*#[0-9]+: cteas_p7_original_grid_preprocess_contract'
           ctest --test-dir "$build" -R '^cteas_p7_original_grid_preprocess_contract$' --output-on-failure
+          if [ -s "project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat" ]; then
+            ctest --test-dir "$build" -N -R '^cteas_p7_original_2022_met_header_grid_qa$' |
+              grep -Eq 'Test[[:space:]]*#[0-9]+: cteas_p7_original_2022_met_header_grid_qa'
+            ctest --test-dir "$build" -R '^cteas_p7_original_2022_met_header_grid_qa$' --output-on-failure
+            echo "P7_ORIGINAL_MET_BINARY_GRID_2500_QA=PASS"
+          else
+            echo "::error::Original frozen 2022 MET.DAT absent; P7 real binary grid QA NOT_ACCEPTED"
+            exit 1
+          fi
           echo "P7_MODE_A_GRID_AUTHORING_PROVENANCE=PASS"
           echo "P7_MODE_A_ORIGINAL_QA_2500_RECEPTORS=PASS"
           echo "P7_MODE_A_LOCKED_SOURCE_INPUT=PASS"
