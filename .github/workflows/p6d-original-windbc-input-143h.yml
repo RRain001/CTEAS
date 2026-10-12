@@ -72,6 +72,35 @@ jobs:
           python3 scripts/p6d_diagnose_original_fradj_slope_143h.py \
             --original-dir "$root/original" --candidate "$root/candidate" \
             --out "$root/fradj_slope_original_143h.json"
+      - name: Trace unmodified original 143h GAMMA forcing immediately before FRADJ
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-winbc-original-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 scripts/p6d_trace_original_gamma.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --out "$root/gamma-oracle" --compiler gfortran-11 --hours 143
+      - name: Run original-GAMMA-forced C++ FRADJ without changing the native physics
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-winbc-original-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$root/forensic-gamma-candidate"
+          "$root/build/cteas_p6_realcase_wind_field" \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --hours 143 --gamma "$root/gamma-oracle/gamma" \
+            --out "$root/forensic-gamma-candidate"
+      - name: Locate residual FRADJ versus SLOPE errors after exact original GAMMA injection
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-winbc-original-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 scripts/p6d_diagnose_original_fradj_slope_143h.py \
+            --original-dir "$root/original" \
+            --candidate "$root/forensic-gamma-candidate" \
+            --pre-slope-prefix fradj_corrected \
+            --out "$root/fradj_slope_original_gamma_forensic_143h.json"
       - name: Archive provenance-locked source-boundary evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -81,6 +110,8 @@ jobs:
           path: |
             ${{ runner.temp }}/p6d-winbc-original-${{ github.run_id }}-${{ github.run_attempt }}/windbc_original_edge_143h.json
             ${{ runner.temp }}/p6d-winbc-original-${{ github.run_id }}-${{ github.run_attempt }}/fradj_slope_original_143h.json
+            ${{ runner.temp }}/p6d-winbc-original-${{ github.run_id }}-${{ github.run_attempt }}/fradj_slope_original_gamma_forensic_143h.json
+            ${{ runner.temp }}/p6d-winbc-original-${{ github.run_id }}-${{ github.run_attempt }}/gamma-oracle/gamma_source_manifest.json
             ${{ runner.temp }}/p6d-winbc-original-${{ github.run_id }}-${{ github.run_attempt }}/original/dgm-audit.json
           if-no-files-found: warn
           retention-days: 7
