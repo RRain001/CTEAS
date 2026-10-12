@@ -90,9 +90,10 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 90
     steps:
+      # Do not demand git-lfs on all sixteen self-hosted workers: most frozen
+      # scientific inputs are immutable Git blobs, and content is checked
+      # explicitly before computation. A real LFS pointer fails closed below.
       - uses: actions/checkout@v4
-        with:
-          lfs: true
       - uses: ./.github/actions/cteas-linux-toolchain
       - name: Reject missing or LFS-pointer frozen scientific inputs
         shell: bash
