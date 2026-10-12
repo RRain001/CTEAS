@@ -1,0 +1,98 @@
+#pragma once
+// CALMET 6.5.0 Group 7/8 station location input contract.
+//
+// SSn/USn in met.inp are UTM kilometres. The original CALMET-compatible
+// computation starts from those stored REAL*4 coordinates, not from
+// stations.csv latitude/longitude or a reconstructed case-grid centre.
+// Only the frozen one-surface/one-upper route is currently supported here.
+#include <cmath>
+#include <limits>
+#include <regex>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+
+namespace cteas::calmet::p6 {
+
+struct DeckStation {
+    int id{};
+    std::string name;
+    float utm_x_km{},utm_y_km{};
+    float local_x_m{},local_y_m{};
+};
+
+struct DeckStationPair {
+    DeckStation surface,upper;
+};
+
+inline float station_deck_float(const std::string& token) {
+    std::size_t parsed=0;
+    float value=0.f;
+    try {
+        value=std::stof(token,&parsed);
+    } catch (const std::exception&) {
+        throw std::invalid_argument("CALMET station deck contains invalid number");
+    }
+    if(parsed!=token.size()||!std::isfinite(value))
+        throw std::invalid_argument("CALMET station deck contains nonfinite/trailing number");
+    return value;
+}
+
+inline DeckStationPair original_calmet_station_deck(
+    const std::string& deck,float xorig_km,float yorig_km) {
+    if(!std::isfinite(xorig_km)||!std::isfinite(yorig_km))
+        throw std::invalid_argument("CALMET station deck origin is not finite");
+
+    // The quoted station name must not be interpreted as numerical input.
+    static const std::regex line(
+        R"(!\s*(SS|US)([0-9]+)\s*=\s*'([^']*)'\s*([^!]*)!)");
+    DeckStationPair result;
+    bool have_surface=false,have_upper=false;
+    for(auto it=std::sregex_iterator(deck.begin(),deck.end(),line);
+        it!=std::sregex_iterator();++it) {
+        const bool surface=(*it)[1].str()=="SS";
+        const int ordinal=std::stoi((*it)[2].str());
+        if(ordinal!=1)
+            throw std::invalid_argument(
+                "CALMET station deck adapter requires one SS1 and one US1");
+        if((surface && have_surface)||(!surface && have_upper))
+            throw std::invalid_argument("duplicate CALMET station deck entry");
+        DeckStation station;
+        station.name=(*it)[3].str();
+        if(station.name.empty())
+            throw std::invalid_argument("empty CALMET station name");
+        std::istringstream fields((*it)[4].str());
+        std::string id,x,y,tz,height,extra;
+        if(!(fields>>id>>x>>y>>tz)||
+           (surface && !(fields>>height))||(fields>>extra))
+            throw std::invalid_argument("malformed CALMET station deck fields");
+        std::size_t used=0;
+        try {
+            station.id=std::stoi(id,&used);
+        } catch(const std::exception&) {
+            throw std::invalid_argument("invalid CALMET station ID");
+        }
+        if(used!=id.size()||station.id<=0)
+            throw std::invalid_argument("invalid CALMET station ID");
+        station.utm_x_km=station_deck_float(x);
+        station.utm_y_km=station_deck_float(y);
+        (void)station_deck_float(tz);
+        if(surface)(void)station_deck_float(height);
+
+        // Do NOT promote the subtract/multiply to double. Retain the
+        // REAL*4 intermediate arithmetic of the original selected route.
+        const float dx_km=station.utm_x_km-xorig_km;
+        const float dy_km=station.utm_y_km-yorig_km;
+        station.local_x_m=dx_km*1000.f;
+        station.local_y_m=dy_km*1000.f;
+        if(!std::isfinite(station.local_x_m)||
+           !std::isfinite(station.local_y_m))
+            throw std::invalid_argument("invalid relative CALMET station position");
+        if(surface){result.surface=station;have_surface=true;}
+        else{result.upper=station;have_upper=true;}
+    }
+    if(!have_surface||!have_upper)
+        throw std::invalid_argument("met.inp must provide both SS1 and US1");
+    return result;
+}
+} // namespace cteas::calmet::p6
