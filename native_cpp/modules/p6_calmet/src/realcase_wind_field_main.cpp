@@ -17,6 +17,7 @@
 // rather than silently substituted.
 #include <iomanip>
 #include "cteas/p6/calmet_station_deck.hpp"
+#include "cteas/p6/calmet_station_surface.hpp"
 #include "cteas/p6/read_geo.hpp"
 #include "cteas/p6/read_surface.hpp"
 #include "cteas/p6/read_upper.hpp"
@@ -465,8 +466,13 @@ int main(int argc,char** argv){
     write_f32(args.out()/"terset_disthmax.f32",envelope.distance_to_maximum_m);
     write_f32(args.out()/"terset_disthmin.f32",envelope.distance_to_minimum_m);
 
-    // Surface station roughness: the GEO roughness at the station cell is the
-    // scoped original choice when the deck selects no explicit SURFVAR value.
+    // WIND1 source L36179-L36187 takes Z0 at IST(SS1),JST(SS1), where
+    // DIAGI L5129-L5130 computes the station cell using READCF local metres.
+    // GEO (1,1) is NOT the station roughness unless SS1 lies in that cell.
+    const float surface_station_z0=original_calmet_station_z0(
+        geo.z0_m,surface_x_m,surface_y_m,grid_m,grid_m,nx,ny);
+    const float surface_anemometer_height_m=
+        deck_stations.surface.anemometer_height_m;
     const std::size_t stations_written=1;
     std::ofstream index(args.out()/"produced_hours.txt");
     if(!index)throw std::runtime_error("cannot write produced_hours.txt");
@@ -501,10 +507,10 @@ int main(int argc,char** argv){
         station.upper_station_id=upper.station_id;
         station.surface_observed_u_mps=surface_u;
         station.surface_observed_v_mps=surface_v;
-        const float roughness=geo.z0_m.empty()?0.1f:geo.z0_m[0];
+        const float roughness=surface_station_z0;
         if(std::hypot(surface_u,surface_v)>0.0001f){
             const SimiltProfileInput neutral{
-                31.939774f,10.f,roughness,surface_u,surface_v,
+                station_lat_deg,surface_anemometer_height_m,roughness,surface_u,surface_v,
                 10000.f,10000.f,10000.f,0,
                 {0.f,20.f,40.f,80.f,160.f,320.f,640.f,1200.f,2000.f,3000.f}};
             const auto profile=original_similt_profile(neutral);
@@ -562,7 +568,7 @@ int main(int argc,char** argv){
                     cutoff_m=zi_hours[offset];
                 }
                 const SimiltProfileInput diagi{
-                    static_cast<float>(station_lat_deg),10.f,roughness,surface_u,surface_v,
+                    station_lat_deg,surface_anemometer_height_m,roughness,surface_u,surface_v,
                     el_m,cutoff_m,zimin_m,0,zface};
                 const auto profile=original_similt_profile(diagi);
                 levels_filled=profile.levels_filled;
