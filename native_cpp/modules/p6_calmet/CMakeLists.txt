@@ -397,6 +397,18 @@ else()
   message(STATUS "P6 Mode A full-case tests NOT REGISTERED; source-only CTests are still valid")
 endif()
 
+# P6D station-only original MIXHTST source-state transition probe.
+# The prior COMP state is supplied as a forensic fixture, never as a native
+# end-to-end wind acceptance input. The production recurrence remains pending.
+add_executable(cteas_p6_station_mixhtst_probe src/station_mixhtst_probe_main.cpp)
+target_link_libraries(cteas_p6_station_mixhtst_probe PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6_station_mixhtst_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+if(MSVC)
+  target_compile_options(cteas_p6_station_mixhtst_probe PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_station_mixhtst_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 # P6D real-case wind-field producer (partial product: WIND1 step-one UG/VG
 # plus the in-chain TERSET envelope, with explicit provenance metadata).
 add_executable(cteas_p6_realcase_wind_field src/realcase_wind_field_main.cpp)
