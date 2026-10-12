@@ -17,7 +17,7 @@ on:
 jobs:
   build-test:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-managed, cteas-light, Linux, X64]
     timeout-minutes: 10
     permissions:
       contents: read
@@ -32,9 +32,9 @@ jobs:
       - name: Install GDAL headers
         run: |
           if ! pkg-config --exists gdal; then
-            sudo -n apt-get update -qq
-            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
-          fi
+            echo "::error::GDAL headers absent on managed runner; provision libgdal-dev on host"
+            exit 1
+            fi
       - name: Configure
         run: cmake -S native_cpp -B ${{ runner.temp }}/cteas-cpp-build -DCMAKE_BUILD_TYPE=Debug
       - name: Build
