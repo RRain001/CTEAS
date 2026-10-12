@@ -25,6 +25,8 @@
 #include "cteas/p6/froude_adjust.hpp"
 #include "cteas/p6/slope_flow.hpp"
 #include "cteas/p6e/heatfx.hpp"
+#include "cteas/p6e/elustr_stable.hpp"
+#include "cteas/p6e/elustr_daytime.hpp"
 #include "cteas/p6e/coordlib_pj09z0.hpp"
 #include "cteas/p6e/surface_solar.hpp"
 #include "cteas/p6e/surfvar_observed.hpp"
@@ -723,6 +725,59 @@ int main(int argc,char** argv){
             flux.initial_qh.assign(2500,0.f);
             heat_flux=cteas::p6e::heatfx(flux).sensible_wm2;
         }
+        // Exact source order CALMET DIAGNO L5685-L5716:
+        // HEATFX -> AIRDEN -> ELUSTR(UG,VG) -> SLOPE(QH).
+        // HEATFX's -0.1 W/m2 nighttime marker MUST NOT be handed directly
+        // to SLOPE; original ELUSTR overwrites QH with the stable sensible
+        // flux (often tens of negative W/m2). The 143h original source
+        // diagnostic located 223236 QH input mismatches before this repair.
+        if(!obs->pressure_valid)
+            throw std::runtime_error("DIAGNO ELUSTR missing surface pressure at "+
+                                     hour_label(clock));
+        constexpr std::size_t plane_cells=2500;
+        std::vector<float> diag_rho(plane_cells,0.f);
+        for(std::size_t cell=0;cell<plane_cells;++cell)
+            diag_rho[cell]=0.3484321f*obs->pressure_mb/surface_state.temp_k[cell];
+        std::vector<int> stable_land(plane_cells),day_land(plane_cells);
+        for(std::size_t cell=0;cell<plane_cells;++cell){
+            const int lu=geo.landuse[cell];
+            const bool land=lu<geo.iwat1||lu>geo.iwat2;
+            stable_land[cell]=(land&&heat_flux[cell]<0.f)?lu:geo.iwat1;
+            day_land[cell]=(land&&heat_flux[cell]>=0.f)?lu:geo.iwat1;
+        }
+        cteas::p6e::StableElustr stable;
+        stable.nx=nx;stable.ny=ny;stable.mcloud=1;
+        stable.water_first=geo.iwat1;stable.water_last=geo.iwat2;
+        stable.zm=center_m[0]; // original ZMID(1), not anemometer height
+        stable.landuse=stable_land;
+        stable.nearest.assign(plane_cells,1);
+        stable.station_cloud={obs->opaque_cloud_tenths};
+        stable.z0=geo.z0_m;
+        stable.u1.assign(corrected_u.begin(),corrected_u.begin()+plane_cells);
+        stable.v1.assign(corrected_v.begin(),corrected_v.begin()+plane_cells);
+        stable.rho=diag_rho;stable.temp_k=surface_state.temp_k;
+        stable.cloud_grid.assign(plane_cells,0.f);
+        stable.heat_flux_initial=heat_flux;
+        const auto stable_state=cteas::p6e::stable_elustr(stable);
+        cteas::p6e::DaytimeElustrInput daytime;
+        daytime.nx=nx;daytime.ny=ny;
+        daytime.water_first=geo.iwat1;daytime.water_last=geo.iwat2;
+        daytime.ipsifcn=deck_int(controls,"IPSIFCN",0);
+        daytime.zm=center_m[0];daytime.landuse=day_land;
+        daytime.z0=geo.z0_m;
+        daytime.u1=stable.u1;daytime.v1=stable.v1;
+        daytime.rho=diag_rho;daytime.temp_k=surface_state.temp_k;
+        daytime.heat_flux_initial=heat_flux;
+        daytime.initial_ustar.assign(plane_cells,0.05f);
+        daytime.initial_el.assign(plane_cells,-9.9e9f);
+        const auto daytime_state=cteas::p6e::elustr_daytime(daytime);
+        for(std::size_t cell=0;cell<plane_cells;++cell){
+            const int lu=geo.landuse[cell];
+            if(lu>=geo.iwat1&&lu<=geo.iwat2)continue;
+            heat_flux[cell]=heat_flux[cell]<0.f
+                ?stable_state.qh_wm2[cell]:daytime_state.qh_wm2[cell];
+        }
+        // SLOPE now consumes the source-ordered *post-ELUSTR* QH field.
         // Original DIAGNO applies Mahrt slope flow after FRADJ.
         {
             SlopeInput slope;
@@ -957,6 +1012,7 @@ int main(int argc,char** argv){
     meta<<", \"SURFVAR 2-D surface temperature (ISURFT<0, IALL=0, IAVET=1)\"";
     meta<<", \"SOLAR grid sine of elevation (interval start)\"";
     meta<<", \"HEATFX sensible heat flux (mcloud=1 station cloud)\"";
+    meta<<", \"AIRDEN then ELUSTR stable/daytime updates QH before SLOPE\"";
     meta<<", \"SLOPE slope flow added to the step-one winds\"";
     meta<<", \"SIMILT vertical extrapolation capped at the mixing height (L30345)\" ";
     meta<<", \"original INTER2 two-component blend (WO=1.0)\" " ;
