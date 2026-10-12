@@ -1,0 +1,101 @@
+name: P6D 143h native COMP recurrence to STHEOR
+
+on:
+  push:
+    branches: [audit/p6d-source-slope-drivers-143h-20261012]
+    paths:
+      - 'scripts/p6d_compare_native_comp_station_143h.py'
+      - '.github/workflows/p6d-native-comp-station-recurrence-143h.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p6d-native-comp-station-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-143h-station-comp-closure:
+    name: Original CALMET 143h vs native P6D wind to P6E COMP to P6D station MIXHTST
+    runs-on: [cteas-compute, Linux, X64]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            .github/actions/cteas-linux-toolchain
+            native_cpp/modules/p6_calmet
+            scripts
+      - uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          path: frozen_original_checkout
+          filter: blob:none
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
+      - uses: ./.github/actions/cteas-linux-toolchain
+      - name: Verify frozen 143h source case and U V W reference (never injected into native wind)
+        shell: bash
+        run: |
+          set -euo pipefail
+          case_dir="frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011"
+          test -s "$case_dir/run/met/met.dat"
+          printf '%s  %s\n' b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 "$case_dir/run/met/met.dat" | sha256sum --check
+      - name: Build and produce unassisted wind plus native P6E 143h COMP history
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-native-comp-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$root"
+          case_dir="frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011"
+          set +e
+          python3 scripts/run_p6_end_to_end.py \
+            --case "$case_dir" --build-dir "$root/build" \
+            --build-type Release --jobs 3 --hours 143 \
+            --work "$root/base" --export-native-comp-state >"$root/baseline.log" 2>&1
+          rc=$?
+          set -e
+          echo "Native baseline scientific status expected still FAIL, exit=$rc"
+          test -s "$root/base/A/native_comp.state.json" || { tail -100 "$root/baseline.log"; exit 2; }
+          for name in zi ziconv dptt; do
+            test "$(stat -c %s "$root/base/A/native_comp.$name.f32")" = 1430000
+          done
+          test -x "$root/build/p6d/cteas_p6_realcase_wind_field"
+      - name: Compute 143h station ELUSTR2 MIXHTST SIMILT using only native previous-hour COMP state
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-native-comp-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          case_dir="frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011"
+          "$root/build/p6d/cteas_p6_realcase_wind_field" \
+            --case "$case_dir" --hours 143 \
+            --comp-state-prefix "$root/base/A/native_comp" \
+            --out "$root/coupled"
+          test "$(wc -l < "$root/coupled/station_mixhtst.csv")" -eq 144
+      - name: Read-only original station ZII and native previous-COMP history first-divergence gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-native-comp-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 scripts/p6d_compare_native_comp_station_143h.py \
+            --cell-json native_cpp/modules/p6_calmet/reference/dgm_p6d_requests_2022/dgm_cell.json \
+            --cell-bin native_cpp/modules/p6_calmet/reference/dgm_p6d_requests_2022/dgm_cell.bin \
+            --state-bin native_cpp/modules/p6_calmet/reference/dgm_internal_state_2022/dgm_state.bin \
+            --comp-prefix "$root/base/A/native_comp" \
+            --station-csv "$root/coupled/station_mixhtst.csv" \
+            --out "$root/native_comp_station_143h.json" --require-parity
+      - name: Retain every native COMP and source-locked scientific diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: p6d-native-comp-station-143h
+          path: |
+            ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/native_comp_station_143h.json
+            ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/coupled/station_mixhtst.csv
+            ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/base/A/native_comp.state.json
+            ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/baseline.log
+          if-no-files-found: warn
+          retention-days: 14
