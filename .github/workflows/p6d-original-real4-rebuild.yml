@@ -53,5 +53,53 @@ jobs:
         if: always()
         with:
           name: p6d-independent-real4-${{ matrix.build_type }}
-          path: ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_wind1_real4/p6d8b-wind1-firstguess-parity.json
+          path: |
+            ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_wind1_real4/p6d8b-wind1-firstguess-parity.json
+            ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_similt_real4/p6d-similt-profile-parity.json
+            ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_diagno_tail_real4/p6d-final-segment-parity.json
+          if-no-files-found: warn
+
+  real-hefei-hour-1:
+    name: Independent WIND1 on frozen real-case hour one
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: p6d_real_hour_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6d_real_hour_checkout
+      - uses: ./p6d_real_hour_checkout/.github/actions/cteas-linux-toolchain
+      - name: Verify scientific case inputs from exact Git HEAD
+        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+      - name: Build independent and original comparison producers
+        shell: bash
+        run: |
+          set -euo pipefail
+          src_build="$RUNNER_TEMP/p6d-rebuild-hour-source-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          legacy_build="$RUNNER_TEMP/p6d-rebuild-hour-fixture-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cmake -S native_cpp/modules/p6_calmet/p6d_original_rebuild -B "$src_build" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$src_build" --target cteas_p6d_source_wind1_real4 --parallel 2
+          cmake -S native_cpp/modules/p6_calmet -B "$legacy_build" -DCMAKE_BUILD_TYPE=Debug -DCTEAS_P6_MODE_A_REQUIRE_CASE=ON
+          cmake --build "$legacy_build" --target cteas_p6_realcase_wind_field --parallel 2
+      - name: Original Fortran first-hour source comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          src_build="$RUNNER_TEMP/p6d-rebuild-hour-source-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          legacy_build="$RUNNER_TEMP/p6d-rebuild-hour-fixture-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          evidence="$RUNNER_TEMP/p6d-rebuild-hour-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_wind1_realcase_first_hour.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --p6d "$legacy_build/cteas_p6_realcase_wind_field" \
+            --cpp "$src_build/cteas_p6d_source_wind1_real4" \
+            --out "$evidence"
+      - name: Archive real first-hour original field residuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6d-independent-real-hefei-first-hour
+          path: ${{ runner.temp }}/p6d-rebuild-hour-evidence-${{ github.run_id }}-${{ github.run_attempt }}/first_hour_wind1_parity.json
           if-no-files-found: warn
