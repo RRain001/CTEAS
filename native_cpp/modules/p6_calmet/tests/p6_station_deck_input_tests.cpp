@@ -29,14 +29,14 @@ int main(int argc,char** argv) {
     expect(xy.surface.id==583210&&xy.upper.id==58424,"station ids");
     expect(xy.surface.local_x_m==2500.f&&xy.surface.local_y_m==2500.f,
            "surface local geometry");
-    expect(std::abs(xy.upper.local_x_m-2498.9624f)<1e-4f,
+    expect(std::abs(xy.upper.local_x_m-2498.96875f)<1e-4f,
            "upper single-precision local x; not equirectangular");
-    expect(std::abs(xy.upper.local_y_m-2502.9297f)<1e-4f,
+    expect(std::abs(xy.upper.local_y_m-2503.0f)<1e-4f,
            "upper single-precision local y; not equirectangular");
-    const float from_deck=513.384f-510.885f;
+    const float from_deck=(1000.f*513.384f)-(1000.f*510.885f);
     expect(std::bit_cast<std::uint32_t>(xy.upper.local_x_m)==
-           std::bit_cast<std::uint32_t>(from_deck*1000.f),
-           "single precision subtraction must precede metre conversion");
+           std::bit_cast<std::uint32_t>(from_deck),
+           "single precision multiplication must precede subtraction");
     const auto shifted=original_calmet_station_deck(
         "! SS1 ='A' 1 510.200 3530.100 0 10.0 !\n"
         "! US1 ='B' 2 509.950 3530.050 0 !\n",
@@ -63,9 +63,9 @@ int main(int argc,char** argv) {
                "frozen input station identities");
         expect(real.surface.local_x_m==2500.f&&real.surface.local_y_m==2500.f,
                "frozen surface UTM station position");
-        expect(std::abs(real.upper.local_x_m-2498.9624f)<1e-4f,
+        expect(std::abs(real.upper.local_x_m-2498.96875f)<1e-4f,
                "frozen upper UTM x position");
-        expect(std::abs(real.upper.local_y_m-2502.9297f)<1e-4f,
+        expect(std::abs(real.upper.local_y_m-2503.0f)<1e-4f,
                "frozen upper UTM y position");
     }
     std::cout<<"PASS_CALMET_DECK_STATIONS_FLOAT32\n";
