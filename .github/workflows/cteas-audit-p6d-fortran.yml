@@ -1,0 +1,106 @@
+name: CTEAS independent P6D original-source numeric audit
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/cteas-audit-p6d-fortran.yml'
+permissions:
+  contents: read
+concurrency:
+  group: cteas-independent-p6d-original-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+jobs:
+  original-p6d-realcase:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [cteas-managed, cteas-compute, Linux, X64]
+    timeout-minutes: 75
+    env:
+      CXX: /usr/bin/g++-12
+      FC: /usr/bin/gfortran-11
+      CMAKE_BUILD_PARALLEL_LEVEL: '4'
+      CASE: project/cases/hefei5km_2022_reference_case_20261011
+      TARGET_SHA: d98c43453b1676007b028f564fef3007a72a3959
+      FROZEN_MET_SHA: b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30
+    steps:
+      - name: Exact pinned P6D source checkout
+        uses: actions/checkout@v4
+        with:
+          ref: d98c43453b1676007b028f564fef3007a72a3959
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set job-private GNU Fortran 11 path for hardcoded comparator gfortran
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test -x /usr/bin/gfortran-11
+          test -x /usr/bin/g++-12
+          mkdir -p "$RUNNER_TEMP/cteas-audit-fortran-bin" "$RUNNER_TEMP/cteas-audit-p6d-result"
+          ln -s /usr/bin/gfortran-11 "$RUNNER_TEMP/cteas-audit-fortran-bin/gfortran"
+          echo "$RUNNER_TEMP/cteas-audit-fortran-bin" >> "$GITHUB_PATH"
+          "/usr/bin/gfortran-11" --version | head -1
+          MET="$CASE/run/met/met.dat"
+          echo "$FROZEN_MET_SHA  $MET" | sha256sum -c
+          printf 'AUDIT_SHA=%s\n' "$TARGET_SHA" > "$RUNNER_TEMP/cteas-audit-p6d-result/provenance.txt"
+          printf 'AUDIT_RUNNER=%s\n' "$RUNNER_NAME" >> "$RUNNER_TEMP/cteas-audit-p6d-result/provenance.txt"
+      - name: Independent isolated CMake compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/cteas-audit-p6d-build" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER="$CXX"
+          cmake --build "$RUNNER_TEMP/cteas-audit-p6d-build" --parallel 4
+      - name: Independently produce actual 143h station and wind fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/cteas-audit-p6d-result"
+          "$RUNNER_TEMP/cteas-audit-p6d-build/cteas_p6_realcase_wind_field" \
+            --case "$CASE" --out "$RUNNER_TEMP/cteas-audit-p6d-fields" \
+            --fixtures "$RUNNER_TEMP/cteas-audit-p6d-fixtures" \
+            2>&1 | tee "$OUT/producer.log"
+      - name: Verify WIND1 and SIMILT against unchanged original Fortran
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/cteas-audit-p6d-result"
+          command -v gfortran
+          gfortran --version | head -1
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_d9a_realcase_step_one.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --fields "$RUNNER_TEMP/cteas-audit-p6d-fields" \
+            --fixtures "$RUNNER_TEMP/cteas-audit-p6d-fixtures" \
+            --out "$OUT/step-one" \
+            2>&1 | tee "$OUT/step-one.log"
+      - name: Verify INTER2 against unchanged original Fortran
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/cteas-audit-p6d-result"
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_d9a_realcase_blend.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --fields "$RUNNER_TEMP/cteas-audit-p6d-fields" \
+            --fixtures "$RUNNER_TEMP/cteas-audit-p6d-fixtures" \
+            --out "$OUT/blend" \
+            2>&1 | tee "$OUT/blend.log"
+      - name: Audit cgroup counters
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          OUT="$RUNNER_TEMP/cteas-audit-p6d-result"
+          mkdir -p "$OUT"
+          CG="/sys/fs/cgroup$(awk -F: '$1=="0" {print $3}' /proc/self/cgroup)"
+          for file in cpu.stat memory.events memory.peak; do
+            if test -r "$CG/$file"; then cp "$CG/$file" "$OUT/${file//./_}.txt"; fi
+          done
+      - name: Retain numerical verdicts and logs, not hundreds of MB of grids
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: independent-p6d-original-parity-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/cteas-audit-p6d-result/*.log
+            ${{ runner.temp }}/cteas-audit-p6d-result/*.txt
+            ${{ runner.temp }}/cteas-audit-p6d-result/step-one/*.json
+            ${{ runner.temp }}/cteas-audit-p6d-result/blend/*.json
+          if-no-files-found: warn
+          retention-days: 14
