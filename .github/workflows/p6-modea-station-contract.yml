@@ -1,0 +1,43 @@
+name: P6 Mode A original CALMET station geometry
+
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/**'
+      - '.github/workflows/p6-modea-station-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-compat:
+    runs-on: [self-hosted, Linux, X64, lhy-desktop]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check original Fortran availability
+        shell: bash
+        run: |
+          command -v cmake
+          command -v python3
+          command -v gfortran-11 || command -v gfortran-12 || command -v gfortran
+      - name: Configure P6 contract build
+        shell: bash
+        run: cmake -S native_cpp/modules/p6_calmet -B "${RUNNER_TEMP}/cteas-p6-modea" -DCMAKE_BUILD_TYPE=Debug
+      - name: Compile P6 real-case and all scoped contract tests
+        shell: bash
+        run: cmake --build "${RUNNER_TEMP}/cteas-p6-modea" --parallel 2
+      - name: Original station and P3-P5 handoff CTest
+        shell: bash
+        run: |
+          ctest --test-dir "${RUNNER_TEMP}/cteas-p6-modea" \
+            --output-on-failure \
+            -R '^p6d_(original_metinp_station_deck_input|p3_p4_p5_metinp_station_contract|original_readcf_real4_fortran_source|realcase_wind_producer_case_contract)$'
+      - name: Archive READCF source-oracle report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p6-modea-readcf-source-parity
+          path: ${{ runner.temp }}/cteas-p6-modea/original_readcf_station/
+          if-no-files-found: warn
