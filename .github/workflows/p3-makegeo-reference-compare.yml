@@ -11,7 +11,7 @@ on:
 jobs:
   compare:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-managed, cteas-compute, Linux, X64]
     timeout-minutes: 18
     permissions:
       contents: read
@@ -26,9 +26,9 @@ jobs:
       - name: Original and C++ compilers
         run: |
           if ! pkg-config --exists gdal; then
-            sudo -n apt-get update -qq
-            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
-          fi
+            echo "::error::GDAL headers absent on managed runner; provision libgdal-dev on host"
+            exit 1
+            fi
           gfortran --version | head -1
       - name: Isolated original P1/P2 capture
         run: python3 native_cpp/reference/capture_p1_p2.py --output ${{ runner.temp }}/p3-compare
