@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'native_cpp/modules/p6_calmet/p6d_original_rebuild/**'
+      - 'native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp'
       - 'native_cpp/modules/p6_calmet/reference/compare_original_wind1_firstguess.py'
       - '.github/workflows/p6d-original-real4-rebuild.yml'
   workflow_dispatch:
@@ -16,59 +17,69 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  original-fortran-wind1:
-    name: Standalone source-first REAL4 / original Fortran WIND1 and SIMILT
+  source-kernel:
+    name: Original ${{ matrix.kernel }} (${{ matrix.build_type }})
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 25
+    timeout-minutes: 30
     defaults:
       run:
-        working-directory: p6d_rebuild_checkout
+        working-directory: p6d_source_kernel_checkout
     strategy:
       fail-fast: false
+      max-parallel: 12
       matrix:
+        kernel: [wind1, similt, inter2, fradj, slope, diagno]
         build_type: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
         with:
-          path: p6d_rebuild_checkout
-      - uses: ./p6d_rebuild_checkout/.github/actions/cteas-linux-toolchain
-      - name: Fortran blob and source-first code boundaries
+          path: p6d_source_kernel_checkout
+      - uses: ./p6d_source_kernel_checkout/.github/actions/cteas-linux-toolchain
+      - name: Source-fidelity and independent implementation guard
         shell: bash
         run: |
           set -euo pipefail
           test -s engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for
-          test -s native_cpp/modules/p6_calmet/reference/compare_original_wind1_firstguess.py
           ! grep -rq '#include "cteas/p6/' native_cpp/modules/p6_calmet/p6d_original_rebuild
-          command -v gfortran
-      - name: Compile independent source-derived C++20 path
+      - name: Compile selected C++ kernel and run its unchanged Fortran oracle
         shell: bash
         run: |
           set -euo pipefail
-          build="$RUNNER_TEMP/p6d-source-first-${{ matrix.build_type }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          cmake -S native_cpp/modules/p6_calmet/p6d_original_rebuild -B "$build" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          cmake --build "$build" --parallel 2
-          ctest --test-dir "$build" --output-on-failure
-      - name: Preserve full original per-cell numerical result
-        uses: actions/upload-artifact@v4
+          case "${{ matrix.kernel }}" in
+            wind1) target=cteas_p6d_source_wind1_real4; test=p6d_rebuild_independent_wind1_source_real4;;
+            similt) target=cteas_p6d_source_similt_real4; test=p6d_rebuild_independent_similt_psiud_original_real4_real8;;
+            inter2) target=cteas_p6d_source_inter2_real4; test=p6d_rebuild_independent_inter2_real4_real8_source;;
+            fradj) target=cteas_p6d_source_fradj_real4; test=p6d_rebuild_original_source_fradj_real4;;
+            slope) target=cteas_p6d_source_slope_real4; test=p6d_rebuild_independent_original_slope_real4;;
+            diagno) target=cteas_p6d_source_diagno_tail_real4; test=p6d_rebuild_independent_diagno_final_real4;;
+            *) echo "::error::unknown P6D original source kernel"; exit 2;;
+          esac
+          build="$RUNNER_TEMP/p6d-${{ matrix.kernel }}-${{ matrix.build_type }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cmake -S native_cpp/modules/p6_calmet/p6d_original_rebuild -B "$build" \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          cmake --build "$build" --target "$target" --parallel 1
+          ctest --test-dir "$build" --output-on-failure -R "^$test$"
+          echo "PASS_ORIGINAL_P6D_SOURCE ${{ matrix.kernel }} ${{ matrix.build_type }}"
+      - name: Preserve source parity reports
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: p6d-independent-real4-${{ matrix.build_type }}
-          path: |
-            ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_wind1_real4/p6d8b-wind1-firstguess-parity.json
-            ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_similt_real4/p6d-similt-profile-parity.json
-            ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_diagno_tail_real4/p6d-final-segment-parity.json
-            ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_inter2_real4/p6d-original-inter2-parity.json
-            ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_fradj_real4/p6d-source-fradj-parity.json
-            ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_slope_real4/p6d-slope-parity.json
+          name: p6d-original-${{ matrix.kernel }}-${{ matrix.build_type }}
+          path: ${{ runner.temp }}/p6d-${{ matrix.kernel }}-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_*/*.json
           if-no-files-found: warn
 
-  real-hefei-hour-1:
-    name: Independent WIND1 on frozen real-case hour one
+  real-hefei-hour:
+    name: Hefei first hour ${{ matrix.stage }} three-way source parity
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 30
     defaults:
       run:
         working-directory: p6d_real_hour_checkout
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        stage: [wind1, diagno]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -80,8 +91,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          src_build="$RUNNER_TEMP/p6d-rebuild-hour-source-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          legacy_build="$RUNNER_TEMP/p6d-rebuild-hour-fixture-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          src_build="$RUNNER_TEMP/p6d-rebuild-hour-source-${{ matrix.stage }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          legacy_build="$RUNNER_TEMP/p6d-rebuild-hour-fixture-${{ matrix.stage }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           cmake -S native_cpp/modules/p6_calmet/p6d_original_rebuild -B "$src_build" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$src_build" --target cteas_p6d_source_wind1_real4 cteas_p6d_source_diagno_tail_real4 --parallel 2
           cmake -S native_cpp/modules/p6_calmet -B "$legacy_build" -DCMAKE_BUILD_TYPE=Debug -DCTEAS_P6_MODE_A_REQUIRE_CASE=ON
@@ -90,9 +101,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          src_build="$RUNNER_TEMP/p6d-rebuild-hour-source-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          legacy_build="$RUNNER_TEMP/p6d-rebuild-hour-fixture-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          evidence="$RUNNER_TEMP/p6d-rebuild-hour-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          src_build="$RUNNER_TEMP/p6d-rebuild-hour-source-${{ matrix.stage }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          legacy_build="$RUNNER_TEMP/p6d-rebuild-hour-fixture-${{ matrix.stage }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          evidence="$RUNNER_TEMP/p6d-rebuild-hour-evidence-${{ matrix.stage }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           python3 native_cpp/modules/p6_calmet/reference/compare_original_wind1_realcase_first_hour.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
             --case project/cases/hefei5km_2022_reference_case_20261011 \
@@ -100,11 +111,12 @@ jobs:
             --cpp "$src_build/cteas_p6d_source_wind1_real4" \
             --out "$evidence"
       - name: Differential-test independent real-case DIAGNO tail
+        if: matrix.stage == 'diagno'
         shell: bash
         run: |
           set -euo pipefail
-          src_build="$RUNNER_TEMP/p6d-rebuild-hour-source-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          evidence="$RUNNER_TEMP/p6d-rebuild-hour-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          src_build="$RUNNER_TEMP/p6d-rebuild-hour-source-${{ matrix.stage }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          evidence="$RUNNER_TEMP/p6d-rebuild-hour-evidence-${{ matrix.stage }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           python3 native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/compare_realcase_diagno_tail_independent.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
             --case project/cases/hefei5km_2022_reference_case_20261011 \
@@ -115,8 +127,54 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: p6d-independent-real-hefei-first-hour
+          name: p6d-independent-hefei-${{ matrix.stage }}
           path: |
-            ${{ runner.temp }}/p6d-rebuild-hour-evidence-${{ github.run_id }}-${{ github.run_attempt }}/first_hour_wind1_parity.json
-            ${{ runner.temp }}/p6d-rebuild-hour-evidence-${{ github.run_id }}-${{ github.run_attempt }}/first_hour_diagno_independent_vs_old.json
+            ${{ runner.temp }}/p6d-rebuild-hour-evidence-${{ matrix.stage }}-${{ github.run_id }}-${{ github.run_attempt }}/first_hour_wind1_parity.json
+            ${{ runner.temp }}/p6d-rebuild-hour-evidence-${{ matrix.stage }}-${{ github.run_id }}-${{ github.run_attempt }}/first_hour_diagno_independent_vs_old.json
           if-no-files-found: warn
+
+  source-call-order:
+    name: Original SURFVAR FRADJ HEATFX SLOPE INTER2 order
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: p6d_source_order_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6d_source_order_checkout
+      - name: Verify original Fortran DIAGNO order and C++ real-case bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/verify_diagno_call_order.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --producer native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
+
+  original-input-provenance:
+    name: Git-pinned original CALMET source and frozen Hefei inputs
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: p6d_provenance_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6d_provenance_checkout
+      - name: Restore and verify source-case blobs exclusively from HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          path=Path("engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for")
+          blob=path.read_bytes()
+          sha=hashlib.sha1(f"blob {len(blob)}\0".encode()+blob).hexdigest()
+          expect="437f43bb7f0e51a1919e56664663e1a046986ed0"
+          if sha!=expect:raise SystemExit("CALMET original source changed: "+sha)
+          print("PASS_ORIGINAL_CALMET_VENDOR_GIT_BLOB",sha)
+          PY
