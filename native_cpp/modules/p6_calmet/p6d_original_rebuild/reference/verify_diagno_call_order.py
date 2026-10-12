@@ -45,9 +45,28 @@ def main():
         raise RuntimeError(
             "original SURFVAR -> FRADJ -> HEATFX -> SLOPE -> INTER2 "
             "stage sequence violated")
-    print("PASS_P6D_SOURCE_ORDER_SURFVAR_FRADJ_HEATFX_SLOPE_INTER2")
+    # ORIGINAL: CALMET DIAGNO L5748 refreshes UB/VB from corrected
+    # UG/VG (after FRADJ+SLOPE) BEFORE INTER2 L6055/L6059.
+    if ("CALL WINDBC(UG,VG,UB,VB,K)" not in lines[5747] or
+            "CALL INTER2(US," not in lines[6054] or
+            "CALL INTER2(VS," not in lines[6058]):
+        raise RuntimeError("original DIAGNO WINDBC / INTER2 anchors changed")
+    start=producer.index("SmoothInput tail;",blend)
+    end=producer.index("original_smooth_divcel_w(",start)
+    tail=producer[start:end]
+    if ("tail.u_mps=blended_u;tail.v_mps=blended_v;" not in tail):
+        raise RuntimeError("post-INTER2 U/V must remain the working tail wind")
+    lhs_u=re.findall(r"tail\.ub_west_east_mps\[[^;]+?\]\s*=\s*corrected_u\[",tail)
+    lhs_v=re.findall(r"tail\.vb_south_north_mps\[[^;]+?\]\s*=\s*corrected_v\[",tail)
+    if len(lhs_u)!=2 or len(lhs_v)!=2:
+        raise RuntimeError("WINDBC boundary must use post-FRADJ/SLOPE UG/VG")
+    if re.search(r"tail\.(?:ub_west_east_mps|vb_south_north_mps)"
+                 r"\[[^;]+?\]\s*=\s*blended_[uv]\[",tail):
+        raise RuntimeError("INTER2 output was used for WINDBC boundary")
+    print("PASS_P6D_SOURCE_ORDER_SURFVAR_FRADJ_HEATFX_SLOPE_WINDBC_INTER2")
     print("original CALMET: FRADJ L5643, HEATFX L5686, "
-          "SLOPE L5722, INTER2 L6055")
+          "SLOPE L5722, WINDBC(UG,VG) L5748, INTER2 L6055/L6059")
+    print("PASS_P6D_PREINTER2_CORRECTED_UG_VG_BOUNDARY_SNAPSHOT")
 
 
 if __name__=="__main__":
