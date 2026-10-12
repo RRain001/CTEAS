@@ -5,10 +5,12 @@ on:
     branches: [audit/p6d-source-slope-drivers-143h-20261012]
     paths:
       - 'scripts/p6d_trace_and_compare_slope_drivers_143h.py'
+      - 'native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp'
       - '.github/workflows/p6d-original-slope-driver-inputs-143h.yml'
   pull_request:
     paths:
       - 'scripts/p6d_trace_and_compare_slope_drivers_143h.py'
+      - 'native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp'
       - '.github/workflows/p6d-original-slope-driver-inputs-143h.yml'
   workflow_dispatch:
 
