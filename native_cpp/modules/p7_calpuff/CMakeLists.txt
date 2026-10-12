@@ -863,3 +863,22 @@ if(EXISTS "${P7_DGM_FULL_143H}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7_first_hour_lifecycle_tests
       "${P7F_LOCKED_CASE_CONTROL}" "${P7_DGM_FULL_143H}" 143)
 endif()
+
+# P7 original METFM=1 physical bridge (GETCELL grid + ADVWND wind), isolated
+# from the previous double/absolute-UTM P7C prototype.
+add_library(cteas_p7_original_met_cell STATIC src/original_met_cell.cpp)
+target_include_directories(cteas_p7_original_met_cell PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_met_cell PUBLIC cteas_p7_calmet21 cteas_p7_advection)
+if(MSVC)
+  target_compile_options(cteas_p7_original_met_cell PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_met_cell PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7_original_met_cell_trace tests/original_met_cell_trace.cpp)
+target_link_libraries(cteas_p7_original_met_cell_trace PRIVATE cteas_p7_original_met_cell)
+if(EXISTS "${P7G_LOCKED_CASE_MET}")
+  add_test(NAME cteas_p7_original_met_cell_advection_first_hour
+    COMMAND cteas_p7_original_met_cell_trace
+      "${P7G_LOCKED_CASE_MET}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin")
+endif()
