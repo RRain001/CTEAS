@@ -14,7 +14,7 @@ on:
 jobs:
   original-calmet:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-managed, cteas-compute, Linux, X64]
     timeout-minutes: 45
     permissions:
       contents: read
@@ -49,9 +49,9 @@ jobs:
         run: |
           set -euo pipefail
           if ! pkg-config --exists gdal; then
-            sudo -n apt-get update -qq
-            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
-          fi
+            echo "::error::GDAL headers absent on managed runner; provision libgdal-dev on host"
+            exit 1
+            fi
           python3 -m venv "$RUNNER_TEMP/cteas-p6b-venv"
           "$RUNNER_TEMP/cteas-p6b-venv/bin/python" -m pip install --disable-pip-version-check PyYAML numpy pandas
           echo "$RUNNER_TEMP/cteas-p6b-venv/bin" >> "$GITHUB_PATH"
@@ -60,10 +60,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 native_cpp/reference/capture_p1_p2.py --output /tmp/p4p5-original-geo
-          python3 native_cpp/reference/capture_p3_makegeo.py --output /tmp/p4p5-original-geo
-          test -s /tmp/p4p5-original-geo/p3/geo.dat
-          sha256sum /tmp/p4p5-original-geo/p3/geo.dat | tee integration-evidence/geo.sha256
+          python3 native_cpp/reference/capture_p1_p2.py --output ${{ runner.temp }}/p4p5-original-geo
+          python3 native_cpp/reference/capture_p3_makegeo.py --output ${{ runner.temp }}/p4p5-original-geo
+          test -s ${{ runner.temp }}/p4p5-original-geo/p3/geo.dat
+          sha256sum ${{ runner.temp }}/p4p5-original-geo/p3/geo.dat | tee integration-evidence/geo.sha256
       - name: New isolated 2022 case with ORIGINAL CTEAS control renderer
         shell: bash
         run: |
@@ -84,8 +84,8 @@ jobs:
           cfg["preprocess"]["research_time"]={"begin":"20220101-000000","end":"20220106-230000"}
           (path/"case.yaml").write_text(yaml.safe_dump(cfg,sort_keys=False))
           set_current_case(case)
-          shutil.copy2("/tmp/p4p5-original-geo/grid.cmn",path/"grid/grid.cmn")
-          shutil.copy2("/tmp/p4p5-original-geo/p3/geo.dat",path/"geo/makegeo/geo.dat")
+          shutil.copy2("${{ runner.temp }}/p4p5-original-geo/grid.cmn",path/"grid/grid.cmn")
+          shutil.copy2("${{ runner.temp }}/p4p5-original-geo/p3/geo.dat",path/"geo/makegeo/geo.dat")
           (path/"grid/center_location").write_text("latitude: 31.939774444\nlongitude: 117.141610855\n")
           (path/"grid/stack_location").write_text("latitude: 31.939774444\nlongitude: 117.141610855\n")
           (path/"grid/research_time").write_text("BEGIN: 20220101-000000\nEND: 20220106-230000\n")
@@ -96,12 +96,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p4_read62 -B /tmp/p4p5-p4-build -DCMAKE_BUILD_TYPE=Release
-          cmake --build /tmp/p4p5-p4-build -j2
-          ctest --test-dir /tmp/p4p5-p4-build --output-on-failure
+          cmake -S native_cpp/modules/p4_read62 -B ${{ runner.temp }}/p4p5-p4-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build ${{ runner.temp }}/p4p5-p4-build -j2
+          ctest --test-dir ${{ runner.temp }}/p4p5-p4-build --output-on-failure
           python3 -m native_cpp.modules.p4_read62.data_prep.prepare_inputs --year 2022 --pstop 500 --execute
           python3 -m native_cpp.modules.p4_read62.data_prep.run_cpp_pipeline \
-            --cpp-bin /tmp/p4p5-p4-build/cteas_p4_read62 \
+            --cpp-bin ${{ runner.temp }}/p4p5-p4-build/cteas_p4_read62 \
             --year 2022 --pstop 500 --skip-inputs --merge-final --execute \
             2>&1 | tee integration-evidence/p4-run.log
           test -s project/current/met/upperair/final/up_58424.dat
@@ -110,13 +110,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-up-build -DCMAKE_BUILD_TYPE=Release
-          cmake --build /tmp/p6c-up-build --parallel 2
-          ctest --test-dir /tmp/p6c-up-build --output-on-failure
+          cmake -S native_cpp/modules/p6_calmet -B ${{ runner.temp }}/p6c-up-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build ${{ runner.temp }}/p6c-up-build --parallel 2
+          ctest --test-dir ${{ runner.temp }}/p6c-up-build --output-on-failure
           python3 native_cpp/modules/p6_calmet/reference/compare_fortran_upper_rdupn.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
             --up project/current/met/upperair/final/up_58424.dat \
-            --cpp /tmp/p6c-up-build/cteas_p6_read_upper \
+            --cpp ${{ runner.temp }}/p6c-up-build/cteas_p6_read_upper \
             --station 58424 \
             --out integration-evidence/p6c-upper-rdupn-reference
       - name: P6C original VERbatim VERTAV layer winds vs C++ on 13 real 2022 soundings
@@ -126,15 +126,15 @@ jobs:
           python3 native_cpp/modules/p6_calmet/reference/compare_original_vertav.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
             --up project/current/met/upperair/final/up_58424.dat \
-            --cpp-level /tmp/p6c-up-build/cteas_p6_read_upper \
-            --cpp-vertav /tmp/p6c-up-build/cteas_p6_vertav \
+            --cpp-level ${{ runner.temp }}/p6c-up-build/cteas_p6_read_upper \
+            --cpp-vertav ${{ runner.temp }}/p6c-up-build/cteas_p6_vertav \
             --station 58424 \
             --out integration-evidence/p6c-vertav-reference
       - name: P6C original PREPDI source-exact 143 hourly time/vertical winds parity
         shell: bash
         run: |
           set -euo pipefail
-          /tmp/p6c-up-build/cteas_p6_upper_hourly \
+          ${{ runner.temp }}/p6c-up-build/cteas_p6_upper_hourly \
             project/current/met/upperair/final/up_58424.dat \
             integration-evidence/p6c-hourly-prepdi.csv \
             58424
@@ -151,8 +151,8 @@ jobs:
           python3 native_cpp/modules/p6_calmet/reference/compare_original_facet.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
             --up project/current/met/upperair/final/up_58424.dat \
-            --cpp-level /tmp/p6c-up-build/cteas_p6_read_upper \
-            --cpp-facet /tmp/p6c-up-build/cteas_p6_facet \
+            --cpp-level ${{ runner.temp }}/p6c-up-build/cteas_p6_read_upper \
+            --cpp-facet ${{ runner.temp }}/p6c-up-build/cteas_p6_facet \
             --station 58424 \
             --out integration-evidence/p6c-facet-reference
       - name: P5 real 2022 ISD + Lite / two-stage wind / GENERIC
@@ -171,26 +171,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p bin/linux-x86_64 /tmp/p4p5-smerge-include /tmp/p4p5-calmet-include
+          mkdir -p bin/linux-x86_64 ${{ runner.temp }}/p4p5-smerge-include ${{ runner.temp }}/p4p5-calmet-include
           for item in engine/vendor/src/SMERGE_v5.7.0_L121203/*; do
             test -f "$item" || continue
             name=$(basename "$item" | tr '[:upper:]' '[:lower:]')
-            if [ ! -e "/tmp/p4p5-smerge-include/$name" ]; then
-              ln -s "$GITHUB_WORKSPACE/$item" "/tmp/p4p5-smerge-include/$name"
+            if [ ! -e "${{ runner.temp }}/p4p5-smerge-include/$name" ]; then
+              ln -s "$GITHUB_WORKSPACE/$item" "${{ runner.temp }}/p4p5-smerge-include/$name"
             fi
           done
           for item in engine/vendor/src/CALMET_v6.5.0_L150223/*; do
             test -f "$item" || continue
             name=$(basename "$item" | tr '[:upper:]' '[:lower:]')
-            if [ ! -e "/tmp/p4p5-calmet-include/$name" ]; then
-              ln -s "$GITHUB_WORKSPACE/$item" "/tmp/p4p5-calmet-include/$name"
+            if [ ! -e "${{ runner.temp }}/p4p5-calmet-include/$name" ]; then
+              ln -s "$GITHUB_WORKSPACE/$item" "${{ runner.temp }}/p4p5-calmet-include/$name"
             fi
           done
           flags="-O0 -std=legacy -fno-automatic -fno-align-commons -fallow-argument-mismatch -ffixed-line-length-none"
-          gfortran $flags -I/tmp/p4p5-smerge-include \
+          gfortran $flags -I${{ runner.temp }}/p4p5-smerge-include \
             engine/vendor/src/SMERGE_v5.7.0_L121203/SMERGE.FOR \
             -o bin/linux-x86_64/smerge.x 2>&1 | tee integration-evidence/smerge-build.log
-          gfortran $flags -I/tmp/p4p5-calmet-include \
+          gfortran $flags -I${{ runner.temp }}/p4p5-calmet-include \
             engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
             -o bin/linux-x86_64/met.x 2>&1 | tee integration-evidence/calmet-build.log
           test -x bin/linux-x86_64/smerge.x
@@ -212,13 +212,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-surface-build -DCMAKE_BUILD_TYPE=Release
-          cmake --build /tmp/p6c-surface-build --parallel 2
-          ctest --test-dir /tmp/p6c-surface-build --output-on-failure
+          cmake -S native_cpp/modules/p6_calmet -B ${{ runner.temp }}/p6c-surface-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build ${{ runner.temp }}/p6c-surface-build --parallel 2
+          ctest --test-dir ${{ runner.temp }}/p6c-surface-build --output-on-failure
           python3 native_cpp/modules/p6_calmet/reference/compare_fortran_surface.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
             --surf project/current/met/surface/final/surf.dat \
-            --cpp /tmp/p6c-surface-build/cteas_p6_read_surface \
+            --cpp ${{ runner.temp }}/p6c-surface-build/cteas_p6_read_surface \
             --out integration-evidence/p6c-surf-reference
       - name: Execute UNCHANGED original CTEAS CALMET Python flow and original Fortran binary
         shell: bash
@@ -275,10 +275,10 @@ jobs:
           python3 native_cpp/modules/p6_calmet/reference/compare_fortran_readge.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
             --geo project/current/geo/makegeo/geo.dat \
-            --cpp /tmp/p6c-up-build/cteas_p6_read_geo \
+            --cpp ${{ runner.temp }}/p6c-up-build/cteas_p6_read_geo \
             --origin-x "$ORIGIN_X" --origin-y "$ORIGIN_Y" \
             --out integration-evidence/p6c-joint-geo-original
-          /tmp/p6c-up-build/cteas_p6_comp_joint \
+          ${{ runner.temp }}/p6c-up-build/cteas_p6_comp_joint \
             project/current/geo/makegeo/geo.dat \
             project/current/met/surface/final/surf.dat \
             project/current/met/upperair/final/up_58424.dat \
@@ -316,21 +316,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/p6c-original-comp
+          mkdir -p ${{ runner.temp }}/p6c-original-comp
           python3 native_cpp/modules/p6_calmet/reference/original_comp_runtime_trace.py instrument \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
-            --out /tmp/p6c-original-comp/calmet.for
-          cp /tmp/p6c-original-comp/p6c-comp-trace-instrumentation.json \
+            --out ${{ runner.temp }}/p6c-original-comp/calmet.for
+          cp ${{ runner.temp }}/p6c-original-comp/p6c-comp-trace-instrumentation.json \
             integration-evidence/p6c-comp-trace-instrumentation.json
           flags="-O0 -std=legacy -fno-automatic -fno-align-commons -fallow-argument-mismatch -ffixed-line-length-none"
-          gfortran $flags -I/tmp/p4p5-calmet-include \
-            /tmp/p6c-original-comp/calmet.for \
-            -o /tmp/p6c-original-comp/met-trace.x \
+          gfortran $flags -I${{ runner.temp }}/p4p5-calmet-include \
+            ${{ runner.temp }}/p6c-original-comp/calmet.for \
+            -o ${{ runner.temp }}/p6c-original-comp/met-trace.x \
             > integration-evidence/p6c-comp-trace-build.log 2>&1
           baseline_sha=$(sha256sum project/current/run/met/met.dat | cut -d' ' -f1)
-          cp bin/linux-x86_64/met.x /tmp/p6c-original-comp/met-untouched.x
-          trap 'cp /tmp/p6c-original-comp/met-untouched.x bin/linux-x86_64/met.x' EXIT
-          cp /tmp/p6c-original-comp/met-trace.x bin/linux-x86_64/met.x
+          cp bin/linux-x86_64/met.x ${{ runner.temp }}/p6c-original-comp/met-untouched.x
+          trap 'cp ${{ runner.temp }}/p6c-original-comp/met-untouched.x bin/linux-x86_64/met.x' EXIT
+          cp ${{ runner.temp }}/p6c-original-comp/met-trace.x bin/linux-x86_64/met.x
           python3 -m engine.run_met.run_met --case ci_original_calmet_p4_p5_2022 \
             > integration-evidence/p6c-original-comp-run.log 2>&1
           instrumented_sha=$(sha256sum project/current/run/met/met.dat | cut -d' ' -f1)
@@ -347,7 +347,7 @@ jobs:
           python3 native_cpp/modules/p6_calmet/reference/compare_original_cgamma_2022.py \
             --runtime integration-evidence/p6c-original-comp-runtime.log \
             --up project/current/met/upperair/final/up_58424.dat \
-            --cpp /tmp/p6c-up-build/cteas_p6_cgamma \
+            --cpp ${{ runner.temp }}/p6c-up-build/cteas_p6_cgamma \
             --out integration-evidence/p6c-cgamma-original-reference
       - name: Retain diagnostics even on failure
         if: always()
