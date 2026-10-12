@@ -78,6 +78,38 @@ jobs:
             | tee "$RUNNER_TEMP/p6d-d2-stage-stdout.txt"
           test -s "$RUNNER_TEMP/p6d-d2/stage-bisection.json"
           grep -q "DIAGNOSTIC_COMPLETED_NOT_ACCEPTED" "$RUNNER_TEMP/p6d-d2-stage-stdout.txt"
+      - name: Prepare read-only original EL and ZII diagnostic forcing
+        shell: bash
+        run: |
+          set -euo pipefail
+          ORACLE=native_cpp/modules/p6_calmet/reference/dgm_p6d_requests_2022/dgm_cell.json
+          echo "c4ef3b4cd116b0ed8d48967b8050b199bd094f35ccbe40863585c9dcb2f9ff5f  $ORACLE" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/d2-reference-state"
+          python3 - "$ORACLE" "$RUNNER_TEMP/d2-reference-state" <<'PY'
+          import json, struct, sys
+          from pathlib import Path
+          rows=json.loads(Path(sys.argv[1]).read_text())['rows']
+          assert len(rows)==143
+          assert [r['hour_index'] for r in rows]==list(range(1,144))
+          for name,key in [('zii','ZII_TO_SIMILT'),('el','EL')]:
+              Path(sys.argv[2],name+'.f32').write_bytes(
+                  struct.pack('<143f',*(float(r[key]) for r in rows)))
+          print('ORIGINAL_EL_ZII_143_HOUR_ORACLE_EXPORT=PASS')
+          PY
+      - name: Rerun 143 hours with original internal station-state oracles (diagnostic only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/d2-build/cteas_p6_realcase_wind_field" \
+            --case "$CASE_DIR" --out "$RUNNER_TEMP/d2-product-oracle" \
+            --zii-cell "$RUNNER_TEMP/d2-reference-state/zii.f32" \
+            --el-cell "$RUNNER_TEMP/d2-reference-state/el.f32"
+          python3 native_cpp/modules/p6_calmet/reference/p6d_d2_stage_bisection.py \
+            --original native_cpp/modules/p6_calmet/reference/dgm_p6d_requests_2022/dgm_fields_hours.bin \
+            --product "$RUNNER_TEMP/d2-product-oracle" \
+            --out "$RUNNER_TEMP/p6d-d2/stage-bisection-oracle.json" \
+            | tee "$RUNNER_TEMP/p6d-d2-stage-oracle-stdout.txt"
+          echo "ORACLE_DRIVEN_P6D_IS_DIAGNOSTIC_ONLY_NOT_PRODUCTION_ACCEPTANCE"
       - name: Archive immutable-provenance D2 stage evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -87,5 +119,8 @@ jobs:
             ${{ runner.temp }}/p6d-d2/stage-bisection.json
             ${{ runner.temp }}/p6d-d2-stage-stdout.txt
             ${{ runner.temp }}/d2-product/metadata.json
+            ${{ runner.temp }}/p6d-d2/stage-bisection-oracle.json
+            ${{ runner.temp }}/p6d-d2-stage-oracle-stdout.txt
+            ${{ runner.temp }}/d2-product-oracle/metadata.json
           if-no-files-found: error
           retention-days: 14
