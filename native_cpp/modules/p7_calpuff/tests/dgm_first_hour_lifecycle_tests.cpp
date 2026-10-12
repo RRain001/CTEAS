@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 
 namespace {
 struct Record {
@@ -47,7 +48,9 @@ void negative_tests() {
 }
 int main(int argc,char** argv) {
     try {
-        require(argc==3,"usage: lifecycle_real4 PUFF_INP ORIGINAL_DGM_FIRST_HOUR");
+        require(argc==3 || argc==4,"usage: lifecycle_real4 PUFF_INP ORIGINAL_DGM [6]");
+        const bool six_hours=argc==4 && std::string(argv[3])=="6";
+        require(argc==3 || six_hours,"only 6-hour extension is supported");
         using namespace cteas::puff;
         negative_tests();
         const auto deck=ControlFile::read_file(argv[1]);
@@ -59,13 +62,23 @@ int main(int argc,char** argv) {
         std::ifstream input(argv[2],std::ios::binary);
         require(static_cast<bool>(input),"cannot open locked original DGM");
         OriginalPuffMotionLifecycle life;
-        std::size_t rows=0,episodes=0,linked_steps=0;
-        int current_id=0;
+        std::size_t rows=0,episodes=0,linked_steps=0,hour_transitions=0;
+        int current_id=0, previous_hour=0;
         Record original{};
         while(input.read(reinterpret_cast<char*>(&original),sizeof(original))) {
             ++rows;
-            require(original.i[0]==1 && original.i[1]==202200100,
+            const int current_hour=original.i[1];
+            require(original.i[0]==1 && current_hour>=202200100 &&
+                    current_hour <= (six_hours?202200105:202200100),
                     "unexpected original step type/time");
+            if(previous_hour!=0 && current_hour!=previous_hour) {
+                require(current_hour==previous_hour+1,
+                        "nonconsecutive original hourly puff-state stream");
+                if(current_id!=0) life.retire(current_id);
+                current_id=0;
+                ++hour_transitions;
+            }
+            previous_hour=current_hour;
             const int id=original.i[3];
             const auto& f=original.f;
             // A puff can be admitted only when its first reference row is
@@ -115,9 +128,11 @@ int main(int argc,char** argv) {
             }
         }
         require(input.eof() && input.gcount()==0,"truncated DGM record");
-        require(rows==1275U && episodes>0U && linked_steps>0U,
-                "first-hour original lifecycle did not execute all records");
-        std::cout<<"P7_FIRST_HOUR_PERSISTED_LIFECYCLE=PASS ROWS="<<rows
+        require(rows==(six_hours?11458U:1275U) && episodes>0U && linked_steps>0U &&
+                hour_transitions==(six_hours?5U:0U),
+                "original lifecycle record count / hour sequence not established");
+        std::cout<<(six_hours?"P7_FIRST_6H_PERSISTED_LIFECYCLE=PASS":"P7_FIRST_HOUR_PERSISTED_LIFECYCLE=PASS")
+                 <<" ROWS="<<rows<<" HOUR_TRANSITIONS="<<hour_transitions
                  <<" PUFF_EPISODES="<<episodes<<" SELF_PROPAGATED_STEPS="<<linked_steps
                  <<" INITIAL_WIND_ORACLE=true VERTICAL_STATE_ORACLE=true"
                  <<" FULL_AUTONOMOUS_COMP=NOT_YET_AVAILABLE\n";
