@@ -59,8 +59,11 @@ inline Inter2SelectedOutput original_inter2_selected(const Inter2SelectedInput& 
        in.step1_mps.size()!=total||in.observation_weight.size()!=total)
         throw std::invalid_argument("INTER2 invalid field sizes");
     for(int n:in.nintrp_per_layer)
-        if(n<1||n>in.nstations)
-            throw std::invalid_argument("INTER2 NINTRP out of range");
+        // The unchanged CALMET deck allows NINTRP=99 when only two stations
+        // exist: it is a maximum, not a station count, and the loop stops
+        // naturally when all available observations have been consumed.
+        if(n<1||n>999)
+            throw std::invalid_argument("INTER2 NINTRP outside original supported range");
     const auto finite=[](const std::vector<float>& xs){
         for(float x:xs)if(!std::isfinite(x))
             throw std::invalid_argument("INTER2 missing or nonfinite field");
