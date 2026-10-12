@@ -43,7 +43,9 @@ def clock(packed,seconds):
 
 def original(path):
     it=iter(records(path))
-    if not next(it).startswith(b"CALMET.DAT 2.1"):raise ValueError("not CALMET 2.1")
+    header_id=next(it)
+    if not header_id.startswith(b"CALMET.DAT") or b"2.1" not in header_id[:40]:
+        raise ValueError("not CALMET 2.1")
     (comments,)=struct.unpack("<i",next(it))
     if not 0<=comments<=10000:raise ValueError("bad comment count")
     for _ in range(comments):
