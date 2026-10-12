@@ -2,8 +2,9 @@
 // P6D9A selected original CALMET 6.5.0 DIAGNO bridging contract.
 //
 // Source call order: WIND1 [L5590], WINDBC [L5599], then optional kinetic,
-// Froude [L5643-5644], radiative/heat, slope corrections and final WINDBC
-// [L5748]; INTER2 U/V [L6055-6061]; SMOOTH+DIVCEL+W [L6119-6148]; optional
+// Froude [L5643-5644], radiative/heat, slope corrections, first WINDBC
+// [L5748]; INTER2 U/V [L6055-6061]; if HTFAC>0 a second WINDBC(U,V)
+// [L6100] overwrites the first, then SMOOTH+DIVCEL+W [L6119-6148]; optional
 // IOBR=1 O'Brien W adjustment [L6153-6159] and MINIM [L6180].
 //
 // D9A deliberately DOES NOT simulate the intervening heat/terrain physics.
@@ -61,6 +62,10 @@ struct DiagnoD9SelectedInput {
     // If externally completed, replace WIND1 original step-one winds with
     // the caller's terrain/heat/slope-corrected UG/VG. Size 50*50*9.
     std::vector<float> corrected_first_guess_u_mps,corrected_first_guess_v_mps;
+    // Original L6092 gate: HTFAC>0 performs a SECOND WINDBC(U,V) after
+    // INTER2, overwriting the earlier L5748 UG/VG snapshot.
+    // The frozen 2022 GEO.DAT has HTFAC=1.
+    float htfac=1.f;
     bool lake_breeze=false;
     // Original IKINE=1 pre-blend kinematic route: W zeroed [L5615-5616],
     // TOPOF2 [L5621-5622], then MINIM(UG,VG,W,UB,VB,DIV,NITER,DIVLIM)
@@ -299,6 +304,24 @@ inline DiagnoD9SelectedOutput integrate_diagno_d9_selected(
     au.step1_mps=u;av.step1_mps=v;
     const auto ou=original_inter2_selected(au);
     const auto ov=original_inter2_selected(av);
+    if(!std::isfinite(request.htfac))
+        throw std::invalid_argument("DIAGNO HTFAC nonfinite");
+    if(request.htfac>0.f){
+        // CALMET 6.5.0 DIAGNO L6092-L6101: second, post-INTER2
+        // WINDBC(U,V) overrides the L5748 UG/VG boundary before SMOOTH.
+        const auto& iu=ou.component_mps;
+        const auto& iv=ov.component_mps;
+        for(std::size_t k=0;k<9;++k){
+            for(std::size_t j=0;j<ny;++j){
+                ub[k*2*ny+j]=iu[k*plane+j*nx];
+                ub[k*2*ny+ny+j]=iu[k*plane+j*nx+nx-1];
+            }
+            for(std::size_t i=0;i<nx;++i){
+                vb[k*2*nx+i]=iv[k*plane+i];
+                vb[k*2*nx+nx+i]=iv[k*plane+(ny-1)*nx+i];
+            }
+        }
+    }
     SmoothInput smooth;
     smooth.nx=50;smooth.ny=50;smooth.nz=9;
     smooth.lake_breeze=false;
