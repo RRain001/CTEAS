@@ -65,11 +65,21 @@ struct ConcPeriod {
 
 struct ConcGridDescriptor {
     int discrete_receptors = 0;
-    int group_index = 0;
+    int group_index = 1;             // original WROUT1 TOTAL receptor group (1-based)
     std::string group_name = "TOTAL";
     double x_origin_km = 0.0;
     double y_origin_km = 0.0;
 };
+
+// Rebuild original WROUT1 grid header from the CALMET.DAT ORIGIN IN METRES.
+// The vendor stores origin in REAL*4 metres and evaluates:
+//    XORIGKM = XMET0 * REAL4(0.001)
+// before writing the REAL*4 kilometres. Parsing the 3-decimal puff.inp
+// XORIGKM/YORIGKM and merely casting to float gives a different Y origin
+// (3531.26904296875 rather than original 3531.269287109375 in Hefei).
+[[nodiscard]] ConcGridDescriptor original_met_grid_descriptor(
+    float origin_x_m, float origin_y_m, int discrete_receptors = 0);
+
 
 class ConcFileWriter {
 public:
