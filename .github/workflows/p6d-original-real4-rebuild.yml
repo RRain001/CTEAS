@@ -1,0 +1,57 @@
+name: P6D independent CALMET original REAL4 rebuild
+
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/p6d_original_rebuild/**'
+      - 'native_cpp/modules/p6_calmet/reference/compare_original_wind1_firstguess.py'
+      - '.github/workflows/p6d-original-real4-rebuild.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p6d-independent-rebuild-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  original-fortran-wind1:
+    name: Standalone source-first REAL4 / original Fortran WIND1 and SIMILT
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: p6d_rebuild_checkout
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6d_rebuild_checkout
+      - uses: ./p6d_rebuild_checkout/.github/actions/cteas-linux-toolchain
+      - name: Fortran blob and source-first code boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for
+          test -s native_cpp/modules/p6_calmet/reference/compare_original_wind1_firstguess.py
+          ! grep -rq '#include "cteas/p6/' native_cpp/modules/p6_calmet/p6d_original_rebuild
+          command -v gfortran
+      - name: Compile independent source-derived C++20 path
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/p6d-source-first-${{ matrix.build_type }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cmake -S native_cpp/modules/p6_calmet/p6d_original_rebuild -B "$build" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          cmake --build "$build" --parallel 2
+          ctest --test-dir "$build" --output-on-failure
+      - name: Preserve full original per-cell numerical result
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p6d-independent-real4-${{ matrix.build_type }}
+          path: ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_wind1_real4/p6d8b-wind1-firstguess-parity.json
+          if-no-files-found: warn
