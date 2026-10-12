@@ -239,6 +239,8 @@ def main() -> int:
                              "REAL4 EL and ZII as received by SIMILT")
     parser.add_argument("--original-similt-station-manifest", default=None,
                         help="required byte-verified original source station state proof")
+    parser.add_argument("--export-native-comp-state", action="store_true",
+                        help="write candidate A's native per-hour P6E COMP ZI/ZICONV/DPTT for next-hour P6D state bisection; NOT source injected")
     parser.add_argument("--reuse-p6d", action="store_true",
                         help="reuse an existing <work>/p6d product instead of "
                              "re-running the producer")
@@ -390,12 +392,13 @@ def main() -> int:
     # ---- 4. P6E consumer, case A (reconstructed wind) ---------------------
     candidate_a = work / "A/candidate.dat"
     candidate_a.parent.mkdir(parents=True, exist_ok=True)
-    _, elapsed = run(
-        [bins[P6E_TARGET], "emit-realcase", "--reference", met_dat,
+    p6e_A_cmd=[bins[P6E_TARGET], "emit-realcase", "--reference", met_dat,
          "--observations", hourly_csv, "--wind-file", reconstructed,
          "--geo-file", geo_dat, "--out", candidate_a,
-         "--report", work / "A/candidate.json"],
-        work / "logs/p6e_A.log", "p6e-A")
+         "--report", work / "A/candidate.json"]
+    if args.export_native_comp_state:
+        p6e_A_cmd.extend(["--state-prefix", work / "A/native_comp"])
+    _, elapsed = run(p6e_A_cmd, work / "logs/p6e_A.log", "p6e-A")
     timings["p6e_A_s"] = elapsed
 
     # ---- 5. P6E consumer, case B (original wind, control baseline) --------
