@@ -109,10 +109,15 @@ inline DeckStationPair original_calmet_station_deck(
         //   XORIGR=1000.*XORIGKM
         //   XSSTA =1000.*XKM-XORIGR   (same for Y and upper air).
         // Crucial: multiplication is performed before subtraction in REAL*4.
-        const float xorigr=1000.f*xorig_km;
-        const float yorigr=1000.f*yorig_km;
-        station.local_x_m=(1000.f*station.utm_x_km)-xorigr;
-        station.local_y_m=(1000.f*station.utm_y_km)-yorigr;
+        // Store REAL*4 intermediates independently: do not let a release
+        // build contract the multiply and subtract into one fused operation.
+        // This conversion happens only once per station, not per grid cell.
+        volatile float xorigr=1000.f*xorig_km;
+        volatile float yorigr=1000.f*yorig_km;
+        volatile float abs_x_m=1000.f*station.utm_x_km;
+        volatile float abs_y_m=1000.f*station.utm_y_km;
+        station.local_x_m=abs_x_m-xorigr;
+        station.local_y_m=abs_y_m-yorigr;
         if(!std::isfinite(station.local_x_m)||
            !std::isfinite(station.local_y_m))
             throw std::invalid_argument("invalid relative CALMET station position");
