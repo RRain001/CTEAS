@@ -16,7 +16,7 @@ permissions:
 jobs:
   original-diagi-station-source-parity:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-managed, cteas-compute, Linux, X64]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -29,20 +29,20 @@ jobs:
       - name: Build all isolated P6 C++20 tests with Werror
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-diagi-build -DCMAKE_BUILD_TYPE=Release
-          cmake --build /tmp/p6c-diagi-build --parallel 2
-          ctest --test-dir /tmp/p6c-diagi-build --output-on-failure
+          cmake -S native_cpp/modules/p6_calmet -B ${{ runner.temp }}/p6c-diagi-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build ${{ runner.temp }}/p6c-diagi-build --parallel 2
+          ctest --test-dir ${{ runner.temp }}/p6c-diagi-build --output-on-failure
       - name: Compare literal original DIAGI station code with P6C C++20
         run: |
           set -euo pipefail
           python3 -m native_cpp.modules.p6_calmet.reference.compare_original_diagi_station \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
-            --cpp /tmp/p6c-diagi-build/cteas_p6_stations \
-            --out /tmp/p6c-station-parity
+            --cpp ${{ runner.temp }}/p6c-diagi-build/cteas_p6_stations \
+            --out ${{ runner.temp }}/p6c-station-parity
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: p6c-original-diagi-station-subsection-parity
-          path: /tmp/p6c-station-parity/
+          path: ${{ runner.temp }}/p6c-station-parity/
           retention-days: 7
           if-no-files-found: warn
