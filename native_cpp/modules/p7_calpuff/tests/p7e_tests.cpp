@@ -3,10 +3,13 @@
 // artifact. Vendor-routine parity (PFSAMP, WRTI1D/WRTR1D framing) is checked
 // separately by tests/p7e_parity_tests.py.
 #include "cteas/puff/conc_file.hpp"
+#include "cteas/puff/fortran_records.hpp"
 #include "cteas/puff/receptors.hpp"
 
 #include <chrono>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -46,6 +49,23 @@ std::string read_text(const std::string& path) {
     std::ifstream input(path);
     require(bool(input), "cannot read " + path);
     return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+}
+
+// Unlike read_conc_species_fields(), this preserves the seven raw I7
+// characters and detects record-content differences that ordinary roundtrip
+// parsing and record-length-only tests would silently accept.
+std::string raw_species_I7(const std::string& path) {
+    cteas::puff::FortranRecordReader reader(
+        path, 4, cteas::puff::RecordByteOrder::LittleEndian);
+    std::vector<std::uint8_t> record;
+    while(reader.next(record)) {
+        if (record.size() < 15U) continue;
+        if (std::memcmp(record.data(), "H-3", 3U) == 0) {
+            return std::string(
+                reinterpret_cast<const char*>(record.data() + 8U), 7U);
+        }
+    }
+    throw std::runtime_error("H-3 species field not found in original CONC.DAT");
 }
 
 std::string control_text() {
@@ -258,6 +278,8 @@ void test_conc_file_round_trip(const fs::path& root) {
         writer.write_species_field("H-3", 1, 2, 2, values);
         writer.close();
     }
+    require(raw_species_I7(path.string()) == "      1",
+            "new writer must encode original species I7 right-justified");
     const auto summary = cteas::puff::summarize_conc_file(path.string());
     require(summary.records == 7U, "version + count + 2 comments + period + grid + field");
     require(summary.period_records == 1U && summary.grid_records == 1U &&
@@ -326,6 +348,12 @@ void test_frozen_structure(const fs::path& root, const std::string& frozen_path)
         }
         writer.close();
     }
+    const auto original_I7 = raw_species_I7(frozen_path);
+    const auto native_I7 = raw_species_I7(path.string());
+    require(original_I7 == "      1",
+            "locked original Fortran species field no longer has canonical I7 bytes");
+    require(native_I7 == original_I7,
+            "native WROUT1 species index bytes differ from original frozen puff.con");
     const auto ours = cteas::puff::summarize_conc_file(path.string());
     require(ours.period_records == frozen.period_records &&
                 ours.grid_records == frozen.grid_records &&
