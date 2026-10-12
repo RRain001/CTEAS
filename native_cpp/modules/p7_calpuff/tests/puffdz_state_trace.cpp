@@ -2,6 +2,7 @@
 
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -18,11 +19,18 @@ void require(bool ok,const char* why) {if(!ok)throw std::runtime_error(why);}
 int main(int argc,char** argv) {
     try {
         using namespace cteas::puff;
-        require(argc==3,"usage: cteas_p7_puffdz_state_trace ORIGINAL_DGM EXPECTED_HOURS");
+        require(argc==3 || argc==4,
+                "usage: cteas_p7_puffdz_state_trace ORIGINAL_DGM EXPECTED_HOURS [ORIGINAL_ZI_8BYTE_STREAM]");
         const int nh=std::stoi(argv[2]);
         require(nh==1 || nh==6 || nh==143,"only frozen 1/6/143h allowed");
         std::ifstream in(argv[1],std::ios::binary);
         require(bool(in),"missing original DGM binary");
+        const bool original_zi_available=argc==4;
+        std::ifstream zi;
+        if(original_zi_available) {
+            zi.open(argv[3],std::ios::binary);
+            require(bool(zi),"missing original read-only ZIOLD/ZIMAX oracle");
+        }
         std::unordered_map<int,float> previous_sigz;
         int previous_hour=-1;
         std::size_t records=0,compared=0,skipped=0,mismatched=0,episodes=0;
@@ -50,9 +58,20 @@ int main(int argc,char** argv) {
                 require(it!=previous_sigz.end(),"missing previous puff state");
             }
             const float sigma=new_puff?1.0F:it->second;
+            std::array<float,2> original_zi{};
+            if(original_zi_available) {
+                zi.read(reinterpret_cast<char*>(original_zi.data()),
+                        sizeof(original_zi));
+                require(zi.gcount()==static_cast<std::streamsize>(sizeof(original_zi)),
+                        "original ZI state missing a puff-step record");
+                require(std::isfinite(original_zi[0]) &&
+                        std::isfinite(original_zi[1]) &&
+                        original_zi[0]>=0.0F && original_zi[1]>=0.0F,
+                        "original ZI state contains an invalid height");
+            }
             const bool determinate = (r.i[4]%2==1) &&
                  (r.i[8]>4 || r.i[4]==3 || r.i[4]==13 || r.f[3]>r.f[2]);
-            if(determinate) {
+            if(determinate || original_zi_available) {
                 PuffExtentInputs p;
                 p.puff_code=r.i[4];
                 p.puff=true;
@@ -60,10 +79,12 @@ int main(int argc,char** argv) {
                 p.puff_height_m=r.f[2];
                 p.mixing_height_m=r.f[3];
                 p.sigma_z_begin_m=sigma;
-                // Not used in this determinate branch; the DGM lacks
-                // original ZIOLD/ZIMAX and we explicitly refuse to guess.
-                p.previous_mixing_height_m=0;
-                p.maximum_mixing_height_m=0;
+                // For the previously indeterminate original branch these
+                // two values are read from a separately instrumented,
+                // ORIGINAL Fortran run. A missing stream never defaults to
+                // any guessed value. In all other branches they are ignored.
+                p.previous_mixing_height_m=original_zi[0];
+                p.maximum_mixing_height_m=original_zi[1];
                 auto v=puff_extent(p);
                 const float top=static_cast<float>(v.z_top_m);
                 const float bot=static_cast<float>(v.z_bottom_m);
@@ -84,6 +105,11 @@ int main(int argc,char** argv) {
                                         // propagated through full SIGTZ/SETPUF
         }
         require(in.eof() && in.gcount()==0,"DGM record is incomplete");
+        if(original_zi_available) {
+            require(zi.peek()==std::char_traits<char>::eof(),
+                    "original ZI stream has surplus records");
+            require(zi.eof(),"original ZI stream ended unexpectedly");
+        }
         require(previous_hour==nh-1,"frozen source didn't reach final hour");
         require(records==(nh==1?1275U:nh==6?11458U:254687U),
                 "DGM row count not original pinned 1/6/143-hour scope");
@@ -93,8 +119,18 @@ int main(int argc,char** argv) {
                  <<" MISMATCHED="<<mismatched<<" SKIPPED_UNDETERMINED="<<skipped
                  <<" ORIGINAL_RECORDS="<<records
                  <<" PUFF_EPISODES="<<episodes
-                 <<" ORIGINAL_SIGZ_STATE_FED=YES\n";
+                 <<" ORIGINAL_SIGZ_STATE_FED=YES"
+                 <<" ORIGINAL_ZI_STATE_FED="<<(original_zi_available?"YES":"NO")<<"\n";
         if(mismatched!=0) return 2;
+        if(original_zi_available) {
+            require(skipped==0 && compared==records,
+                    "original ZI inputs supplied but any puff was skipped");
+            std::cout<<"P7_NATIVE_PUFFDZ_FULL_ZI_PARITY=PASS HOURS="<<nh
+                     <<" EXACT_RECORDS="<<compared
+                     <<" MISMATCHED="<<mismatched
+                     <<" UNTESTED=0"
+                     <<" ORIGINAL_SIGZ_ZI_ORACLE_FED=YES\n";
+        }
         std::cout<<"P7_NATIVE_PUFFDZ=PASS HOURS="<<nh
                  <<" DETERMINATE="<<compared
                  <<" SKIPPED_UNDETERMINED="<<skipped
