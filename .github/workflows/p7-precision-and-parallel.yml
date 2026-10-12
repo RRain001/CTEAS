@@ -159,3 +159,74 @@ jobs:
           printf '%s\n' "$inventory" | grep -Eq 'Test[[:space:]]*#[0-9]+:'
           ctest --test-dir "$build" -R "$match" --output-on-failure
           echo "P7_PARALLEL_SOURCE_PARITY=PASS LANE=$lane"
+
+
+  original-execution-order:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /native_cpp/modules/p7_calpuff/**
+            /engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+      - name: Require pinned original source and first-hour puff state
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "P7_ORDER_RUNNER=${RUNNER_NAME} HOST=$(hostname) CORES=$(nproc)"
+          for path in \
+            native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep.json \
+            native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm-audit.json \
+            native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin \
+            engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp; do
+            test -s "$path" || { echo "::error::Missing original $path"; exit 1; }
+          done
+      - name: Compile and execute source order and internal grid gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v g++-12 >/dev/null 2>&1; then
+            cpp="$(command -v g++-12)"
+          elif command -v g++-11 >/dev/null 2>&1; then
+            cpp="$(command -v g++-11)"
+          else
+            cpp="$(command -v c++)"
+          fi
+          build="${RUNNER_TEMP}/p7-order-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cmake -S native_cpp/modules/p7_calpuff -B "$build" \
+            -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$build" --parallel 2 \
+            --target cteas_p7_vendor_order_tests cteas_p7_initial_dgm_tests
+          for name in cteas_p7_vendor_substep_order_contract \
+                      cteas_p7_original_initial_internal_xy \
+                      cteas_p7_original_source_dgm_execution_order; do
+            ctest --test-dir "$build" -N -R "^${name}$" |
+              grep -Eq "Test[[:space:]]*#[0-9]+: ${name}" || {
+                echo "::error::Original CALPUFF order gate absent: $name"
+                exit 1
+              }
+            ctest --test-dir "$build" -R "^${name}$" --output-on-failure
+          done
+          python3 native_cpp/modules/p7_calpuff/reference/audit_vendor_order_and_dgm.py \
+            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
+            --dgm-tool native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/original_puff_step_dump.py \
+            --metadata native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep.json \
+            --first-hour native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin \
+            --control project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            --audit-record native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm-audit.json \
+            --report "$build/P7_ORIGINAL_ORDER_DGM_AUDIT.json"
+          echo "P7_ORDER_ORIGINAL_AND_CPP_INITIAL=PASS"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p7-original-comp-order-and-first-hour
+          path: ${{ runner.temp }}/p7-order-${{ github.run_id }}-${{ github.run_attempt }}/P7_ORIGINAL_ORDER_DGM_AUDIT.json
+          retention-days: 7
+          if-no-files-found: warn

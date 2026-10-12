@@ -731,3 +731,39 @@ else()
 endif()
 add_test(NAME cteas_p7_original_fortran_cpp_precision_contract
   COMMAND cteas_p7_precision_contract_tests)
+
+# Source-anchored COMP substep order and original 2022 DGM initial state.
+# These checks do NOT constitute an integrated CALPUFF execution driver.
+add_executable(cteas_p7_vendor_order_tests tests/vendor_order_tests.cpp)
+target_include_directories(cteas_p7_vendor_order_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+if(MSVC)
+  target_compile_options(cteas_p7_vendor_order_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_vendor_order_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_vendor_substep_order_contract COMMAND cteas_p7_vendor_order_tests)
+
+set(P7_DGM_HOUR0 "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin")
+set(P7_DGM_META "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_puffstep.json")
+set(P7_DGM_AUDIT "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm-audit.json")
+set(P7_DGM_TOOL "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/original_puff_step_dump.py")
+set(P7_VENDOR_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for")
+if(EXISTS "${P7_DGM_HOUR0}" AND EXISTS "${P7_DGM_META}" AND EXISTS "${P7_DGM_AUDIT}"
+   AND EXISTS "${P7_DGM_TOOL}" AND EXISTS "${P7_VENDOR_SOURCE}"
+   AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_executable(cteas_p7_initial_dgm_tests tests/initial_dgm_oracle_tests.cpp)
+  target_link_libraries(cteas_p7_initial_dgm_tests PRIVATE cteas_p7_release cteas_p7_control)
+  if(MSVC)
+    target_compile_options(cteas_p7_initial_dgm_tests PRIVATE /W4 /WX)
+  else()
+    target_compile_options(cteas_p7_initial_dgm_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  add_test(NAME cteas_p7_original_initial_internal_xy
+    COMMAND cteas_p7_initial_dgm_tests "${P7F_LOCKED_CASE_CONTROL}" "${P7_DGM_HOUR0}")
+  add_test(NAME cteas_p7_original_source_dgm_execution_order
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/reference/audit_vendor_order_and_dgm.py"
+      --vendor "${P7_VENDOR_SOURCE}" --dgm-tool "${P7_DGM_TOOL}"
+      --metadata "${P7_DGM_META}" --first-hour "${P7_DGM_HOUR0}"
+      --control "${P7F_LOCKED_CASE_CONTROL}" --audit-record "${P7_DGM_AUDIT}")
+endif()
