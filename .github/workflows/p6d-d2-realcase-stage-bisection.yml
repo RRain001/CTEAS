@@ -2,6 +2,7 @@ name: P6D D2 original stage-aligned real-case bisection
 on:
   pull_request:
     paths:
+      - 'native_cpp/modules/p6_calmet/reference/p6d_d2_compare_full143.py'
       - 'native_cpp/modules/p6_calmet/reference/p6d_d2_stage_bisection.py'
       - '.github/workflows/p6d-d2-realcase-stage-bisection.yml'
       - 'native_cpp/modules/p6_calmet/reference/p6d_d2_original_inter2_actual_trace.py'
@@ -221,6 +222,16 @@ jobs:
               | tee "$RUNNER_TEMP/p6d-d2-pre-tail-$variant.txt"
             grep -q "COMPLETED_NOT_FULL_PASS" "$RUNNER_TEMP/p6d-d2-pre-tail-$variant.txt"
           done
+      - name: Source-authentic 143h complete 3D original INTER2 and final U V W scientific gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/p6d_d2_compare_full143.py \
+            --original-dir "$RUNNER_TEMP/p6d-d2-original" \
+            --product "$RUNNER_TEMP/d2-product-gamma" \
+            --out "$RUNNER_TEMP/p6d-d2/full143-3d-oracle-comparison.json" \
+            --require-zero-exceedances \
+            | tee "$RUNNER_TEMP/p6d-d2-full143-3d-stdout.txt"
       - name: Archive immutable-provenance D2 stage evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -238,6 +249,8 @@ jobs:
             ${{ runner.temp }}/p6d-d2-wind1-entry-stdout.txt
             ${{ runner.temp }}/p6d-d2-original/original_inter2_pretail_*.f32
             ${{ runner.temp }}/p6d-d2/pre-tail-oracle.json
+            ${{ runner.temp }}/p6d-d2/full143-3d-oracle-comparison.json
+            ${{ runner.temp }}/p6d-d2-full143-3d-stdout.txt
             ${{ runner.temp }}/p6d-d2/pre-tail-gamma.json
             ${{ runner.temp }}/p6d-d2-pre-tail-oracle.txt
             ${{ runner.temp }}/p6d-d2-pre-tail-gamma.txt

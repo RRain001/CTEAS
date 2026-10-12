@@ -27,6 +27,7 @@ ANCHORS = {
     5593: "      endif",
     5640: "C",
     6062: "",
+    6218: "  900 CONTINUE",
     36018: "         nstat = nssta + nowsta + nusta",
     5726: "C",
     5732: "  300 CONTINUE",
@@ -37,10 +38,11 @@ ANCHORS = {
 BEFORE = {5593: "         end if",
           5640: "",
           6062: "     2      iwat1,iwat2,vdat,noobs)",
+          6218: "850   continue",
           36018: "c        --total number of stations (sfc+upper air)",
           5726: "C     ADD THE SLOPE FLOW COMPONENT TO THE HORIZONTAL WIND FIELD",
           8243: "      DOUBLE PRECISION WT"}
-AFTER = {6062: "      ELSE", 5593: "C", 5640: "C ---- APPLY THE MELSAR FROUDE NUMBER ADJUSTMENT",
+AFTER = {6218: "      return", 6062: "      ELSE", 5593: "C", 5640: "C ---- APPLY THE MELSAR FROUDE NUMBER ADJUSTMENT",
          36018: "", 8247: "C", 8568: "c"}
 
 DECL = """
@@ -102,6 +104,33 @@ c ----------------------------------------------------------------------
       end
 """
 
+
+
+FINAL143_HELPER = """
+c ----------------------------------------------------------------------
+c --- Actual original post-DIAGNO U/V/W all 143h. Purely write-only,
+c --- immediately before DIAGNO RETURN, never modify the reference.
+c ----------------------------------------------------------------------
+      subroutine d2final143(u,v,w,nx,ny,nz)
+      include 'params.met'
+      integer nx,ny,nz,i,j,k,nhours
+      real u(mxnx,mxny,mxnz),v(mxnx,mxny,mxnz)
+      real w(mxnx,mxny,mxnzp1)
+      save nhours
+      data nhours/0/
+      nhours=nhours+1
+      if(nhours.eq.1)then
+          open(96,file='p6d_final143_uvw.f32',
+     1         form='unformatted',access='stream',status='replace')
+      endif
+      if(nx.ne.50.or.ny.ne.50.or.nz.ne.9)
+     1  stop 'D2 final 143h unexpected geometry'
+      write(96) (((u(i,j,k),i=1,nx),j=1,ny),k=1,nz)
+      write(96) (((v(i,j,k),i=1,nx),j=1,ny),k=1,nz)
+      write(96) (((w(i,j,k),i=1,nx),j=1,ny),k=1,nz+1)
+      return
+      end
+"""
 
 GAMMA_HELPER = """
 c ----------------------------------------------------------------------
@@ -234,7 +263,8 @@ def instrument(source: Path, out: Path):
             assert lines[ln-2].rstrip("\r\n") == BEFORE[ln]
         if ln in AFTER:
             assert lines[ln].rstrip("\r\n") == AFTER[ln], (ln, lines[ln])
-    additions = {6062: "         call d2inter2pretail(u,v,nx,ny,nz)\n",
+    additions = {6218: "      call d2final143(u,v,w,nx,ny,nz)\n",
+                 6062: "         call d2inter2pretail(u,v,nx,ny,nz)\n",
                  36018: "      call d2windraw(us,vs,nstat)\n",
                  5640: "      call d2gamdump(gamma,nx,ny)\n",
                  5593: "      call d2upstream(7,ndathrb,nsecb,ug,vg,qh,temp2d,\n     1                nx,ny,nz)\n",
@@ -244,7 +274,7 @@ def instrument(source: Path, out: Path):
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(("".join(
         line + additions.get(i, "") for i, line in enumerate(lines, 1)
-    ) + UPSTREAM_HELPER + WIND1_INPUT_HELPER + GAMMA_HELPER + PRETAIL_HELPER).encode("latin1"))
+    ) + UPSTREAM_HELPER + WIND1_INPUT_HELPER + GAMMA_HELPER + PRETAIL_HELPER + FINAL143_HELPER).encode("latin1"))
     return hashlib.sha256(out.read_bytes()).hexdigest()
 
 
@@ -313,7 +343,8 @@ def main():
     if (trace.exists() or (run_dir/"p6d_upstream_actual.txt").exists() or
         (run_dir/"p6d_wind1_input_original.txt").exists() or
         (run_dir/"p6d_gamma_original.f32").exists() or
-        (run_dir/"p6d_inter2_pretail.f32").exists()):
+        (run_dir/"p6d_inter2_pretail.f32").exists() or
+        (run_dir/"p6d_final143_uvw.f32").exists()):
         raise RuntimeError("untouched original unexpectedly emitted diagnostic trace")
     instrumented_run = dgm._run(instrument_bin, run_dir)
     if original_run["met_dat_sha256"] != MET_SHA or instrumented_run["met_dat_sha256"] != MET_SHA:
@@ -344,6 +375,31 @@ def main():
             output_path=out/("original_inter2_pretail_"+axis+"_"+label+".f32")
             output_path.write_bytes(segment)
             pretail_artifacts[label+"/"+axis]=dgm.sha256_file(output_path)
+    final_raw=run_dir/"p6d_final143_uvw.f32"
+    expected_final_bytes=143*(2*50*50*9+50*50*10)*4
+    if not final_raw.is_file() or final_raw.stat().st_size!=expected_final_bytes:
+        raise RuntimeError("source-verified original DIAGNO final 143h U/V/W dump incomplete")
+    final_out=out/"original_final143_uvw.f32"
+    shutil.copyfile(final_raw,final_out)
+    pretail_out=out/"original_inter2_pretail_143h.f32"
+    shutil.copyfile(pretail,pretail_out)
+    # Exact source-stage match: the original six DGM kpt10 snapshots must
+    # reproduce the newly instrumented DIAGNO exit field U/V/W bytes.
+    import p6d_d2_stage_bisection as frozen_dgm
+    stages,_=frozen_dgm.load_snapshots(
+        HERE/"dgm_p6d_requests_2022/dgm_fields_hours.bin")
+    segbytes=(2*22500+25000)*4
+    for hour in (1,2,3,81,82,83):
+        label=stage_labels[hour-1]
+        rec=stages[label][10]
+        with final_out.open("rb") as stream:
+            stream.seek((hour-1)*segbytes)
+            raw_hour=stream.read(segbytes)
+        for component,(key,nvalues) in enumerate((("U",22500),("V",22500),("W",25000))):
+            offset=sum(n*4 for _,n in (("U",22500),("V",22500),("W",25000))[:component])
+            blob=raw_hour[offset:offset+4*nvalues]
+            if blob!=struct.pack("<"+str(nvalues)+"f",*rec[key]):
+                raise RuntimeError(f"original final 143h trace disagrees with frozen original DGM {label}/{key}")
     gamma_raw=run_dir/"p6d_gamma_original.f32"
     if not gamma_raw.is_file() or gamma_raw.stat().st_size!=143*50*50*4:
         raise RuntimeError("missing or invalid 143h original GAMMA grid")
@@ -402,6 +458,10 @@ def main():
         "upstream_csv_sha256": dgm.sha256_file(upstream_csv),
         "wind1_station_input_rows": len(raw_rows),
         "wind1_station_input_sha256": dgm.sha256_file(wind_csv),
+        "original_final143_uvw_bytes": expected_final_bytes,
+        "original_final143_uvw_sha256": dgm.sha256_file(final_out),
+        "original_final143_uvw_stage": "after DIAGNO IOBR branch, before RETURN L6219; exact bytes for six independently SHA-guarded DGM kpt10 snapshots verified",
+        "original_inter2_pretail_143h_path": str(pretail_out),
         "original_inter2_pretail_bytes": len(raw_pretail),
         "original_inter2_pretail_sha256": dgm.sha256_file(pretail),
         "original_inter2_pretail_selected_sha256": pretail_artifacts,
