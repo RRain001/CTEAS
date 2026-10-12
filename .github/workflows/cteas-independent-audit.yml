@@ -76,6 +76,15 @@ jobs:
           test -s "$MET"
           echo "$FROZEN_MET_SHA  $MET" | sha256sum --check --status
           echo "FROZEN_MAIN_CASE_SHA256=PASS"
+          # The P7G structure test silently exits 0 if puff.con is absent.
+          # Independent audit therefore fails closed before registering CTests.
+          if [ "$CTEAS_AUDIT_TRACK" = p7 ]; then
+            PUFF=project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con
+            test -f "$PUFF"
+            test "$(stat -c '%s' "$PUFF")" -eq 1896056
+            sha256sum "$PUFF" | tee "$RUNNER_TEMP/cteas-independent-audit/frozen-puff-sha256.txt"
+            echo "P7G_FROZEN_PUFF_EXISTS_AND_SIZE=PASS"
+          fi
           CG=$(awk -F: '$1=="0" {print $3}' /proc/self/cgroup)
           ROOT="/sys/fs/cgroup$CG"
           echo "AUDIT_CGROUP=$CG"
@@ -105,6 +114,42 @@ jobs:
         run: |
           set -euo pipefail
           ctest --test-dir "$RUNNER_TEMP/cteas-independent-build-${{ matrix.track }}" --output-on-failure --parallel 1 --timeout 900 --output-junit "$RUNNER_TEMP/cteas-independent-audit/ctest.xml" 2>&1 | tee "$RUNNER_TEMP/cteas-independent-audit/ctest.log"
+      - name: Independent CTest inventory and P6E owned-field acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          track = os.environ["CTEAS_AUDIT_TRACK"]
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          audit = tmp / "cteas-independent-audit"
+          discovery = (audit / "ctest-discovery.txt").read_text()
+          expected_tests = {"p6d": 29, "p6e": 27, "p7": 52}[track]
+          assert f"Total Tests: {expected_tests}" in discovery, (
+              f"{track}: registered CTest inventory differs from {expected_tests}")
+          print(f"CTEST_PINNED_INVENTORY={track}:{expected_tests}:PASS")
+          if track == "p6e":
+              verdict = tmp / "cteas-independent-build-p6e" / "e42-real-full-field" / "full-field-verdict.json"
+              report = json.loads(verdict.read_text())
+              fields = report["comparison"]["fields"]
+              owned = {f["label"].strip() for f in fields if f["denominator"] > 0}
+              mandatory = {"TEMPK", "IRH", "IPGT", "USTAR", "EL", "ZI", "WSTAR", "QSW", "RHO"}
+              mandatory |= {f"T-LEV  {i}" for i in range(1, 10)}
+              assert len(mandatory) == 18
+              assert mandatory.issubset(owned), (
+                  f"missing P6E-owned fields: {sorted(mandatory - owned)}")
+              assert report["status"] == "PASS"
+              assert sum(f.get("exceedances", 0) for f in fields) == 0
+              assert len(fields) == len({f["label"].strip() for f in fields}), (
+                  "duplicate field labels in 143h verdict")
+              (audit / "p6e-owned-field-verification.json").write_text(
+                  json.dumps({"mandatory": sorted(mandatory), "compared": sorted(owned),
+                              "extra_compared": sorted(owned - mandatory),
+                              "zero_exceedance": True}, indent=2) + "\n")
+              print("P6E_18_MANDATORY_FIELDS_AND_ZERO_EXCEEDANCES=PASS")
+          PY
       - name: Independently repeat P6D original-source real-case comparison
         if: matrix.track == 'p6d'
         shell: bash
@@ -115,6 +160,14 @@ jobs:
           BUILD="$RUNNER_TEMP/cteas-independent-build-p6d"
           OUT="$RUNNER_TEMP/cteas-independent-audit/p6d"
           mkdir -p "$OUT"
+          # P6D scripts explicitly invoke "gfortran", ignoring FC; the host
+          # default is older than gfortran-11 and rejects -fallow-argument-mismatch.
+          # This temporary job-local alias changes no pinned scientific source.
+          mkdir -p "$RUNNER_TEMP/cteas-audit-toolchain"
+          ln -sfn /usr/bin/gfortran-11 "$RUNNER_TEMP/cteas-audit-toolchain/gfortran"
+          export PATH="$RUNNER_TEMP/cteas-audit-toolchain:$PATH"
+          echo "P6D_ORIGINAL_COMPARATOR_FC=$(command -v gfortran)"
+          gfortran --version | head -1
           "$BUILD/cteas_p6_realcase_wind_field" --case project/cases/hefei5km_2022_reference_case_20261011 --out "$OUT/fields" --fixtures "$OUT/fixtures"
           python3 native_cpp/modules/p6_calmet/reference/compare_original_d9a_realcase_step_one.py --vendor engine/vendor/src/CALMET_v6.5.0_L150223 --fields "$OUT/fields" --fixtures "$OUT/fixtures" --out "$OUT/step-one"
           python3 native_cpp/modules/p6_calmet/reference/compare_original_d9a_realcase_blend.py --vendor engine/vendor/src/CALMET_v6.5.0_L150223 --fields "$OUT/fields" --fixtures "$OUT/fixtures" --out "$OUT/blend"
