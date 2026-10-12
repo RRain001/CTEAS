@@ -45,6 +45,7 @@ class ResourceControlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root=self.fixture(pathlib.Path(d)/'cg',cpuset='0-111')
             self.assertEqual(detect(None,root,set(range(112)))['build_jobs'],8)
+            self.assertEqual(detect('24',root,set(range(112)))['build_jobs'],24)
             for value in ('0','-1','bad'):
                 with self.assertRaises(ValueError):detect(value,root,set(range(8)))
 

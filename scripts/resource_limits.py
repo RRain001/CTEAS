@@ -70,7 +70,7 @@ def detect(request: str | None = None, directory: Path | None = None,
                 except (OSError, ValueError):
                     pass
             current = current.parent
-    cap = min(available, max(1, math.floor(quota))) if quota is not None else min(available, 8)
+    cap = min(available, max(1, math.floor(quota))) if quota is not None else available
     memory_jobs = max(1, (memory - 512 * 1024**2) // (768 * 1024**2)) if memory is not None else None
     if memory_jobs is not None:
         cap = min(cap, memory_jobs)
@@ -79,7 +79,7 @@ def detect(request: str | None = None, directory: Path | None = None,
         requested = int(request)
         if requested < 1:
             raise ValueError('CTEAS_BUILD_JOBS must be a positive integer')
-    jobs = min(requested, cap) if requested is not None else cap
+    jobs = min(requested, cap) if requested is not None else (min(cap, 8) if quota is None else cap)
     return dict(build_jobs=jobs, requested_jobs=requested, cpu_quota=quota,
                 affinity_cpus=available, memory_budget_bytes=memory,
                 memory_jobs=memory_jobs, cgroup=str(directory) if directory else None,

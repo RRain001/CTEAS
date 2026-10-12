@@ -43,6 +43,7 @@ def main():
     ROOT.mkdir(exist_ok=True,mode=0o700);backup=ROOT/(name+'-before.json')
     remote=next(r for r in api() if r['name']==name)
     if remote['busy']:raise SystemExit('BLOCKED: runner busy; no restart performed')
+    action_prior_disk=path.read_text() if path.exists() else None
     if a.action=='apply':
         if not backup.exists():
             original=path.read_text() if path.exists() else None
@@ -59,7 +60,7 @@ def main():
         else:run(['sudo','-n','tee',str(path)],input=original)
     # Recheck immediately before restart and reverse the disk change if it became busy.
     if next(r for r in api() if r['name']==name)['busy']:
-        prior=json.loads(backup.read_text())['resource_dropin']
+        prior=action_prior_disk
         if prior is None and path.exists():run(['sudo','-n','unlink',str(path)])
         elif prior is not None:run(['sudo','-n','tee',str(path)],input=prior)
         raise SystemExit('BLOCKED: runner became busy; original disk config restored')
