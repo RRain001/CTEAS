@@ -9,7 +9,7 @@ on:
 jobs:
   audit:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-managed, cteas-compute, Linux, X64]
     timeout-minutes: 14
     permissions:
       contents: read
@@ -17,6 +17,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Select self-hosted C++20 and Fortran tools
         uses: ./.github/actions/cteas-linux-toolchain
+      - name: Prepare isolated Python venv (managed runner has no sudo)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/cteas-pyenv"
+          echo "$RUNNER_TEMP/cteas-pyenv/bin" >> "$GITHUB_PATH"
       - name: Download actual NOAA gzip files and audit source wind values
         shell: bash
         run: |
