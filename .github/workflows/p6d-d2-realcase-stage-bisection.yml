@@ -107,6 +107,7 @@ jobs:
           set -euo pipefail
           "$RUNNER_TEMP/d2-build/cteas_p6_realcase_wind_field" \
             --case "$CASE_DIR" --out "$RUNNER_TEMP/d2-product-oracle" \
+            --fixtures "$RUNNER_TEMP/d2-wind1-fixtures" \
             --zii-cell "$RUNNER_TEMP/d2-reference-state/zii.f32" \
             --el-cell "$RUNNER_TEMP/d2-reference-state/el.f32" \
             --trace-inter2 "$RUNNER_TEMP/p6d-d2/cpp-inter2-actual.csv"
@@ -137,6 +138,17 @@ jobs:
             --out "$RUNNER_TEMP/p6d-d2/original-prepost-slope.json" \
             | tee "$RUNNER_TEMP/p6d-d2-slope-stage-stdout.txt"
           grep -q "COMPLETED_NOT_ACCEPTED" "$RUNNER_TEMP/p6d-d2-slope-stage-stdout.txt"
+      - name: Check actual original WIND1 input columns against C++ fixture entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/p6d_d2_compare_wind1_entry.py \
+            --original "$RUNNER_TEMP/p6d-d2-original/original_wind1_station_inputs.csv" \
+            --fixtures "$RUNNER_TEMP/d2-wind1-fixtures" \
+            --index "$RUNNER_TEMP/d2-product-oracle/produced_hours.txt" \
+            --out "$RUNNER_TEMP/p6d-d2/wind1-entry-comparison.json" \
+            | tee "$RUNNER_TEMP/p6d-d2-wind1-entry-stdout.txt"
+          test -s "$RUNNER_TEMP/p6d-d2/wind1-entry-comparison.json"
       - name: Compare actual original and actual C++ INTER2 operand snapshots
         shell: bash
         run: |
@@ -159,6 +171,9 @@ jobs:
             ${{ runner.temp }}/p6d-d2/stage-bisection-oracle.json
             ${{ runner.temp }}/p6d-d2-stage-oracle-stdout.txt
             ${{ runner.temp }}/d2-product-oracle/metadata.json
+            ${{ runner.temp }}/p6d-d2-original/original_wind1_station_inputs.csv
+            ${{ runner.temp }}/p6d-d2/wind1-entry-comparison.json
+            ${{ runner.temp }}/p6d-d2-wind1-entry-stdout.txt
             ${{ runner.temp }}/p6d-d2-original/original_inter2_actual.csv
             ${{ runner.temp }}/p6d-d2-original/original_upstream_actual.csv
             ${{ runner.temp }}/p6d-d2/original-prepost-slope.json
