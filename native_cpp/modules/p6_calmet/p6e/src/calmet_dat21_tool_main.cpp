@@ -26,6 +26,7 @@
 #include "cteas/p6e/geo_landuse.hpp"
 #include "cteas/p6e/heatfx.hpp"
 #include "cteas/p6e/mixht_observed_mc.hpp"
+#include "cteas/p6/station_mixhtst.hpp"
 #include "cteas/p6e/wstarr.hpp"
 #include "cteas/p6e/pgtstb.hpp"
 #include "cteas/p6e/solar.hpp"
@@ -34,6 +35,7 @@
 #include "cteas/p6e/temp3d_observed_land.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -286,6 +288,59 @@ struct BridgeObservation {
     MixdtSounding aa,bb;
     std::vector<float> aa_face,bb_face;
 };
+struct NativeStationFlux {
+    float qh=0.f,ustar=0.f,el=0.f,rho=0.f;
+};
+std::vector<NativeStationFlux> read_native_station_flux_csv(
+        const std::string& path,std::size_t hours) {
+    if(path.empty())return {};
+    std::ifstream in(path);
+    if(!in)throw std::invalid_argument("native P6D station flux input missing");
+    std::string header;
+    if(!std::getline(in,header) ||
+       header!="hour_end,QH_Wm2,USTAR_mps,EL_m,solar_sine,temp_K,rho_kgm3,Z0_m,station_cell_i,station_cell_j")
+       throw std::invalid_argument("native station ELUSTR2 columns/provenance invalid");
+    std::vector<NativeStationFlux> rows;
+    std::string line;
+    for(std::size_t i=0;i<hours;++i){
+        if(!std::getline(in,line))
+            throw std::invalid_argument("native ELUSTR2 flux time series truncated");
+        std::vector<std::string> cells;
+        std::istringstream stream(line);
+        std::string part;
+        while(std::getline(stream,part,','))cells.push_back(part);
+        if(cells.size()!=10)
+            throw std::invalid_argument("native ELUSTR2 flux row malformed");
+        // 143 consecutive hour-end labels, beginning 2022-01-01 01 UTC.
+        auto clock=std::chrono::sys_days{std::chrono::year{2022}/1/1}+
+                   std::chrono::hours{static_cast<int>(i+1)};
+        const auto d=std::chrono::floor<std::chrono::days>(clock);
+        const std::chrono::year_month_day ymd{d};
+        const int hour=static_cast<int>(
+            std::chrono::duration_cast<std::chrono::hours>(clock-d).count());
+        std::ostringstream expected;
+        expected<<int(ymd.year())<<'-'
+                <<(static_cast<unsigned>(ymd.month())<10?"0":"")
+                <<static_cast<unsigned>(ymd.month())<<'-'
+                <<(static_cast<unsigned>(ymd.day())<10?"0":"")
+                <<static_cast<unsigned>(ymd.day())<<'_'
+                <<(hour<10?"0":"")<<hour;
+        if(cells[0]!=expected.str()||
+           std::stoi(cells[8])!=26||std::stoi(cells[9])!=26)
+            throw std::invalid_argument("native station ELUSTR2 timestamp/cell drift");
+        NativeStationFlux f{
+          std::stof(cells[1]),std::stof(cells[2]),
+          std::stof(cells[3]),std::stof(cells[6])};
+        if(!std::isfinite(f.qh)||!std::isfinite(f.ustar)||
+           !std::isfinite(f.el)||!std::isfinite(f.rho)||
+           f.ustar<=0.f||f.rho<=0.f)
+            throw std::invalid_argument("native station flux nonphysical");
+        rows.push_back(f);
+    }
+    if(std::getline(in,line)&&!line.empty())
+        throw std::invalid_argument("native station ELUSTR2 flux has extra hour");
+    return rows;
+}
 std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
     std::ifstream file(path);
     if(!file)throw std::invalid_argument("cannot open bridge CSV "+path);
@@ -440,7 +495,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    const std::string& geo_path,float hc1,float hc2,float hc3,
                    const std::string& state_prefix,float fcoriol,
                    bool skip_avemix,int imixh,int dptt_refresh,
-                   const std::string& trace_path) {
+                   const std::string& trace_path,
+                   const std::string& station_flux_path) {
     const auto reference=read_calmet_dat21(reference_path);
     // Optional wind source: the frozen original U/V/W for the same intervals.
     std::optional<WindLevels> wind;
@@ -455,6 +511,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             throw std::invalid_argument("GEO.DAT water range does not match the reference");
     }
     const auto observations=read_bridge_csv(observations_path);
+    const auto native_station_flux=read_native_station_flux_csv(station_flux_path,reference.intervals);
     const auto& h=reference.header;
     if(observations.size()!=reference.intervals)
         throw std::invalid_argument("observation hours do not match the reference intervals");
@@ -491,12 +548,12 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     std::size_t produced_temperature=0U,missing_humidity=0U;
     // Previous-hour MIXHT state for the ZICONV/DPTT memory (starts at zero,
     // the original SETUP initialisation for land cells).
-    std::vector<float> previous_ziconv(cells,0.f),previous_dptt(cells,0.f);
+    std::vector<float> previous_ziconv(cells,0.f),previous_dptt(cells,0.f),previous_zi(cells,0.f);
     // Exported chain state (hour-major, i-fastest) when --state-prefix is set.
     std::vector<float> exported_ziconv,exported_zi;
     std::vector<float> exported_pre_ziconv,exported_pre_zi;
     std::vector<float> exported_qh,exported_ustar,exported_el;
-    std::vector<float> exported_dptt;
+    std::vector<float> exported_dptt,exported_pre_mixht_dptt;
     std::vector<float> exported_qsw,exported_wstar;
     // The cell carrying the surface station (XSSTA/YSSTA are metres from the
     // SW corner of cell (1,1)). The original processes exactly this cell
@@ -688,6 +745,42 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             if(!trace_path.empty()) {
                 mh.trace=&trace_row;mh.trace_i=trace_i;mh.trace_j=trace_j;
             }
+            // Source order: DIAGNO/STHEOR calls ELUSTR2 -> MIXHTST before
+            // the current COMP gridded MIXHT. The COMMON /TJMP/ DPTT at
+            // the surface station is therefore pre-mutated *this hour*.
+            // Use the native P6D station ELUSTR2 flux and native previous
+            // COMP fields, never original station QH/EL/ZII. This removes
+            // the previous approximate "dptt_refresh" surrogate.
+            if(!native_station_flux.empty()){
+                if(trace_i>=static_cast<std::size_t>(h.nx)||
+                   trace_j>=static_cast<std::size_t>(h.ny))
+                    throw std::invalid_argument("native station outside P6E COMP grid");
+                const std::size_t tk=trace_j*static_cast<std::size_t>(h.nx)+trace_i;
+                const auto& station=native_station_flux[hour];
+                cteas::calmet::p6::StationMixhtstInput m;
+                m.previous.zi_m=previous_zi[tk];
+                m.previous.ziconv_m=previous_ziconv[tk];
+                m.previous.dptt_k=previous_dptt[tk];
+                m.qh_wm2=station.qh;m.ustar_mps=station.ustar;
+                m.el_m=station.el;m.rho_kg_m3=station.rho;
+                m.fcori_s=mh.fcori[tk];m.cmech=mh.cmech[tk];
+                m.zimin_m=mh.zimin;m.zimax_m=mh.zimax;
+                m.constn=mh.constn;m.dptmin_kperm=mh.dptmin;
+                m.dzzi_m=mh.dzzi;m.threshl=mh.threshl;
+                m.tzicrlx_s=mh.tzicrlx;m.onedte_s=mh.onedte;
+                m.twodte_s=mh.twodte;m.timestep_s=mh.timestep_s;
+                m.imixh=mh.imixh;m.izicrlx=mh.izicrlx;
+                m.landuse=mh.landuse[tk];
+                m.water_first=mh.water_first;m.water_last=mh.water_last;
+                m.older_sounding=observation.justa>0?
+                    observation.aa:observation.bb;
+                const auto local=cteas::calmet::p6::station_mixhtst(m);
+                mh.initial_dptt[tk]=local.dptt_for_comp_k;
+                mh.dptt_refresh=0;
+            }
+            if(!state_prefix.empty())
+                exported_pre_mixht_dptt.insert(exported_pre_mixht_dptt.end(),
+                    mh.initial_dptt.begin(),mh.initial_dptt.end());
             const auto mixing=mixht_observed_mc(mh);
             if(!trace_path.empty()) {
                 const auto tk=trace_j*static_cast<std::size_t>(h.nx)+trace_i;
@@ -726,6 +819,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                 ziconv=mixed.ziconv_m;
             }
             previous_ziconv=ziconv;
+            previous_zi=zi_height;
             previous_dptt=mixing.dptt;
             if(!state_prefix.empty())
                 exported_dptt.insert(exported_dptt.end(),
@@ -847,7 +941,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     if(!state_prefix.empty()) {
         if(exported_ziconv.size()!=reference.intervals*cells||
            exported_zi.size()!=reference.intervals*cells||
-           exported_dptt.size()!=reference.intervals*cells)
+           exported_dptt.size()!=reference.intervals*cells||
+           exported_pre_mixht_dptt.size()!=reference.intervals*cells)
             throw std::invalid_argument(
                 "state export requires a wind and GEO source for every hour");
         const auto write_binary=[&](const std::string& path,
@@ -865,6 +960,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         write_binary(state_prefix+".wstar.f32",exported_wstar);
         write_binary(state_prefix+".ziconv.f32",exported_ziconv);
         write_binary(state_prefix+".dptt.f32",exported_dptt);
+        write_binary(state_prefix+".pre_mixht.dptt.f32",exported_pre_mixht_dptt);
         write_binary(state_prefix+".zi.f32",exported_zi);
         if(exported_pre_ziconv.size()==exported_ziconv.size()) {
             write_binary(state_prefix+".pre_avemix.ziconv.f32",exported_pre_ziconv);
@@ -873,7 +969,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         std::string meta="{\n";
         meta+="  \"producer\": \"p6e_calmet_dat21 emit-realcase\",\n";
         meta+="  \"source\": \"chain-internal MIXHT state advanced hour by hour; NOT copied from the reference met.dat\",\n";
-        meta+="  \"fields\": [\"ziconv\",\"zi\",\"dptt\",\"pre_avemix.ziconv\",\"pre_avemix.zi\"],\n";
+        meta+="  \"fields\": [\"ziconv\",\"zi\",\"dptt\",\"pre_mixht.dptt\",\"pre_avemix.ziconv\",\"pre_avemix.zi\"],\n";
         meta+="  \"units\": {\"zi\":\"m\",\"ziconv\":\"m\",\"dptt\":\"K\"},\n";
         meta+="  \"dtype\": \"float32 little-endian\",\n";
         meta+="  \"layout\": \"hour-major, then j-major rows with i fastest, exactly as CALMET.DAT field payloads\",\n";
@@ -885,6 +981,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         meta+="  \"negative_dptt_or_zero_ziconv_is_physical\": true,\n";
         meta+="  \"comp_dptt_provenance\": \"post-MIXHT /TJMP/ DPTT at every hour; not spatially averaged by AVEMIX, required to initialize next DIAGNO ELUSTR2-MIXHTST\",\n";
         meta+="  \"wind_source\": "+json_string(wind_path)+",\n";
+        meta+="  \"station_flux_source\": "+json_string(station_flux_path)+",\n";
+        meta+="  \"station_dptt_mutation\": \""+std::string(station_flux_path.empty()?"LEGACY_ESTIMATE_FROM_GRID":"SOURCE_ORDER_NATIVE_ELUSTR2_MIXHTST")+"\",\n";
         meta+="  \"geo_source\": "+json_string(geo_path)+",\n";
         meta+="  \"candidate_artifact\": "+json_string(out_path)+",\n";
         meta+="  \"difference_from_met_dat_ZI\": \"CALMET.DAT carries ZI (max of convective and mechanical, after AVEMIX averaging); ZICONV is the internal convective height that CGAMMA consumes. This export provides both from the P6E chain; the ZI field here still disagrees with the frozen reference on 4488 of 357500 cells (1.26%, max abs 51.06 m, concentrated in 42 daylight hours), so use ZICONV for wiring until the convective-growth audit closes.\",\n";
@@ -1267,7 +1365,8 @@ int main(int argc,char** argv) {
                           std::stoi(argument(argc,argv,"--skip-avemix","0"))!=0,
                           std::stoi(argument(argc,argv,"--imixh","1")),
                           std::stoi(argument(argc,argv,"--dptt-refresh","1")),
-                          argument(argc,argv,"--mixht-trace"));
+                          argument(argc,argv,"--mixht-trace"),
+                          argument(argc,argv,"--station-flux-csv"));
             return 0;
         }
         if(mode=="dump-field") {
