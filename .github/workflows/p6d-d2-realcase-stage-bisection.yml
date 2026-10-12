@@ -209,6 +209,18 @@ jobs:
             --out "$RUNNER_TEMP/p6d-d2/inter2-operands-gamma.json" \
             | tee "$RUNNER_TEMP/p6d-d2-inter2-gamma-stdout.txt"
           echo "P6D_FRADJ_GAMMA_ORACLE_DIAGNOSTIC=COMPLETE_NOT_NATIVE_ACCEPTANCE"
+      - name: Forensic compare original actual INTER2 pre-tail to C++ pre-tail U/V
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variant in oracle gamma; do
+            python3 native_cpp/modules/p6_calmet/reference/p6d_d2_compare_pretail.py \
+              --original-dir "$RUNNER_TEMP/p6d-d2-original" \
+              --product "$RUNNER_TEMP/d2-product-$variant" \
+              --out "$RUNNER_TEMP/p6d-d2/pre-tail-$variant.json" \
+              | tee "$RUNNER_TEMP/p6d-d2-pre-tail-$variant.txt"
+            grep -q "COMPLETED_NOT_FULL_PASS" "$RUNNER_TEMP/p6d-d2-pre-tail-$variant.txt"
+          done
       - name: Archive immutable-provenance D2 stage evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -224,6 +236,11 @@ jobs:
             ${{ runner.temp }}/p6d-d2-original/original_wind1_station_inputs.csv
             ${{ runner.temp }}/p6d-d2/wind1-entry-comparison.json
             ${{ runner.temp }}/p6d-d2-wind1-entry-stdout.txt
+            ${{ runner.temp }}/p6d-d2-original/original_inter2_pretail_*.f32
+            ${{ runner.temp }}/p6d-d2/pre-tail-oracle.json
+            ${{ runner.temp }}/p6d-d2/pre-tail-gamma.json
+            ${{ runner.temp }}/p6d-d2-pre-tail-oracle.txt
+            ${{ runner.temp }}/p6d-d2-pre-tail-gamma.txt
             ${{ runner.temp }}/p6d-d2-original/original_inter2_actual.csv
             ${{ runner.temp }}/p6d-d2-original/original_upstream_actual.csv
             ${{ runner.temp }}/p6d-d2/original-prepost-slope.json
