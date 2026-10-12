@@ -32,6 +32,8 @@ import subprocess
 import sys
 import time
 import uuid
+import fcntl
+from resource_limits import detect, metrics
 
 GATE_ROOT = pathlib.Path(os.environ.get("CTEAS_GATE_ROOT", "/home/lhy/gate"))
 CXX = os.environ.get("CTEAS_GATE_CXX", "g++-12")
@@ -52,7 +54,7 @@ TRACKS: dict[str, dict] = {
         "source_workflow": ".github/workflows/p6d9a-original-chained-diagno-parity.yml",
         "steps": [
             {"cmd": ["cmake", "-S", "native_cpp/modules/p6_calmet", "-B", "{build}", "-DCMAKE_BUILD_TYPE=Debug"]},
-            {"cmd": ["cmake", "--build", "{build}", "--parallel", "24"]},
+            {"cmd": ["cmake", "--build", "{build}", "--parallel", "{jobs}"]},
             {"cmd": ["ctest", "--test-dir", "{build}", "--output-on-failure"]},
             {"cmd": ["python3", "native_cpp/modules/p6_calmet/reference/compare_original_diagno_d9a_chained.py",
                      "--vendor", VENDOR_CALMET, "--cpp", "{build}/cteas_p6_d9a_source_trace",
@@ -84,7 +86,7 @@ TRACKS: dict[str, dict] = {
         "steps": [
             {"cmd": ["cmake", "-S", "native_cpp/modules/p6_calmet/p6e", "-B", "{build}",
                      "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_COMPILER={cxx}"]},
-            {"cmd": ["cmake", "--build", "{build}", "--parallel", "24"]},
+            {"cmd": ["cmake", "--build", "{build}", "--parallel", "{jobs}"]},
             {"cmd": ["ctest", "--test-dir", "{build}", "--output-on-failure"]},
         ],
     },
@@ -98,7 +100,7 @@ TRACKS: dict[str, dict] = {
         "steps": [
             {"cmd": ["cmake", "-S", "native_cpp/modules/p6_calmet/p6f", "-B", "{build}",
                      "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_COMPILER={cxx}"]},
-            {"cmd": ["cmake", "--build", "{build}", "--parallel", "24"]},
+            {"cmd": ["cmake", "--build", "{build}", "--parallel", "{jobs}"]},
             # The original-CALPUFF read test is excluded here and run as its own
             # step below, where its Fortran toolchain and frozen inputs are
             # declared: a missing toolchain must be reported BLOCKED, never
@@ -128,7 +130,7 @@ TRACKS: dict[str, dict] = {
         "steps": [
             {"cmd": ["cmake", "-S", "native_cpp/modules/p7_calpuff", "-B", "{build}",
                      "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_CXX_COMPILER={cxx}"]},
-            {"cmd": ["cmake", "--build", "{build}", "--parallel", "24"]},
+            {"cmd": ["cmake", "--build", "{build}", "--parallel", "{jobs}"]},
             {"cmd": ["ctest", "--test-dir", "{build}", "--output-on-failure"]},
             {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/sigma_fortran_parity_tests.py",
                      "--probe", "{build}/cteas_p7d_sigma_probe", "--repo-root", ".", "--require"]},
@@ -273,7 +275,7 @@ TRACKS: dict[str, dict] = {
         "steps": [
             {"cmd": ["cmake", "-S", "native_cpp", "-B", "{build}", "-DCMAKE_BUILD_TYPE=Debug",
                      "-DCMAKE_CXX_COMPILER={cxx}"]},
-            {"cmd": ["cmake", "--build", "{build}", "--parallel", "24"]},
+            {"cmd": ["cmake", "--build", "{build}", "--parallel", "{jobs}"]},
             {"cmd": ["ctest", "--test-dir", "{build}", "--output-on-failure"]},
             {"cmd": ["{build}/cteas_geo_inspect", "terrain", CROP_TERRAIN], "requires": [CROP_TERRAIN]},
             {"cmd": ["{build}/cteas_geo_inspect", "landuse", CROP_LANDUSE], "requires": [CROP_LANDUSE]},
@@ -306,6 +308,14 @@ def main() -> int:
             print(f"{name:<8} {t['branch']:<60} spec: {t['source_workflow']}")
         return 0
 
+    if not os.environ.get("CTEAS_GATE_MANAGED"):
+        wrapper = pathlib.Path(__file__).with_name("gate_submit.py")
+        if not wrapper.exists():
+            raise RuntimeError("BLOCKED: managed Gate entrypoint is not installed")
+        os.execv(sys.executable, [sys.executable, str(wrapper), *sys.argv[1:]])
+    limits = detect(os.environ.get("CTEAS_BUILD_JOBS"))
+    if not limits["cgroup"] or limits["cpu_quota"] is None or limits["memory_budget_bytes"] is None:
+        raise RuntimeError("BLOCKED: effective CPU and memory controls required")
     track = TRACKS[args.track]
     ref = args.ref or track["branch"]
     repo = pathlib.Path(args.repo).resolve()
@@ -319,14 +329,19 @@ def main() -> int:
     env.update({"CXX": CXX, "FC": FC, "GIT_TERMINAL_PROMPT": "0"})
     env["PATH"] = "/home/lhy/bin-fortran:" + env.get("PATH", "")
 
+    env.update({"CTEAS_BUILD_JOBS": str(limits["build_jobs"]),
+                "CMAKE_BUILD_PARALLEL_LEVEL": str(limits["build_jobs"])})
     started = time.time()
     evidence: dict = {
         "track": args.track, "ref": ref, "source_workflow": track["source_workflow"],
         "host": os.uname().nodename, "cxx": CXX, "fc": FC,
         "driver_sha": None, "gated_sha": None, "steps": [], "status": "FAIL",
         "failed_steps": [], "blocked_steps": [], "notes": [],
+        "resources": limits, "resource_start": metrics(),
     }
 
+    driver_lock = (GATE_ROOT / "driver-git.lock").open("a")
+    fcntl.flock(driver_lock, fcntl.LOCK_EX)
     rc, driver_sha = sh(["git", "-C", str(repo), "rev-parse", "HEAD"], repo, env)
     evidence["driver_sha"] = driver_sha.strip() if rc == 0 else None
 
@@ -371,7 +386,9 @@ def main() -> int:
         _write(args, evidence, started)
         return 2
 
-    fmt = {"build": str(build), "out": str(out), "cxx": CXX, "repo": str(wt)}
+    fcntl.flock(driver_lock, fcntl.LOCK_UN)
+    driver_lock.close()
+    fmt = {"jobs": str(limits["build_jobs"]), "build": str(build), "out": str(out), "cxx": CXX, "repo": str(wt)}
     for step in track["steps"]:
         cmd = [c.format(**fmt) for c in step["cmd"]]
         missing = [p for p in step.get("requires", []) if not (wt / p).exists()]
@@ -385,6 +402,9 @@ def main() -> int:
         rc, log = sh(cmd, wt, env)
         entry = {"cmd": cmd, "rc": rc, "seconds": round(time.time() - t0, 2),
                  "tail": "\n".join(log.strip().splitlines()[-12:]), "status": "ok" if rc == 0 else "FAIL"}
+        step_log = out / f"step-{len(evidence['steps']) + 1:02d}.log"
+        step_log.write_text(log)
+        entry["log_path"] = str(step_log)
         m = CTEST_RE.search(log)
         if m:
             entry["ctest"] = {"pct": int(m.group(1)), "failed": int(m.group(2)), "total": int(m.group(3))}
@@ -410,6 +430,8 @@ def main() -> int:
         evidence["status"] = "BLOCKED"
     else:
         evidence["status"] = "PASS"
+    evidence["worktree"] = str(wt)
+    evidence["output"] = str(out)
     _write(args, evidence, started)
 
     if not args.keep and wt.exists():
@@ -423,12 +445,13 @@ def main() -> int:
 
 
 def _write(args, evidence: dict, started: float) -> None:
+    evidence["resource_end"] = metrics()
     evidence["seconds"] = round(time.time() - started, 2)
     path = pathlib.Path(args.report) if args.report else (
         GATE_ROOT / "evidence" / f"{args.track}-{(evidence.get('gated_sha') or 'unknown')[:12]}.json")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(evidence, indent=2) + "\n")
     evidence["report_path"] = str(path)
+    path.write_text(json.dumps(evidence, indent=2) + "\n")
 
 
 if __name__ == "__main__":
