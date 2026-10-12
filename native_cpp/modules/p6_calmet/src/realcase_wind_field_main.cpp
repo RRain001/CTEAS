@@ -37,6 +37,7 @@
 #include "cteas/p6/terrain_envelope.hpp"
 #include "cteas/p6/upper_hourly_wind.hpp"
 #include "cteas/p6/wind1_selected_firstguess.hpp"
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <chrono>
@@ -770,7 +771,7 @@ int main(int argc,char** argv){
         // station-ZII stream is diagnostic-only pending native MIXHTST
         // state reconstruction; never claim standalone U/V/W acceptance.
         if(!args.comp_state_prefix.empty()){
-            const std::size_t previous_offset=h==0?0:(h-1U)*plane_cells+station_cell;
+            const std::size_t previous_offset=h==0?0:(h-1U)*std::size_t(nx*ny)+station_cell;
             StationMixhtstInput mix;
             mix.previous.zi_m=h==0?0.f:comp_zi[previous_offset];
             mix.previous.ziconv_m=h==0?0.f:comp_ziconv[previous_offset];
