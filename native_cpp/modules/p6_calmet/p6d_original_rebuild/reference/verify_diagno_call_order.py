@@ -45,28 +45,31 @@ def main():
         raise RuntimeError(
             "original SURFVAR -> FRADJ -> HEATFX -> SLOPE -> INTER2 "
             "stage sequence violated")
-    # ORIGINAL: CALMET DIAGNO L5748 refreshes UB/VB from corrected
-    # UG/VG (after FRADJ+SLOPE) BEFORE INTER2 L6055/L6059.
+    # Source-authentic double snapshot for the selected GEO HTFAC=1 case.
+    # The L6100 snapshot overwrites L5748 after INTER2 before SMOOTH.
     if ("CALL WINDBC(UG,VG,UB,VB,K)" not in lines[5747] or
             "CALL INTER2(US," not in lines[6054] or
-            "CALL INTER2(VS," not in lines[6058]):
-        raise RuntimeError("original DIAGNO WINDBC / INTER2 anchors changed")
+            "CALL INTER2(VS," not in lines[6058] or
+            "IF(HTFAC.LE.0.) GO TO 285" not in lines[6091] or
+            "CALL WINDBC(U,V,UB,VB,K)" not in lines[6099] or
+            "CALL SMOOTH(U,V,UB,VB,NSMTH)" not in lines[6118]):
+        raise RuntimeError("original CALMET double WINDBC order or HTFAC gating changed")
     start=producer.index("SmoothInput tail;",blend)
     end=producer.index("original_smooth_divcel_w(",start)
     tail=producer[start:end]
     if ("tail.u_mps=blended_u;tail.v_mps=blended_v;" not in tail):
         raise RuntimeError("post-INTER2 U/V must remain the working tail wind")
-    lhs_u=re.findall(r"tail\.ub_west_east_mps\[[^;]+?\]\s*=\s*corrected_u\[",tail)
-    lhs_v=re.findall(r"tail\.vb_south_north_mps\[[^;]+?\]\s*=\s*corrected_v\[",tail)
+    lhs_u=re.findall(r"tail\.ub_west_east_mps\[[^;]+?\]\s*=\s*blended_u\[",tail)
+    lhs_v=re.findall(r"tail\.vb_south_north_mps\[[^;]+?\]\s*=\s*blended_v\[",tail)
     if len(lhs_u)!=2 or len(lhs_v)!=2:
-        raise RuntimeError("WINDBC boundary must use post-FRADJ/SLOPE UG/VG")
+        raise RuntimeError("HTFAC=1 requires second WINDBC snapshot from INTER2 U/V")
     if re.search(r"tail\.(?:ub_west_east_mps|vb_south_north_mps)"
-                 r"\[[^;]+?\]\s*=\s*blended_[uv]\[",tail):
-        raise RuntimeError("INTER2 output was used for WINDBC boundary")
-    print("PASS_P6D_SOURCE_ORDER_SURFVAR_FRADJ_HEATFX_SLOPE_WINDBC_INTER2")
-    print("original CALMET: FRADJ L5643, HEATFX L5686, "
-          "SLOPE L5722, WINDBC(UG,VG) L5748, INTER2 L6055/L6059")
-    print("PASS_P6D_PREINTER2_CORRECTED_UG_VG_BOUNDARY_SNAPSHOT")
+                 r"\[[^;]+?\]\s*=\s*corrected_[uv]\[",tail):
+        raise RuntimeError("stale pre-INTER2 boundary incorrectly passed to SMOOTH")
+    print("PASS_P6D_SOURCE_ORDER_DOUBLE_WINDBC_AND_INTER2")
+    print("CALMET: WINDBC(UG,VG) L5748, INTER2 L6055/L6059, "
+          "HTFAC>0 WINDBC(U,V) L6100, SMOOTH L6119")
+    print("PASS_P6D_HTFAC1_POST_INTER2_BOUNDARY_FOR_SMOOTH_DIVCEL_W")
 
 
 if __name__=="__main__":
