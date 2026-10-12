@@ -161,7 +161,7 @@ def compare(args):
     fields=args.fixture_dir
     maxima={"surface_u":0.0,"surface_v":0.0,"upper_u":0.0,"upper_v":0.0}
     bad=[];checked=0
-    missing_cutoff=999998.f
+    missing_cutoff=999998.0
     tol=2e-4
     for idx,row in enumerate(rows):
         f=fields/f"wind1_driver_{row['hour']}.inp"
