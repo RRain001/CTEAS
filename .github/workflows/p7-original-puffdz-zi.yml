@@ -61,10 +61,16 @@ jobs:
             "$root/reference/case/run/puff/dgm_puffstep.bin" 143 \
             "$root/reference/case/run/puff/dgm_puffdz_zi.bin"
           echo "P7_143H_PUFFDZ_WITH_TRUE_HISTORICAL_ZI=PASS ORIGINAL_INPUT_FED=YES"
+          python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/puffdz_zi_history_audit.py \
+            --dgm "$root/reference/case/run/puff/dgm_puffstep.bin" \
+            --zi "$root/reference/case/run/puff/dgm_puffdz_zi.bin" \
+            --output "$root/reference/zi-history-audit.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: p7-puffdz-history-provenance
-          path: ${{ runner.temp }}/p7-zi-${{ github.run_id }}-${{ github.run_attempt }}/reference/puffdz-zi-provenance.json
+          path: |
+            ${{ runner.temp }}/p7-zi-${{ github.run_id }}-${{ github.run_attempt }}/reference/puffdz-zi-provenance.json
+            ${{ runner.temp }}/p7-zi-${{ github.run_id }}-${{ github.run_attempt }}/reference/zi-history-audit.json
           if-no-files-found: warn
           retention-days: 7
