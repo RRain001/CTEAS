@@ -87,7 +87,7 @@ def main() -> None:
     fields.mkdir(exist_ok=True)
 
     execute(a.p6d,"--case",a.case,"--hours",1,
-            "--fixture-dir",fixture,"--out",fields)
+            "--fixtures",fixture,"--out",fields)
     inp=list(fixture.glob("wind1_driver_*.inp"))
     if len(inp)!=1:
         raise RuntimeError(f"expected one real-case WIND1 fixture, found {len(inp)}")
