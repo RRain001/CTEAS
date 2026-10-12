@@ -128,7 +128,7 @@ jobs:
             runner: cteas-light
             pool: overflow
     # cteas-managed deliberately has NO 'self-hosted' label on runners 4..16.
-    runs-on: [cteas-managed, Linux, X64, ${{ matrix.runner }}]
+    runs-on: [cteas-managed, Linux, X64, "${{ matrix.runner }}"]
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
