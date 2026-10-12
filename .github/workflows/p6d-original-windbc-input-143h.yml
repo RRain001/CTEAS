@@ -31,7 +31,7 @@ jobs:
           sparse-checkout: |
             .github/actions/cteas-linux-toolchain
             native_cpp/modules/p6_calmet
-            scripts/p6d_compare_original_windbc_input_143h.py
+            scripts
             engine/vendor/src/CALMET_v6.5.0_L150223
       - uses: ./.github/actions/cteas-linux-toolchain
       - name: Materialize and SHA-check all frozen original case inputs
