@@ -801,7 +801,8 @@ endif()
 # from one substep to the next for each contiguous puff episode.
 add_library(cteas_p7_original_motion STATIC src/original_motion_lifecycle.cpp)
 target_include_directories(cteas_p7_original_motion PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(cteas_p7_original_motion PUBLIC cteas_p7_step cteas_p7_step_integration)
+target_link_libraries(cteas_p7_original_motion PUBLIC cteas_p7_step
+  cteas_p7_step_integration cteas_p7_release)
 if(MSVC)
   target_compile_options(cteas_p7_original_motion PRIVATE /W4 /WX)
 else()
