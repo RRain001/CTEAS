@@ -27,6 +27,8 @@ def read_f32(path):
 
 def main():
     ap=argparse.ArgumentParser()
+    ap.add_argument("--pre-slope-prefix",default="wind1",choices=("wind1","fradj_corrected"),
+                    help="wind1 for baseline, fradj_corrected for GAMMA diagnostic drive")
     ap.add_argument("--original",required=True,type=Path)
     ap.add_argument("--product",required=True,type=Path)
     ap.add_argument("--out",required=True,type=Path)
@@ -47,13 +49,16 @@ def main():
         raise RuntimeError("original source trace incomplete")
     result={"status":"P6D_D2_ORIGINAL_UPSTREAM_STAGE_LOCATED_NOT_PHYSICS_PASS",
             "original_source":"unmodified CALMET DIAGNO source-state hooks L5593/L5726/L5732",
-            "note":"original/instrumented MET.DAT byte-equal; 143h, four cells k=1..2, U/V, QH/TEMP2D; original post-WIND1 separated from pre-SLOPE FRADJ",
+            "note":"original/instrumented MET.DAT byte-equal; 143h, four cells k=1..2, U/V, QH/TEMP2D; pre-slope comparison uses an explicit WIND1/FRADJ prefix",
+            "pre_slope_candidate":args.pre_slope_prefix,
             "frozen_wind_abs_limit_mps":LIMIT,"by_stage":{}, "worst_examples":[]}
     sums={}
     all_deltas={"pre":{},"post":{},"increment":{}}
     for label in labels:
         arrays={}
         for stage,prefix in STAGES.items():
+            if stage==8 and args.pre_slope_prefix=="fradj_corrected":
+                prefix="fradj_corrected"
             arrays[stage]={axis:read_f32(args.product/(f"{prefix}_{axis}_{label}.f32"))
                            for axis in FIELDS}
         for driver in ("qh","temp2d"):
@@ -69,7 +74,7 @@ def main():
                     original_wind1=src[(label,7,i,j,k)][axis]
                     before=src[(label,8,i,j,k)][axis]
                     after=src[(label,9,i,j,k)][axis]
-                    cpp_before=arrays[7][axis][index]
+                    cpp_before=arrays[8 if args.pre_slope_prefix=="fradj_corrected" else 7][axis][index]
                     cpp_after=arrays[9][axis][index]
                     vals={"wind1":(original_wind1,cpp_before),
                           "fradj_original":(before-original_wind1,0.0),
