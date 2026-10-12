@@ -89,6 +89,15 @@ float deck_scalar(const std::map<std::string,std::vector<float>>& v,
     return it==v.end()?fallback:it->second.front();
 }
 
+float required_deck_scalar(
+    const std::map<std::string,std::vector<float>>& values,const std::string& key) {
+    const auto it=values.find(key);
+    if(it==values.end()||it->second.size()!=1U||
+       !std::isfinite(it->second.front()))
+        throw std::runtime_error("CALMET Mode A requires met.inp control "+key);
+    return it->second.front();
+}
+
 int deck_int(const std::map<std::string,std::vector<float>>& v,
              const std::string& key,int fallback){
     return static_cast<int>(deck_scalar(v,key,static_cast<float>(fallback)));
@@ -207,13 +216,13 @@ int main(int argc,char** argv){
 
     const std::string deck=read_text(args.deck);
     const auto controls=deck_values(deck);
-    const int nx=deck_int(controls,"NX",50);
-    const int ny=deck_int(controls,"NY",50);
-    const int nz=deck_int(controls,"NZ",9);
-    const float grid_m=deck_scalar(controls,"DGRIDKM",0.1f)*1000.f;
-    const float terrad_km=deck_scalar(controls,"TERRAD",15.f);
-    const double origin_x_km=deck_scalar(controls,"XORIGKM",0.f);
-    const double origin_y_km=deck_scalar(controls,"YORIGKM",0.f);
+    const int nx=static_cast<int>(required_deck_scalar(controls,"NX"));
+    const int ny=static_cast<int>(required_deck_scalar(controls,"NY"));
+    const int nz=static_cast<int>(required_deck_scalar(controls,"NZ"));
+    const float grid_m=required_deck_scalar(controls,"DGRIDKM")*1000.f;
+    const float terrad_km=required_deck_scalar(controls,"TERRAD");
+    const double origin_x_km=required_deck_scalar(controls,"XORIGKM");
+    const double origin_y_km=required_deck_scalar(controls,"YORIGKM");
     if(origin_x_km<=0.||origin_y_km<=0.)
         throw std::runtime_error("the deck must declare XORIGKM/YORIGKM");
     const int iextrp=deck_int(controls,"IEXTRP",-4);
@@ -250,8 +259,8 @@ int main(int argc,char** argv){
         throw std::runtime_error(
             "this real-case producer requires one deck surface/upper station");
     const auto deck_stations=original_calmet_station_deck(
-        deck,deck_scalar(controls,"XORIGKM",0.f),
-        deck_scalar(controls,"YORIGKM",0.f));
+        deck,required_deck_scalar(controls,"XORIGKM"),
+        required_deck_scalar(controls,"YORIGKM"));
     const float surface_x_m=deck_stations.surface.local_x_m;
     const float surface_y_m=deck_stations.surface.local_y_m;
     const float upper_x_m=deck_stations.upper.local_x_m;
@@ -343,12 +352,12 @@ int main(int argc,char** argv){
     const float critfn=deck_scalar(controls,"CRITFN",1.f);
     const float fradj_tinf_k=285.f;  // unused for ISURFT<0 (TEMP2D is used)
     const float rmin_km=deck_scalar(controls,"RMIN",0.1f);
-    const float rmax1_km=deck_scalar(controls,"RMAX1",100.f);
-    const float rmax2_km=deck_scalar(controls,"RMAX2",200.f);
-    const float rmax3_km=deck_scalar(controls,"RMAX3",200.f);
-    const float r1_km=deck_scalar(controls,"R1",50.f);
-    const float r2_km=deck_scalar(controls,"R2",100.f);
-    const bool lvary=deck_scalar(controls,"LVARY",0.f)!=0.f;
+    const float rmax1_km=required_deck_scalar(controls,"RMAX1");
+    const float rmax2_km=required_deck_scalar(controls,"RMAX2");
+    const float rmax3_km=required_deck_scalar(controls,"RMAX3");
+    const float r1_km=required_deck_scalar(controls,"R1");
+    const float r2_km=required_deck_scalar(controls,"R2");
+    const bool lvary=original_calmet_deck_logical(deck,"LVARY",false);
     std::vector<int> nsmth(9);
     {
         const auto it=controls.find("NSMTH");
