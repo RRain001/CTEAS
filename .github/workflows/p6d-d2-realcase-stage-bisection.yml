@@ -159,6 +159,56 @@ jobs:
             --out "$RUNNER_TEMP/p6d-d2/inter2-operands-comparison.json" \
             | tee "$RUNNER_TEMP/p6d-d2-actual-comparison-stdout.txt"
           grep -q "COMPLETED_NOT_SCIENTIFIC_PASS" "$RUNNER_TEMP/p6d-d2-actual-comparison-stdout.txt"
+      - name: Prepare frozen original GAMMA 143x50x50 physical forcing (oracle only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/p6d-d2-original/original_gamma_143h.f32" \
+            "$RUNNER_TEMP/d2-product-oracle/produced_hours.txt" \
+            "$RUNNER_TEMP/d2-reference-gamma" <<'PY'
+          from pathlib import Path
+          import sys, math, struct
+          binary=Path(sys.argv[1]).read_bytes()
+          labels=Path(sys.argv[2]).read_text().split()
+          assert len(binary)==143*2500*4 and len(labels)==143
+          out=Path(sys.argv[3])
+          out.mkdir(parents=True,exist_ok=True)
+          for h,label in enumerate(labels):
+              segment=binary[h*10000:(h+1)*10000]
+              vals=struct.unpack('<2500f',segment)
+              assert all(math.isfinite(x) and abs(x)<9999 for x in vals)
+              (out/('gamma_'+label+'.f32')).write_bytes(segment)
+          assert len(list(out.glob('gamma_*.f32')))==143
+          print('P6D_ORIGINAL_GAMMA_143H_ORACLE=PREPARED_NOT_NATIVE_FORCING')
+          PY
+      - name: Recompute FRADJ before SLOPE with original GAMMA EL ZII oracles
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/d2-build/cteas_p6_realcase_wind_field" \
+            --case "$CASE_DIR" \
+            --out "$RUNNER_TEMP/d2-product-gamma" \
+            --gamma "$RUNNER_TEMP/d2-reference-gamma" \
+            --zii-cell "$RUNNER_TEMP/d2-reference-state/zii.f32" \
+            --el-cell "$RUNNER_TEMP/d2-reference-state/el.f32" \
+            --trace-inter2 "$RUNNER_TEMP/p6d-d2/cpp-inter2-gamma.csv"
+          python3 native_cpp/modules/p6_calmet/reference/p6d_d2_stage_bisection.py \
+            --original native_cpp/modules/p6_calmet/reference/dgm_p6d_requests_2022/dgm_fields_hours.bin \
+            --product "$RUNNER_TEMP/d2-product-gamma" \
+            --out "$RUNNER_TEMP/p6d-d2/stage-bisection-gamma.json" \
+            | tee "$RUNNER_TEMP/p6d-d2-stage-gamma-stdout.txt"
+          python3 native_cpp/modules/p6_calmet/reference/p6d_d2_compare_upstream_stages.py \
+            --original "$RUNNER_TEMP/p6d-d2-original/original_upstream_actual.csv" \
+            --product "$RUNNER_TEMP/d2-product-gamma" \
+            --pre-slope-prefix fradj_corrected \
+            --out "$RUNNER_TEMP/p6d-d2/original-prepost-slope-gamma.json" \
+            | tee "$RUNNER_TEMP/p6d-d2-slope-gamma-stdout.txt"
+          python3 native_cpp/modules/p6_calmet/reference/p6d_d2_compare_actual_inter2.py \
+            --original "$RUNNER_TEMP/p6d-d2-original/original_inter2_actual.csv" \
+            --cpp "$RUNNER_TEMP/p6d-d2/cpp-inter2-gamma.csv" \
+            --out "$RUNNER_TEMP/p6d-d2/inter2-operands-gamma.json" \
+            | tee "$RUNNER_TEMP/p6d-d2-inter2-gamma-stdout.txt"
+          echo "P6D_FRADJ_GAMMA_ORACLE_DIAGNOSTIC=COMPLETE_NOT_NATIVE_ACCEPTANCE"
       - name: Archive immutable-provenance D2 stage evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -182,5 +232,14 @@ jobs:
             ${{ runner.temp }}/p6d-d2/cpp-inter2-actual.csv
             ${{ runner.temp }}/p6d-d2/inter2-operands-comparison.json
             ${{ runner.temp }}/p6d-d2-actual-comparison-stdout.txt
+            ${{ runner.temp }}/p6d-d2-original/original_gamma_143h.f32
+            ${{ runner.temp }}/d2-product-gamma/metadata.json
+            ${{ runner.temp }}/p6d-d2/stage-bisection-gamma.json
+            ${{ runner.temp }}/p6d-d2-stage-gamma-stdout.txt
+            ${{ runner.temp }}/p6d-d2/original-prepost-slope-gamma.json
+            ${{ runner.temp }}/p6d-d2-slope-gamma-stdout.txt
+            ${{ runner.temp }}/p6d-d2/cpp-inter2-gamma.csv
+            ${{ runner.temp }}/p6d-d2/inter2-operands-gamma.json
+            ${{ runner.temp }}/p6d-d2-inter2-gamma-stdout.txt
           if-no-files-found: error
           retention-days: 14
