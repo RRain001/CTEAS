@@ -677,3 +677,19 @@ if(EXISTS "${P7F_LOCKED_CASE_CONTROL}"
       "${P7_QA_2022_DIRECTORY}/qapnts.dat"
       "${P7_QA_2022_DIRECTORY}/qarecg.dat")
 endif()
+
+# Original CTEAS engine/preprocess/grid is the AUTHORING entry. Verify its
+# frozen grid.cmn/center_location only as provenance for the authoritative
+# runtime puff.inp; P7 must never project center lon/lat again at runtime.
+set(P7_ORIGINAL_GRID_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/grid")
+if(EXISTS "${P7F_LOCKED_CASE_CONTROL}"
+   AND EXISTS "${P7_ORIGINAL_GRID_DIR}/grid.cmn"
+   AND EXISTS "${P7_ORIGINAL_GRID_DIR}/center_location")
+  add_test(NAME cteas_p7_original_grid_preprocess_contract
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/p7_grid_preprocess_contract.py"
+      --grid "${P7_ORIGINAL_GRID_DIR}/grid.cmn"
+      --puff "${P7F_LOCKED_CASE_CONTROL}"
+      --center "${P7_ORIGINAL_GRID_DIR}/center_location"
+      --negative)
+endif()
