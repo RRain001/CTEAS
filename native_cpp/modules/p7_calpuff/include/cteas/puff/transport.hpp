@@ -9,7 +9,7 @@ namespace cteas::puff {
 // plume rise, dispersion, deposition or concentration claim.
 struct PointRelease {
     double x_m=0, y_m=0, z_m=0;
-    std::vector<double> rate_per_s; // Original input mass units, not Bq.
+    std::vector<double> rate_per_s; // Selected IPTU=8, Bq/s; still a P7C-only transport prototype.
 };
 struct PuffPacket {
     std::uint64_t id=0;
