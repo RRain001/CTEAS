@@ -51,6 +51,24 @@ add_executable(cteas_p6_rdsn_buffered_tests tests/p6_rdsn_buffered_tests.cpp)
 target_link_libraries(cteas_p6_rdsn_buffered_tests PRIVATE cteas_p6a_contracts)
 add_executable(cteas_p6_cgamma src/cgamma_main.cpp)
 target_link_libraries(cteas_p6_cgamma PRIVATE cteas_p6a_contracts)
+# Native CGAMMA integration: consume the previous-hour P6E MIXHT/AVEMIX
+# convective state and export self-computed FRADJ lapse grids (NO Fortran
+# GAMMA injection). This is explicitly one-station / fixed 143h only.
+add_executable(cteas_p6_native_cgamma_grid_143h src/cgamma_from_p6e_143h_main.cpp)
+target_link_libraries(cteas_p6_native_cgamma_grid_143h PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_native_cgamma_grid_143h PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_native_cgamma_grid_143h PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6_native_cgamma_grid_rejects_missing_state
+  COMMAND cteas_p6_native_cgamma_grid_143h
+    --up does-not-exist-up.dat
+    --p6e-state-prefix does-not-exist-p6e-state
+    --out ${CMAKE_CURRENT_BINARY_DIR}/missing-native-cgamma
+    --zupt 200 --upper-i 25 --upper-j 26)
+set_tests_properties(p6_native_cgamma_grid_rejects_missing_state
+  PROPERTIES WILL_FAIL TRUE)
 add_executable(cteas_p6_cgamma_tests tests/p6_cgamma_tests.cpp)
 target_link_libraries(cteas_p6_cgamma_tests PRIVATE cteas_p6a_contracts)
 if(MSVC)
