@@ -15,7 +15,7 @@ jobs:
   # Kind proof is independent of the expensive original CALPUFF compilation.
   precision-kind-audit:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-managed, Linux, X64, cteas-light]
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
@@ -72,19 +72,63 @@ jobs:
 
   # Independent original-source parity modules can run on *different* idle
   # self-hosted runner instances. Do not pin this matrix to desktop-3.
-  # All 14 independent Fortran-parity lanes may be DISPATCHED; physical-host
-  # compute is separately capped by a 4-slot flock pool during compilation
-  # and original source tests. 16 runners != 16 independent CPU hosts.
-  # Combined with precision and original-order jobs: 16 initial P7 jobs.
-  # The long 6h/143h vendor regeneration is also independent.
+  # 14 source parity lanes on dedicated cteas-managed runners 4..16,
+  # including eight light, three compute, two reserve and one overflow.
+  # The user reports 56 physical CPU cores / 112 threads / ~125 GiB RAM.
+  # One compiler per lane; no artificial 4-process host lock.
+  # Existing self-hosted runners 1..3 stay available for P6/full P7.
+  # The long 6h/143h reference replay is independently dispatchable.
   source-parity-shards:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
     strategy:
       fail-fast: false
       max-parallel: 16
       matrix:
-        lane: [release-inject, step-bookkeeping, advection, dispersion, plume-rise, sigma-update, terrain-constraints, terrain-relief, valley-width, receptor-sampling, vertical-coupling, ctsg-kernels, dry-removal, wind-step-output]
-    runs-on: [self-hosted, Linux, X64]
+        include:
+          - lane: release-inject
+            runner: cteas-r04
+            pool: light
+          - lane: step-bookkeeping
+            runner: cteas-r05
+            pool: light
+          - lane: advection
+            runner: cteas-r06
+            pool: light
+          - lane: dispersion
+            runner: cteas-r07
+            pool: light
+          - lane: sigma-update
+            runner: cteas-r08
+            pool: light
+          - lane: terrain-constraints
+            runner: cteas-r09
+            pool: light
+          - lane: terrain-relief
+            runner: cteas-r10
+            pool: light
+          - lane: valley-width
+            runner: cteas-r11
+            pool: light
+          - lane: plume-rise
+            runner: cteas-r12
+            pool: compute
+          - lane: receptor-sampling
+            runner: cteas-r13
+            pool: compute
+          - lane: vertical-coupling
+            runner: cteas-r14
+            pool: compute
+          - lane: ctsg-kernels
+            runner: cteas-r15
+            pool: reserve
+          - lane: dry-removal
+            runner: cteas-r16
+            pool: reserve
+          - lane: wind-step-output
+            runner: cteas-light
+            pool: overflow
+    # cteas-managed deliberately has NO 'self-hosted' label on runners 4..16.
+    runs-on: [cteas-managed, Linux, X64, ${{ matrix.runner }}]
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
@@ -254,32 +298,10 @@ jobs:
               ;;
             *) echo "::error::Unexpected parity lane $lane"; exit 1 ;;
           esac
-          # Runner instances may share one 4-core Linux host.  All 14
-          # jobs are free to claim idle runners, but no more than 4 source
-          # builds/Fortran parity chains execute on the same physical host.
-          command -v flock >/dev/null 2>&1 || {
-            echo "::error::Host resource admission needs util-linux flock"; exit 1;
-          }
-          host_slot_dir="/tmp/cteas-p7-parity-host-slots"
-          mkdir -p "$host_slot_dir"
-          p7_acquired=0
-          for try in $(seq 1 900); do
-            for slot in 0 1 2 3; do
-              exec {p7_slot_fd}>"$host_slot_dir/slot-${slot}.lock"
-              if flock -n "$p7_slot_fd"; then
-                p7_acquired=1
-                echo "P7_HOST_RESOURCE_ADMITTED=PASS HOST=$(hostname) SLOT=$slot RUNNER=${RUNNER_NAME} LANE=$lane"
-                break
-              fi
-              eval "exec ${p7_slot_fd}>&-"
-            done
-            if [ "$p7_acquired" -eq 1 ]; then break; fi
-            sleep 1
-          done
-          test "$p7_acquired" -eq 1 || {
-            echo "::error::Shared physical host compute slots busy for 15min"; exit 1;
-          }
-          trap 'flock -u "$p7_slot_fd" || true' EXIT
+          # The 13 managed workers share a 56-physical-core Linux host;
+          # one compile thread per lane avoids GPU/CPU and RAM contention.
+          echo "P7_HOST_COMPUTE=START HOST=$(hostname) RUNNER=${RUNNER_NAME} LANE=$lane CORES=$(nproc)"
+          grep -E '^MemTotal:|^MemAvailable:' /proc/meminfo || true
           cmake --build "$build" --parallel 1 --target "${targets[@]}"
           inventory="$(ctest --test-dir "$build" -N -R "$match")"
           printf '%s\n' "$inventory"
@@ -303,7 +325,7 @@ jobs:
 
   original-execution-order:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-managed, Linux, X64, cteas-compute]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -390,7 +412,7 @@ jobs:
     # Independent frozen input SHA and vendor-output invariants make this
     # an autonomous scientific gate, not blocked by another runner's order job.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-managed, Linux, X64, cteas-reserve]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
