@@ -656,3 +656,24 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}"
             "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
             "${P7_STACK_X_KM}" "${P7_STACK_Y_KM}" "${P7_STACK_HEIGHT_M}" "${P7_STACK_DIAMETER_M}" "${P7_STACK_EXIT_MS}" "${P7_STACK_TEMP_K}")
 endif()
+
+# P7 Mode A: use the original CALPUFF 2022 QA output itself to establish
+# REAL*4 point and all 2500 gridded-receptor XY coordinates. It is a scoped
+# output-frame oracle, not a full XPT1GRD/YPT1GRD or puff.con acceptance.
+set(P7_QA_2022_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff")
+if(EXISTS "${P7F_LOCKED_CASE_CONTROL}"
+   AND EXISTS "${P7_QA_2022_DIRECTORY}/qapnts.dat"
+   AND EXISTS "${P7_QA_2022_DIRECTORY}/qarecg.dat")
+  add_executable(cteas_p7_original_grid_qa_tests tests/original_grid_qa_tests.cpp)
+  target_link_libraries(cteas_p7_original_grid_qa_tests PRIVATE cteas_p7_transport cteas_p7_receptors)
+  if(MSVC)
+    target_compile_options(cteas_p7_original_grid_qa_tests PRIVATE /W4 /WX)
+  else()
+    target_compile_options(cteas_p7_original_grid_qa_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  add_test(NAME cteas_p7_original_2022_qa_real4_coordinates
+    COMMAND cteas_p7_original_grid_qa_tests
+      "${P7F_LOCKED_CASE_CONTROL}"
+      "${P7_QA_2022_DIRECTORY}/qapnts.dat"
+      "${P7_QA_2022_DIRECTORY}/qarecg.dat")
+endif()
