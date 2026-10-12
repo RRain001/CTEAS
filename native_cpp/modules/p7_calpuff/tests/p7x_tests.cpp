@@ -2,7 +2,9 @@
 // semantics, plus every fail-closed refusal.
 #include "cteas/puff/step_integration.hpp"
 
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -142,6 +144,41 @@ int main() {
     check_close(moved.y_cells, 25.0 + (1.3557 * 66.666666) / 100.0, 1.0e-5, "YNEW");
     check_close(moved.distance_m, advance.wind_speed_ms * 66.666666, 1.0e-4, "DISTM = WS*TSAMP");
     check_close(moved.dx_cells, (-0.5793 * 66.666666) / 100.0, 1.0e-6, "DXOLD in grid units");
+    // Frozen ORIGINAL CALPUFF 2022 COMP DGM (202200101 record 1685,
+    // 202200103 record 5671). They expose one-ULP discrepancies when the
+    // original REAL*4 XGRIDMI multiplication is incorrectly replaced with
+    // mathematically equivalent division by DGRIDM. No epsilon is allowed.
+    AdvanceInputs vendor_y{};
+    vendor_y.x_cells = 25.52056884765625F;
+    vendor_y.y_cells = 30.92965316772461F;
+    vendor_y.u_ms = 0.18750369548797607F;
+    vendor_y.v_ms = 2.267062187194824F;
+    vendor_y.wind_speed_ms = 2.2748029232025146F;
+    vendor_y.step_s = 43.37349319458008F;
+    vendor_y.grid_spacing_m = 100.0F;
+    const auto locked_y = advance_puff(vendor_y);
+    check(std::bit_cast<std::uint32_t>(static_cast<float>(locked_y.y_cells)) ==
+              0x41ff4dbcU, "2022 DGM record 1685 YNEW must be vendor REAL4 bit exact");
+    check(locked_y.x_cells == static_cast<double>(25.601896286010742F),
+          "2022 DGM record 1685 XNEW must be vendor REAL4 exact");
+    check(locked_y.distance_m == static_cast<double>(98.66614532470703F),
+          "2022 DGM record 1685 DISTM must be vendor REAL4 exact");
+
+    AdvanceInputs vendor_x{};
+    vendor_x.x_cells = 30.62416648864746F;
+    vendor_x.y_cells = 38.316463470458984F;
+    vendor_x.u_ms = 1.6575729846954346F;
+    vendor_x.v_ms = -0.9095627665519714F;
+    vendor_x.wind_speed_ms = 1.8907279968261719F;
+    vendor_x.step_s = 52.889686584472656F;
+    vendor_x.grid_spacing_m = 100.0F;
+    const auto locked_x = advance_puff(vendor_x);
+    check(std::bit_cast<std::uint32_t>(static_cast<float>(locked_x.x_cells)) ==
+              0x41fc01beU, "2022 DGM record 5671 XNEW must be vendor REAL4 bit exact");
+    check(locked_x.y_cells == static_cast<double>(37.83539962768555F),
+          "2022 DGM record 5671 YNEW must be vendor REAL4 exact");
+    check(locked_x.distance_m == static_cast<double>(100.00000762939453F),
+          "2022 DGM record 5671 DISTM must be vendor REAL4 exact");
 
     // GETCELL: the single-domain GRIDIJ path (truncate then add one, then the
     // full-precision adjustment).
