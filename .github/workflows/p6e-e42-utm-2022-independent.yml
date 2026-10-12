@@ -69,12 +69,29 @@ jobs:
           sparse-checkout: |
             .github/actions/cteas-linux-toolchain
             native_cpp/modules/p6_calmet/p6e
-            native_cpp/modules/p6_calmet/reference
             engine/vendor/src/CALMET_v6.5.0_L150223
+      - uses: actions/checkout@v4
+        with:
+          # CTEAS P6E feature base precedes the tracked frozen case.
+          # Fetch its immutable SHA separately; NEVER use an unpinned
+          # mutable main ref or substitute dummy meteorological inputs.
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          path: frozen_original_checkout
+          filter: blob:none
+          sparse-checkout: |
             project/cases/hefei5km_2022_reference_case_20261011
       - uses: ./.github/actions/cteas-linux-toolchain
-      - name: Restore and SHA-check frozen original 2022 meteorological case
-        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+      - name: Verify frozen original 2022 CALMET.DAT SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          case_dir="$GITHUB_WORKSPACE/frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011"
+          test -s "$case_dir/run/met/met.dat"
+          test -s "$case_dir/met/surface/final/surf.dat"
+          test -s "$case_dir/met/upperair/final/up_58424.dat"
+          test -s "$case_dir/geo/makegeo/geo.dat"
+          printf '%s  %s\n' b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 "$case_dir/run/met/met.dat" | sha256sum --check
+          echo "CTEAS_P6E_REAL_CASE=$case_dir" >> "$GITHUB_ENV"
       - name: Build P6E 143-hour hourly-input bridge and CALMET.DAT 2.1 tool
         shell: bash
         run: |
