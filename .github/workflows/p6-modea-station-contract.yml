@@ -61,6 +61,45 @@ jobs:
           path: ${{ runner.temp }}/p6-modea-readcf-${{ github.run_id }}-${{ github.run_attempt }}/
           if-no-files-found: warn
 
+  first-hour-wind1-source:
+    name: Real-case hour 1 original Fortran WIND1 first guess
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cteas-linux-toolchain
+      - name: Verify complete frozen observation and grid inputs
+        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+      - name: Build P6D producer and standalone selected WIND1 driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/p6-modea-hour1-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cmake -S native_cpp/modules/p6_calmet -B "$build" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$build" --target cteas_p6_realcase_wind_field cteas_p6_wind1_firstguess --parallel 2
+      - name: Compare frozen real hour with unchanged original WIND1 and SIMILT
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/p6-modea-hour1-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          out="$RUNNER_TEMP/p6-modea-hour1-parity-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if command -v gfortran-11 >/dev/null 2>&1; then FC=gfortran-11;
+          elif command -v gfortran-12 >/dev/null 2>&1; then FC=gfortran-12;
+          else FC=gfortran; fi
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_wind1_realcase_first_hour.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --p6d "$build/cteas_p6_realcase_wind_field" \
+            --cpp "$build/cteas_p6_wind1_firstguess" \
+            --fortran "$FC" --out "$out"
+      - name: Preserve first-hour WIND1 field residuals
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p6-modea-first-hour-wind1-verdict
+          path: ${{ runner.temp }}/p6-modea-hour1-parity-${{ github.run_id }}-${{ github.run_attempt }}/first_hour_wind1_parity.json
+          if-no-files-found: warn
+
   grid-and-station-contract:
     name: Grid generator to P1-P5 to CALMET inputs
     runs-on: [self-hosted, Linux, X64]
