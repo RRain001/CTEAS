@@ -795,11 +795,12 @@ int main(int argc,char** argv){
             if(component==0)inter2_u=blended.component_mps;
             else inter2_v=blended.component_mps;
         }
-        // DIAGNO SMOOTH+DIVCEL+W on the blended field, with the per-layer
-        // smoothing counts and boundaries taken from the blended field itself.
-        // The deck's FRADJ/SLOPE corrections are not applied here (they need
-        // TEMP2D/QH), so this is the uncompensated-terrain variant and the
-        // metadata labels it as such.
+        // Original DIAGNO L5747-L5749 snapshots UB/VB with WINDBC(UG,VG)
+        // IMMEDIATELY AFTER FRADJ and SLOPE, and BEFORE INTER2 L6055.
+        // Therefore U/V here are post-INTER2 but lateral boundaries MUST
+        // be sampled from corrected UG/VG, not from the INTER2-blended field.
+        // This source-order difference changes SMOOTH, DIVCEL and W even
+        // when the standalone numerical tail itself has original parity.
         {
             SmoothInput tail;
             tail.nx=nx;tail.ny=ny;tail.nz=nz;tail.lake_breeze=false;
@@ -808,14 +809,14 @@ int main(int argc,char** argv){
             tail.ub_west_east_mps.assign(9*2*ny,0.f);
             tail.vb_south_north_mps.assign(9*2*nx,0.f);
             for(std::size_t k=0;k<9;++k)for(std::size_t j=0;j<static_cast<std::size_t>(ny);++j){
-                tail.ub_west_east_mps[k*2*ny+j]=blended_u[k*2500+j*50];
+                tail.ub_west_east_mps[k*2*ny+j]=corrected_u[k*2500+j*50];
                 tail.ub_west_east_mps[k*2*ny+ny+j]=
-                    blended_u[k*2500+j*50+49];
+                    corrected_u[k*2500+j*50+49];
             }
             for(std::size_t k=0;k<9;++k)for(std::size_t i=0;i<static_cast<std::size_t>(nx);++i){
-                tail.vb_south_north_mps[k*2*nx+i]=blended_v[k*2500+i];
+                tail.vb_south_north_mps[k*2*nx+i]=corrected_v[k*2500+i];
                 tail.vb_south_north_mps[k*2*nx+nx+i]=
-                    blended_v[k*2500+49*50+i];
+                    corrected_v[k*2500+49*50+i];
             }
             const auto final_fields=original_smooth_divcel_w(
                 std::move(tail),grid_m,grid_m,thickness_m,false);
