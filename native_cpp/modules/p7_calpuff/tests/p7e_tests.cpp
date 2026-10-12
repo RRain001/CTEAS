@@ -68,6 +68,35 @@ std::string raw_species_I7(const std::string& path) {
     throw std::runtime_error("H-3 species field not found in original CONC.DAT");
 }
 
+// The frozen 143h WROUT1 output has exactly 286 32-byte period/grid
+// descriptors. Compare the RAW payload bytes, not merely their counts and
+// human-decoded timestamps. Original Fortran record markers are checked by
+// the reader itself.
+std::vector<std::string> original_32byte_descriptors(const std::string& path) {
+    cteas::puff::FortranRecordReader reader(
+        path, 4, cteas::puff::RecordByteOrder::LittleEndian);
+    std::vector<std::uint8_t> record;
+    std::vector<std::string> fields;
+    while(reader.next(record)) {
+        if (record.size() == 32U) {
+            fields.emplace_back(
+                reinterpret_cast<const char*>(record.data()),record.size());
+        }
+    }
+    return fields;
+}
+
+std::string bytes_hex(const std::string& raw) {
+    static constexpr char hex[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(raw.size()*2U);
+    for(const unsigned char v : raw) {
+        out.push_back(hex[v>>4U]);
+        out.push_back(hex[v&0xfU]);
+    }
+    return out;
+}
+
 std::string control_text() {
     return R"(
 ! NX = 50 !
@@ -364,6 +393,17 @@ void test_frozen_structure(const fs::path& root, const std::string& frozen_path)
     require(ours.species_field_counts.front().second ==
                 frozen.species_field_counts.front().second,
             "species field counts must match the frozen artifact");
+    const auto frozen_descriptors=original_32byte_descriptors(frozen_path);
+    const auto native_descriptors=original_32byte_descriptors(path.string());
+    require(frozen_descriptors.size()==286U && native_descriptors.size()==286U,
+            "143-hour original WROUT1 must have exactly 286 period/grid records");
+    for(std::size_t i=0; i<286U; ++i) {
+        require(native_descriptors[i]==frozen_descriptors[i],
+                "2022 original WROUT1 32-byte metadata mismatch at record " +
+                std::to_string(i+1U) + " original=" + bytes_hex(frozen_descriptors[i]) +
+                " native=" + bytes_hex(native_descriptors[i]));
+    }
+    std::cout<<"P7E_ORIGINAL_WROUT1_32BYTE_METADATA=PASS RECORDS=286 HOURS=143\n";
     const auto ours_periods = cteas::puff::read_conc_periods(path.string());
     const auto frozen_periods = cteas::puff::read_conc_periods(frozen_path);
     require(ours_periods.size() == frozen_periods.size(), "period record counts must match");
