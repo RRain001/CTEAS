@@ -329,12 +329,25 @@ endif()
 # tree (read-only inputs; outputs go to the build tree). The producer throws on
 # any missing or invalid case input, so exit status plus the emitted hour count
 # is the whole assertion.
-add_test(NAME p6d_realcase_wind_producer_case_contract
-         COMMAND cteas_p6_realcase_wind_field
-                 --case ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011
-                 --out ${CMAKE_CURRENT_BINARY_DIR}/realcase_wind_ctest)
-set_tests_properties(p6d_realcase_wind_producer_case_contract PROPERTIES
-                     PASS_REGULAR_EXPRESSION "hours=143")
+# Source-only scoped parity jobs intentionally check out only native_cpp and vendor.
+# Register this expensive real-case contract only when the *complete* pinned case
+# is present. The independent D-2 runner gate always requires MET.DAT's frozen
+# SHA256 and must fail if missing; a source-only CTest cannot claim case parity.
+set(P6D_FROZEN_CASE "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011")
+if(EXISTS "${P6D_FROZEN_CASE}/run/met/met.dat"
+   AND EXISTS "${P6D_FROZEN_CASE}/met/upperair/final/up_58424.dat"
+   AND EXISTS "${P6D_FROZEN_CASE}/met/surface/final/surf.dat"
+   AND EXISTS "${P6D_FROZEN_CASE}/geo/makegeo/geo.dat")
+  add_test(NAME p6d_realcase_wind_producer_case_contract
+           COMMAND cteas_p6_realcase_wind_field
+                   --case ${P6D_FROZEN_CASE}
+                   --out ${CMAKE_CURRENT_BINARY_DIR}/realcase_wind_ctest)
+  set_tests_properties(p6d_realcase_wind_producer_case_contract PROPERTIES
+                       PASS_REGULAR_EXPRESSION "hours=143")
+  message(STATUS "P6D_FROZEN_CASE_CONTRACT=REGISTERED (real-case 143h)")
+else()
+  message(STATUS "P6D_FROZEN_CASE_CONTRACT=NOT_REGISTERED_MISSING_CASE (source-only CTest; NOT a 143h parity verdict)")
+endif()
 
 # P6D9A composed trace for chained unmodified original Fortran comparisons.
 add_executable(cteas_p6_d9a_source_trace src/diagno_d9a_trace_main.cpp)
