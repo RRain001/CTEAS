@@ -203,7 +203,7 @@ if(EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7_dry_deposition_tests --control "${P7F_LOCKED_CASE_CONTROL}")
 endif()
 # P7E: receptor geometry, puff-to-receptor sampling and CONC.DAT framing.
-add_library(cteas_p7_receptors STATIC src/receptors.cpp src/conc_file.cpp)
+add_library(cteas_p7_receptors STATIC src/receptors.cpp src/conc_file.cpp src/hourly_conc.cpp)
 target_include_directories(cteas_p7_receptors PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(cteas_p7_receptors PUBLIC cteas_p7_control cteas_p7_records)
 if(MSVC)
@@ -220,6 +220,18 @@ if(MSVC)
 else()
   target_compile_options(cteas_p7e_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
+# Streaming P7E WROUT1 hourly DATA section: exact timestamp continuity and
+# REAL*4 field payload preservation. This does not construct original header
+# tables nor calculate native concentrations.
+add_executable(cteas_p7_hourly_conc_tests tests/hourly_conc_tests.cpp)
+target_link_libraries(cteas_p7_hourly_conc_tests PRIVATE cteas_p7_receptors)
+if(MSVC)
+  target_compile_options(cteas_p7_hourly_conc_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_hourly_conc_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7e_native_143h_hourly_data_writer_contract
+         COMMAND cteas_p7_hourly_conc_tests)
 set(P7E_LOCKED_CASE_CONC "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con")
 if(EXISTS "${P7E_LOCKED_CASE_CONC}")
   # P7H: vertical coupling coefficients (VCOUP/VCBAR/CTADJ) of the concentration path.

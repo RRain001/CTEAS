@@ -252,10 +252,11 @@ jobs:
               )
               ;;
             receptor-sampling)
-              targets=(cteas_p7e_tests cteas_p7e_probe)
+              targets=(cteas_p7e_tests cteas_p7e_probe cteas_p7_hourly_conc_tests)
               match='^cteas_p7e_'
               required=(
                 cteas_p7e_receptor_sampling_conc_contract
+                cteas_p7e_native_143h_hourly_data_writer_contract
                 cteas_p7e_source_parity
               )
               ;;
