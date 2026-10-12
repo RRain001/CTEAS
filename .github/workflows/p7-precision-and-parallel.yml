@@ -475,7 +475,7 @@ jobs:
           fi
           cmake -S native_cpp/modules/p7_calpuff -B "$base/cpp" \
             -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Debug
-          cmake --build "$base/cpp" --parallel 2 --target cteas_p7_first_hour_lifecycle_tests
+          cmake --build "$base/cpp" --parallel 2 --target cteas_p7_first_hour_lifecycle_tests cteas_p7_original_met_cell_trace
           name=cteas_p7_first_six_hour_state_persistence_real4
           ctest --test-dir "$base/cpp" -N -R "^${name}$" |
             grep -Eq "Test[[:space:]]*#[0-9]+: ${name}$" || {
@@ -497,6 +497,14 @@ jobs:
             project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
             "$base/oracle/case/run/puff/dgm_puffstep.bin" 143
           echo "P7_143H_ORACLE_FED_MOTION=PASS SELF_CONTAINED_MET_AND_OUTPUT=NO"
+          # Original wind sampled from native full 143h CALMET hourly fields.
+          # The upstream vertical PUFFDZ bounds are explicitly oracle-fed:
+          # this is full-case native GETCELL-cell and ADVECT/ADVWND parity,
+          # not an autonomous multi-physics COMP acceptance.
+          "$base/cpp/cteas_p7_original_met_cell_trace" \
+            project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
+            "$base/oracle/case/run/puff/dgm_puffstep.bin" 143
+          echo "P7_143H_NATIVE_METFM1_ADVECT_DGM=PASS ZBOT_ZTOP_ORACLE_FED=YES"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
