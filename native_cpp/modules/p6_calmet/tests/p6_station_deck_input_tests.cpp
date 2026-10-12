@@ -1,4 +1,5 @@
 #include "cteas/p6/calmet_station_deck.hpp"
+#include "cteas/p6/calmet_station_surface.hpp"
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -31,6 +32,42 @@ int main(int argc,char** argv) {
     expect(cteas::calmet::p6::original_calmet_deck_logical(
         "! LVARY = T !","LVARY",false),"LVARY=T must not be read as numeric 0");
     expect(xy.surface.id==583210&&xy.upper.id==58424,"station ids");
+    expect(xy.surface.anemometer_height_m==10.f,
+           "SS1 must retain original met.inp anemometer height");
+    expect(xy.surface.time_zone_hours==0.f,
+           "SS1 must retain original met.inp station time zone");
+    {
+        const auto alternative=original_calmet_station_deck(
+            "! SS1 ='S' 1 513.385 3533.769 0 17.5 !\n"
+            "! US1 ='U' 2 513.384 3533.772 0 !",510.885f,3531.269f);
+        expect(alternative.surface.anemometer_height_m==17.5f,
+               "nondefault SS1 height lost to hardcoded 10 m");
+    }
+    must_fail([&]{(void)original_calmet_station_deck(
+        "! SS1 ='S' 1 513.385 3533.769 0 0 !\n"
+        "! US1 ='U' 2 513.384 3533.772 0 !",510.885f,3531.269f);
+    },"invalid SS1 measurement height was accepted");
+    {
+        // Original DIAGI IST/JST and WIND1 z0(ist,jst); synthetic GEO is
+        // deliberately NON-uniform to catch the former Z0(1,1) mistake.
+        std::vector<float> z0(2500,0.25f);
+        z0[25U*50U+25U]=0.83f;
+        const auto site=cteas::calmet::p6::original_calmet_station_surface_cell(
+            xy.surface.local_x_m,xy.surface.local_y_m,100.f,100.f,50,50);
+        expect(site.i_one_based==26&&site.j_one_based==26,
+               "REAL*4 station cell is not (26,26)");
+        const float roughness=cteas::calmet::p6::original_calmet_station_z0(
+            z0,xy.surface.local_x_m,xy.surface.local_y_m,100.f,100.f,50,50);
+        expect(roughness==0.83f,
+               "WIND1 should get station-cell GEO z0, not first-cell z0");
+        const auto low=cteas::calmet::p6::original_calmet_station_surface_cell(
+            -1000.f,-1000.f,100.f,100.f,50,50);
+        const auto high=cteas::calmet::p6::original_calmet_station_surface_cell(
+            9900.f,9900.f,100.f,100.f,50,50);
+        expect(low.i_one_based==1&&low.j_one_based==1&&
+               high.i_one_based==50&&high.j_one_based==50,
+               "original station cell boundary clipping");
+    }
     expect(xy.surface.local_x_m==2500.f&&xy.surface.local_y_m==2500.f,
            "surface local geometry");
     expect(std::abs(xy.upper.local_x_m-2498.96875f)<1e-4f,
