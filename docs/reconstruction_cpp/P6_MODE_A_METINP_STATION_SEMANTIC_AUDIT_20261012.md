@@ -30,6 +30,53 @@ The source evaluates `(1000.f*xkm)-(1000.f*xorigkm)`, with every
 intermediate held in single precision (REAL*4). The P6 implementation and
 its selected-source oracle preserve this order.
 
+## Original CTEAS grid generation is upstream of every P1–P6 grid
+
+The original `engine/preprocess/grid/configure_grid_cmn.py` is the
+authoritative **grid construction step** for this workflow. It reads
+`project/cases/.../case.yaml` (`preprocess.grid.center`,
+`domain.length_km/width_km`, `resolution_km`, `nz`) and publishes:
+
+- `grid/center_location`: original requested geographic centre (lon/lat).
+- `grid/grid.cmn`: UTM zone/hemisphere, **XREFKM/YREFKM rounded to 0.001 km**,
+  NX/NY, spacing, NZ/ZFACE, with XREF/YREF identifying the SW origin.
+- `grid/research_time`: research interval, separately consumed downstream.
+
+Propagation of the published **numerical** grid:
+
+```text
+case.yaml (user request, geographic centre + domain)
+    └─ engine/preprocess/grid/configure_grid_cmn.py
+         ├─ grid/center_location (requested lon/lat, metadata and station selection)
+         ├─ grid/grid.cmn (published UTM geometry)
+         │    ├─ P1 TERREL:  terrel.inp  (IGRID=1, cell 1,1 SW CORNER)
+         │    ├─ P2 CTGPROC: ctgproc.inp
+         │    ├─ P3 MAKEGEO: makegeo.inp → GEO.DAT
+         │    └─ prepare_met.py → met.inp XORIGKM/YORIGKM, NX/NY/ZFACE
+         └─ grid/research_time → model interval controls
+
+P4/P5 effective stations.csv (metadata) ── prepare_met.py
+                                              └─ met.inp SS1/US1 UTM km
+                                                   └─ P6 CALMET Mode A
+```
+
+**Do not identify `case.yaml` geographic centre with the rounded model-grid
+centre**, and do not use it as a P6 station-position replacement. In the frozen
+Hefei case, the original grid-generator's projected requested centre is about
+`(513.3846439571, 3533.7689270075) km`, while the published grid centre is
+`(513.385, 3533.769) km`: an east/north shift of about
+`(+0.356043, +0.072993) m` caused by publishing XREF/YREF to 3 decimals.
+This is not a new physical error; it is the original upstream rounding.
+P6 must use the already-published geometry without reversing this rounding.
+
+`p6_modea_original_grid_generator_to_metinp` is the non-mutating regression
+gate checking case.yaml → center_location → original generator arithmetic →
+grid.cmn → P1/P2/P3 input decks (including TERREL `IGRID=1`) →
+GEO.DAT → met.inp; it checks ZFACE, grid origin, projection and spacing too.
+A future policy to use a more precise grid origin would require a separately
+versioned mode and regenerating **all** downstream original reference files;
+it must not silently change the frozen P6 Mode A case.
+
 ## Frozen reference coordinates
 
 | Record | UTM x km | UTM y km | local x m (REAL*4) | local y m (REAL*4) |
