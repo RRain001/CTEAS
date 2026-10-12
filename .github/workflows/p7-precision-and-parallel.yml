@@ -98,6 +98,20 @@ jobs:
         run: |
           set -euo pipefail
           echo "P7_PARITY_LANE=${{ matrix.lane }} RUNNER=${RUNNER_NAME} HOST=$(hostname)"
+          fc=""
+          for candidate in gfortran-13 gfortran-12 gfortran-11 gfortran; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              fc="$(command -v "$candidate")"
+              break
+            fi
+          done
+          test -n "$fc" || { echo "::error::Source parity requires actual gfortran oracle"; exit 1; }
+          major="$("$fc" -dumpversion | cut -d. -f1)"
+          [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 10 )) || {
+            echo "::error::Original Fortran parity requires gfortran 10+"
+            exit 1
+          }
+          echo "P7_SOURCE_PARITY_FORTRAN=$fc"
           git rev-parse HEAD
           test -s native_cpp/modules/p7_calpuff/CMakeLists.txt
           test -s engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
