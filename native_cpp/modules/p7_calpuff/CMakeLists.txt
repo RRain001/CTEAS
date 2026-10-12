@@ -55,6 +55,7 @@ target_link_libraries(cteas_p7_calmet21_tests PRIVATE cteas_p7_calmet21)
 add_test(NAME cteas_p7_calmet21_typed_field_contract COMMAND cteas_p7_calmet21_tests)
 add_executable(cteas_p7_native_met_hours src/native_met_hours_cli.cpp)
 target_link_libraries(cteas_p7_native_met_hours PRIVATE cteas_p7_calmet21)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(P7G_LOCKED_CASE_MET "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat")
 if(EXISTS "${P7G_LOCKED_CASE_MET}")
   add_test(NAME cteas_p7g_locked_case_static_decode
@@ -65,7 +66,6 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}")
             --met "${P7G_LOCKED_CASE_MET}")
 endif()
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME cteas_p7_original_case_stage_contract
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/original_reference_staging_tests.py")
 
