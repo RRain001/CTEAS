@@ -122,3 +122,23 @@ add_test(NAME p6d_rebuild_original_fr_adj_slope_inter2_order
     "${CMAKE_CURRENT_SOURCE_DIR}/reference/verify_diagno_call_order.py"
     --vendor "${P6D_VENDOR}/calmet.for"
     --producer "${CMAKE_CURRENT_SOURCE_DIR}/../src/realcase_wind_field_main.cpp")
+
+# Standalone REAL*4 direct port of original SLOPE L30372-L30605,
+# with identical upstream terrain/QH state for Fortran and C++.
+add_executable(cteas_p6d_source_slope_real4 src/slope_real4_main.cpp)
+target_include_directories(cteas_p6d_source_slope_real4 PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p6d_source_slope_real4 PRIVATE /W4 /WX /fp:strict)
+else()
+  target_compile_options(cteas_p6d_source_slope_real4 PRIVATE
+    -Wall -Wextra -Wpedantic -Werror -ffp-contract=off -fno-fast-math)
+endif()
+add_test(NAME p6d_rebuild_independent_original_slope_real4
+  COMMAND ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/../reference/compare_original_slope.py"
+    --vendor "${P6D_VENDOR}"
+    --cpp "$<TARGET_FILE:cteas_p6d_source_slope_real4>"
+    --out "${CMAKE_CURRENT_BINARY_DIR}/oracle_slope_real4")
+set_tests_properties(p6d_rebuild_independent_original_slope_real4
+  PROPERTIES TIMEOUT 300)
