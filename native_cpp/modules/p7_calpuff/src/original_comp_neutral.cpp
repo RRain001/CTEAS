@@ -20,7 +20,8 @@ void OriginalCompNeutralPointDriver::admit(
     require(running_.find(id)==running_.end(),"duplicate native COMP point");
     // Admission is transactional: error in INJECT or POINTS1 never creates
     // half-admitted motion/vertical state.
-    auto m=motion_,v=vertical_;
+    auto m=motion_;
+    auto v=vertical_;
     m.introduce_point_source(id,point);
     v.admit_point(id,point,injection);
     motion_=std::move(m);vertical_=std::move(v);
@@ -45,7 +46,8 @@ NeutralCompResult OriginalCompNeutralPointDriver::step(
     // Copy-on-commit: both independent state authorities advance only once
     // EVERY component of the substep has succeeded. Any exception retains
     // both previous states, the prior-wind cadence and sequence count.
-    auto m=motion_,v=vertical_;
+    auto m=motion_;
+    auto v=vertical_;
     const auto running=entry->second;
     VendorSubstepOrder order;
     SamplingCadenceInputs sampling;
@@ -164,7 +166,8 @@ std::size_t OriginalCompNeutralPointDriver::steps(int id)const{
 void OriginalCompNeutralPointDriver::retire(int id) {
     if(running_.find(id)==running_.end())
         throw std::out_of_range("unknown native COMP retire");
-    auto m=motion_,v=vertical_;
+    auto m=motion_;
+    auto v=vertical_;
     m.retire(id);v.retire(id);
     motion_=std::move(m);vertical_=std::move(v);
     running_.erase(id);
