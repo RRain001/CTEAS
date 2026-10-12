@@ -139,7 +139,10 @@ def main():
             section = {}
             for field in fields:
                 nlevels = NZ + 1 if field == "W" else NZ
-                ref = state[kpt][field]
+                # kpt8/9 names are UG/VG, while kpt10 names are U/V/W.
+                original_field = ({"U": "UG", "V": "VG"}[field]
+                                  if kpt in (8, 9) else field)
+                ref = state[kpt][original_field]
                 if prefix == "w_face":
                     name = f"w_face_{label}.f32"
                 else:
