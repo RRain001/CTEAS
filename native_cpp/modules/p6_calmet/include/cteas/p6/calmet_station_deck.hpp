@@ -38,6 +38,30 @@ inline float station_deck_float(const std::string& token) {
     return value;
 }
 
+// Original deck logical values are literal T/F. Numeric-only fallback would
+// silently interpret LVARY=T as false, changing INTER2/DIAGNO behaviour.
+inline bool original_calmet_deck_logical(
+    const std::string& deck,const std::string& key,bool fallback) {
+    const std::regex assignment("!\\\\s*"+key+"\\\\s*=\\\\s*([^!]*)!");
+    std::string token;
+    bool found=false;
+    for(auto it=std::sregex_iterator(deck.begin(),deck.end(),assignment);
+        it!=std::sregex_iterator();++it) {
+        if(found)throw std::invalid_argument("duplicate CALMET logical control "+key);
+        std::istringstream fields((*it)[1].str());
+        if(!(fields>>token))
+            throw std::invalid_argument("empty CALMET logical control "+key);
+        std::string extra;
+        if(fields>>extra)
+            throw std::invalid_argument("malformed CALMET logical control "+key);
+        found=true;
+    }
+    if(!found)return fallback;
+    if(token=="T"||token=="t"||token=="TRUE"||token=="true")return true;
+    if(token=="F"||token=="f"||token=="FALSE"||token=="false")return false;
+    throw std::invalid_argument("unsupported CALMET logical control "+key);
+}
+
 inline DeckStationPair original_calmet_station_deck(
     const std::string& deck,float xorig_km,float yorig_km) {
     if(!std::isfinite(xorig_km)||!std::isfinite(yorig_km))
