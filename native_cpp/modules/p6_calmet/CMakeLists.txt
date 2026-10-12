@@ -326,6 +326,11 @@ if(Python3_Interpreter_FOUND)
            COMMAND ${Python3_EXECUTABLE}
               ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_case_station_contract.py
               ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011)
+  add_test(NAME p6_modea_original_grid_generator_to_metinp
+           COMMAND ${Python3_EXECUTABLE}
+              ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_case_grid_source_contract.py
+              ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011)
+
 else()
   message(FATAL_ERROR "Python3 required for P6 station input semantic contract test")
 endif()
