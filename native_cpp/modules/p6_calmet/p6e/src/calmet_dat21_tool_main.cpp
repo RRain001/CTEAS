@@ -496,6 +496,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     std::vector<float> exported_ziconv,exported_zi;
     std::vector<float> exported_pre_ziconv,exported_pre_zi;
     std::vector<float> exported_qh,exported_ustar,exported_el;
+    std::vector<float> exported_dptt;
     std::vector<float> exported_qsw,exported_wstar;
     // The cell carrying the surface station (XSSTA/YSSTA are metres from the
     // SW corner of cell (1,1)). The original processes exactly this cell
@@ -726,6 +727,9 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             }
             previous_ziconv=ziconv;
             previous_dptt=mixing.dptt;
+            if(!state_prefix.empty())
+                exported_dptt.insert(exported_dptt.end(),
+                                     mixing.dptt.begin(),mixing.dptt.end());
             if(!state_prefix.empty()) {
                 // Term-by-term diagnostics for the E34 station-cell table.
                 exported_qh.insert(exported_qh.end(),heat_flux.begin(),heat_flux.end());
@@ -842,7 +846,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     write_calmet_dat21(out_path,candidate_header,reference.statics,hourly);
     if(!state_prefix.empty()) {
         if(exported_ziconv.size()!=reference.intervals*cells||
-           exported_zi.size()!=reference.intervals*cells)
+           exported_zi.size()!=reference.intervals*cells||
+           exported_dptt.size()!=reference.intervals*cells)
             throw std::invalid_argument(
                 "state export requires a wind and GEO source for every hour");
         const auto write_binary=[&](const std::string& path,
@@ -859,6 +864,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         write_binary(state_prefix+".qsw.f32",exported_qsw);
         write_binary(state_prefix+".wstar.f32",exported_wstar);
         write_binary(state_prefix+".ziconv.f32",exported_ziconv);
+        write_binary(state_prefix+".dptt.f32",exported_dptt);
         write_binary(state_prefix+".zi.f32",exported_zi);
         if(exported_pre_ziconv.size()==exported_ziconv.size()) {
             write_binary(state_prefix+".pre_avemix.ziconv.f32",exported_pre_ziconv);
@@ -867,8 +873,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         std::string meta="{\n";
         meta+="  \"producer\": \"p6e_calmet_dat21 emit-realcase\",\n";
         meta+="  \"source\": \"chain-internal MIXHT state advanced hour by hour; NOT copied from the reference met.dat\",\n";
-        meta+="  \"fields\": [\"ziconv\",\"zi\",\"pre_avemix.ziconv\",\"pre_avemix.zi\"],\n";
-        meta+="  \"units\": \"m\",\n";
+        meta+="  \"fields\": [\"ziconv\",\"zi\",\"dptt\",\"pre_avemix.ziconv\",\"pre_avemix.zi\"],\n";
+        meta+="  \"units\": {\"zi\":\"m\",\"ziconv\":\"m\",\"dptt\":\"K\"},\n";
         meta+="  \"dtype\": \"float32 little-endian\",\n";
         meta+="  \"layout\": \"hour-major, then j-major rows with i fastest, exactly as CALMET.DAT field payloads\",\n";
         meta+="  \"shape\": ["+std::to_string(reference.intervals)+", "+
@@ -877,6 +883,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         meta+="  \"water_sentinel\": -7777.0,\n";
         meta+="  \"missing_sentinel\": 9999.0,\n";
         meta+="  \"negative_dptt_or_zero_ziconv_is_physical\": true,\n";
+        meta+="  \"comp_dptt_provenance\": \"post-MIXHT /TJMP/ DPTT at every hour; not spatially averaged by AVEMIX, required to initialize next DIAGNO ELUSTR2-MIXHTST\",\n";
         meta+="  \"wind_source\": "+json_string(wind_path)+",\n";
         meta+="  \"geo_source\": "+json_string(geo_path)+",\n";
         meta+="  \"candidate_artifact\": "+json_string(out_path)+",\n";
