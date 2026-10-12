@@ -55,3 +55,21 @@ add_test(NAME p6d_rebuild_independent_similt_psiud_original_real4_real8
     --out "${CMAKE_CURRENT_BINARY_DIR}/oracle_similt_real4")
 set_tests_properties(p6d_rebuild_independent_similt_psiud_original_real4_real8
   PROPERTIES TIMEOUT 300)
+
+add_executable(cteas_p6d_source_diagno_tail_real4 src/diagno_tail_real4_main.cpp)
+target_include_directories(cteas_p6d_source_diagno_tail_real4 PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p6d_source_diagno_tail_real4 PRIVATE /W4 /WX /fp:strict)
+else()
+  target_compile_options(cteas_p6d_source_diagno_tail_real4 PRIVATE
+    -Wall -Wextra -Wpedantic -Werror -ffp-contract=off -fno-fast-math)
+endif()
+add_test(NAME p6d_rebuild_independent_diagno_final_real4
+  COMMAND ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/../reference/compare_original_diagno_final_segment.py"
+    --vendor "${P6D_VENDOR}"
+    --cpp "$<TARGET_FILE:cteas_p6d_source_diagno_tail_real4>"
+    --out "${CMAKE_CURRENT_BINARY_DIR}/oracle_diagno_tail_real4")
+set_tests_properties(p6d_rebuild_independent_diagno_final_real4
+  PROPERTIES TIMEOUT 300)
