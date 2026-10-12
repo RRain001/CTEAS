@@ -17,6 +17,16 @@ else()
     -Wall -Wextra -Wpedantic -Werror -ffp-contract=off -fno-fast-math)
 endif()
 
+add_executable(cteas_p6d_source_similt_real4 src/similt_real4_main.cpp)
+target_include_directories(cteas_p6d_source_similt_real4 PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p6d_source_similt_real4 PRIVATE /W4 /WX /fp:strict)
+else()
+  target_compile_options(cteas_p6d_source_similt_real4 PRIVATE
+    -Wall -Wextra -Wpedantic -Werror -ffp-contract=off -fno-fast-math)
+endif()
+
 set(P6D_VENDOR
   "${CMAKE_CURRENT_SOURCE_DIR}/../../../../engine/vendor/src/CALMET_v6.5.0_L150223")
 set(P6D_ORIGINAL_TEST
@@ -35,4 +45,13 @@ add_test(NAME p6d_rebuild_independent_wind1_source_real4
     --cpp "$<TARGET_FILE:cteas_p6d_source_wind1_real4>"
     --out "${CMAKE_CURRENT_BINARY_DIR}/oracle_wind1_real4")
 set_tests_properties(p6d_rebuild_independent_wind1_source_real4
+  PROPERTIES TIMEOUT 300)
+
+add_test(NAME p6d_rebuild_independent_similt_psiud_original_real4_real8
+  COMMAND ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/../reference/compare_original_similt_profile.py"
+    --vendor "${P6D_VENDOR}"
+    --cpp "$<TARGET_FILE:cteas_p6d_source_similt_real4>"
+    --out "${CMAKE_CURRENT_BINARY_DIR}/oracle_similt_real4")
+set_tests_properties(p6d_rebuild_independent_similt_psiud_original_real4_real8
   PROPERTIES TIMEOUT 300)
