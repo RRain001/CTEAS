@@ -321,6 +321,10 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/reference/build_original_calpuff.py \
             --output "${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/original-fortran" \
             --compiler "$fc"
+          python3 native_cpp/modules/p7_calpuff/reference/audit_original_precision.py \
+            --compiler "$fc" \
+            --report "${RUNNER_TEMP}/p7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/original-fortran/precision-audit.json"
+          echo "P7_VENDOR_DEFAULT_REAL4_EXPLICIT_REAL8=PASS"
       - name: Get immutable historical 2023 MET.DAT / puff.inp / puff.con
         shell: bash
         env:
