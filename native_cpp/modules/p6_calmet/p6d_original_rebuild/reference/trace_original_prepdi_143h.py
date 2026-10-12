@@ -130,16 +130,23 @@ def read_records(path:Path,hours:int):
     for index in range(hours):
         base=index*RECORD_BYTES
         yy,jul,hh,ss,nz,nss,now,nu=struct.unpack_from(HEADER_FMT,raw,base)
-        if (yy,jul,hh,ss,nz,nss,now,nu)!=(2022,1+(index//24),index%24+1,0,9,1,0,1):
-            # CALMET may represent hour 24 as next day's 00 or current day's
-            # 24. Canonicalize via datetime below instead of assuming either.
-            if (yy,nz,nss,now,nu)!=(2022,9,1,0,1):
-                raise RuntimeError("original PREPDI record header mismatch")
-        instant=dt.datetime(yy,1,1)+dt.timedelta(days=jul-1,hours=hh)
-        label=instant.strftime("%Y-%m-%d_%H")
-        expected=(dt.datetime(2022,1,1)+dt.timedelta(hours=index+1)).strftime("%Y-%m-%d_%H")
-        if label!=expected:
-            raise RuntimeError(f"PREPDI 143h timeline drift index={index+1}: {label} vs {expected}")
+        if (yy,nz,nss,now,nu)!=(2022,9,1,0,1) or not 0<=ss<3600:
+            raise RuntimeError("original PREPDI record header mismatch")
+        # COMP passes the BEGINNING of the computational interval
+        # (nyre/njule/nhre/nsece), while P6D wind1_driver fixtures use
+        # hour-END labels. Compare the source beginning time without
+        # shifting the physical station observations, then label the
+        # identical interval by its ending time for fixture lookup.
+        # Datetime normalization also accepts either 24:00 or next-day
+        # 00:00 in the original Fortran day/hour fields.
+        source_begin=dt.datetime(yy,1,1)+dt.timedelta(
+            days=jul-1,hours=hh,seconds=ss)
+        expected_begin=dt.datetime(2022,1,1)+dt.timedelta(hours=index)
+        if source_begin!=expected_begin:
+            raise RuntimeError(
+                f"PREPDI source interval-start drift index={index+1}: "
+                f"{source_begin.isoformat()} vs {expected_begin.isoformat()}")
+        label=(source_begin+dt.timedelta(hours=1)).strftime("%Y-%m-%d_%H")
         values=struct.unpack_from("<36f",raw,base+32)
         if not all(math.isfinite(v) for v in values):
             raise RuntimeError("nonfinite PREPDI REAL*4")
