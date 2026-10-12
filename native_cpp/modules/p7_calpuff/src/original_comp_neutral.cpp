@@ -1,4 +1,5 @@
 #include "cteas/puff/original_comp_neutral.hpp"
+#include "cteas/puff/step.hpp"
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -18,6 +19,21 @@ float f32(double value) {
 void OriginalCompNeutralPointDriver::admit(
     int id,const NewPuffInputs& point,const InjectionInputs& injection) {
     require(running_.find(id)==running_.end(),"duplicate native COMP point");
+    require(point.source_type==1 &&
+            point.x_final_m==0.0 &&
+            point.final_rise_variance_m2==0.0 &&
+            point.buoyancy_flux==0.0 &&
+            point.momentum_flux==0.0 &&
+            point.x_final_buoyancy_m==0.0 &&
+            point.x_final_momentum_m==0.0 &&
+            point.z_final_buoyancy_m==0.0 &&
+            point.z_final_momentum_m==0.0 &&
+            point.stack_tip_downwash_m==0.0 &&
+            point.downwash_code==0 &&
+            point.wake_radius_m==0.0 &&
+            (point.stack_height_m==0.0 ||
+             point.effective_height_m==point.stack_height_m),
+            "native neutral-only COMP refuses real plume rise and wake forcing");
     // Admission is transactional: error in INJECT or POINTS1 never creates
     // half-admitted motion/vertical state.
     auto m=motion_;
@@ -126,10 +142,26 @@ NeutralCompResult OriginalCompNeutralPointDriver::step(
     sigma.step.sigma_z_start_m=existing.sigma_z_m;
     sigma.step.puff_code=existing.puff_code;
     sigma.step.puff_height_m=before.z_m;
-    sigma.step.mid_time_s=f32(before.travel_time_s+
-                              f32(next.step_s)*0.5F);
-    sigma.step.mid_distance_km=f32((before.total_distance_m+
-                                post.distance_m*0.5F)*0.001F);
+    // Source-ported SETPUF L48373-48399: TMID=0.5*TSAMP and
+    // DMIDKM=0.5*DISTM*DM2KM (NOT accumulated travel time/distance).
+    // Previously including XTOTB/TMTOTB here double-counted past sigma
+    // growth at every substep; keep original REAL*4 multiply order.
+    const StepBookkeeping bookkeeping=step_bookkeeping({
+        .total_distance_m=before.total_distance_m,
+        .total_time_s=before.travel_time_s,
+        .step_distance_m=post.distance_m,
+        .step_seconds=next.step_s,
+        .km_per_m=0.001,
+        .wind_speed_ms=ws,
+        .calm_wind_threshold=0.0,
+        .downwash_code=0,
+        .x_final_m=0.0,
+        .dispersion_y_option=3,
+        .dispersion_z_option=3
+    });
+    require(!bookkeeping.calm,"neutral COMP does not support calm SETPUF");
+    sigma.step.mid_time_s=bookkeeping.mid_time_s;
+    sigma.step.mid_distance_km=bookkeeping.mid_distance_km;
     const auto sigmas=v.commit_sigma(id,sigma,yc,zc);
     const auto vmass=v.commit_vmass_and_lid(
         id,sampled.mixing_height_m,before.z_m,post.state.z_m,
@@ -143,7 +175,7 @@ NeutralCompResult OriginalCompNeutralPointDriver::step(
 
     NeutralCompResult result{
         before,post.state,updated,cell,
-        sampled.extent,sampled.wind,cadence,next,sigmas,vmass,ws
+        sampled.extent,sampled.wind,cadence,next,bookkeeping,sigmas,vmass,ws
     };
     // No new-puff insertion or earlier state is ever lost on failure.
     motion_=std::move(m);

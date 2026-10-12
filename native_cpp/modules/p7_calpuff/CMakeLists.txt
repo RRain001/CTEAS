@@ -950,7 +950,8 @@ target_link_libraries(cteas_p7_vmass_probe PRIVATE cteas_p7_vmass)
 add_library(cteas_p7_original_comp_neutral STATIC src/original_comp_neutral.cpp)
 target_include_directories(cteas_p7_original_comp_neutral PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(cteas_p7_original_comp_neutral PUBLIC
-  cteas_p7_original_vertical cteas_p7_original_motion cteas_p7_step_integration)
+  cteas_p7_original_vertical cteas_p7_original_motion
+  cteas_p7_step_integration cteas_p7_step)
 if(MSVC)
   target_compile_options(cteas_p7_original_comp_neutral PRIVATE /W4 /WX)
 else()

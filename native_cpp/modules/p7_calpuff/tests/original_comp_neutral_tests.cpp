@@ -51,6 +51,17 @@ struct Set {
     inj.gaussian_distribution=1;
     inj.emission_rate={2.0,3.0};
     driver.admit(1,point,inj);
+    // The neutral synthetic controller MUST NOT silently accept the
+    // real Hefei rise/GRISE/RISEWIND source state.
+    point.buoyancy_flux=1.0;
+    rejects([&]{driver.admit(2,point,inj);},
+            "rise-bearing point was accepted as rise-neutral");
+    point.buoyancy_flux=0.0;
+    point.downwash_code=3;
+    rejects([&]{driver.admit(2,point,inj);},
+            "PRIME wake source was accepted as rise-neutral");
+    require(driver.active_count()==1,
+            "rejected non-neutral puff was partially admitted");
     opts.max_sampling_steps=1;
  }
 };
@@ -74,6 +85,15 @@ void run(const int hours) {
    const auto step=s.driver.step(1,s.met,s.statics,s.opts,s.cy,s.cz);
    const auto result=s.driver.motion(1);
    const auto after=s.driver.vertical(1);
+   // Original P7P SETPUF: TMID and DMIDKM are *per step*. They
+   // MUST NOT accumulate the elapsed puff age on hours 2 through 143.
+   require(step.bookkeeping.mid_time_s==1800.0 &&
+           step.bookkeeping.time_begin_s==float(hour*3600) &&
+           step.bookkeeping.time_end_s==float((hour+1)*3600) &&
+           step.bookkeeping.distance_begin_m==start.total_distance_m &&
+           step.bookkeeping.mid_distance_km>0.0 &&
+           step.bookkeeping.mid_distance_km<0.01,
+           "SETPUF TMID/DMIDKM incorrectly included historical puff age");
    require(step.cell.ix_1based>=1 && step.cell.ix_1based<=100 &&
            step.cadence.sampling_steps==1 && !step.substep.split &&
            step.after.travel_time_s==float((hour+1)*3600),

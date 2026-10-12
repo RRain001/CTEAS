@@ -3,6 +3,7 @@
 #include "cteas/puff/original_motion_lifecycle.hpp"
 #include "cteas/puff/original_vertical_lifecycle.hpp"
 #include "cteas/puff/step_integration.hpp"
+#include "cteas/puff/step.hpp"
 #include "cteas/puff/vendor_order.hpp"
 
 namespace cteas::puff {
@@ -33,6 +34,7 @@ struct NeutralCompResult {
     AdvectiveWind wind;
     SamplingCadence cadence;
     Substep substep;
+    StepBookkeeping bookkeeping;
     SigmaUpdateResult sigmas;
     VmassResult mass;
     float native_wind_speed_ms=0.0F;
