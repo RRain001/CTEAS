@@ -64,6 +64,14 @@ jobs:
           python3 scripts/p6d_compare_original_windbc_input_143h.py \
             --original-dir "$root/original" --candidate "$root/candidate" \
             --out "$root/windbc_original_edge_143h.json"
+      - name: Identify earliest original FRADJ vs SLOPE divergence across 143h full 3D fields
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-winbc-original-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 scripts/p6d_diagnose_original_fradj_slope_143h.py \
+            --original-dir "$root/original" --candidate "$root/candidate" \
+            --out "$root/fradj_slope_original_143h.json"
       - name: Archive provenance-locked source-boundary evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -72,6 +80,7 @@ jobs:
           name: p6d-original-windbc-input-143h
           path: |
             ${{ runner.temp }}/p6d-winbc-original-${{ github.run_id }}-${{ github.run_attempt }}/windbc_original_edge_143h.json
+            ${{ runner.temp }}/p6d-winbc-original-${{ github.run_id }}-${{ github.run_attempt }}/fradj_slope_original_143h.json
             ${{ runner.temp }}/p6d-winbc-original-${{ github.run_id }}-${{ github.run_attempt }}/original/dgm-audit.json
           if-no-files-found: warn
           retention-days: 7
