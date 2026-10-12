@@ -11,7 +11,7 @@ on:
 jobs:
   original-calmet:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-managed, cteas-compute, Linux, X64]
     timeout-minutes: 45
     permissions:
       contents: read
@@ -21,6 +21,12 @@ jobs:
           fetch-depth: 0
       - name: Select self-hosted C++20 and Fortran tools
         uses: ./.github/actions/cteas-linux-toolchain
+      - name: Prepare isolated Python venv (managed runner has no sudo)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/cteas-pyenv"
+          echo "$RUNNER_TEMP/cteas-pyenv/bin" >> "$GITHUB_PATH"
       - name: Reset self-hosted scratch directories
         shell: bash
         run: |
@@ -56,9 +62,9 @@ jobs:
         run: |
           set -euo pipefail
           if ! pkg-config --exists gdal; then
-            sudo -n apt-get update -qq
-            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
-          fi
+            echo "::error::GDAL headers absent on managed runner; provision libgdal-dev on host"
+            exit 1
+            fi
           python3 -m pip install --disable-pip-version-check PyYAML numpy pandas
           gfortran --version | head -1 | tee integration-evidence/compiler.txt
       - name: Original unchanged P1-P2-P3 100m GEO.DAT
