@@ -53,9 +53,21 @@ jobs:
             native_cpp/modules/p6_calmet
             scripts
             engine/vendor/src/CALMET_v6.5.0_L150223
+      - uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          path: frozen_original_checkout
+          filter: blob:none
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
       - uses: ./.github/actions/cteas-linux-toolchain
-      - name: Restore pinned original Hefei meteorological inputs
-        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+      - name: Validate SHA-pinned original Hefei meteorological input
+        shell: bash
+        run: |
+          set -euo pipefail
+          case_dir="frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011"
+          test -s "$case_dir/run/met/met.dat"
+          printf '%s  %s\n' b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 "$case_dir/run/met/met.dat" | sha256sum --check
       - name: Build native P6E state producer and new P6D CGAMMA grid driver
         shell: bash
         run: |
@@ -70,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           root="$RUNNER_TEMP/p6d-cgamma-coupled-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          case_dir="project/cases/hefei5km_2022_reference_case_20261011"
+          case_dir="frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011"
           "$root/build-p6e/p6e_p6c_hourly_bridge" \
             "$case_dir/met/surface/final/surf.dat" \
             "$case_dir/met/upperair/final/up_58424.dat" 58424 \
@@ -90,7 +102,7 @@ jobs:
           set -euo pipefail
           root="$RUNNER_TEMP/p6d-cgamma-coupled-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           "$root/build-p6d/cteas_p6_native_cgamma_grid_143h" \
-            --up project/cases/hefei5km_2022_reference_case_20261011/met/upperair/final/up_58424.dat \
+            --up frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011/met/upperair/final/up_58424.dat \
             --p6e-state-prefix "$root/p6e-native" \
             --out "$root/native-gamma" --station-id 58424 --zupt 200 \
             --upper-i 25 --upper-j 26
@@ -101,7 +113,7 @@ jobs:
           root="$RUNNER_TEMP/p6d-cgamma-coupled-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           python3 scripts/p6d_trace_original_gamma.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
-            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --case frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011 \
             --out "$root/original-gamma" --compiler gfortran-11 --hours 143
       - name: Strict numeric acceptance of ALL 357500 native versus original gridded GAMMA values
         shell: bash
