@@ -937,3 +937,9 @@ add_executable(cteas_p7_vmass_tests tests/original_vmass_tests.cpp)
 target_link_libraries(cteas_p7_vmass_tests PRIVATE cteas_p7_vmass)
 add_test(NAME cteas_p7_native_vmass_source_branch_mass_contract
          COMMAND cteas_p7_vmass_tests)
+
+# Genuine numerical parity against an unmodified extracted vendor VMASS.
+# The original Fortran source and *.puf declarations are required; never
+# substitute an independently retyped Fortran formula.
+add_executable(cteas_p7_vmass_probe src/original_vmass_probe.cpp)
+target_link_libraries(cteas_p7_vmass_probe PRIVATE cteas_p7_vmass)
