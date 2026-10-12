@@ -59,7 +59,7 @@ void run(const int hours) {
  const auto original_mass=s.driver.vertical(1).mass_mixed;
  require(original_mass.size()==2 && original_mass[0]==7200.0F &&
          original_mass[1]==10800.0F,"native two-species source emission incorrect");
- rejects([&]{s.driver.step(999,s.met,s.statics,s.opts,s.cy,s.cz);},
+ rejects([&]{(void)s.driver.step(999,s.met,s.statics,s.opts,s.cy,s.cz);},
          "nonexistent puff accepted");
  rejects([&]{auto bad=s.opts;bad.seconds=-1;
               (void)s.driver.step(1,s.met,s.statics,bad,s.cy,s.cz);},
