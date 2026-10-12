@@ -43,28 +43,7 @@ jobs:
         run: |
           cmake -S native_cpp/modules/p6_calmet -B "${RUNNER_TEMP}/cteas-p6-modea-release" -DCMAKE_BUILD_TYPE=Release
           cmake --build "${RUNNER_TEMP}/cteas-p6-modea-release" --target cteas_p6_station_deck_tests --parallel 2
-          ctest --test-dir "${RUNNER_TEMP}/cteas-p6-modea-release" --output-on-failure -R '^p6d_original_metinp_station_deck_input
-        shell: bash
-        run: |
-          python3 scripts/run_p6_end_to_end.py \
-            --case project/cases/hefei5km_2022_reference_case_20261011 \
-            --build-dir "${RUNNER_TEMP}/cteas-p6-modea-g6-build" \
-            --work "${RUNNER_TEMP}/cteas-p6-modea-g6-work"
-      - name: Archive 143-hour U/V/W numeric field verdicts
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: p6-modea-full143-original-uv-w-verdicts
-          path: ${{ runner.temp }}/cteas-p6-modea-g6-work/
-          if-no-files-found: warn
-      - name: Archive READCF source-oracle report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: p6-modea-readcf-source-parity
-          path: ${{ runner.temp }}/cteas-p6-modea/original_readcf_station/
-          if-no-files-found: warn
-
+          ctest --test-dir "${RUNNER_TEMP}/cteas-p6-modea-release" --output-on-failure -R '^p6d_original_metinp_station_deck_input$'
       - name: Rerun full 143-hour P6D/P6F/P6E versus frozen original U/V/W
         shell: bash
         run: |
