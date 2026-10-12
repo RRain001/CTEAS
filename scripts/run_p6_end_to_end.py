@@ -234,6 +234,11 @@ def main() -> int:
                              "for independent FRADJ-state bisection")
     parser.add_argument("--original-gamma-manifest", default=None,
                         help="required paired source-pinned gamma_source_manifest.json")
+    parser.add_argument("--original-similt-station-dir", default=None,
+                        help="FORENSIC ONLY: original source-extracted 143h "
+                             "REAL4 EL and ZII as received by SIMILT")
+    parser.add_argument("--original-similt-station-manifest", default=None,
+                        help="required byte-verified original source station state proof")
     parser.add_argument("--reuse-p6d", action="store_true",
                         help="reuse an existing <work>/p6d product instead of "
                              "re-running the producer")
@@ -304,6 +309,30 @@ def main() -> int:
         print("[gamma-oracle] FORTRAN ORIGINAL-REFERENCE DIAGNOSTIC ONLY "
               f"({len(records)} hours; source MET.DAT bitwise unchanged)")
 
+    similt_proof = None
+    if bool(args.original_similt_station_dir) != bool(args.original_similt_station_manifest):
+        raise Failure("original SIMILT station dir and manifest must be supplied together")
+    if args.original_similt_station_dir:
+        source_dir = pathlib.Path(args.original_similt_station_dir).resolve()
+        manifest_path = pathlib.Path(args.original_similt_station_manifest).resolve()
+        if not source_dir.is_dir() or not manifest_path.is_file():
+            raise Failure("original SIMILT station manifest/data unavailable")
+        similt_proof = json.loads(manifest_path.read_text())
+        if (similt_proof.get("status")!="PASS_ORIGINAL_SIMILT_ZII_EL_SOURCE_REAL4"
+                or not similt_proof.get("original_and_instrumented_met_dat_byte_identical")
+                or similt_proof.get("original_git_blob")
+                   != "437f43bb7f0e51a1919e56664663e1a046986ed0"
+                or similt_proof.get("reference_met_dat_sha256") != FROZEN_MET_SHA256
+                or similt_proof.get("hours") != args.hours
+                or similt_proof.get("station_1_based") != {"is":26,"js":26,"ns":1}):
+            raise Failure("SIMILT station proof is not tied to frozen original Fortran")
+        for key, hashkey in (("zii_file","zii_sha256"),("el_file","el_sha256")):
+            file=source_dir/similt_proof[key]
+            if file.stat().st_size!=args.hours*4 or sha256_of(file)!=similt_proof[hashkey]:
+                raise Failure("SIMILT source REAL4 file hash/length mismatch: "+str(file))
+        print("[similt-oracle] ORIGINAL FORTRAN STATION ZII/EL, "
+              "FOR DIAGNOSTIC USE ONLY; NOT NATIVE C++ MIXHTST/ELUSTR2")
+
     timings = {}
     started = time.time()
 
@@ -319,14 +348,20 @@ def main() -> int:
     # ---- 1. P6D wind producer --------------------------------------------
     p6d_fields = work / "p6d"
     if args.reuse_p6d and (p6d_fields / "metadata.json").is_file():
-        if gamma_provenance is not None:
-            raise Failure("--reuse-p6d forbidden when source-traced GAMMA is supplied")
+        if gamma_provenance is not None or similt_proof is not None:
+            raise Failure("--reuse-p6d forbidden with source-traced original state")
         print("[p6d] reusing existing product")
     else:
         p6d_cmd = [bins[P6D_TARGET], "--case", case, "--out", p6d_fields,
                    "--hours", args.hours]
         if gamma_provenance is not None:
             p6d_cmd.extend(["--gamma", pathlib.Path(args.original_gamma_dir).resolve()])
+        if similt_proof is not None:
+            source_dir = pathlib.Path(args.original_similt_station_dir).resolve()
+            p6d_cmd.extend([
+                "--zii", source_dir/similt_proof["zii_file"],
+                "--el-cell", source_dir/similt_proof["el_file"],
+            ])
         _, elapsed = run(p6d_cmd, work / "logs/p6d.log", "p6d")
         timings["p6d_s"] = elapsed
     p6d_metadata = json.loads((p6d_fields / "metadata.json").read_text())
@@ -437,6 +472,15 @@ def main() -> int:
             "original_met_dat_byte_identical": (
                 gamma_provenance["met_dat_byte_identical"]
                 if gamma_provenance is not None else None),
+        },
+        "forensic_original_similt_station": {
+            "mode": ("ORIGINAL_FORTRAN_SIMILT_ZII_EL_REFERENCE_ONLY"
+                     if similt_proof is not None else "NOT_SUPPLIED"),
+            "self_contained_cpp_state_physics": False if similt_proof is not None else None,
+            "manifest_sha256": (
+                sha256_of(pathlib.Path(args.original_similt_station_manifest))
+                if similt_proof is not None else None),
+            "station_cell": similt_proof.get("station_1_based") if similt_proof else None,
         },
         "field_table": {
             "A_reconstructed_wind": rows_a,
