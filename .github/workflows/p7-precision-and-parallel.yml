@@ -45,6 +45,9 @@ jobs:
           output="${RUNNER_TEMP}/p7-precision-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           python3 native_cpp/modules/p7_calpuff/reference/audit_original_precision.py \
             --compiler "$fc" --report "$output/precision-audit.json"
+          python3 native_cpp/modules/p7_calpuff/reference/original_internal_coordinate_inventory.py \
+            --source engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
+            --report "$output/internal-grid-inventory.json"
           if command -v g++-12 >/dev/null 2>&1; then
             cpp="$(command -v g++-12)"
           elif command -v g++-11 >/dev/null 2>&1; then
@@ -61,7 +64,9 @@ jobs:
         if: always()
         with:
           name: p7-vendor-precision-kind-audit
-          path: ${{ runner.temp }}/p7-precision-${{ github.run_id }}-${{ github.run_attempt }}/precision-audit.json
+          path: |
+            ${{ runner.temp }}/p7-precision-${{ github.run_id }}-${{ github.run_attempt }}/precision-audit.json
+            ${{ runner.temp }}/p7-precision-${{ github.run_id }}-${{ github.run_attempt }}/internal-grid-inventory.json
           retention-days: 7
           if-no-files-found: warn
 
