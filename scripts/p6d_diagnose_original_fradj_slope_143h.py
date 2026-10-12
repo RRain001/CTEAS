@@ -8,7 +8,10 @@ Unchanged CALMET DIAGNO dumps:
 The stand-alone native producer writes WIND1 and post-SLOPE. With no injected
 GAMMA, native pre-SLOPE is WIND1; the difference at kpt8 is an acknowledged
 missing FRADJ drive, not a numerical verdict on the FRADJ kernel itself.
-The candidate slope increment is post-SLOPE minus WIND1. We compare that
+The candidate slope increment is post-SLOPE minus its chosen pre-SLOPE state.
+When feeding the original source GAMMA to the native FRADJ, the comparison
+is oracle-input-scoped and can test physical FRADJ execution without claiming
+native GAMMA production. We compare that
 increment separately against ORIGINAL kpt7 to isolate SLOPE/QH/temperature
 from upstream FRADJ without silently substituting any original state.
 
@@ -88,6 +91,9 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument("--original-dir",required=True,type=Path)
     parser.add_argument("--candidate",required=True,type=Path)
+    parser.add_argument("--pre-slope-prefix",choices=("wind1","fradj_corrected"),
+                        default="wind1",
+                        help="select native unassisted WIND1 or native FRADJ fed by pinned original GAMMA")
     parser.add_argument("--out",required=True,type=Path)
     args=parser.parse_args()
     proof=json.loads((args.original_dir/"dgm-audit.json").read_text())
@@ -123,7 +129,7 @@ def main():
                 if stamp!=hour_start:
                     raise RuntimeError(f"original source stage time drift kpt={k+7}, h={h+1}")
             for comp,(axis,_,__) in enumerate(PAIRS):
-                candidate_initial=native(args.candidate/f"wind1_{axis}_{label}.f32")
+                candidate_initial=native(args.candidate/f"{args.pre_slope_prefix}_{axis}_{label}.f32")
                 candidate_final=native(args.candidate/f"slope_corrected_{axis}_{label}.f32")
                 source_slope=snapshots[0][comp]
                 source_pre=snapshots[1][comp]
@@ -164,7 +170,11 @@ def main():
         "original_dgm_sha256":digest(dump),
         "hours":NH,"grid":[NX,NY,NZ],
         "values_compared":expected*2*len(STAGES),
-        "native_FRADJ_status":"NOT_NATIVE: missing CALMET PREPDI gridded GAMMA",
+        "native_FRADJ_status":(
+            "original-GAMMA-driven native FRADJ (forensic/oracle-scoped)"
+            if args.pre_slope_prefix=="fradj_corrected"
+            else "NOT_NATIVE: missing CALMET PREPDI gridded GAMMA"),
+        "candidate_pre_slope_prefix":args.pre_slope_prefix,
         "original_internal_slope_addition_max_error_mps":source_addition_worst,
         "original_internal_slope_addition_exceedances":source_addition_violations,
         "numerical_threshold":{"abs_mps":ABS_TOL,"relative":REL_TOL},
