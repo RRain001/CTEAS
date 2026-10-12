@@ -24,6 +24,7 @@
 #include "cteas/p6/diagno_segment.hpp"
 #include "cteas/p6/froude_adjust.hpp"
 #include "cteas/p6/slope_flow.hpp"
+#include "cteas/p6/station_elustr2.hpp"
 #include "cteas/p6e/heatfx.hpp"
 #include "cteas/p6e/elustr_stable.hpp"
 #include "cteas/p6e/elustr_daytime.hpp"
@@ -476,6 +477,9 @@ int main(int argc,char** argv){
     const float surface_anemometer_height_m=
         deck_stations.surface.anemometer_height_m;
     const std::size_t stations_written=1;
+    std::ofstream station_elustr2_trace(args.out()/"station_elustr2.csv");
+    if(!station_elustr2_trace)throw std::runtime_error("cannot open station ELUSTR2 trace");
+    station_elustr2_trace<<"hour_end,QH_Wm2,USTAR_mps,EL_m,solar_sine,temp_K,rho_kgm3,Z0_m,station_cell_i,station_cell_j\\n";
     std::ofstream index(args.out()/"produced_hours.txt");
     if(!index)throw std::runtime_error("cannot write produced_hours.txt");
     std::size_t similt_levels_min=9,similt_levels_max=0;
@@ -671,6 +675,69 @@ int main(int argc,char** argv){
             origin_x_km*1000.0,origin_y_km*1000.0,grid_m);
         const auto sinalpc=cteas::p6e::sinalpc_grid(solar_grid,julian_day,
             begin_hour,0);
+        // STHEOR -> ELUSTR2 (calmet.for L31152/L6580-L6894) precedes the
+        // grid HEATFX/ELUSTR. The ORIGINAL uses raw observed anemometer U/V
+        // at the station cell, not the gridded WIND1/DIAGNO level-one wind.
+        // Keep this independently computed station physics distinct from
+        // gridded ELUSTR so it can be checked against DGM point 6 for 143h.
+        const int station_i=std::clamp(static_cast<int>(surface_x_m/grid_m),0,nx-1);
+        const int station_j=std::clamp(static_cast<int>(surface_y_m/grid_m),0,ny-1);
+        const std::size_t station_cell=static_cast<std::size_t>(station_j*nx+station_i);
+        if(!obs->pressure_valid||!obs->cloud_valid)
+            throw std::runtime_error("STHEOR missing surface density/cloud forcing at "+
+                                     hour_label(clock));
+        StationElustr2Input station_physics;
+        station_physics.surface_u_mps=surface_u;
+        station_physics.surface_v_mps=surface_v;
+        station_physics.zmid1_m=center_m[0];
+        station_physics.anemometer_m=surface_anemometer_height_m;
+        station_physics.z0_m=geo.z0_m[station_cell];
+        station_physics.solar_sine=sinalpc[station_cell];
+        station_physics.temp_k=surface_state.temp_k[station_cell];
+        station_physics.rho_kg_m3=
+            0.3484321f*obs->pressure_mb/station_physics.temp_k;
+        station_physics.cloud_tenths=obs->opaque_cloud_tenths;
+        station_physics.ipsifcn=deck_int(controls,"IPSIFCN",0);
+        station_physics.ha1=990.f;station_physics.ha2=-30.f;
+        station_physics.hb1=-0.75f;station_physics.hb2=3.4f;
+        station_physics.hc1=5.31e-13f;station_physics.hc2=60.f;
+        station_physics.hc3p1=1.12f;
+        station_physics.albedo=geo.albedo[station_cell];
+        station_physics.bowen=geo.bowen[station_cell];
+        station_physics.hcg=geo.hcg[station_cell];
+        station_physics.qf=geo.qf[station_cell];
+        const auto station_flux=station_elustr2_flux(station_physics);
+        if(!station_flux.extrapolate)
+            throw std::runtime_error("STHEOR station cannot be extrapolated due to calm/missing wind at "+
+                                     hour_label(clock));
+        station_elustr2_trace<<hour_label(clock)<<","<<std::setprecision(10)
+            <<station_flux.sensible_wm2<<","
+            <<station_flux.friction_velocity_mps<<","
+            <<station_flux.monin_obukhov_m<<","
+            <<station_physics.solar_sine<<","
+            <<station_physics.temp_k<<","
+            <<station_physics.rho_kg_m3<<","
+            <<station_physics.z0_m<<","
+            <<station_i+1<<","<<station_j+1<<"\n";
+        // The native STHEOR EL is now available without a source-forced
+        // EL oracle. ZII is *not* the previous grid ZI: the original calls
+        // MIXHTST and mutates the DPTT history first. An explicit caller
+        // station-ZII stream is diagnostic-only pending native MIXHTST
+        // state reconstruction; never claim standalone U/V/W acceptance.
+        if(!zii_hours.empty() && el_hours.empty() && el_cell_hours.empty()){
+            if(h>=zii_hours.size())
+                throw std::runtime_error("STHEOR station ZII stream truncated");
+            const SimiltProfileInput diagi{
+                station_lat_deg,surface_anemometer_height_m,
+                station_physics.z0_m,surface_u,surface_v,
+                station_flux.monin_obukhov_m,zii_hours[h],zimin_m,0,zface};
+            const auto profile=original_similt_profile(diagi);
+            station.similt_levels_filled=profile.levels_filled;
+            for(std::size_t k=0;k<9;++k)
+                diagi_surface_column[k]=k<profile.levels_filled
+                    ?LayerWind{profile.u_mps[k],profile.v_mps[k]}
+                    :LayerWind{999999.f,999999.f};
+        }
         std::vector<float> corrected_u=first.ug_mps,corrected_v=first.vg_mps;
         // Original DIAGNO MUST apply IFRADJ (L5643) before adding SLOPE
         // (L5722-L5732). These source-ordered stages are not commutative.
