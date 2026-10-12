@@ -311,3 +311,90 @@ jobs:
             ${{ runner.temp }}/p7-order-${{ github.run_id }}-${{ github.run_attempt }}/P7_ORIGINAL_WROUT1_INVENTORY.json
           retention-days: 7
           if-no-files-found: warn
+
+
+  native-first-six-hours:
+    # A genuinely new native multi-substep test: retain C++ puff state between
+    # steps within each hour; six-hour original DGM MUST be regenerated using
+    # unmodified CALPUFF and verified against frozen 143h binary SHA first.
+    # This is not yet full across-hour SWAP/ROLLDN or autonomous met forcing.
+    needs: [original-execution-order]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /native_cpp/modules/p7_calpuff/**
+            /engine/vendor/src/CALPUFF_v7.2.1_L150618/**
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+            /project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
+      - name: Verify exact vendor and frozen case availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "P7_6H_RUNNER=${RUNNER_NAME} HOST=$(hostname) CORES=$(nproc)"
+          for file in \
+            engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
+            engine/vendor/src/CALPUFF_v7.2.1_L150618/modules.for \
+            native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep.json \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat; do
+            test -s "$file" || { echo "::error::Missing required original: $file"; exit 1; }
+          done
+          command -v gfortran-11 >/dev/null 2>&1 || {
+            echo "::error::Require original pinned gfortran-11 to regenerate DGM"
+            exit 1
+          }
+      - name: Independently reproduce original 143h DGM then extract six-hour oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${RUNNER_TEMP}/p7-six-hours-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$base/frozen/run/puff" "$base/frozen/deliverables/met"
+          cp project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            "$base/frozen/run/puff/puff.inp"
+          ln -s "${GITHUB_WORKSPACE}/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat" \
+            "$base/frozen/deliverables/met/met.dat"
+          python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/original_puff_step_dump.py \
+            audit --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618 \
+            --case "$base/frozen" --out "$base/oracle" --compiler "$(command -v gfortran-11)"
+          six="native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_first_six_hours.bin"
+          python3 native_cpp/modules/p7_calpuff/reference/extract_original_six_hours.py \
+            --full "$base/oracle/case/run/puff/dgm_puffstep.bin" \
+            --metadata native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep.json \
+            --out "$six"
+          test -s "$six"
+          if command -v g++-12 >/dev/null 2>&1; then
+            cpp="$(command -v g++-12)"
+          elif command -v g++-11 >/dev/null 2>&1; then
+            cpp="$(command -v g++-11)"
+          else
+            cpp="$(command -v c++)"
+          fi
+          cmake -S native_cpp/modules/p7_calpuff -B "$base/cpp" \
+            -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$base/cpp" --parallel 2 --target cteas_p7_first_hour_lifecycle_tests
+          name=cteas_p7_first_six_hour_state_persistence_real4
+          ctest --test-dir "$base/cpp" -N -R "^${name}$" |
+            grep -Eq "Test[[:space:]]*#[0-9]+: ${name}$" || {
+              echo "::error::Six-hour C++ lifecycle test not registered"
+              exit 1
+            }
+          ctest --test-dir "$base/cpp" -R "^${name}$" --output-on-failure
+          "$base/cpp/cteas_p7_first_hour_lifecycle_tests" \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp "$six" 6
+          echo "P7_SIX_HOUR_NATIVE_LIFECYCLE=PASS"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p7-pinned-original-first-six-hours
+          path: |
+            native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_first_six_hours.bin
+            native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_first_six_hours_provenance.json
+          if-no-files-found: warn
+          retention-days: 7
