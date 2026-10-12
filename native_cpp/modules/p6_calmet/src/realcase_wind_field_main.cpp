@@ -390,10 +390,14 @@ int main(int argc,char** argv){
         const auto it=controls.find("NINTR2");
         if(it==controls.end()||it->second.size()<9)
             throw std::runtime_error("the deck must declare nine NINTR2 values");
-        // The deck's NINTR2=99 is an upper bound on stations per layer; with
-        // two stations in this case the original uses min(NINTR2, NWIND).
-        for(std::size_t k=0;k<9;++k)
-            nintrp[k]=std::max(1,std::min(static_cast<int>(it->second[k]),2));
+        // Keep the literal original NINTR2 maximum (99 for this case).
+        // The observed number NK is naturally <= NWIND=2; clamping the
+        // control itself changes the trace/provenance without justification.
+        for(std::size_t k=0;k<9;++k){
+            nintrp[k]=static_cast<int>(it->second[k]);
+            if(nintrp[k]<1||nintrp[k]>999)
+                throw std::runtime_error("NINTR2 outside original supported range");
+        }
     }
 
     // Mixing height per hour used by SIMILT's cutoff. DIAGI passes
@@ -601,7 +605,7 @@ int main(int argc,char** argv){
         // the deck sets IEXTRP=-4, so level 1 carries the original missing
         // sentinel and is masked out of the first guess.
         if(iextrp<=0){
-            station.upper_observed_profile[0]=LayerWind{999999.f,999999.f};
+            station.upper_observed_profile[0]=LayerWind{999.f,999.f};
             settings_upper_layer_one_valid=false;
         }
 
@@ -761,7 +765,7 @@ int main(int argc,char** argv){
             blend.lvary=lvary;
             blend.iprog=0;blend.nbar=0;blend.noobs=0;
             blend.water_first=geo.iwat1;blend.water_last=geo.iwat2;
-            blend.edit=999999.f;blend.editl=999998.f;
+            blend.edit=999.f;blend.editl=998.f;
             blend.nintrp_per_layer=nintrp;
             // Station order is the original STDAT1 station index: 1 = surface.
             blend.station_x_km={static_cast<float>(surface_x_km),
@@ -872,7 +876,7 @@ int main(int argc,char** argv){
                      hour_label(clock)+".inp"));
                 if(!inter2)throw std::runtime_error("cannot write INTER2 fixture");
                 inter2<<"2 0 "<<rmin_km<<" "<<rmax1_km<<" "<<rmax2_km<<" "
-                      <<rmax3_km<<" "<<r1_km<<" "<<r2_km<<" 999999 999998\n";
+                      <<rmax3_km<<" "<<r1_km<<" "<<r2_km<<" 999 998\n";
                 for(std::size_t k=0;k<9;++k)
                     inter2<<nintrp[k]<<(k==8?"\n":" ");
                 inter2<<std::setprecision(17)
