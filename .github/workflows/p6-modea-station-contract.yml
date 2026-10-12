@@ -28,7 +28,7 @@ jobs:
           command -v gfortran-11 || command -v gfortran-12 || command -v gfortran
       - name: Configure P6 contract build
         shell: bash
-        run: cmake -S native_cpp/modules/p6_calmet -B "${RUNNER_TEMP}/cteas-p6-modea" -DCMAKE_BUILD_TYPE=Debug
+        run: cmake -S native_cpp/modules/p6_calmet -B "${RUNNER_TEMP}/cteas-p6-modea" -DCMAKE_BUILD_TYPE=Debug -DCTEAS_P6_MODE_A_REQUIRE_CASE=ON
       - name: Compile P6 real-case and all scoped contract tests
         shell: bash
         run: cmake --build "${RUNNER_TEMP}/cteas-p6-modea" --parallel 2
@@ -41,7 +41,7 @@ jobs:
       - name: Release float32 station geometry regression
         shell: bash
         run: |
-          cmake -S native_cpp/modules/p6_calmet -B "${RUNNER_TEMP}/cteas-p6-modea-release" -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet -B "${RUNNER_TEMP}/cteas-p6-modea-release" -DCMAKE_BUILD_TYPE=Release -DCTEAS_P6_MODE_A_REQUIRE_CASE=ON
           cmake --build "${RUNNER_TEMP}/cteas-p6-modea-release" --target cteas_p6_station_deck_tests --parallel 2
           ctest --test-dir "${RUNNER_TEMP}/cteas-p6-modea-release" --output-on-failure -R '^p6d_original_metinp_station_deck_input$'
       - name: Rerun full 143-hour P6D/P6F/P6E versus frozen original U/V/W
