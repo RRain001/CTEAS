@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cteas/puff/original_precision.hpp"
 #include <cstddef>
 #include <vector>
 
@@ -20,7 +21,7 @@ namespace cteas::puff {
 // cadence uses when the met model provides profiles) and PTLAPS (the met-model
 // inversion gradient).
 
-using ReleaseReal = float;
+using ReleaseReal = VendorPuffCommonReal;
 
 // The release cadence of one source over one emission hour:
 //   NPUFFS = min(max(INT(WSNEW*XTMP1(MD)) + 1, 1), MXNEW);  DT = DHR/NPUFFS
