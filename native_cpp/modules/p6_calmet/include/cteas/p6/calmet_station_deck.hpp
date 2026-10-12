@@ -42,7 +42,7 @@ inline float station_deck_float(const std::string& token) {
 // silently interpret LVARY=T as false, changing INTER2/DIAGNO behaviour.
 inline bool original_calmet_deck_logical(
     const std::string& deck,const std::string& key,bool fallback) {
-    const std::regex assignment("!\\\\s*"+key+"\\\\s*=\\\\s*([^!]*)!");
+    const std::regex assignment(std::string(R"(!\s*)")+key+R"(\s*=\s*([^!]*)!)");
     std::string token;
     bool found=false;
     for(auto it=std::sregex_iterator(deck.begin(),deck.end(),assignment);
