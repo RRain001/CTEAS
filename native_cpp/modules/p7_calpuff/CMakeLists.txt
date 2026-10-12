@@ -821,3 +821,15 @@ if(EXISTS "${P7_DGM_HOUR0}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7_first_hour_lifecycle_tests
       "${P7F_LOCKED_CASE_CONTROL}" "${P7_DGM_HOUR0}")
 endif()
+
+# The original 6h DGM is not checked into the source tree. The controlled
+# vendor-only CI regeneration first verifies the full 143h DGM SHA, then writes
+# this 11458-record slice and ONLY THEN configures CMake. Missing data can
+# never be accepted as a six-hour original-state comparison.
+set(P7_DGM_FIRST_6H
+  "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_first_six_hours.bin")
+if(EXISTS "${P7_DGM_FIRST_6H}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7_first_six_hour_state_persistence_real4
+    COMMAND cteas_p7_first_hour_lifecycle_tests
+      "${P7F_LOCKED_CASE_CONTROL}" "${P7_DGM_FIRST_6H}" 6)
+endif()
