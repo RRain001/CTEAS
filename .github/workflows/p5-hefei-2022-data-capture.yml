@@ -22,8 +22,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m venv "$RUNNER_TEMP/cteas-pyenv"
-          echo "$RUNNER_TEMP/cteas-pyenv/bin" >> "$GITHUB_PATH"
+          python3 -m venv --system-site-packages "$RUNNER_TEMP/cteas-pyenv-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo "$RUNNER_TEMP/cteas-pyenv-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/bin" >> "$GITHUB_PATH"
       - name: Dependencies
         run: python3 -m pip install --disable-pip-version-check PyYAML numpy pandas
       - name: Stage isolated 5km domain (station fallback independent)
