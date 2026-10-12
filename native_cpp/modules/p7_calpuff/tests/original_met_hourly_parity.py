@@ -34,7 +34,7 @@ def records(path):
 
 def clock(packed,seconds):
     y,j,h=packed//100000,(packed%100000)//100,packed%100
-    if y<1900 or y>2100 or j<1 or j>366 or h>23 or seconds!=0:
+    if y<1900 or y>2100 or j<1 or j>366 or h>23 or seconds<0 or seconds>3600:
         raise ValueError("invalid timestamp")
     date=dt.datetime(y,1,1,tzinfo=dt.timezone.utc)+dt.timedelta(
         days=j-1,hours=h,seconds=seconds)
