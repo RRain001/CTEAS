@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cteas/puff/control.hpp"
+#include "cteas/puff/original_grid_coords.hpp"
 #include "cteas/puff/coupling.hpp"
 
 #include <cstddef>
@@ -48,6 +49,11 @@ struct ReceptorSet {
 // spacing, a receptor outside the met grid, non-finite values, and on a deck
 // that enables neither gridded nor discrete receptors.
 [[nodiscard]] ReceptorSet receptors_from_control(const std::string& control_text);
+// Selected original QA geometry: replace only the gridded XY positions using
+// the original CALMET REAL*4 origin; other P7E sampling physics is unchanged.
+// Scope: MESHDN=1, with a matching CALMET/control grid spacing.
+[[nodiscard]] ReceptorSet receptors_from_original_met_grid(
+    const std::string& control_text, const OriginalMetGridFrame& met);
 
 // PFSAMP equivalent: the two sampling integrals for a puff moving from
 // (x_old, y_old) to (x_new, y_new) relative to one receptor.
