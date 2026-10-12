@@ -14,6 +14,7 @@ import math
 import re
 import struct
 import subprocess
+import sys
 from pathlib import Path
 
 PLANE = 2500
@@ -43,6 +44,8 @@ def floats(path: Path, count: int) -> list[float]:
 
 def main() -> None:
     parser=argparse.ArgumentParser()
+    parser.add_argument("--vendor",required=True,type=Path)
+    parser.add_argument("--fortran",default="gfortran")
     parser.add_argument("--case",required=True,type=Path)
     parser.add_argument("--p6d-fields",required=True,type=Path)
     parser.add_argument("--cpp",required=True,type=Path)
@@ -114,17 +117,66 @@ def main() -> None:
                                      "absolute_error":error})
         if count!=PLANE*LAYERS:
             raise RuntimeError("missing DIAGNO source rows")
-    result={"status":"PASS_INDEPENDENT_DIAGNO_TAIL_VS_PRIOR_IMPL" if not mismatch else "FAIL",
+    # Independent actual-hour reference: compile the untouched original
+    # SMOOTH/DIVCEL/WINDBC routines plus the verbatim DIAGNO L6119-6148
+    # call segment. Both versions receive EXACTLY this same real-case
+    # INTER2 pre-tail field and prespecified synthetic boundary snapshot.
+    # Comparison with old P6D is diagnostic evidence, never a substitute
+    # for the direct original-vs-new Fortran oracle.
+    sys.path.insert(0,str(Path(__file__).resolve().parents[2]/"reference"))
+    import compare_original_diagno_final_segment as original
+    chunks,block,original_provenance=original.original_source(args.vendor,args.out)
+    fortran_driver=args.out/"real_hour_original_diagno_source.for"
+    fortran_driver.write_text(original.DRIVER_HEAD+block+original.DRIVER_TAIL)
+    fortran_bin=args.out/"real_hour_original_diagno_source"
+    original.run([args.fortran,"-O0","-std=legacy","-fno-automatic",
+                  "-ffixed-line-length-none","-I"+str(args.vendor),
+                  *[name for name,_ in chunks],fortran_driver,"-o",fortran_bin])
+    fortran_wind=args.out/"real_hour_original_diagno_wind.txt"
+    fortran_boundary=args.out/"real_hour_original_diagno_boundary.txt"
+    original.run([fortran_bin,fixture,fortran_wind,fortran_boundary])
+    strict=original.compare(fortran_wind,csv_path,fortran_boundary,bounds)
+    old_worst={"u":0.,"v":0.,"w_below":0.,"w_above":0.}
+    old_first=[]
+    with fortran_wind.open() as reference:
+        for n,line in enumerate(reference):
+            tokens=line.split()
+            if len(tokens)!=8 or n>=PLANE*LAYERS:
+                raise RuntimeError("original source output shape/index error")
+            kk=n//PLANE+1
+            ii=n%50+1
+            jj=(n//50)%50+1
+            if tuple(map(int,tokens[:3]))!=(ii,jj,kk):
+                raise RuntimeError("original source cell index drift")
+            expected={"u":float(tokens[3]),"v":float(tokens[4]),
+                      "w_below":float(tokens[6]),"w_above":float(tokens[7])}
+            old={"u":old_u[n],"v":old_v[n],
+                 "w_below":old_w[n],"w_above":old_w[n+PLANE]}
+            for key in expected:
+                diff=abs(expected[key]-old[key])
+                old_worst[key]=max(old_worst[key],diff)
+                if diff>TOL and len(old_first)<20:
+                    old_first.append({"field":key,"i":ii,"j":jj,"k":kk,
+                                      "original":expected[key],"old":old[key],
+                                      "absolute_error":diff})
+    oracle_pass=strict["status"]=="PASS"
+    result={"status":"PASS_REAL_HOUR_ORIGINAL_SOURCE_DIAGNO_TAIL" if oracle_pass else "FAIL",
             "hour":hour,"grid":[50,50,9],"wind_abs_tol_mps":TOL,
             "stage_input":"same old CTEAS real-case pre-tail INTER2 U/V",
             "source_covered":"SMOOTH+DIVCEL+W+WINDBC from unmodified CALMET",
+            "original_fortran_blob_sha":original_provenance["git_blob"],
+            "original_source_vs_independent":strict,
+            "original_source_vs_old_diagnostic":{
+                "status":"PASS" if not old_first else "FAIL",
+                "max_abs_error_mps":old_worst,"first_mismatches":old_first},
+            "new_vs_old_diagnostic_status":"PASS" if not mismatch else "FAIL",
             "max_abs_error_mps":worst,"first_mismatches":mismatch,
             "scientific_limit":"Not an original CALMET.DAT final-field parity claim. "
                                "MIXHTST/EL/ZI/PREPDI stages are upstream and untested here."}
     (args.out/"first_hour_diagno_independent_vs_old.json").write_text(
         json.dumps(result,indent=2)+"\n")
     print(json.dumps(result,indent=2))
-    if mismatch:raise SystemExit(1)
+    if not oracle_pass:raise SystemExit(1)
 
 
 if __name__=="__main__":
