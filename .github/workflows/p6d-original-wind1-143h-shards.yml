@@ -206,10 +206,17 @@ jobs:
             fi
             ctest --test-dir "$scratch/build" -R "^${{ matrix.test }}$" --output-on-failure --timeout 300 | tee "$scratch/ctest.log"
           fi
-      - uses: actions/upload-artifact@v4
+      - name: Archive optional light-source log
+        id: light_archive
+        uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true
         with:
           name: p6d-light-original-source-${{ matrix.id }}
           path: ${{ runner.temp }}/p6d-light-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}/ctest.log
           if-no-files-found: warn
           retention-days: 7
+      - name: Surface lost log archive without changing numerical verdict
+        if: always() && steps.light_archive.outcome == 'failure'
+        run: |
+          echo "::warning::Light-source CTest result is preserved in this job log, but artifact upload failed; do not claim archived evidence."
