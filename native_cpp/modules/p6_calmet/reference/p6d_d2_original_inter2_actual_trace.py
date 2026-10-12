@@ -25,6 +25,7 @@ SELECTED = ((26, 26), (1, 26), (1, 1), (13, 13))
 # Zero other physics instructions altered. Fixed vendor source line anchors.
 ANCHORS = {
     5593: "      endif",
+    36018: "         nstat = nssta + nowsta + nusta",
     5726: "C",
     5732: "  300 CONTINUE",
     8243: "      double precision wt2,wt3",
@@ -32,9 +33,10 @@ ANCHORS = {
     8568: "      wt3 = 1./(R**2)",
 }
 BEFORE = {5593: "         end if",
+          36018: "c        --total number of stations (sfc+upper air)",
           5726: "C     ADD THE SLOPE FLOW COMPONENT TO THE HORIZONTAL WIND FIELD",
           8243: "      DOUBLE PRECISION WT"}
-AFTER = {5593: "C", 8247: "C", 8568: "c"}
+AFTER = {5593: "C", 36018: "", 8247: "C", 8568: "c"}
 
 DECL = """
 c --- P6D D-2 diagnostic only, no original arithmetic changed
@@ -67,6 +69,32 @@ c --- Write-only field values before original IPROG=0 weighted result
      3          field2(i,j,k),r,wt3,nk,nintrp(k)
          enddo
       endif
+"""
+
+
+WIND1_INPUT_HELPER = """
+c ----------------------------------------------------------------------
+c --- P6D D-2: original US/VS as WIND1 enters, before neutral SIMILT
+c ----------------------------------------------------------------------
+      subroutine d2windraw(us,vs,nstat)
+      include 'params.met'
+      integer nstat,k,l,nhcall
+      real us(mxnz,mxwnd),vs(mxnz,mxwnd)
+      save nhcall
+      data nhcall/0/
+      nhcall=nhcall+1
+      if(nhcall.eq.1)then
+         open(93,file='p6d_wind1_input_original.txt',
+     1        form='formatted',status='replace')
+      endif
+      if(nstat.ne.2)stop 'D2 WIND1 requires two input stations'
+      do l=1,2
+         do k=1,2
+            write(93,*)nhcall,l,k,us(k,l),vs(k,l)
+         enddo
+      enddo
+      return
+      end
 """
 
 
@@ -153,14 +181,15 @@ def instrument(source: Path, out: Path):
             assert lines[ln-2].rstrip("\r\n") == BEFORE[ln]
         if ln in AFTER:
             assert lines[ln].rstrip("\r\n") == AFTER[ln], (ln, lines[ln])
-    additions = {5593: "      call d2upstream(7,ndathrb,nsecb,ug,vg,qh,temp2d,\n     1                nx,ny,nz)\n",
+    additions = {36018: "      call d2windraw(us,vs,nstat)\n",
+                 5593: "      call d2upstream(7,ndathrb,nsecb,ug,vg,qh,temp2d,\n     1                nx,ny,nz)\n",
                  5726: "      call d2upstream(8,ndathrb,nsecb,ug,vg,qh,temp2d,\n     1                nx,ny,nz)\n",
                  5732: "      call d2upstream(9,ndathrb,nsecb,ug,vg,qh,temp2d,\n     1                nx,ny,nz)\n",
                  8243: DECL, 8247: START, 8568: DUMP}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(("".join(
         line + additions.get(i, "") for i, line in enumerate(lines, 1)
-    ) + UPSTREAM_HELPER).encode("latin1"))
+    ) + UPSTREAM_HELPER + WIND1_INPUT_HELPER).encode("latin1"))
     return hashlib.sha256(out.read_bytes()).hexdigest()
 
 
@@ -226,13 +255,33 @@ def main():
     run_dir = staging/"run/met"
     original_run = dgm._run(original_bin, run_dir)
     trace = run_dir/"p6d_inter2_actual.txt"
-    if trace.exists() or (run_dir/"p6d_upstream_actual.txt").exists():
+    if trace.exists() or (run_dir/"p6d_upstream_actual.txt").exists() or (run_dir/"p6d_wind1_input_original.txt").exists():
         raise RuntimeError("untouched original unexpectedly emitted diagnostic trace")
     instrumented_run = dgm._run(instrument_bin, run_dir)
     if original_run["met_dat_sha256"] != MET_SHA or instrumented_run["met_dat_sha256"] != MET_SHA:
         raise RuntimeError("Original/instrumented MET.DAT does not match frozen digest")
     if not trace.exists():
         raise RuntimeError("instrumented real CALMET did not emit INTER2 trace")
+    wind_raw=run_dir/"p6d_wind1_input_original.txt"
+    if not wind_raw.is_file():
+        raise RuntimeError("instrumented CALMET missing actual pre-WIND1 station columns")
+    raw_rows=[]
+    with wind_raw.open() as handle:
+        for line in handle:
+            v=line.split()
+            if len(v)!=5:
+                raise RuntimeError("bad pre-WIND1 station row")
+            h,l,k=(int(x) for x in v[:3])
+            if not (1<=h<=143 and 1<=l<=2 and 1<=k<=2):
+                raise RuntimeError("invalid pre-WIND1 index")
+            raw_rows.append((h,l,k,float(v[3].replace("D","E")),float(v[4].replace("D","E"))))
+    if len(raw_rows)!=143*2*2 or len({x[:3] for x in raw_rows})!=143*2*2:
+        raise RuntimeError("pre-WIND1 station trace incomplete")
+    wind_csv=out/"original_wind1_station_inputs.csv"
+    with wind_csv.open("w",newline="") as handle:
+        w=csv.writer(handle)
+        w.writerow(("hour","station","k","u","v"))
+        w.writerows(raw_rows)
     upstream_trace=run_dir/"p6d_upstream_actual.txt"
     if not upstream_trace.exists():
         raise RuntimeError("instrumented CALMET missing pre/post-SLOPE snapshots")
@@ -260,6 +309,8 @@ def main():
         "csv_rows": len(records),
         "upstream_stage_rows": len(upstream_records),
         "upstream_csv_sha256": dgm.sha256_file(upstream_csv),
+        "wind1_station_input_rows": len(raw_rows),
+        "wind1_station_input_sha256": dgm.sha256_file(wind_csv),
         "upstream_scope": "original DIAGNO kpt7 immediately after WIND1, kpt8 before slope addition (also QH/TEMP2D), and kpt9 after slope addition; four cells two levels all 143 hours",
         "selected_cells_1based": list(SELECTED),
         "columns": headers,
