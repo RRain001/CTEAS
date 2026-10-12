@@ -56,7 +56,7 @@ python3 scripts/legacy_runner_resources.py apply --runner 1
 bash /home/lhy/cteas-resource-control/scripts/rollback_resources.sh
 ```
 
-一键回滚拒绝在 Gate active 时运行，也不会强制中断 Runner busy Job。仅恢复旧资源文件和 Gate slice 旧配置；网络、注册、数据、证据均保留。回滚后包装器保持 fail-closed，资源池未装回前不执行无限制 Gate。恢复旧 Gate 源码版本需在 driver 工作区干净、没有任务时显式切回记录的基线 commit；这是另外的代码回滚，不自动覆盖用户工作。
+一键回滚拒绝在 Gate active 时运行，也不会强制中断 Runner busy Job。仅恢复旧资源文件和 Gate slice 旧配置；网络、注册、数据、证据均保留。回滚还会在 driver 干净且仍属于本次部署分支时切回记录的基线 commit（detached HEAD），恢复原来的直接 Gate 行为；不会改 main 引用或覆盖用户修改。调用回滚是明确恢复旧行为，而不是运行时静默退化。root-owned 新包装器仍保留，单独调用时缺少池限额将拒绝执行。
 
 ## 验证边界
 
