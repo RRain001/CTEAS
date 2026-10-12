@@ -2,6 +2,8 @@ name: P6D D2 original stage-aligned real-case bisection
 on:
   pull_request:
     paths:
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/stheor_station_meteo.hpp'
+      - 'native_cpp/modules/p6_calmet/reference/p6d_d2_compare_native_stheor.py'
       - 'native_cpp/modules/p6_calmet/reference/p6d_d2_compare_full143.py'
       - 'native_cpp/modules/p6_calmet/reference/p6d_d2_stage_bisection.py'
       - '.github/workflows/p6d-d2-realcase-stage-bisection.yml'
@@ -118,6 +120,17 @@ jobs:
             --out "$RUNNER_TEMP/p6d-d2/stage-bisection-oracle.json" \
             | tee "$RUNNER_TEMP/p6d-d2-stage-oracle-stdout.txt"
           echo "ORACLE_DRIVEN_P6D_IS_DIAGNOSTIC_ONLY_NOT_PRODUCTION_ACCEPTANCE"
+      - name: Compare source-native STHEOR ELUSTR2 station QH USTAR EL to original 143h
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/p6d_d2_compare_native_stheor.py \
+            --original native_cpp/modules/p6_calmet/reference/dgm_p6d_requests_2022/dgm_cell.json \
+            --product "$RUNNER_TEMP/d2-product" \
+            --index "$RUNNER_TEMP/d2-product/produced_hours.txt" \
+            --out "$RUNNER_TEMP/p6d-d2/native-stheor-143h.json" \
+            | tee "$RUNNER_TEMP/p6d-d2-native-stheor-stdout.txt"
+          test -s "$RUNNER_TEMP/p6d-d2/native-stheor-143h.json"
       - name: Trace true original CALMET DIAGNO INTER2 calls with source-hash guard
         shell: bash
         run: |
@@ -238,6 +251,8 @@ jobs:
         with:
           name: p6d-d2-stage-bisection-${{ github.run_id }}
           path: |
+            ${{ runner.temp }}/p6d-d2/native-stheor-143h.json
+            ${{ runner.temp }}/p6d-d2-native-stheor-stdout.txt
             ${{ runner.temp }}/p6d-d2/stage-bisection.json
             ${{ runner.temp }}/p6d-d2-stage-stdout.txt
             ${{ runner.temp }}/d2-product/metadata.json

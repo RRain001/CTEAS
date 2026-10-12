@@ -22,6 +22,7 @@
 #include "cteas/p6/diagno_segment.hpp"
 #include "cteas/p6/froude_adjust.hpp"
 #include "cteas/p6/slope_flow.hpp"
+#include "cteas/p6/stheor_station_meteo.hpp"
 #include "cteas/p6e/heatfx.hpp"
 #include "cteas/p6e/elustr_stable.hpp"
 #include "cteas/p6e/surface_solar.hpp"
@@ -765,6 +766,49 @@ int main(int argc,char** argv){
             }
             if(has_stable_land)
                 heat_flux=cteas::p6e::stable_elustr(night).qh_wm2;
+        }
+        // Diagnostic source-native station path, original STHEOR L5943
+        // calls ELUSTR2 L6702-6866. The native EL/USTAR/QQH values are
+        // intentionally NOT injected into SIMILT here until MIXHTST is
+        // independently reconstructed/accepted; no oracle is involved in
+        // calculating these standalone station diagnostics.
+        {
+            const auto original_is=static_cast<int>(
+                static_cast<float>(surface_x_km*1000.)/grid_m+1.f);
+            const auto original_js=static_cast<int>(
+                static_cast<float>(surface_y_km*1000.)/grid_m+1.f);
+            if(original_is<1||original_is>nx||
+               original_js<1||original_js>ny)
+                throw std::runtime_error("STHEOR surface station cell outside grid");
+            const auto station_cell=static_cast<std::size_t>(original_js-1)*
+                                    static_cast<std::size_t>(nx)+
+                                    static_cast<std::size_t>(original_is-1);
+            if(geo.landuse[station_cell]>=geo.iwat1&&
+               geo.landuse[station_cell]<=geo.iwat2)
+                throw std::runtime_error("STHEOR selected land station maps to water");
+            cteas::calmet::p6::StheorStationMeteo meteo;
+            meteo.surface_u_mps=surface_u;meteo.surface_v_mps=surface_v;
+            meteo.roughness_m=geo.z0_m[station_cell];
+            meteo.zmid1_m=center_m[0];meteo.anemometer_m=sst[4];
+            meteo.temperature_k=surface_state.temp_k[station_cell];
+            meteo.rho_kgm3=0.3484321f*obs->pressure_mb/meteo.temperature_k;
+            meteo.solar_sine=sinalpc[station_cell];
+            meteo.ha1=990.f;meteo.ha2=-30.f;meteo.hb1=-0.75f;
+            meteo.hb2=3.4f;meteo.hc1=5.31e-13f;
+            meteo.hc2=60.f;meteo.hc3p1=1.12f;
+            meteo.albedo=geo.albedo[station_cell];
+            meteo.bowen=geo.bowen[station_cell];
+            meteo.soil_heat_fraction=geo.hcg[station_cell];
+            meteo.anthropogenic_wm2=geo.qf[station_cell];
+            meteo.cloud_tenths=obs->opaque_cloud_tenths;
+            meteo.ipsifcn=deck_int(controls,"IPSIFCN",0);
+            const auto native_station=original_stheor_elustr2_station(meteo);
+            write_f32(args.out()/("stheor_el_"+hour_label(clock)+".f32"),
+                      {native_station.el_m});
+            write_f32(args.out()/("stheor_ustar_"+hour_label(clock)+".f32"),
+                      {native_station.ustar_mps});
+            write_f32(args.out()/("stheor_qh_"+hour_label(clock)+".f32"),
+                      {native_station.qh_wm2});
         }
         std::vector<float> corrected_u=first.ug_mps,corrected_v=first.vg_mps;
         // Original FRADJ (L5643-L5644) runs BEFORE SLOPE and is enabled only
