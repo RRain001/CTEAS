@@ -15,6 +15,7 @@ import math
 import pathlib
 import re
 import subprocess
+import struct
 import sys
 import tempfile
 
@@ -133,7 +134,7 @@ def parse_rows(text: str) -> dict[int, list[float]]:
 
 
 def compare(what: str, oracle_rows: dict[int, list[float]], probe_rows: dict[int, list[float]],
-            integer_columns: tuple[int, ...] = ()) -> int:
+            integer_columns: tuple[int, ...] = (), *, exact_real4: bool = False) -> int:
     if sorted(oracle_rows) != sorted(probe_rows):
         fail(f"{what}: case sets differ (oracle {len(oracle_rows)}, probe {len(probe_rows)})")
     worst = 0.0
@@ -151,6 +152,17 @@ def compare(what: str, oracle_rows: dict[int, list[float]], probe_rows: dict[int
                 continue
             if not math.isfinite(want) or not math.isfinite(got):
                 fail(f"{what} case {key} column {column}: non-finite {want!r} / {got!r}")
+            if exact_real4:
+                # POINTS1 state is unqualified REAL in original /PUFF/.
+                # Its emitted ES20.12 decimal round-trips uniquely to REAL*4;
+                # the C++ diagnostic must contain that *same stored float*.
+                # No tolerance or blanket DOUBLE precision promotion allowed.
+                source_bits = struct.pack("!f", want)
+                cpp_bits = struct.pack("!f", got)
+                if source_bits != cpp_bits:
+                    fail(f"{what} case {key} column {column}: "
+                         f"original REAL4={source_bits.hex()} C++ REAL4={cpp_bits.hex()} "
+                         f"oracle={want!r} probe={got!r}")
             if abs(want - got) > max(TOLERANCE_RELATIVE * abs(want), TOLERANCE_ABSOLUTE):
                 fail(f"{what} case {key} column {column}: oracle={want!r} probe={got!r}")
             worst_absolute = max(worst_absolute, abs(want - got))
@@ -248,9 +260,11 @@ def main() -> int:
             payload = "\n".join(f"{index + 1} " + " ".join(repr(value) for value in row)
                                 for index, row in enumerate(rows)) + "\n"
             oracle_rows, probe_rows = run_pair(args.probe, binary, mode, flag, payload, stage)
-            total += compare(flag[2:-7], oracle_rows, probe_rows, integer_columns)
+            total += compare(flag[2:-7], oracle_rows, probe_rows, integer_columns,
+                             exact_real4=(mode == 3))
         print(f"P7O_ORACLE_PARITY_TOTAL_CASES={total}")
         print(f"P7O_FORTRAN_COMPILER={version.stdout.splitlines()[0].strip()}")
+    print("P7O_RELEASE_STATE_REAL4_BITWISE=PASS")
     print("P7O_RELEASE_PARITY_IS_NOT_A_CONCENTRATION_COMPARISON=true")
     return 0
 
