@@ -113,3 +113,12 @@ add_test(NAME p6d_rebuild_original_source_fradj_real4
     --out "${CMAKE_CURRENT_BINARY_DIR}/oracle_fradj_real4")
 set_tests_properties(p6d_rebuild_original_source_fradj_real4
   PROPERTIES TIMEOUT 300)
+
+# Executable-order guard for the real P6D bridge: original source order is
+# FRADJ (L5643) -> SLOPE (L5722) -> INTER2 (L6055). This is not a
+# replacement for original-Fortran numeric field-level comparisons.
+add_test(NAME p6d_rebuild_original_fr_adj_slope_inter2_order
+  COMMAND ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/reference/verify_diagno_call_order.py"
+    --vendor "${P6D_VENDOR}/calmet.for"
+    --producer "${CMAKE_CURRENT_SOURCE_DIR}/../src/realcase_wind_field_main.cpp")
