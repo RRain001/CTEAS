@@ -254,12 +254,41 @@ int main(int argc,char** argv){
             for(std::size_t k=0;k<9;++k)bias[k]=it->second[k];
     }
 
-    // Station local geometry. This case places both stations at the declared
-    // grid centre (case.yaml grid.center equals stations.csv lat/lon), and no
-    // branch-local lat/lon projection exists, so the centre is taken from the
-    // case metadata and anything else fails closed instead of being guessed.
+    // ORIGINAL CALMET station coordinates come from the SS1/US1 UTM-km
+    // control-deck records when LCFILES=T (READCF/SETCOM; calmet.for
+    // L27128-27133, L27183-27188), NOT from a local approximation to the
+    // station-table latitude/longitude. The Fortran source computes
+    // XSSTA/XUSTA = 1000.*XKM - XORIGR in REAL*4 and DIAGI L5127-5141
+    // then stores 0.001*those relative metres in UTMXST/UTMYST. WIND1
+    // L36221-36231 also consumes the relative-metre form.
+    // Keep both float multiplications and the subtraction single-precision;
+    // otherwise metre-scale coordinate residuals survive into interpolation.
     double centre_x_km=0.,centre_y_km=0.,station_lat_deg=0.;
     double surface_x_km=0.,surface_y_km=0.,upper_x_km=0.,upper_y_km=0.;
+    const auto deck_surface=controls.find("SS1");
+    const auto deck_upper=controls.find("US1");
+    if(deck_surface==controls.end()||deck_surface->second.size()!=5||
+       deck_upper==controls.end()||deck_upper->second.size()!=4)
+        throw std::runtime_error(
+            "original CALMET requires deck SS1 and US1 station UTM-km records");
+    const auto& sst=deck_surface->second;
+    const auto& ust=deck_upper->second;
+    const float origin_x_f=static_cast<float>(origin_x_km);
+    const float origin_y_f=static_cast<float>(origin_y_km);
+    const auto relative_km=[](float projected_km,float origin_km){
+        // Fortran xsta=1000.*xkm-xorigr; utmxst=0.001*xsta
+        const float origin_metres=1000.f*origin_km;
+        const float station_metres=1000.f*projected_km;
+        const float relative_metres=station_metres-origin_metres;
+        return 0.001f*relative_metres;
+    };
+    surface_x_km=relative_km(sst[1],origin_x_f);
+    surface_y_km=relative_km(sst[2],origin_y_f);
+    upper_x_km=relative_km(ust[1],origin_x_f);
+    upper_y_km=relative_km(ust[2],origin_y_f);
+    for(double xy:{surface_x_km,surface_y_km,upper_x_km,upper_y_km})
+        if(!std::isfinite(xy)||xy<=0.||xy>=5.)
+            throw std::runtime_error("original deck station projects outside 5-km grid");
     {
         const std::string yaml=read_text(args.case_dir/"case.yaml");
         static const std::regex lon(R"(longitude:\s*([-0-9.]+))");
@@ -272,8 +301,6 @@ int main(int argc,char** argv){
             throw std::runtime_error("case.yaml grid block missing");
         const double centre_lon=std::stod(loom[1]),centre_lat=std::stod(lam[1]);
         const double length_km=std::stod(lom[1]),width_km=std::stod(wim[1]);
-        const auto csv=read_text(args.surface);
-        (void)csv;
         // Station lat/lon come from the case station tables.
         const std::string table=read_text(args.case_dir/"met/surface/final/stations.csv");
         double station_lat=0.,station_lon=0.;
@@ -288,25 +315,18 @@ int main(int argc,char** argv){
             while(std::getline(row,field,','))fields.push_back(field);
             if(fields.size()<4)throw std::runtime_error("stations.csv row malformed");
             station_lat=std::stod(fields[2]);station_lon=std::stod(fields[3]);
+            if(std::stoi(fields[0])!=static_cast<int>(sst[0]))
+                throw std::runtime_error("SS1 station ID differs from frozen surface table");
         }
         station_lat_deg=station_lat;
         if(std::abs(station_lat-centre_lat)>0.2||std::abs(station_lon-centre_lon)>0.2)
             throw std::runtime_error(
                 "surface station is more than 0.2 deg from the declared grid centre");
         centre_x_km=0.5*length_km;centre_y_km=0.5*width_km;
-        // Branch-local equirectangular projection at the case's latitude, used
-        // only to place the two stations relative to the grid. The original
-        // uses the coordinates in the station tables, and their ~3 m offset is
-        // what makes the inverse-square weights differ across the domain.
-        const double metres_per_deg_lat=110574.0;
-        const double metres_per_deg_lon=111320.0*std::cos(centre_lat*3.14159265358979/180.0);
-        auto project=[&](double lat,double lon,double& x_km,double& y_km){
-            x_km=centre_x_km+(lon-centre_lon)*metres_per_deg_lon/1000.0;
-            y_km=centre_y_km+(lat-centre_lat)*metres_per_deg_lat/1000.0;
-            if(!(x_km>0.0&&x_km<length_km&&y_km>0.0&&y_km<width_km))
-                throw std::runtime_error("station projects outside the grid");
-        };
-        project(station_lat,station_lon,surface_x_km,surface_y_km);
+        // The case centre and lat/lon are metadata sanity checks only.
+        // Their coordinates are NOT a substitute for the original deck UTM
+        // station records consumed by WIND1 and INTER2.
+        (void)length_km;(void)width_km;
         // Upper-air station coordinates come from the upper-air station table.
         {
             const std::string upper_table=read_text(
@@ -323,10 +343,15 @@ int main(int argc,char** argv){
                 while(std::getline(line,field,','))fields.push_back(field);
                 if(fields.size()<4)throw std::runtime_error("upper stations.csv row malformed");
                 upper_lat=std::stod(fields[2]);upper_lon=std::stod(fields[3]);
+                if(std::stoi(fields[0])!=static_cast<int>(ust[0]))
+                    throw std::runtime_error("US1 station ID differs from frozen upper table");
                 found=true;
             }
             if(!found)throw std::runtime_error("upper station table is empty");
-            project(upper_lat,upper_lon,upper_x_km,upper_y_km);
+            if(std::abs(upper_lat-centre_lat)>0.2||
+               std::abs(upper_lon-centre_lon)>0.2)
+                throw std::runtime_error("upper lat/lon unexpectedly far from case");
+            // READCF, not this table, supplies the CALMET wind station XY.
         }
     }
 
@@ -1006,8 +1031,9 @@ int main(int argc,char** argv){
           "\"radii_km\": {\"RMIN\": "<<rmin_km<<", \"RMAX1\": "<<rmax1_km<<", \"RMAX2\": "<<rmax2_km<<", "
                         "\"RMAX3\": "<<rmax3_km<<", \"R1\": "<<r1_km<<", \"R2\": "<<r2_km<<"}, "
           "\"lvary\": "<<(lvary?"true":"false")<<", \"nintrp_per_layer\": 99, "
-          "\"station_local_km\": ["<<centre_x_km<<", "<<centre_y_km<<"], "
-          "\"station_local_km_source\": \"case.yaml grid centre equals stations.csv lat/lon\", "
+          "\"station_local_km\": ["<<surface_x_km<<", "<<surface_y_km<<"], "
+          "\"upper_station_local_km\": ["<<upper_x_km<<", "<<upper_y_km<<"], "
+          "\"station_local_km_source\": \"original met.inp SS1/US1 UTM kilometres, READCF/SETCOM REAL*4 relative conversion; station CSV solely identity and geographic guard\", "
           "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\", "
           "\"verification\": \""<<(zi_hours.empty()
             ? "MIXING_HEIGHT_NOT_SUPPLIED_ALL_LEVELS_NEUTRAL_SIMILT: with no --zi/--el the DIAGI/INTER2 surface column is the uncapped neutral SIMILT at all nine levels, which is the measured cause of the height-growing error (against the frozen met.dat: U-LEV 9 13.5074 and U-LEV 8 10.0186 worst over 143 hours, both FAIL)"
