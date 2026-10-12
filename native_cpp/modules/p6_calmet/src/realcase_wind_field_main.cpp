@@ -24,6 +24,7 @@
 #include "cteas/p6/froude_adjust.hpp"
 #include "cteas/p6/slope_flow.hpp"
 #include "cteas/p6e/heatfx.hpp"
+#include "cteas/p6e/coordlib_pj09z0.hpp"
 #include "cteas/p6e/surface_solar.hpp"
 #include "cteas/p6e/surfvar_observed.hpp"
 #include "cteas/p6/inter2_selected.hpp"
@@ -260,7 +261,21 @@ int main(int argc,char** argv){
     const float surface_y_km=surface_y_m*0.001f;
     const float upper_x_km=upper_x_m*0.001f;
     const float upper_y_km=upper_y_m*0.001f;
-    float station_lat_deg=0.f;
+    // The original READCF L27053-27070 computes XSLAT/XULAT with GLOBE
+    // from the UTM-km station records BEFORE converting them to local metres.
+    // Reuse the source-ported COORDLIB inverse from P6E, never CSV latitude
+    // as a replacement physics input.
+    const int utm_zone=deck_int(controls,"IUTMZN",-1);
+    const auto projection=cteas::p6e::utm_north_projection(utm_zone);
+    double station_lat=0.,station_lon=0.;
+    cteas::p6e::utm_north_to_latlon_deg(
+        projection,
+        static_cast<double>(deck_stations.surface.utm_x_km)*1000.0,
+        static_cast<double>(deck_stations.surface.utm_y_km)*1000.0,
+        station_lat,station_lon);
+    const float station_lat_deg=static_cast<float>(station_lat);
+    if(!std::isfinite(station_lat_deg)||std::abs(station_lat_deg)>90.f)
+        throw std::runtime_error("GLOBE station latitude is invalid");
     if(args.case_dir.empty())
         throw std::runtime_error(
             "Mode A requires --case for independent station identity/latitude metadata");
@@ -276,9 +291,6 @@ int main(int argc,char** argv){
         while(std::getline(row,field,','))fields.push_back(field);
         if(fields.size()<4||std::stoi(fields[0])!=deck_stations.surface.id)
             throw std::runtime_error("SS1 station ID disagrees with surface stations.csv");
-        station_lat_deg=std::stof(fields[2]);
-        if(!std::isfinite(station_lat_deg)||std::abs(station_lat_deg)>90.f)
-            throw std::runtime_error("surface latitude metadata is invalid");
         if(std::getline(stream,extra) && !extra.empty())
             throw std::runtime_error("surface stations.csv has unsupported extra stations");
     }
@@ -910,7 +922,7 @@ int main(int argc,char** argv){
                         "\"RMAX3\": "<<rmax3_km<<", \"R1\": "<<r1_km<<", \"R2\": "<<r2_km<<"}, "
           "\"lvary\": "<<(lvary?"true":"false")<<", \"nintrp_per_layer\": 99, "
           "\"station_local_km\": ["<<surface_x_km<<", "<<surface_y_km<<"], "
-          "\"station_local_km_source\": \"met.inp SS1/US1 UTM km, float32 local-metre conversion\", "
+          "\"station_local_km_source\": \"met.inp SS1/US1 UTM km, READCF REAL*4: 1000*xkm - (1000*xorigkm)\", "
           "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\", "
           "\"verification\": \""<<(zi_hours.empty()
             ? "MIXING_HEIGHT_NOT_SUPPLIED_ALL_LEVELS_NEUTRAL_SIMILT: with no --zi/--el the DIAGI/INTER2 surface column is the uncapped neutral SIMILT at all nine levels, which is the measured cause of the height-growing error (against the frozen met.dat: U-LEV 9 13.5074 and U-LEV 8 10.0186 worst over 143 hours, both FAIL)"
