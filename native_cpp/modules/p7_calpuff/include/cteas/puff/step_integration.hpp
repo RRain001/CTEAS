@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cteas/puff/original_precision.hpp"
+
 namespace cteas::puff {
 
 // P7X: the inline step integration of COMP (calpuff.for), transcribed from the
@@ -10,7 +12,7 @@ namespace cteas::puff {
 // These spans are pinned by reference/p7x_source_anchor.py, which fails the gate
 // on drift. Everything is REAL*4 internally, like the vendor.
 
-using StepReal = float;
+using StepReal = VendorPuffCommonReal;
 
 struct SamplingCadenceInputs {
     bool new_puff = true;              // IOLD=0 (released during this time step)
