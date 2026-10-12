@@ -5,6 +5,7 @@ on:
     branches: [audit/p6d-source-slope-drivers-143h-20261012]
     paths:
       - 'scripts/p6d_compare_native_comp_station_143h.py'
+      - 'scripts/p6d_compare_original_comp_dptt_143h.py'
       - 'scripts/run_p6_end_to_end.py'
       - 'native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp'
       - 'native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp'
@@ -68,6 +69,15 @@ jobs:
             test "$(stat -c %s "$root/base/A/native_comp.$name.f32")" = 1430000
           done
           test -x "$root/build/p6d/cteas_p6_realcase_wind_field"
+      - name: Diagnose source COMP DPTT field before and after gridded MIXHT
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-native-comp-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 scripts/p6d_compare_original_comp_dptt_143h.py \
+            --source native_cpp/modules/p6_calmet/reference/dgm_internal_state_2022/dgm_state.bin \
+            --native-prefix "$root/base/A/native_comp" \
+            --out "$root/comp_dptt_143h.json"
       - name: Compute 143h station ELUSTR2 MIXHTST SIMILT using only native previous-hour COMP state
         shell: bash
         run: |
@@ -99,6 +109,7 @@ jobs:
           name: p6d-native-comp-station-143h
           path: |
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/native_comp_station_143h.json
+            ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/comp_dptt_143h.json
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/coupled/station_mixhtst.csv
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/base/A/native_comp.state.json
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/baseline.log
