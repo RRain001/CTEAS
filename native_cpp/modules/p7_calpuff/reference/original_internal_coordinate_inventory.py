@@ -16,7 +16,9 @@ from pathlib import Path
 
 SOURCE_PATTERNS = {
     "point_internal": re.compile(r"\b(?:XPT1GRD|YPT1GRD)\b", re.I),
-    "point_text": re.compile(r"\b(?:XPT1|YPT1|XPT1KM|YPT1KM)\b", re.I),
+    # Original POINTS1 uses XPT1GRD/YPT1GRD in /PT1/. Bare XPT1/
+    # YPT1, XPT1KM and YPT1KM are NOT vendor symbols. Do not require
+    # invented names and then misclassify a valid vendor source as broken.
     "grid_conversion": re.compile(r"\b(?:GRIDIJ|GETCELL|XORIGKM|YORIGKM|XORIG|YORIG)\b", re.I),
     "puff_position": re.compile(r"\b(?:XPB|YPB)\s*\(", re.I),
 }
