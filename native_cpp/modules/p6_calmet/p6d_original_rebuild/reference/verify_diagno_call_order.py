@@ -36,13 +36,18 @@ def main():
     match_s=re.findall(r"\bcompute_original_slope_scoped\s*\(",producer)
     if len(match_f)!=1 or len(match_s)!=1:
         raise RuntimeError("P6D diagnostics expect exactly one FRADJ and SLOPE call")
+    surface=producer.index("surfvar_one_station(")
     f=producer.index("froude_adjust(")
+    heat=producer.index("cteas::p6e::heatfx(")
     s=producer.index("compute_original_slope_scoped(")
     blend=producer.index("original_inter2_selected(",s)
-    if not (0<f<s<blend):
-        raise RuntimeError("original FRADJ -> SLOPE -> INTER2 sequence violated")
-    print("PASS_P6D_SOURCE_ORDER_FRADJ_BEFORE_SLOPE_BEFORE_INTER2")
-    print("original CALMET: FRADJ L5643 then SLOPE L5722 then INTER2 L6055")
+    if not (0<surface<f<heat<s<blend):
+        raise RuntimeError(
+            "original SURFVAR -> FRADJ -> HEATFX -> SLOPE -> INTER2 "
+            "stage sequence violated")
+    print("PASS_P6D_SOURCE_ORDER_SURFVAR_FRADJ_HEATFX_SLOPE_INTER2")
+    print("original CALMET: FRADJ L5643, HEATFX L5686, "
+          "SLOPE L5722, INTER2 L6055")
 
 
 if __name__=="__main__":
