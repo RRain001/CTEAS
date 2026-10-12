@@ -7,7 +7,7 @@ permissions:
   contents: read
 concurrency:
   group: cteas-independent-audit-20261012-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   scientific-audit:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
@@ -37,7 +37,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ matrix.pinned_sha }}
-          fetch-depth: 0
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Checkout immutable 2022 inputs for the older P6E branch
+        if: matrix.track == 'p6e'
+        uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          path: .audit-frozen-main
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
+          fetch-depth: 1
           persist-credentials: false
       - name: Inspect provenance, verify pinned source and frozen 2022 reference
         shell: bash
@@ -53,11 +63,17 @@ jobs:
           test -x /usr/bin/gfortran-11
           /usr/bin/g++-12 --version | head -1
           /usr/bin/gfortran-11 --version | head -1
-          git cat-file -e "$MAIN_REFERENCE_SHA:project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat"
-          # The P6E branch predates the frozen reference case. Restore ONLY
-          # immutable 2022 test inputs, in the ephemeral checkout, from main.
-          git restore --source="$MAIN_REFERENCE_SHA" --worktree -- project/cases/hefei5km_2022_reference_case_20261011
+          # P6D/P7 carry the frozen case; the older P6E branch does not.
+          # Git history is shallow to avoid three full historical clones through
+          # the same proxy. P6E gets the exact immutable main case via its own
+          # narrow (sparse) read-only checkout with no retained credentials.
+          if [ "$CTEAS_AUDIT_TRACK" = p6e ]; then
+            test -s .audit-frozen-main/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
+            mkdir -p project/cases
+            cp -a .audit-frozen-main/project/cases/hefei5km_2022_reference_case_20261011 project/cases/
+          fi
           MET=project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
+          test -s "$MET"
           echo "$FROZEN_MET_SHA  $MET" | sha256sum --check --status
           echo "FROZEN_MAIN_CASE_SHA256=PASS"
           CG=$(awk -F: '$1=="0" {print $3}' /proc/self/cgroup)
