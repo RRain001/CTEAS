@@ -89,6 +89,30 @@ jobs:
             --comp-state-prefix "$root/base/A/native_comp" \
             --out "$root/coupled"
           test "$(wc -l < "$root/coupled/station_mixhtst.csv")" -eq 144
+      - name: Independently compare 143h reconstructed 3D U V W records with frozen original
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-native-comp-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          case_dir="frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011"
+          "$root/build/p6f/cteas_p6f_calmet_dat21_writer" write-from-p6d \
+            --fields "$root/coupled" --variant blend --w-field w_face \
+            --statics-from "$case_dir/run/met/met.dat" \
+            --met-fields-from "$case_dir/run/met/met.dat" \
+            --irtype 1 --out "$root/coupled_wind.dat" \
+            --report "$root/coupled_wind_output.json"
+          # Scientific FAIL is expected until U/V/W closure, but do not skip
+          # the independent station-error localization step after this.
+          set +e
+          "$root/build/p6e/p6e_calmet_dat21" compare \
+            --reference "$case_dir/run/met/met.dat" \
+            --candidate "$root/coupled_wind.dat" \
+            --out "$root/coupled_uvw_reference.json" \
+            >"$root/coupled_uvw_stdout.log" 2>&1
+          numeric_rc=$?
+          set -e
+          echo "Independent frozen CALMET 143h U/V/W numeric comparator exit=$numeric_rc"
+          test -s "$root/coupled_uvw_reference.json"
       - name: Read-only original station ZII and native previous-COMP history first-divergence gate
         shell: bash
         run: |
@@ -110,6 +134,8 @@ jobs:
           path: |
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/native_comp_station_143h.json
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/comp_dptt_143h.json
+            ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/coupled_uvw_reference.json
+            ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/coupled_wind_output.json
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/coupled/station_mixhtst.csv
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/base/A/native_comp.state.json
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/baseline.log
