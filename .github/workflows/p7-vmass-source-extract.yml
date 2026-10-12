@@ -25,8 +25,8 @@ jobs:
           set -euo pipefail
           src=engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
           echo 'da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568  '${src} | sha256sum -c -
-          echo 'P7_ORIGINAL_VMASS_BEGIN 11640 12090'
-          sed -n '11640,12090{=;p;}' "$src" | paste - -
+          echo 'P7_ORIGINAL_VMASS_BEGIN 11590 12090'
+          sed -n '11590,12090{=;p;}' "$src" | paste - -
           echo 'P7_ORIGINAL_VMASS_END'
           echo 'P7_ORIGINAL_COMP_LID_BEGIN'
           sed -n '11375,11415{=;p;}' "$src" | paste - -
