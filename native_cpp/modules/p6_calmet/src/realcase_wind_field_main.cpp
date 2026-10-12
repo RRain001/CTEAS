@@ -263,7 +263,7 @@ int main(int argc,char** argv){
     // L36221-36231 also consumes the relative-metre form.
     // Keep both float multiplications and the subtraction single-precision;
     // otherwise metre-scale coordinate residuals survive into interpolation.
-    double centre_x_km=0.,centre_y_km=0.,station_lat_deg=0.;
+    double station_lat_deg=0.;
     double surface_x_km=0.,surface_y_km=0.,upper_x_km=0.,upper_y_km=0.;
     const auto deck_surface=controls.find("SS1");
     const auto deck_upper=controls.find("US1");
@@ -322,7 +322,8 @@ int main(int argc,char** argv){
         if(std::abs(station_lat-centre_lat)>0.2||std::abs(station_lon-centre_lon)>0.2)
             throw std::runtime_error(
                 "surface station is more than 0.2 deg from the declared grid centre");
-        centre_x_km=0.5*length_km;centre_y_km=0.5*width_km;
+        if(length_km!=5.0||width_km!=5.0)
+            throw std::runtime_error("producer expects the original 5km by 5km domain");
         // The case centre and lat/lon are metadata sanity checks only.
         // Their coordinates are NOT a substitute for the original deck UTM
         // station records consumed by WIND1 and INTER2.
