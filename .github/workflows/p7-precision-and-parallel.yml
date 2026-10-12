@@ -45,7 +45,15 @@ jobs:
           output="${RUNNER_TEMP}/p7-precision-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           python3 native_cpp/modules/p7_calpuff/reference/audit_original_precision.py \
             --compiler "$fc" --report "$output/precision-audit.json"
-          cmake -S native_cpp/modules/p7_calpuff -B "$output/cpp" -DCMAKE_BUILD_TYPE=Debug
+          if command -v g++-12 >/dev/null 2>&1; then
+            cpp="$(command -v g++-12)"
+          elif command -v g++-11 >/dev/null 2>&1; then
+            cpp="$(command -v g++-11)"
+          else
+            cpp="$(command -v c++)"
+          fi
+          cmake -S native_cpp/modules/p7_calpuff -B "$output/cpp" \
+            -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$output/cpp" --target cteas_p7_precision_contract_tests --parallel 2
           ctest --test-dir "$output/cpp" -R '^cteas_p7_original_fortran_cpp_precision_contract$' --output-on-failure
           echo "P7_ORIGINAL_PRECISION_AUDIT=PASS"
@@ -94,7 +102,15 @@ jobs:
           set -euo pipefail
           lane="${{ matrix.lane }}"
           build="${RUNNER_TEMP}/p7-shard-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${lane}"
-          cmake -S native_cpp/modules/p7_calpuff -B "$build" -DCMAKE_BUILD_TYPE=Debug
+          if command -v g++-12 >/dev/null 2>&1; then
+            cpp="$(command -v g++-12)"
+          elif command -v g++-11 >/dev/null 2>&1; then
+            cpp="$(command -v g++-11)"
+          else
+            cpp="$(command -v c++)"
+          fi
+          cmake -S native_cpp/modules/p7_calpuff -B "$build" \
+            -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Debug
           case "$lane" in
             release-transport)
               targets=(cteas_p7o_tests cteas_p7o_probe cteas_p7p_tests cteas_p7p_probe
