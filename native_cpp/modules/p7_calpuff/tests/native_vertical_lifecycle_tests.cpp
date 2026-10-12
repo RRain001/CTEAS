@@ -171,6 +171,47 @@ void local_native_vmass_integration() {
     native.retire(44);
     require(native.active_count()==0,"native VMASS retirement failed");
 }
+void original_high_uniform_layer() {
+    using namespace cteas::puff;
+    OriginalVerticalLifecycle vertical;
+    NewPuffInputs p;
+    p.source_x_km=0.5;
+    p.source_y_km=0.5;
+    p.effective_height_m=150.0;
+    p.sigma_y_source_m=1.0;
+    p.sigma_z_source_m=1.0;
+    p.stability_class=4;
+    InjectionInputs injection;
+    injection.species_count=1;
+    injection.emission_duration_s=60.0;
+    injection.effective_height_m=150.0;
+    injection.mixing_height_m=120.0;
+    injection.max_layer_height_m=200.0;
+    injection.mass_fraction_mixed=0.0;
+    injection.stability_class=4;
+    injection.gaussian_distribution=0;
+    injection.emission_rate={1.0};
+    vertical.admit_point(13,p,injection);
+    require(vertical.state(13).puff_code==4 &&
+            vertical.state(13).mass_above.at(0)==60.0F,
+            "original high-release uniform ICODE=4 setup invalid");
+    OriginalMetHour met;
+    met.nx=2;met.ny=2;met.nz=2;
+    met.zi.assign(4,120.0F);met.ipgt.assign(4,4);
+    met.u.assign(8,1.0F);met.v.assign(8,2.0F);
+    for(std::size_t idx=4;idx<8;idx++) {
+        met.u[idx]=3.0F;met.v[idx]=4.0F;
+    }
+    Calmet21Static static_met;
+    static_met.cell_face_m={0.0F,100.0F,200.0F};
+    const auto v=vertical.sample(13,met,static_met,
+                                 0.5F,0.5F,150.0F);
+    require(v.extent.z_bottom_m==100.0 && v.extent.z_top_m==200.0 &&
+            v.wind.u_ms==3.0 && v.wind.v_ms==4.0,
+            "native ICODE4 failed to use original ZFACE level and upper U/V");
+    require(vertical.state(13).completed_substeps==0,
+            "high uniform vertical sampling mutated source");
+}
 void original_first_step(const char* met_path,const char* dgm_path) {
     using namespace cteas::puff;
     std::ifstream file(dgm_path,std::ios::binary);
@@ -226,6 +267,7 @@ void original_first_step(const char* met_path,const char* dgm_path) {
 int main(int argc,char** argv) {
     try {
         local_native_state();
+        original_high_uniform_layer();
         local_native_vmass_integration();
         if(argc==3) original_first_step(argv[1],argv[2]);
         else if(argc!=1)throw std::invalid_argument("usage: native-vertical-test [MET DGM]");

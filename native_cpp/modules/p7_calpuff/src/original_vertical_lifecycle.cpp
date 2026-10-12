@@ -82,6 +82,20 @@ NativeVerticalWind OriginalVerticalLifecycle::sample(
     input.sigma_z_begin_m=s.sigma_z_m;
     input.previous_mixing_height_m=s.ziold_m;
     input.maximum_mixing_height_m=s.zimax_m;
+    // Original COMP/ZFIND supplies ZFACE(ILAYER:ILAYER+1) to PUFFDZ.
+    // The uniform-above-lid ICODE 4/14 path reads both faces, whereas
+    // Gaussian cases never needed them. Omitting them silently created an
+    // invalid zero-width wind layer for native high-release puffs.
+    require(met.nz>0 && statics.cell_face_m.size()==
+            static_cast<std::size_t>(met.nz+1),
+            "native PUFFDZ requires a complete original ZFACE profile");
+    const std::vector<double> faces(statics.cell_face_m.begin(),
+                                    statics.cell_face_m.end());
+    const int ilayer=find_layer(z,faces);
+    require(ilayer>=1 && ilayer<=met.nz,
+            "original ZFIND returned out-of-range vertical cell");
+    input.layer_bottom_m=statics.cell_face_m.at(static_cast<std::size_t>(ilayer-1));
+    input.layer_top_m=statics.cell_face_m.at(static_cast<std::size_t>(ilayer));
     for(float q:s.mass_mixed)input.mixed_layer_mass.push_back(q);
     for(float q:s.mass_above)input.above_layer_mass.push_back(q);
     const auto extent=puff_extent(input);
