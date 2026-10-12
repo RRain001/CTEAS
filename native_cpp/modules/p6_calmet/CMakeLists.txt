@@ -317,38 +317,66 @@ if(MSVC)
 else()
   target_compile_options(cteas_p6_station_deck_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
-add_test(NAME p6d_original_metinp_station_deck_input
-         COMMAND cteas_p6_station_deck_tests
-            ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp)
-find_package(Python3 QUIET COMPONENTS Interpreter)
-if(Python3_Interpreter_FOUND)
+# Isolated P6 kernel workflows sometimes fetch just C++ sources, not the
+# multi-gigabyte frozen Hefei case. They must still test the source in isolation
+# and must NOT claim real-case verification. The dedicated Mode A job requires
+# full case inputs and fails configuration when any required artifact is absent.
+option(CTEAS_P6_MODE_A_REQUIRE_CASE
+       "Require complete frozen Hefei input tree for P6 Mode A numerical gates" OFF)
+set(P6_MODEA_CASE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011")
+set(P6_MODEA_REQUIRED_FILES
+    "case.yaml"
+    "grid/grid.cmn"
+    "grid/center_location"
+    "geo/terrel/terrel.inp"
+    "geo/ctgproc/ctgproc.inp"
+    "geo/makegeo/makegeo.inp"
+    "geo/makegeo/geo.dat"
+    "run/met/met.inp"
+    "met/surface/final/stations.csv"
+    "met/surface/final/surf.dat"
+    "met/upperair/final/stations.csv"
+    "met/upperair/final/up_58424.dat")
+set(P6_MODEA_CASE_READY TRUE)
+foreach(item IN LISTS P6_MODEA_REQUIRED_FILES)
+  if(NOT EXISTS "${P6_MODEA_CASE}/${item}")
+    set(P6_MODEA_CASE_READY FALSE)
+    if(CTEAS_P6_MODE_A_REQUIRE_CASE)
+      message(FATAL_ERROR "P6 Mode A required frozen-case input missing: ${P6_MODEA_CASE}/${item}")
+    endif()
+  endif()
+endforeach()
+add_test(NAME p6d_original_station_deck_synthetic_source_contract
+         COMMAND cteas_p6_station_deck_tests)
+if(P6_MODEA_CASE_READY)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME p6d_original_metinp_station_deck_input
+           COMMAND cteas_p6_station_deck_tests "${P6_MODEA_CASE}/run/met/met.inp")
   add_test(NAME p6d_p3_p4_p5_metinp_station_contract
            COMMAND ${Python3_EXECUTABLE}
-              ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_case_station_contract.py
-              ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011)
+             "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_case_station_contract.py"
+             "${P6_MODEA_CASE}")
   add_test(NAME p6_modea_original_grid_generator_to_metinp
            COMMAND ${Python3_EXECUTABLE}
-              ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_case_grid_source_contract.py
-              ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011)
-
+             "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_case_grid_source_contract.py"
+             "${P6_MODEA_CASE}")
+  find_program(P6_STATION_GFORTRAN NAMES gfortran-11 gfortran-12 gfortran)
+  if(P6_STATION_GFORTRAN)
+    add_test(NAME p6d_original_readcf_real4_fortran_source
+             COMMAND ${Python3_EXECUTABLE}
+               "${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_original_deck_station.py"
+               --vendor "${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for"
+               --deck "${P6_MODEA_CASE}/run/met/met.inp"
+               --compiler ${P6_STATION_GFORTRAN}
+               --out "${CMAKE_CURRENT_BINARY_DIR}/original_readcf_station")
+  elseif(CTEAS_P6_MODE_A_REQUIRE_CASE)
+    message(FATAL_ERROR "P6 Mode A original Fortran source oracle requires gfortran")
+  else()
+    message(STATUS "P6 original Fortran source oracle unavailable; not certified")
+  endif()
 else()
-  message(FATAL_ERROR "Python3 required for P6 station input semantic contract test")
-endif()
-
-# Source-anchored READCF reference: literal unchanged vendor arithmetic is
-# compiled with Fortran on supported CI/gate hosts. Do not substitute a C++
-# emulation as the independent original oracle.
-find_program(P6_STATION_GFORTRAN NAMES gfortran-11 gfortran-12 gfortran)
-if(P6_STATION_GFORTRAN)
-  add_test(NAME p6d_original_readcf_real4_fortran_source
-           COMMAND ${Python3_EXECUTABLE}
-              ${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_original_deck_station.py
-              --vendor ${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for
-              --deck ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp
-              --compiler ${P6_STATION_GFORTRAN}
-              --out ${CMAKE_CURRENT_BINARY_DIR}/original_readcf_station)
-else()
-  message(STATUS "P6 original Fortran station source comparator unavailable; does not count as PASS")
+  message(STATUS "P6 Mode A full-case tests NOT REGISTERED; source-only CTests are still valid")
 endif()
 
 # P6D real-case wind-field producer (partial product: WIND1 step-one UG/VG
@@ -372,12 +400,14 @@ endif()
 # tree (read-only inputs; outputs go to the build tree). The producer throws on
 # any missing or invalid case input, so exit status plus the emitted hour count
 # is the whole assertion.
-add_test(NAME p6d_realcase_wind_producer_case_contract
-         COMMAND cteas_p6_realcase_wind_field
-                 --case ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011
-                 --out ${CMAKE_CURRENT_BINARY_DIR}/realcase_wind_ctest)
-set_tests_properties(p6d_realcase_wind_producer_case_contract PROPERTIES
-                     PASS_REGULAR_EXPRESSION "hours=143")
+if(P6_MODEA_CASE_READY)
+  add_test(NAME p6d_realcase_wind_producer_case_contract
+           COMMAND cteas_p6_realcase_wind_field
+                   --case "${P6_MODEA_CASE}"
+                   --out ${CMAKE_CURRENT_BINARY_DIR}/realcase_wind_ctest)
+  set_tests_properties(p6d_realcase_wind_producer_case_contract PROPERTIES
+                       PASS_REGULAR_EXPRESSION "hours=143")
+endif()
 
 # P6D9A composed trace for chained unmodified original Fortran comparisons.
 add_executable(cteas_p6_d9a_source_trace src/diagno_d9a_trace_main.cpp)
