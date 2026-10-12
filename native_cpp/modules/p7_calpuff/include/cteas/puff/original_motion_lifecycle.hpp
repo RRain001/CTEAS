@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cteas/puff/original_precision.hpp"
+#include "cteas/puff/release.hpp"
 #include <cstddef>
 #include <unordered_map>
 
@@ -41,6 +42,11 @@ struct OriginalPostWindResult {
 class OriginalPuffMotionLifecycle {
 public:
     void introduce(int puff_id, OriginalPuffMotionState initial);
+    // Native POINTS1 release: XY is the source's vendor relative-grid cell,
+    // zero initial distance/age comes from CALPUFF new-puff semantics.
+    // Effective height (and other plume-rise inputs) may still be supplied
+    // by an independently gated meteorological/RISE calculation.
+    void introduce_point_source(int puff_id, const NewPuffInputs& source);
     [[nodiscard]] bool contains(int puff_id) const noexcept;
     [[nodiscard]] OriginalPuffMotionState state(int puff_id) const;
     [[nodiscard]] OriginalPostWindResult advance(int puff_id, OriginalPostWindInputs inputs);
