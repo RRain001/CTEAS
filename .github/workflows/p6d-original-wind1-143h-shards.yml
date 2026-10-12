@@ -18,7 +18,10 @@ concurrency:
 jobs:
   four-hour-shards:
     name: Original REAL4 WIND1 Hefei hours ${{ matrix.first }}-${{ matrix.last }}
-    runs-on: [self-hosted, Linux, X64]
+    runs-on:
+      - "${{ matrix.pool }}"
+      - Linux
+      - X64
     timeout-minutes: 65
     defaults:
       run:
@@ -28,10 +31,10 @@ jobs:
       max-parallel: 4
       matrix:
         include:
-          - { first: 1, last: 36 }
-          - { first: 37, last: 72 }
-          - { first: 73, last: 108 }
-          - { first: 109, last: 143 }
+          - { first: 1, last: 36, pool: cteas-compute }
+          - { first: 37, last: 72, pool: cteas-compute }
+          - { first: 73, last: 108, pool: cteas-compute }
+          - { first: 109, last: 143, pool: cteas-reserve }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,7 +77,7 @@ jobs:
 
   original-prepdi-143h:
     name: CALMET original PREPDI station US VS REAL4, byte-identical MET.DAT
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-reserve, Linux, X64]
     timeout-minutes: 55
     defaults:
       run:
@@ -109,7 +112,7 @@ jobs:
   original-prepdi-vs-cpp-input:
     name: ALL 143 hours original PREPDI vs C++ station wind input parity
     needs: [original-prepdi-143h]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-reserve, Linux, X64]
     timeout-minutes: 35
     defaults:
       run:
@@ -153,3 +156,59 @@ jobs:
           name: p6d-original-prepdi-vs-modern-143h
           path: ${{ runner.temp }}/p6d-prepdi-compare-${{ github.run_id }}-${{ github.run_attempt }}/evidence/prepdi_143h_original_vs_cpp.json
           if-no-files-found: warn
+
+  independent-kernel-reacceptance:
+    name: Light pool original source gate ${{ matrix.id }}
+    runs-on: [cteas-light, Linux, X64]
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include:
+          - { id: WIND1, target: cteas_p6d_source_wind1_real4, test: p6d_rebuild_independent_wind1_source_real4 }
+          - { id: SIMILT, target: cteas_p6d_source_similt_real4, test: p6d_rebuild_independent_similt_psiud_original_real4_real8 }
+          - { id: INTER2, target: cteas_p6d_source_inter2_real4, test: p6d_rebuild_independent_inter2_real4_real8_source }
+          - { id: DIAGNO, target: cteas_p6d_source_diagno_tail_real4, test: p6d_rebuild_independent_diagno_final_real4 }
+          - { id: FRADJ, target: cteas_p6d_source_fradj_real4, test: p6d_rebuild_original_source_fradj_real4 }
+          - { id: SLOPE, target: cteas_p6d_source_slope_real4, test: p6d_rebuild_independent_original_slope_real4 }
+          - { id: ORDER, target: none, test: p6d_rebuild_original_fr_adj_slope_inter2_order }
+          - { id: SOURCE, target: syntax, test: source-blob-and-trace-syntax }
+    defaults:
+      run:
+        working-directory: p6d_light_source_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6d_light_source_checkout
+          filter: blob:none
+          sparse-checkout: |
+            native_cpp/modules/p6_calmet
+            engine/vendor/src/CALMET_v6.5.0_L150223
+      - uses: ./p6d_light_source_checkout/.github/actions/cteas-linux-toolchain
+      - name: Verify one independent original-source numerical gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$RUNNER_TEMP/p6d-light-${{ matrix.id }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$scratch"
+          if [[ "${{ matrix.target }}" == "syntax" ]]; then
+            python3 -m py_compile native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/trace_original_prepdi_143h.py
+            python3 -m py_compile native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/compare_realcase_wind1_143h_shard.py
+            blob="$(git hash-object engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for)"
+            test "$blob" = "437f43bb7f0e51a1919e56664663e1a046986ed0"
+            printf 'PASS_SOURCE_BLOB_AND_PYTHON_SYNTAX %s\n' "$blob" | tee "$scratch/ctest.log"
+          else
+            cmake -S native_cpp/modules/p6_calmet/p6d_original_rebuild -B "$scratch/build" -DCMAKE_BUILD_TYPE=Release
+            if [[ "${{ matrix.target }}" != "none" ]]; then
+              cmake --build "$scratch/build" --target "${{ matrix.target }}" --parallel 1
+            fi
+            ctest --test-dir "$scratch/build" -R "^${{ matrix.test }}$" --output-on-failure --timeout 300 | tee "$scratch/ctest.log"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p6d-light-original-source-${{ matrix.id }}
+          path: ${{ runner.temp }}/p6d-light-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}/ctest.log
+          if-no-files-found: warn
+          retention-days: 7
