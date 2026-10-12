@@ -868,7 +868,8 @@ endif()
 # from the previous double/absolute-UTM P7C prototype.
 add_library(cteas_p7_original_met_cell STATIC src/original_met_cell.cpp)
 target_include_directories(cteas_p7_original_met_cell PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(cteas_p7_original_met_cell PUBLIC cteas_p7_calmet21 cteas_p7_advection)
+target_link_libraries(cteas_p7_original_met_cell PUBLIC
+  cteas_p7_calmet21 cteas_p7_advection cteas_p7_step_integration)
 if(MSVC)
   target_compile_options(cteas_p7_original_met_cell PRIVATE /W4 /WX)
 else()

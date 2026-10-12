@@ -1,4 +1,5 @@
 #include "cteas/puff/original_met_cell.hpp"
+#include "cteas/puff/step_integration.hpp"
 
 #include <cmath>
 #include <stdexcept>
@@ -9,10 +10,18 @@ OriginalMetCell original_met_cell(float x,float y,int nx,int ny) {
        x<0.0F || y<0.0F || x>=static_cast<float>(nx) ||
        y>=static_cast<float>(ny))
         throw std::out_of_range("P7 original GETCELL: puff outside MET grid");
-    const int ix=static_cast<int>(std::floor(x))+1;
-    const int iy=static_cast<int>(std::floor(y))+1;
-    return {ix,iy,static_cast<std::size_t>(iy-1)*static_cast<std::size_t>(nx)
-                   +static_cast<std::size_t>(ix-1)};
+    // The original CALPUFF GETCELL/GRIDIJ implementation is already ported
+    // as grid_cell(). Reuse that authoritative routine rather than creating
+    // another, subtly different rounding / boundary algorithm.
+    CellLookupInputs request;
+    request.x_cells=x;
+    request.y_cells=y;
+    request.nx=nx;request.ny=ny;
+    request.domains=1;request.domain=1;request.nest_factor=1.0;
+    const auto found=grid_cell(request);
+    return {found.i,found.j,
+            static_cast<std::size_t>(found.j-1)*static_cast<std::size_t>(nx)
+            +static_cast<std::size_t>(found.i-1)};
 }
 
 AdvectiveWind original_met_cell_advect(
