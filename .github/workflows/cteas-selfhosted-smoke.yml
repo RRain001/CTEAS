@@ -115,6 +115,8 @@ jobs:
     runs-on: [cteas-managed, "${{ format('cteas-{0}', matrix.pool) }}", "${{ matrix.label }}", Linux, X64]
     timeout-minutes: 5
     env:
+      CXX: /usr/bin/g++-12
+      FC: /usr/bin/gfortran-11
       EXPECTED_INDEX: ${{ matrix.index }}
       EXPECTED_CPU: ${{ matrix.cpu }}
       EXPECTED_MEMORY: ${{ matrix.memory }}
@@ -139,15 +141,15 @@ jobs:
           test "$(cat "$root/memory.swap.max")" = 0
           if sudo -n true 2>/dev/null; then echo 'Unexpected sudo access'; exit 1; fi
           curl -fsS --connect-timeout 10 --max-time 20 https://api.github.com/ -o /dev/null
-          g++ --version | head -1
-          gfortran --version | head -1
+          "$CXX" --version | head -1
+          "$FC" --version | head -1
           cmake --version | head -1
           temp=$(mktemp -d "$RUNNER_TEMP/infra-smoke.XXXXXX")
           trap 'find "$temp" -maxdepth 1 -type f -delete; rmdir "$temp"' EXIT
           printf '#include <iostream>\nint main(){std::cout << 123;}\n' > "$temp/hello.cpp"
           printf 'program hello\nprint *, 123\nend program hello\n' > "$temp/hello.f90"
-          g++ -std=c++20 "$temp/hello.cpp" -o "$temp/cpp"
-          gfortran "$temp/hello.f90" -o "$temp/fortran"
+          "$CXX" -std=c++20 "$temp/hello.cpp" -o "$temp/cpp"
+          "$FC" "$temp/hello.f90" -o "$temp/fortran"
           test "$("$temp/cpp")" = 123
           "$temp/fortran" | grep -q 123
           # Keep all 13 jobs occupied long enough to measure actual overlap.
