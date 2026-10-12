@@ -48,9 +48,11 @@ void negative_tests() {
 }
 int main(int argc,char** argv) {
     try {
-        require(argc==3 || argc==4,"usage: lifecycle_real4 PUFF_INP ORIGINAL_DGM [6]");
-        const bool six_hours=argc==4 && std::string(argv[3])=="6";
-        require(argc==3 || six_hours,"only 6-hour extension is supported");
+        require(argc==3 || argc==4,
+                "usage: lifecycle_real4 PUFF_INP ORIGINAL_DGM [6|143]");
+        const int expected_hours=argc==3?1:std::stoi(argv[3]);
+        require(expected_hours==1 || expected_hours==6 || expected_hours==143,
+                "only original 1/6/143-hour scopes are supported");
         using namespace cteas::puff;
         negative_tests();
         const auto deck=ControlFile::read_file(argv[1]);
@@ -63,22 +65,27 @@ int main(int argc,char** argv) {
         require(static_cast<bool>(input),"cannot open locked original DGM");
         OriginalPuffMotionLifecycle life;
         std::size_t rows=0,episodes=0,linked_steps=0,hour_transitions=0;
-        int current_id=0, previous_hour=0;
+        int current_id=0, previous_hour_index=-1;
         Record original{};
         while(input.read(reinterpret_cast<char*>(&original),sizeof(original))) {
             ++rows;
             const int current_hour=original.i[1];
-            require(original.i[0]==1 && current_hour>=202200100 &&
-                    current_hour <= (six_hours?202200105:202200100),
+            const int year=current_hour/100000;
+            const int day=(current_hour/100)%1000;
+            const int clock_hour=current_hour%100;
+            const int hour_index=(day-1)*24+clock_hour;
+            require(original.i[0]==1 && year==2022 && day>=1 && day<=6 &&
+                    clock_hour>=0 && clock_hour<24 &&
+                    hour_index>=0 && hour_index<expected_hours,
                     "unexpected original step type/time");
-            if(previous_hour!=0 && current_hour!=previous_hour) {
-                require(current_hour==previous_hour+1,
+            if(previous_hour_index>=0 && hour_index!=previous_hour_index) {
+                require(hour_index==previous_hour_index+1,
                         "nonconsecutive original hourly puff-state stream");
                 if(current_id!=0) life.retire(current_id);
                 current_id=0;
                 ++hour_transitions;
             }
-            previous_hour=current_hour;
+            previous_hour_index=hour_index;
             const int id=original.i[3];
             const auto& f=original.f;
             // A puff can be admitted only when its first reference row is
@@ -128,13 +135,18 @@ int main(int argc,char** argv) {
             }
         }
         require(input.eof() && input.gcount()==0,"truncated DGM record");
-        require(rows==(six_hours?11458U:1275U) && episodes>0U && linked_steps>0U &&
-                hour_transitions==(six_hours?5U:0U),
+        const std::size_t expected_rows=expected_hours==143?254687U:
+                                         expected_hours==6?11458U:1275U;
+        require(rows==expected_rows && episodes>0U && linked_steps>0U &&
+                hour_transitions==static_cast<std::size_t>(expected_hours-1),
                 "original lifecycle record count / hour sequence not established");
-        std::cout<<(six_hours?"P7_FIRST_6H_PERSISTED_LIFECYCLE=PASS":"P7_FIRST_HOUR_PERSISTED_LIFECYCLE=PASS")
+        std::cout<<(expected_hours==143?"P7_143H_POSTWIND_LIFECYCLE=PASS":
+                     expected_hours==6?"P7_FIRST_6H_PERSISTED_LIFECYCLE=PASS":
+                     "P7_FIRST_HOUR_PERSISTED_LIFECYCLE=PASS")
                  <<" ROWS="<<rows<<" HOUR_TRANSITIONS="<<hour_transitions
                  <<" PUFF_EPISODES="<<episodes<<" SELF_PROPAGATED_STEPS="<<linked_steps
                  <<" INITIAL_WIND_ORACLE=true VERTICAL_STATE_ORACLE=true"
+                 <<" HOUR_BOUNDARY_STATE_RESEEDED_FROM_FORTRAN=true"
                  <<" FULL_AUTONOMOUS_COMP=NOT_YET_AVAILABLE\n";
     }catch(const std::exception& err) {
         std::cerr<<"P7_FIRST_HOUR_PERSISTED_LIFECYCLE=FAIL "<<err.what()<<'\n';
