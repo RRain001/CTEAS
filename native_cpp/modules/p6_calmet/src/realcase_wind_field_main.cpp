@@ -844,7 +844,7 @@ int main(int argc,char** argv){
                    <<surface_x_m<<" "<<surface_y_m<<" "
                    <<upper_x_m<<" "<<upper_y_m<<" "
                    <<surface_u<<" "<<surface_v<<" "<<roughness<<" "
-                   <<station_lat_deg<<" "<<"10.0 "<<icalm<<"\n";
+                   <<station_lat_deg<<" "<<surface_anemometer_height_m<<" "<<icalm<<"\n";
             for(std::size_t k=0;k<9;++k)
                 fixture<<bias[k]<<(k==8?"\n":" ");
             for(std::size_t k=0;k<9;++k)
