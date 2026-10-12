@@ -9,6 +9,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 
 namespace {
 struct Record {
@@ -65,7 +66,9 @@ int main(int argc,char** argv) {
         require(static_cast<bool>(input),"cannot open locked original DGM");
         OriginalPuffMotionLifecycle life;
         std::size_t rows=0,episodes=0,linked_steps=0,hour_transitions=0;
-        int current_id=0, previous_hour_index=-1;
+        std::size_t cross_hour_native_links=0;
+        int previous_hour_index=-1;
+        std::unordered_map<int,int> last_puff_hour;
         Record original{};
         while(input.read(reinterpret_cast<char*>(&original),sizeof(original))) {
             ++rows;
@@ -81,20 +84,19 @@ int main(int argc,char** argv) {
             if(previous_hour_index>=0 && hour_index!=previous_hour_index) {
                 require(hour_index==previous_hour_index+1,
                         "nonconsecutive original hourly puff-state stream");
-                if(current_id!=0) life.retire(current_id);
-                current_id=0;
+                // Original CALPUFF has *old* active puffs crossing this
+                // boundary. Never throw away their C++ motion state and
+                // reintroduce it from Fortran at the next hour.
                 ++hour_transitions;
             }
             previous_hour_index=hour_index;
             const int id=original.i[3];
             const auto& f=original.f;
-            // A puff can be admitted only when its first reference row is
-            // encountered. After admission, subsequent rows for the SAME
-            // puff must advance from our OWN persisted native state, not
-            // from the DGM's next XOLD or YOLD.
-            if(id!=current_id) {
-                if(current_id!=0) life.retire(current_id);
-                current_id=id;
+            // Fortran only initializes the first observation of a new puff;
+            // all subsequent encounters, including different puffs visited
+            // in between and transitions to the next hour, must begin with
+            // the previous *native* stored REAL4 state.
+            if(!life.contains(id)) {
                 ++episodes;
                 life.introduce(id,{f[0],f[1],f[2],f[19],f[20]});
             } else {
@@ -110,7 +112,9 @@ int main(int argc,char** argv) {
                     return 1;
                 }
                 ++linked_steps;
+                if(last_puff_hour.at(id)!=hour_index) ++cross_hour_native_links;
             }
+            last_puff_hour[id]=hour_index;
             // Upstream RISEWIND-adapted wind and ZE1 are still supplied by
             // original, rather than claiming independently coupled PUFFDZ
             // and plume-rise physics in the first lifecycle slice.
@@ -138,6 +142,7 @@ int main(int argc,char** argv) {
         const std::size_t expected_rows=expected_hours==143?254687U:
                                          expected_hours==6?11458U:1275U;
         require(rows==expected_rows && episodes>0U && linked_steps>0U &&
+                (expected_hours==1 || cross_hour_native_links>0U) &&
                 hour_transitions==static_cast<std::size_t>(expected_hours-1),
                 "original lifecycle record count / hour sequence not established");
         std::cout<<(expected_hours==143?"P7_143H_POSTWIND_LIFECYCLE=PASS":
@@ -145,8 +150,10 @@ int main(int argc,char** argv) {
                      "P7_FIRST_HOUR_PERSISTED_LIFECYCLE=PASS")
                  <<" ROWS="<<rows<<" HOUR_TRANSITIONS="<<hour_transitions
                  <<" PUFF_EPISODES="<<episodes<<" SELF_PROPAGATED_STEPS="<<linked_steps
+                 <<" CROSS_HOUR_NATIVE_LINKS="<<cross_hour_native_links
                  <<" INITIAL_WIND_ORACLE=true VERTICAL_STATE_ORACLE=true"
-                 <<" HOUR_BOUNDARY_STATE_RESEEDED_FROM_FORTRAN=true"
+                 <<" HOUR_BOUNDARY_STATE_RESEEDED_FROM_FORTRAN=false"
+                 <<" INITIAL_UNSEEN_PUFF_STATE_FROM_FORTRAN=true"
                  <<" FULL_AUTONOMOUS_COMP=NOT_YET_AVAILABLE\n";
     }catch(const std::exception& err) {
         std::cerr<<"P7_FIRST_HOUR_PERSISTED_LIFECYCLE=FAIL "<<err.what()<<'\n';
