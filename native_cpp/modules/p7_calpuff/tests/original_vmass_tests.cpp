@@ -124,7 +124,13 @@ int main(){
   // Fail closed for invalid source branches and singular physical states.
   a=sample(9);fails([&]{(void)original_vmass(a);});
   a=sample(1);a.pbl_height_m=0;fails([&]{(void)original_vmass(a);});
+  // Equal ZIMAX and ZIOLD is a LEGAL one-layer state. Vendor merges
+  // layers before the two-layer denominator, so do not reject this case.
   a=sample(6);a.zimax_m=a.ziold_m;
+  auto equal_lids=original_vmass(a);
+  check(equal_lids.puff_code==2 && equal_lids.mass_above[0]==0.0F,
+        "legal degenerate one-layer vendor state rejected");
+  a=sample(6);a.sigma_z_begin_m=-1;
   fails([&]{(void)original_vmass(a);});
   a=sample(2);a.mass_above.pop_back();
   fails([&]{(void)original_vmass(a);});
