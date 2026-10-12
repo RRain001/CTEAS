@@ -79,7 +79,7 @@ def trace(args):
     # Insert immediately AFTER original COMP PREPDI and BEFORE DIAGNO.
     injection=("c --- temporary source trace after unmodified PREPDI\n"
                "         call dgmprepdi(us,vs,nz,nssta,nowsta,nusta,\n"
-               "     1                       nyre,njule,nhre,nsece)\n")
+               "     1                       nyrze,njulze,nhrze,nsecze)\n")
     instrumented.write_text("".join(lines[:4426])+injection+
                             "".join(lines[4426:])+HELPER)
     alias=original._alias_tree(vendor,out/"include_alias")
@@ -132,21 +132,19 @@ def read_records(path:Path,hours:int):
         yy,jul,hh,ss,nz,nss,now,nu=struct.unpack_from(HEADER_FMT,raw,base)
         if (yy,nz,nss,now,nu)!=(2022,9,1,0,1) or not 0<=ss<3600:
             raise RuntimeError("original PREPDI record header mismatch")
-        # COMP passes the BEGINNING of the computational interval
-        # (nyre/njule/nhre/nsece), while P6D wind1_driver fixtures use
-        # hour-END labels. Compare the source beginning time without
-        # shifting the physical station observations, then label the
-        # identical interval by its ending time for fixture lookup.
-        # Datetime normalization also accepts either 24:00 or next-day
-        # 00:00 in the original Fortran day/hour fields.
-        source_begin=dt.datetime(yy,1,1)+dt.timedelta(
+        # PREPDI receives explicit UTC INTERVAL-END parameters
+        # nyrze/njulze/nhrze/nsecze from COMP (calmet.for L4424-4426).
+        # The trace must copy those exact arguments, never COMP's separate
+        # nyre/njule/nhre clock. Do NOT reinterpret a wrong timestamp as
+        # a one-hour start/end offset; compare actual hour-end UTC labels.
+        source_end=dt.datetime(yy,1,1)+dt.timedelta(
             days=jul-1,hours=hh,seconds=ss)
-        expected_begin=dt.datetime(2022,1,1)+dt.timedelta(hours=index)
-        if source_begin!=expected_begin:
+        expected_end=dt.datetime(2022,1,1)+dt.timedelta(hours=index+1)
+        if source_end!=expected_end:
             raise RuntimeError(
-                f"PREPDI source interval-start drift index={index+1}: "
-                f"{source_begin.isoformat()} vs {expected_begin.isoformat()}")
-        label=(source_begin+dt.timedelta(hours=1)).strftime("%Y-%m-%d_%H")
+                f"PREPDI source UTC interval-end drift index={index+1}: "
+                f"{source_end.isoformat()} vs {expected_end.isoformat()}")
+        label=source_end.strftime("%Y-%m-%d_%H")
         values=struct.unpack_from("<36f",raw,base+32)
         if not all(math.isfinite(v) for v in values):
             raise RuntimeError("nonfinite PREPDI REAL*4")
