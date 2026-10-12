@@ -6,6 +6,7 @@ on:
       - '.github/workflows/p6d-d2-realcase-stage-bisection.yml'
       - 'native_cpp/modules/p6_calmet/reference/p6d_d2_original_inter2_actual_trace.py'
       - 'native_cpp/modules/p6_calmet/reference/p6d_d2_compare_actual_inter2.py'
+      - 'native_cpp/modules/p6_calmet/reference/p6d_d2_compare_upstream_stages.py'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/inter2_selected.hpp'
       - 'native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp'
   workflow_dispatch:
@@ -126,6 +127,16 @@ jobs:
             --compiler /usr/bin/gfortran-11
           test -s "$RUNNER_TEMP/p6d-d2-original/original_inter2_actual.csv"
           test -s "$RUNNER_TEMP/p6d-d2-original/original_inter2_evidence.json"
+      - name: Compare 143h original and C++ wind before and after SLOPE
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/p6d_d2_compare_upstream_stages.py \
+            --original "$RUNNER_TEMP/p6d-d2-original/original_upstream_actual.csv" \
+            --product "$RUNNER_TEMP/d2-product-oracle" \
+            --out "$RUNNER_TEMP/p6d-d2/original-prepost-slope.json" \
+            | tee "$RUNNER_TEMP/p6d-d2-slope-stage-stdout.txt"
+          grep -q "COMPLETED_NOT_ACCEPTED" "$RUNNER_TEMP/p6d-d2-slope-stage-stdout.txt"
       - name: Compare actual original and actual C++ INTER2 operand snapshots
         shell: bash
         run: |
@@ -149,6 +160,9 @@ jobs:
             ${{ runner.temp }}/p6d-d2-stage-oracle-stdout.txt
             ${{ runner.temp }}/d2-product-oracle/metadata.json
             ${{ runner.temp }}/p6d-d2-original/original_inter2_actual.csv
+            ${{ runner.temp }}/p6d-d2-original/original_upstream_actual.csv
+            ${{ runner.temp }}/p6d-d2/original-prepost-slope.json
+            ${{ runner.temp }}/p6d-d2-slope-stage-stdout.txt
             ${{ runner.temp }}/p6d-d2-original/original_inter2_evidence.json
             ${{ runner.temp }}/p6d-d2/cpp-inter2-actual.csv
             ${{ runner.temp }}/p6d-d2/inter2-operands-comparison.json
