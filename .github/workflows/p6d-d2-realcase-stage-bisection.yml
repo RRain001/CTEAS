@@ -1,0 +1,91 @@
+name: P6D D2 original stage-aligned real-case bisection
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/reference/p6d_d2_stage_bisection.py'
+      - '.github/workflows/p6d-d2-realcase-stage-bisection.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p6d-d2-bisection-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  original-stage-bisection:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    # One single P6D job; do not dispatch P7 or unrelated science tracks.
+    runs-on: [cteas-managed, cteas-compute, Linux, X64]
+    timeout-minutes: 75
+    env:
+      CASE_DIR: project/cases/hefei5km_2022_reference_case_20261011
+      DGM_SHA: 972af841552f7a0eda6b02b221b6b2a808c61806054e634c617425d9ca9babdf
+      MET_SHA: b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30
+      CMAKE_BUILD_PARALLEL_LEVEL: '4'
+    steps:
+      - name: Fetch exact PR head and keep the frozen case read-only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify immutable original reference inputs and host
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "D2_PINNED_HEAD=$(git rev-parse HEAD)"
+          echo "D2_RUNNER=$RUNNER_NAME"
+          test "$(id -un)" != root
+          test -x /usr/bin/g++-12
+          test -f "$CASE_DIR/run/met/met.dat"
+          echo "$MET_SHA  $CASE_DIR/run/met/met.dat" | sha256sum -c -
+          DGM=native_cpp/modules/p6_calmet/reference/dgm_p6d_requests_2022/dgm_fields_hours.bin
+          test -f "$DGM"
+          echo "$DGM_SHA  $DGM" | sha256sum -c -
+          test -s native_cpp/modules/p6_calmet/reference/p6d_d2_stage_bisection.py
+          python3 -m py_compile native_cpp/modules/p6_calmet/reference/p6d_d2_stage_bisection.py
+      - name: Build P6D original-case wind producer (bounded resources)
+        shell: bash
+        env:
+          CXX: /usr/bin/g++-12
+          FC: /usr/bin/gfortran-11
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/d2-build" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=/usr/bin/g++-12
+          cmake --build "$RUNNER_TEMP/d2-build" --target cteas_p6_realcase_wind_field --parallel 4
+      - name: Produce all 143 real Hefei 2022 hours
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/d2-build/cteas_p6_realcase_wind_field" --case "$CASE_DIR" --out "$RUNNER_TEMP/d2-product"
+          test -s "$RUNNER_TEMP/d2-product/metadata.json"
+          python3 - "$RUNNER_TEMP/d2-product" <<'PY'
+          from pathlib import Path
+          import sys
+          d=Path(sys.argv[1])
+          for tag in ("wind1_u_", "wind1_v_", "slope_corrected_u_", "slope_corrected_v_", "blend_u_", "blend_v_", "w_face_"):
+              files=list(d.glob(tag+"*.f32"))
+              assert len(files)==143, (tag,len(files))
+          print("P6D_D2_ALL_143_HOURS_EMITTED=PASS")
+          PY
+      - name: Compare original before-SLOPE, after-SLOPE and final wind/face slices
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/p6d_d2_stage_bisection.py \
+            --original native_cpp/modules/p6_calmet/reference/dgm_p6d_requests_2022/dgm_fields_hours.bin \
+            --product "$RUNNER_TEMP/d2-product" \
+            --out "$RUNNER_TEMP/p6d-d2/stage-bisection.json" \
+            | tee "$RUNNER_TEMP/p6d-d2-stage-stdout.txt"
+          test -s "$RUNNER_TEMP/p6d-d2/stage-bisection.json"
+          grep -q "DIAGNOSTIC_COMPLETED_NOT_ACCEPTED" "$RUNNER_TEMP/p6d-d2-stage-stdout.txt"
+      - name: Archive immutable-provenance D2 stage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6d-d2-stage-bisection-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/p6d-d2/stage-bisection.json
+            ${{ runner.temp }}/p6d-d2-stage-stdout.txt
+            ${{ runner.temp }}/d2-product/metadata.json
+          if-no-files-found: error
+          retention-days: 14
