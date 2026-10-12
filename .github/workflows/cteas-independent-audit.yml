@@ -1,0 +1,125 @@
+name: CTEAS independent scientific audit 2026-10-12
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/cteas-independent-audit.yml'
+permissions:
+  contents: read
+concurrency:
+  group: cteas-independent-audit-20261012-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+jobs:
+  scientific-audit:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [cteas-managed, cteas-compute, Linux, X64]
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - track: p6d
+            pinned_sha: d98c43453b1676007b028f564fef3007a72a3959
+            module: native_cpp/modules/p6_calmet
+          - track: p6e
+            pinned_sha: 9c75db302eb11dccfd32a631ec203a3ce97957b3
+            module: native_cpp/modules/p6_calmet/p6e
+          - track: p7
+            pinned_sha: ef6a449b749947a0b05a1d910089343c17613727
+            module: native_cpp/modules/p7_calpuff
+    env:
+      MAIN_REFERENCE_SHA: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+      FROZEN_MET_SHA: b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30
+      CMAKE_BUILD_PARALLEL_LEVEL: '4'
+      CTEAS_AUDIT_TRACK: ${{ matrix.track }}
+    steps:
+      - name: Independent checkout of precisely pinned agent tip
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.pinned_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Inspect provenance, verify pinned source and frozen 2022 reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cteas-independent-audit"
+          test "$(git rev-parse HEAD)" = "${{ matrix.pinned_sha }}"
+          echo "AUDIT_TRACK=${{ matrix.track }}"
+          echo "AUDIT_PINNED_SHA=$(git rev-parse HEAD)"
+          echo "AUDIT_RUNNER=$RUNNER_NAME"
+          test "$(id -un)" != root
+          test -x /usr/bin/g++-12
+          test -x /usr/bin/gfortran-11
+          /usr/bin/g++-12 --version | head -1
+          /usr/bin/gfortran-11 --version | head -1
+          git cat-file -e "$MAIN_REFERENCE_SHA:project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat"
+          # The P6E branch predates the frozen reference case. Restore ONLY
+          # immutable 2022 test inputs, in the ephemeral checkout, from main.
+          git restore --source="$MAIN_REFERENCE_SHA" --worktree -- project/cases/hefei5km_2022_reference_case_20261011
+          MET=project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
+          echo "$FROZEN_MET_SHA  $MET" | sha256sum --check --status
+          echo "FROZEN_MAIN_CASE_SHA256=PASS"
+          CG=$(awk -F: '$1=="0" {print $3}' /proc/self/cgroup)
+          ROOT="/sys/fs/cgroup$CG"
+          echo "AUDIT_CGROUP=$CG"
+          cat "$ROOT/cpu.max" "$ROOT/memory.max"
+          printf '%s\n' "$(git rev-parse HEAD)" > "$RUNNER_TEMP/cteas-independent-audit/pinned-commit.txt"
+          printf '%s\n' "$RUNNER_NAME" > "$RUNNER_TEMP/cteas-independent-audit/runner-name.txt"
+          cat "$ROOT/memory.events" > "$RUNNER_TEMP/cteas-independent-audit/memory.events.before"
+      - name: Configure exact track using strict compilers
+        shell: bash
+        env:
+          CXX: /usr/bin/g++-12
+          FC: /usr/bin/gfortran-11
+        run: |
+          set -euo pipefail
+          cmake -S "${{ matrix.module }}" -B "$RUNNER_TEMP/cteas-independent-build-${{ matrix.track }}" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=/usr/bin/g++-12 -DCMAKE_Fortran_COMPILER=/usr/bin/gfortran-11
+          ctest --test-dir "$RUNNER_TEMP/cteas-independent-build-${{ matrix.track }}" -N | tee "$RUNNER_TEMP/cteas-independent-audit/ctest-discovery.txt"
+      - name: Compile without uncapped --parallel 24
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build "$RUNNER_TEMP/cteas-independent-build-${{ matrix.track }}" --parallel 4
+      - name: Run ALL registered track CTests including the real 143h P6E test
+        shell: bash
+        env:
+          CXX: /usr/bin/g++-12
+          FC: /usr/bin/gfortran-11
+        run: |
+          set -euo pipefail
+          ctest --test-dir "$RUNNER_TEMP/cteas-independent-build-${{ matrix.track }}" --output-on-failure --parallel 1 --timeout 900 --output-junit "$RUNNER_TEMP/cteas-independent-audit/ctest.xml" 2>&1 | tee "$RUNNER_TEMP/cteas-independent-audit/ctest.log"
+      - name: Independently repeat P6D original-source real-case comparison
+        if: matrix.track == 'p6d'
+        shell: bash
+        env:
+          FC: /usr/bin/gfortran-11
+        run: |
+          set -euo pipefail
+          BUILD="$RUNNER_TEMP/cteas-independent-build-p6d"
+          OUT="$RUNNER_TEMP/cteas-independent-audit/p6d"
+          mkdir -p "$OUT"
+          "$BUILD/cteas_p6_realcase_wind_field" --case project/cases/hefei5km_2022_reference_case_20261011 --out "$OUT/fields" --fixtures "$OUT/fixtures"
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_d9a_realcase_step_one.py --vendor engine/vendor/src/CALMET_v6.5.0_L150223 --fields "$OUT/fields" --fixtures "$OUT/fixtures" --out "$OUT/step-one"
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_d9a_realcase_blend.py --vendor engine/vendor/src/CALMET_v6.5.0_L150223 --fields "$OUT/fields" --fixtures "$OUT/fixtures" --out "$OUT/blend"
+      - name: Audit cgroup resource events and retained result metadata
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          ROOT="/sys/fs/cgroup$(awk -F: '$1=="0" {print $3}' /proc/self/cgroup)"
+          mkdir -p "$RUNNER_TEMP/cteas-independent-audit"
+          for file in memory.events memory.peak cpu.stat; do
+            if test -r "$ROOT/$file"; then
+              cat "$ROOT/$file" > "$RUNNER_TEMP/cteas-independent-audit/${file//./-}.after"
+            fi
+          done
+          printf 'runner=%s track=%s sha=%s\n' "$RUNNER_NAME" "${{ matrix.track }}" "${{ matrix.pinned_sha }}" | tee "$RUNNER_TEMP/cteas-independent-audit/summary.txt"
+      - name: Upload independently collected CI evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: independent-audit-${{ matrix.track }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/cteas-independent-audit/
+          if-no-files-found: warn
+          retention-days: 14
