@@ -356,4 +356,35 @@ ReceptorSet receptors_from_control(const std::string& control_text) {
     return receptors;
 }
 
+ReceptorSet receptors_from_original_met_grid(
+    const std::string& control_text, const OriginalMetGridFrame& met) {
+    validate_original_met_frame(met);
+    auto receptors = receptors_from_control(control_text);
+    if (!receptors.gridded || receptors.mesh_down != 1) {
+        throw std::invalid_argument(
+            "P7 original QA grid mapping currently supports gridded MESHDN=1");
+    }
+    // The selected P7 2022 original deck has DGRIDKM=0.1 matching the
+    // original CALMET.DAT 100 m horizontal spacing. Do not silently map a
+    // different control geometry onto that meteorological frame.
+    const float control_spacing_km = static_cast<float>(receptors.spacing_km);
+    const float met_spacing_km = met.spacing_m * 0.001f;
+    if (!std::isfinite(control_spacing_km) ||
+        std::abs(control_spacing_km - met_spacing_km) > 1.0e-6f) {
+        throw std::invalid_argument("P7 CALPUFF control/CALMET grid spacing mismatch");
+    }
+    for (int j = 0; j < receptors.sampling_ny; ++j) {
+        for (int i = 0; i < receptors.sampling_nx; ++i) {
+            const auto qa = original_gridded_receptor_qa_xy(
+                met, receptors.ibsamp - 1 + i, receptors.jbsamp - 1 + j);
+            auto& receptor = receptors.grid[static_cast<std::size_t>(j) *
+                                                  static_cast<std::size_t>(receptors.sampling_nx) +
+                                              static_cast<std::size_t>(i)];
+            receptor.x_km = static_cast<double>(qa.x_km);
+            receptor.y_km = static_cast<double>(qa.y_km);
+        }
+    }
+    return receptors;
+}
+
 } // namespace cteas::puff
