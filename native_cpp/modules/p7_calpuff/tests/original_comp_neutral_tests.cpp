@@ -65,6 +65,42 @@ struct Set {
     opts.max_sampling_steps=1;
  }
 };
+void pg_once() {
+    Set source;
+    DispersionSetup selected;
+    selected.mdisp=3;
+    selected.averaging_factor=1.0;
+    selected.sigma_y_heffter_m=550.0;
+    selected.heffter_sigma_z=false;
+    selected.roughness_adjustment=false;
+    const auto first=source.driver.step_pg(
+        1,source.met,source.statics,source.opts,selected,false);
+    const auto state=source.driver.vertical(1);
+    require(first.cadence.sampling_steps==1 &&
+            first.bookkeeping.mid_time_s==1800.0 &&
+            first.after.travel_time_s==3600.0F &&
+            first.sigmas.adjust.stored_sigma_y_m>0 &&
+            first.sigmas.adjust.stored_sigma_z_m>=0 &&
+            state.completed_substeps==1 &&
+            state.committed_lid_steps==1,
+            "native PG SIGTY/SIGTZ -> SETPUF -> VMASS not connected");
+    const auto before=source.driver.motion(1);
+    const auto vertical_before=source.driver.vertical(1);
+    auto unsupported=selected;
+    unsupported.heffter_sigma_z=true;
+    rejects([&]{
+       (void)source.driver.step_pg(
+         1,source.met,source.statics,source.opts,unsupported,false);
+    },"unsupported MHFTSZ=1 was accepted");
+    require(source.driver.motion(1).travel_time_s==before.travel_time_s &&
+            source.driver.vertical(1).completed_substeps==
+              vertical_before.completed_substeps,
+            "unsupported PG settings partially mutated state");
+    std::cout<<"P7_NATIVE_COMP_REAL_PG=PASS"
+             <<" METFM1_STABILITY=4 MDISP=3 SIGTY_SIGTZ=PRODUCTION"
+             <<" ORIGINAL_DGM_INPUT=NO"
+             <<" ORIGINAL_HEFEI_COMPLETE=NOT_YET_VALIDATED\n";
+}
 void run(const int hours) {
  Set s;
  const auto original_mass=s.driver.vertical(1).mass_mixed;
@@ -154,6 +190,9 @@ void run(const int hours) {
 int main(int argc,char** argv){
  try{
    if(argc!=2)throw std::invalid_argument("usage: neutral_comp_test [1|6|143]");
+   if(std::string(argv[1])=="pg") {
+      pg_once();return 0;
+   }
    const auto hours=std::stoi(argv[1]);
    if(hours!=1 && hours!=6 && hours!=143)
        throw std::invalid_argument("only 1/6/143 hour fixture supported");

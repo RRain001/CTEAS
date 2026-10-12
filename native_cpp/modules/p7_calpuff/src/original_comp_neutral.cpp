@@ -1,5 +1,6 @@
 #include "cteas/puff/original_comp_neutral.hpp"
 #include "cteas/puff/step.hpp"
+#include "cteas/puff/dispersion.hpp"
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -183,6 +184,38 @@ NeutralCompResult OriginalCompNeutralPointDriver::step(
     entry->second.steps++;
     entry->second.previous_ws_ms=ws;
     return result;
+}
+NeutralCompResult OriginalCompNeutralPointDriver::step_pg(
+    int id,const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,
+    const DispersionSetup& setup,bool urban) {
+    // Non-supported modes must fail before any native solver mutation.
+    (void)require_supported_dispersion_option(setup.mdisp);
+    require(!setup.heffter_sigma_z && !setup.roughness_adjustment,
+            "native PG COMP requires MHFTSZ=0 and MROUGH=0");
+    const auto before=motion_.state(id);
+    const auto wind=vertical_.sample(id,met,statics,
+                                     before.x_cells,before.y_cells,before.z_m);
+    const float u=f32(wind.wind.u_ms),v=f32(wind.wind.v_ms);
+    const float speed=std::sqrt(f32(u*u+v*v));
+    require(std::isfinite(speed) && speed>0.0F,
+            "native PG COMP requires a valid noncalm METFM1 wind");
+    const SigmaCurves curves(dispersion_environment(
+        setup,wind.stability_class,urban,speed));
+    const SigmaYCurve sigma_y=[&curves](double initial,double distance,double time) {
+        const auto state=curves.sigma_y(initial,{distance,time});
+        return SigmaCurvePoint{state.sigma_y_m,
+                               state.virtual_time_y_s,
+                               state.virtual_distance_y_km};
+    };
+    const SigmaZCurve sigma_z=[&curves](double initial,double distance,
+                                        double time,double height) {
+        const auto state=curves.sigma_z(initial,height,{distance,time});
+        return SigmaCurvePoint{state.sigma_z_m,
+                               state.virtual_time_z_s,
+                               state.virtual_distance_z_km};
+    };
+    return step(id,met,statics,controls,sigma_y,sigma_z);
 }
 OriginalPuffMotionState OriginalCompNeutralPointDriver::motion(int id)const{
     return motion_.state(id);

@@ -4,6 +4,7 @@
 #include "cteas/puff/original_vertical_lifecycle.hpp"
 #include "cteas/puff/step_integration.hpp"
 #include "cteas/puff/step.hpp"
+#include "cteas/puff/dispersion.hpp"
 #include "cteas/puff/vendor_order.hpp"
 
 namespace cteas::puff {
@@ -46,6 +47,16 @@ public:
         int id,const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,
         const SigmaYCurve& curve_y,const SigmaZCurve& curve_z);
+    // Same native ordered COMP transaction, now sourcing the SIGTY/SIGTZ
+    // callbacks from the REAL4 source-ported MDISP=3 PG/MP curves using
+    // the puff's current native METFM=1 wind/PG class, NOT test doubles.
+    // The urban flag and MDISP options remain explicit until native
+    // SETCSIG cell classification is integrated. Rise/calm limitations
+    // of the single-substep controller remain in force.
+    [[nodiscard]] NeutralCompResult step_pg(
+        int id,const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,
+        const DispersionSetup& setup,bool urban);
     [[nodiscard]] OriginalPuffMotionState motion(int id)const;
     [[nodiscard]] NativeVerticalPuffState vertical(int id)const;
     [[nodiscard]] std::size_t steps(int id)const;

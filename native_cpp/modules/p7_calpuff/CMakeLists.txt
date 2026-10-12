@@ -951,7 +951,7 @@ add_library(cteas_p7_original_comp_neutral STATIC src/original_comp_neutral.cpp)
 target_include_directories(cteas_p7_original_comp_neutral PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(cteas_p7_original_comp_neutral PUBLIC
   cteas_p7_original_vertical cteas_p7_original_motion
-  cteas_p7_step_integration cteas_p7_step)
+  cteas_p7_step_integration cteas_p7_step cteas_p7_dispersion)
 if(MSVC)
   target_compile_options(cteas_p7_original_comp_neutral PRIVATE /W4 /WX)
 else()
@@ -968,3 +968,7 @@ foreach(HOURS IN ITEMS 1 6 143)
   add_test(NAME cteas_p7_native_comp_neutral_${HOURS}h_persistent
            COMMAND cteas_p7_original_comp_neutral_tests ${HOURS})
 endforeach()
+
+# MDISP=3 live SIGTY/SIGTZ coupled to native METFM1 within one COMP step.
+add_test(NAME cteas_p7_native_comp_neutral_pg_1h_persistent
+         COMMAND cteas_p7_original_comp_neutral_tests pg)
