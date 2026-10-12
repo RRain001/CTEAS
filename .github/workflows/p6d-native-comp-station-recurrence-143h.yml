@@ -33,6 +33,7 @@ jobs:
           sparse-checkout: |
             .github/actions/cteas-linux-toolchain
             native_cpp/modules/p6_calmet
+            native_cpp/modules/p7_calpuff/reference
             scripts
       - uses: actions/checkout@v4
         with:
