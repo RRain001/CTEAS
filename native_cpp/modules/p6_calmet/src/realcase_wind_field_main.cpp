@@ -605,7 +605,7 @@ int main(int argc,char** argv){
         // the deck sets IEXTRP=-4, so level 1 carries the original missing
         // sentinel and is masked out of the first guess.
         if(iextrp<=0){
-            station.upper_observed_profile[0]=LayerWind{999.f,999.f};
+            station.upper_observed_profile[0]=LayerWind{999999.f,999999.f};
             settings_upper_layer_one_valid=false;
         }
 
@@ -781,8 +781,12 @@ int main(int argc,char** argv){
                 // Original STDAT1(K,L) layout: level-major, station-minor.
                 blend.station_component_mps[k*2]=component==0
                     ? surface_wind.u_mps:surface_wind.v_mps;
-                blend.station_component_mps[k*2+1]=component==0
-                    ? upper_wind.u_mps:upper_wind.v_mps;
+                // WIND1's explicit invalid-profile contract uses 999999.
+                // INTER2's actual original STDAT1(K,L) uses EDIT=999 for the
+                // excluded upper-air level 1. Translate at the module boundary,
+                // not in the station shared by the first-guess calculation.
+                blend.station_component_mps[k*2+1]=(k==0 && iextrp<=0)
+                    ? 999.f : (component==0?upper_wind.u_mps:upper_wind.v_mps);
             }
             blend.step1_mps=component==0?corrected_u:corrected_v;
             station_values[component]=blend.station_component_mps;
