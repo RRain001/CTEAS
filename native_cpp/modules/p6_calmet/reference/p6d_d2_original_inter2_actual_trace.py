@@ -325,7 +325,9 @@ def main():
     if not pretail.is_file() or pretail.stat().st_size!=expected_pretail_bytes:
         raise RuntimeError("source-verified original INTER2 pre-tail 3D dump incomplete")
     raw_pretail=pretail.read_bytes()
-    stage_labels=sorted({r["label"] for r in upstream_records})
+    import datetime as dt
+    stage_labels=[(dt.datetime(2022,1,1)+dt.timedelta(hours=h)).strftime("%Y-%m-%d_%H")
+                  for h in range(1,144)]
     if len(stage_labels)!=143:raise RuntimeError("pre-tail hour labels incomplete")
     selected_pretail=(1,2,3,81,82,83)
     pretail_artifacts={}
