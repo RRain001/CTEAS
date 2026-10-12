@@ -24,15 +24,17 @@ MET_SHA = dgm.TARGET_MET_DAT_SHA256
 SELECTED = ((26, 26), (1, 26), (1, 1), (13, 13))
 # Zero other physics instructions altered. Fixed vendor source line anchors.
 ANCHORS = {
+    5593: "      endif",
     5726: "C",
     5732: "  300 CONTINUE",
     8243: "      double precision wt2,wt3",
     8247: "      DATA npts/4/",
     8568: "      wt3 = 1./(R**2)",
 }
-BEFORE = {5726: "C     ADD THE SLOPE FLOW COMPONENT TO THE HORIZONTAL WIND FIELD",
+BEFORE = {5593: "         end if",
+          5726: "C     ADD THE SLOPE FLOW COMPONENT TO THE HORIZONTAL WIND FIELD",
           8243: "      DOUBLE PRECISION WT"}
-AFTER = {8247: "C", 8568: "c"}
+AFTER = {5593: "C", 8247: "C", 8568: "c"}
 
 DECL = """
 c --- P6D D-2 diagnostic only, no original arithmetic changed
@@ -73,11 +75,13 @@ c ----------------------------------------------------------------------
 c --- P6D D-2 original-only in-chain SLOPE boundary state dump. This is
 c --- appended to the TEMPORARY copy, never the unchanged vendor source.
 c ----------------------------------------------------------------------
-      subroutine d2upstream(kpt,packed,secs,ug,vg,nx,ny,nz)
+      subroutine d2upstream(kpt,packed,secs,ug,vg,qh,temp2d,
+     1                      nx,ny,nz)
       include 'params.met'
       integer kpt,packed,secs,nx,ny,nz,i,j,k,ind
       integer ic(4),jc(4)
       real ug(mxnx,mxny,mxnz),vg(mxnx,mxny,mxnz)
+      real qh(mxnx,mxny),temp2d(mxnx,mxny)
       logical first
       save first
       data first/.true./
@@ -91,7 +95,14 @@ c ----------------------------------------------------------------------
           i=ic(ind)
           j=jc(ind)
           do k=1,2
-              write(92,*)packed,secs,kpt,i,j,k,ug(i,j,k),vg(i,j,k)
+              if(kpt.eq.7)then
+                  write(92,*)packed,secs,kpt,i,j,k,
+     1                       ug(i,j,k),vg(i,j,k),-999.,-999.
+              else
+                  write(92,*)packed,secs,kpt,i,j,k,
+     1                       ug(i,j,k),vg(i,j,k),
+     2                       qh(i,j),temp2d(i,j)
+              endif
           enddo
       enddo
       return
@@ -101,17 +112,17 @@ c ----------------------------------------------------------------------
 
 def parse_upstream(path: Path):
     import datetime as dt
-    names=("hour_begin_packed","seconds","kpt","i","j","k","u","v")
+    names=("hour_begin_packed","seconds","kpt","i","j","k","u","v","qh","temp2d")
     rows=[]
     with path.open() as handle:
         for line in handle:
             w=line.split()
-            if len(w)!=8:raise RuntimeError("bad original upstream line")
+            if len(w)!=10:raise RuntimeError("bad original upstream line")
             record={n:(int(v) if ix<6 else float(v.replace("D","E")))
                     for ix,(n,v) in enumerate(zip(names,w))}
             rows.append(record)
-    if len(rows)!=143*2*4*2:
-        raise RuntimeError(f"upstream expected 2288 rows got {len(rows)}")
+    if len(rows)!=143*3*4*2:
+        raise RuntimeError(f"upstream expected 3432 rows got {len(rows)}")
     keys=set()
     per_hour={}
     for r in rows:
@@ -122,11 +133,11 @@ def parse_upstream(path: Path):
         label=(dt.datetime(2022,1,1)+dt.timedelta(days=jday-1,hours=hour+1)).strftime("%Y-%m-%d_%H")
         r["label"]=label
         key=(label,r["kpt"],r["i"],r["j"],r["k"])
-        if key in keys or r["kpt"] not in (8,9) or (r["i"],r["j"]) not in SELECTED or r["k"] not in (1,2):
+        if key in keys or r["kpt"] not in (7,8,9) or (r["i"],r["j"]) not in SELECTED or r["k"] not in (1,2):
             raise RuntimeError(f"bad/duplicate original upstream record {key}")
         keys.add(key)
         per_hour.setdefault(label,set()).add((r["kpt"],r["i"],r["j"],r["k"]))
-    if len(per_hour)!=143 or any(len(v)!=16 for v in per_hour.values()):
+    if len(per_hour)!=143 or any(len(v)!=24 for v in per_hour.values()):
         raise RuntimeError("incomplete original upstream hourly grid")
     return rows
 
@@ -142,8 +153,9 @@ def instrument(source: Path, out: Path):
             assert lines[ln-2].rstrip("\r\n") == BEFORE[ln]
         if ln in AFTER:
             assert lines[ln].rstrip("\r\n") == AFTER[ln], (ln, lines[ln])
-    additions = {5726: "      call d2upstream(8,ndathrb,nsecb,ug,vg,nx,ny,nz)\n",
-                 5732: "      call d2upstream(9,ndathrb,nsecb,ug,vg,nx,ny,nz)\n",
+    additions = {5593: "      call d2upstream(7,ndathrb,nsecb,ug,vg,qh,temp2d,\n     1                nx,ny,nz)\n",
+                 5726: "      call d2upstream(8,ndathrb,nsecb,ug,vg,qh,temp2d,\n     1                nx,ny,nz)\n",
+                 5732: "      call d2upstream(9,ndathrb,nsecb,ug,vg,qh,temp2d,\n     1                nx,ny,nz)\n",
                  8243: DECL, 8247: START, 8568: DUMP}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(("".join(
@@ -228,7 +240,7 @@ def main():
     upstream_csv=out/"original_upstream_actual.csv"
     with upstream_csv.open("w",newline="") as handle:
         w=csv.DictWriter(handle,fieldnames=("label","hour_begin_packed","seconds",
-                                          "kpt","i","j","k","u","v"))
+                                          "kpt","i","j","k","u","v","qh","temp2d"))
         w.writeheader();w.writerows(upstream_records)
     headers, records = parse_original(trace)
     output = out/"original_inter2_actual.csv"
@@ -248,7 +260,7 @@ def main():
         "csv_rows": len(records),
         "upstream_stage_rows": len(upstream_records),
         "upstream_csv_sha256": dgm.sha256_file(upstream_csv),
-        "upstream_scope": "original DIAGNO kpt8 before slope addition and kpt9 after slope addition; four cells two levels all 143 hours",
+        "upstream_scope": "original DIAGNO kpt7 immediately after WIND1, kpt8 before slope addition (also QH/TEMP2D), and kpt9 after slope addition; four cells two levels all 143 hours",
         "selected_cells_1based": list(SELECTED),
         "columns": headers,
         "original_compiler_command": original_compile,
