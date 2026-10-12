@@ -896,3 +896,30 @@ endif()
 add_test(NAME cteas_p7_native_puffdz_first_hour
   COMMAND cteas_p7_puffdz_state_trace
     "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin" 1)
+
+# A production, per-puff REAL4 vertical state connection: native POINTS1/INJECT
+# -> persistent SIGZ/ZIOLD/ZIMAX -> PUFFDZ -> METFM1 ADVECT -> P7Q SIGTY/SIGTZ.
+# History-dependent ZI evolution remains explicitly unimplemented.
+add_library(cteas_p7_original_vertical STATIC src/original_vertical_lifecycle.cpp)
+target_include_directories(cteas_p7_original_vertical PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_vertical PUBLIC
+  cteas_p7_release cteas_p7_sigma_update cteas_p7_original_met_cell)
+if(MSVC)
+  target_compile_options(cteas_p7_original_vertical PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_vertical PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7_native_vertical_tests tests/native_vertical_lifecycle_tests.cpp)
+target_link_libraries(cteas_p7_native_vertical_tests PRIVATE cteas_p7_original_vertical)
+if(MSVC)
+  target_compile_options(cteas_p7_native_vertical_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_native_vertical_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_native_vertical_released_persistent_real4
+         COMMAND cteas_p7_native_vertical_tests)
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7_DGM_HOUR0}")
+  add_test(NAME cteas_p7_native_vertical_original_first_step_real4
+    COMMAND cteas_p7_native_vertical_tests
+      "${P7G_LOCKED_CASE_MET}" "${P7_DGM_HOUR0}")
+endif()

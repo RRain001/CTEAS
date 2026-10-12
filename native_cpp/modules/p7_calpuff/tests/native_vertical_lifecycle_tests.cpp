@@ -1,0 +1,153 @@
+#include "cteas/puff/original_vertical_lifecycle.hpp"
+#include <array>
+#include <bit>
+#include <cmath>
+#include <cstdint>
+#include <fstream>
+#include <iostream>
+#include <stdexcept>
+
+namespace {
+struct DgmRecord {std::array<std::int32_t,24> i;std::array<float,64> f;};
+static_assert(sizeof(DgmRecord)==352);
+void require(bool v,const char* msg) {if(!v)throw std::runtime_error(msg);}
+template<class F> void rejects(F&& f,const char* why){
+    bool threw=false;try{f();}catch(const std::exception&){threw=true;}
+    require(threw,why);
+}
+void local_native_state() {
+    using namespace cteas::puff;
+    OriginalVerticalLifecycle life;
+    NewPuffInputs point;
+    point.source_x_km=0.5;point.source_y_km=0.5;
+    point.effective_height_m=50;
+    point.sigma_y_source_m=1;point.sigma_z_source_m=1;
+    point.stability_class=4;
+    InjectionInputs injection;
+    injection.species_count=1;injection.emission_duration_s=60;
+    injection.effective_height_m=50;injection.max_layer_height_m=200;
+    injection.mixing_height_m=120;injection.mass_fraction_mixed=1;
+    injection.stability_class=4;injection.gaussian_distribution=1;
+    injection.emission_rate={2.0};
+    life.admit_point(1,point,injection);
+    require(life.active_count()==1,"missing native admitted puff");
+    const auto before=life.state(1);
+    require(before.sigma_z_m==1.0F && before.ziold_m==120.0F &&
+            before.zimax_m==120.0F && before.mass_mixed[0]==120.0F &&
+            before.mass_above[0]==0.0F && before.puff_code==1,
+            "native POINTS1/INJECT REAL4 state not persisted");
+    rejects([&]{life.admit_point(1,point,injection);},"duplicate ID allowed");
+    OriginalMetHour met;
+    met.nx=2;met.ny=2;met.nz=2;met.zi.assign(4,120.0F);
+    met.ipgt.assign(4,4);
+    met.u.assign(8,1.0F);met.v.assign(8,2.0F);
+    Calmet21Static static_met;
+    static_met.cell_face_m={0.0F,100.0F,200.0F};
+    const auto observed=life.sample(1,met,static_met,0.5F,0.5F,50.0F);
+    require(observed.extent.z_top_m==51.0 &&
+            observed.extent.z_bottom_m==49.0 &&
+            observed.wind.u_ms==1.0 && observed.wind.v_ms==2.0 &&
+            observed.cell.ix_1based==1 && observed.cell.iy_1based==1,
+            "native PUFFDZ -> ADVECT chain differs on synthetic profile");
+    require(life.state(1).completed_substeps==0,"sampling mutated puff state");
+    auto yc=[](double sigma,double dx,double dt)->SigmaCurvePoint {
+        return {sigma>0?sigma:1+dt*0.1,dt,dx};
+    };
+    auto zc=[](double sigma,double dx,double dt,double)->SigmaCurvePoint {
+        return {sigma>0?sigma:1+dt*0.05,dt,dx};
+    };
+    SigmaUpdateInputs inputs;
+    inputs.step.sigma_y_start_m=1;
+    inputs.step.sigma_z_start_m=1;
+    inputs.step.puff_height_m=50;
+    inputs.step.mid_time_s=30;
+    inputs.step.mid_distance_km=0.05;
+    inputs.step.puff_code=1;
+    const auto updated=life.commit_sigma(1,inputs,yc,zc);
+    const auto committed=life.state(1);
+    require(committed.completed_substeps==1 &&
+            committed.sigma_y_m==static_cast<float>(updated.adjust.stored_sigma_y_m) &&
+            committed.sigma_z_m==static_cast<float>(updated.adjust.stored_sigma_z_m),
+            "source-ported native sigma not preserved across substep");
+    rejects([&]{(void)life.commit_sigma(1,inputs,yc,zc);},
+            "stale caller overwrote native sigma history");
+    require(life.state(1).completed_substeps==1,
+            "failed sigma transition mutated state");
+    const auto after=life.sample(1,met,static_met,0.5F,0.5F,50.0F);
+    require(after.extent.z_top_m==static_cast<double>(50.0F+committed.sigma_z_m) &&
+            after.extent.z_bottom_m==static_cast<double>(50.0F-committed.sigma_z_m),
+            "next PUFFDZ step did not consume persisted native SIGZ");
+    rejects([&]{(void)life.sample(1,met,static_met,2.0F,0.5F,50.0F);},
+            "out-of-grid native puff accepted");
+    life.retire(1);
+    require(life.active_count()==0,"retirement did not discard native state");
+    rejects([&]{(void)life.state(1);},"retired puff still alive");
+}
+void original_first_step(const char* met_path,const char* dgm_path) {
+    using namespace cteas::puff;
+    std::ifstream file(dgm_path,std::ios::binary);
+    require(bool(file),"frozen first-hour DGM missing");
+    DgmRecord row{};
+    require(bool(file.read(reinterpret_cast<char*>(&row),sizeof(row))),
+            "missing initial original DGM record");
+    require(row.i[0]==1 && row.i[1]==202200100 && row.i[3]==1 &&
+            row.i[4]==1,"frozen original initial point puff changed");
+    int observed=0;
+    const auto parsed=OriginalMetHourlyReader::read(
+        met_path,[&](const Calmet21Header&,const Calmet21Static& static_met,
+                      const OriginalMetHour& hour) {
+            if(hour.begin.year!=2022 || hour.begin.julian_day!=1 ||
+               hour.begin.hour!=0)return;
+            const auto cell=original_met_cell(row.f[0],row.f[1],hour.nx,hour.ny);
+            require(cell.ix_1based==row.i[5] &&
+                    cell.iy_1based==row.i[6] &&
+                    hour.ipgt.at(cell.offset_0based)==row.i[8] &&
+                    hour.zi.at(cell.offset_0based)==row.f[3],
+                    "native first-hour MET data not the original puff cell");
+            NewPuffInputs point;
+            point.source_x_km=row.f[0];point.source_y_km=row.f[1];
+            point.effective_height_m=row.f[6]; // original HTMET, not guessed
+            point.sigma_y_source_m=1.0F;
+            point.sigma_z_source_m=1.0F;
+            point.stability_class=row.i[8];
+            InjectionInputs injection;
+            injection.species_count=1;injection.emission_duration_s=60;
+            injection.effective_height_m=point.effective_height_m;
+            injection.mixing_height_m=hour.zi[cell.offset_0based];
+            injection.max_layer_height_m=static_met.cell_face_m.back();
+            injection.mass_fraction_mixed=1.0;
+            injection.stability_class=point.stability_class;
+            injection.gaussian_distribution=1;
+            injection.emission_rate={1.0};
+            OriginalVerticalLifecycle native;
+            native.admit_point(1,point,injection);
+            const auto calculated=native.sample(
+                1,hour,static_met,row.f[0],row.f[1],row.f[6]);
+            require(calculated.extent.z_top_m==row.f[7] &&
+                    calculated.extent.z_bottom_m==row.f[8] &&
+                    static_cast<float>(calculated.wind.u_ms)==row.f[9] &&
+                    static_cast<float>(calculated.wind.v_ms)==row.f[10],
+                    "native release -> PUFFDZ -> ADVECT initial step not exact");
+            ++observed;
+        },true);
+    require(parsed.intervals==143 && observed==1,
+            "first original complete hour not sampled");
+}
+} // namespace
+
+int main(int argc,char** argv) {
+    try {
+        local_native_state();
+        if(argc==3) original_first_step(argv[1],argv[2]);
+        else if(argc!=1)throw std::invalid_argument("usage: native-vertical-test [MET DGM]");
+        std::cout<<"P7_NATIVE_VERTICAL_PERSISTENT=PASS"
+                 <<" RELEASE_INJECT=REAL4 PUFFDZ_ADVECT=NATIVE"
+                 <<" SIGMA_UPDATE=NATIVE"
+                 <<" MIXING_HISTORY_TRANSITIONS=NOT_YET_VALIDATED"
+                 <<" FIRST_ORIGINAL_STEP="<<(argc==3?"EXACT":"NOT_TESTED")<<"\n";
+        return 0;
+    } catch(const std::exception& e) {
+        std::cerr<<"P7_NATIVE_VERTICAL_PERSISTENT=FAIL "<<e.what()<<"\n";
+        return 1;
+    }
+}
