@@ -36,7 +36,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             .github/actions/cteas-linux-toolchain
-            native_cpp/modules/p6_calmet/p6e
+            native_cpp/modules/p6_calmet
             engine/vendor/src/CALMET_v6.5.0_L150223
       - uses: ./.github/actions/cteas-linux-toolchain
       - name: Independent original source or software acceptance
@@ -44,7 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           scratch="$RUNNER_TEMP/p6e-e42-${{ matrix.scope }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          cmake -S native_cpp/modules/p6_calmet/p6e -B "$scratch" -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet/p6e -B "$scratch" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$scratch" --target "${{ matrix.target }}" --parallel 1
           ctest --test-dir "$scratch" -R "^${{ matrix.test }}$" \
             --no-tests=error --output-on-failure --timeout 300
@@ -68,7 +68,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             .github/actions/cteas-linux-toolchain
-            native_cpp/modules/p6_calmet/p6e
+            native_cpp/modules/p6_calmet
             engine/vendor/src/CALMET_v6.5.0_L150223
       - uses: actions/checkout@v4
         with:
@@ -97,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           scratch="$RUNNER_TEMP/p6e-e42-full-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          cmake -S native_cpp/modules/p6_calmet/p6e -B "$scratch" -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet/p6e -B "$scratch" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$scratch" --target p6e_p6c_hourly_bridge p6e_calmet_dat21 --parallel 2
       - name: Fail closed on any E42 original 2022 P6E field residual
         shell: bash
