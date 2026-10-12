@@ -183,6 +183,7 @@ jobs:
           path: p6d_light_source_checkout
           filter: blob:none
           sparse-checkout: |
+            .github/actions/cteas-linux-toolchain
             native_cpp/modules/p6_calmet
             engine/vendor/src/CALMET_v6.5.0_L150223
       - uses: ./p6d_light_source_checkout/.github/actions/cteas-linux-toolchain
