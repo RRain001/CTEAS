@@ -229,6 +229,11 @@ def main() -> int:
     parser.add_argument("--bridge-bin", default=None)
     parser.add_argument("--hours", type=int, default=FROZEN_HOURS)
     parser.add_argument("--jobs", type=int, default=8)
+    parser.add_argument("--original-gamma-dir", default=None,
+                        help="DIAGNOSTIC ONLY: source-traced original 143h GAMMA *.f32 "
+                             "for independent FRADJ-state bisection")
+    parser.add_argument("--original-gamma-manifest", default=None,
+                        help="required paired source-pinned gamma_source_manifest.json")
     parser.add_argument("--reuse-p6d", action="store_true",
                         help="reuse an existing <work>/p6d product instead of "
                              "re-running the producer")
@@ -273,6 +278,32 @@ def main() -> int:
         if not path.is_file():
             raise Failure(f"{label} not found: {path}")
 
+    gamma_provenance = None
+    if bool(args.original_gamma_dir) != bool(args.original_gamma_manifest):
+        raise Failure("original GAMMA directory and source proof must be supplied together")
+    if args.original_gamma_dir:
+        gamma_dir = pathlib.Path(args.original_gamma_dir).resolve()
+        proof_file = pathlib.Path(args.original_gamma_manifest).resolve()
+        if not proof_file.is_file() or not gamma_dir.is_dir():
+            raise Failure("original GAMMA oracle directory/manifest unavailable")
+        gamma_provenance = json.loads(proof_file.read_text())
+        if (gamma_provenance.get("status") != "PASS_ORIGINAL_GAMMA_SOURCE_REAL4"
+                or not gamma_provenance.get("met_dat_byte_identical")
+                or not gamma_provenance.get("met_dat_matches_frozen_reference")
+                or gamma_provenance.get("pin", {}).get("original_git_blob")
+                   != "437f43bb7f0e51a1919e56664663e1a046986ed0"):
+            raise Failure("original GAMMA write-only source/unchanged MET.DAT proof invalid")
+        records = gamma_provenance.get("gamma", {}).get("records", [])
+        if len(records) != args.hours:
+            raise Failure("original GAMMA reference hours do not match P6D run")
+        for row in records:
+            name = gamma_dir / f"gamma_{row['hour']}.f32"
+            if not name.is_file() or name.stat().st_size != 50*50*4 or (
+                    sha256_of(name) != row["sha256"]):
+                raise Failure("original source GAMMA bytes differ from trace: " + str(name))
+        print("[gamma-oracle] FORTRAN ORIGINAL-REFERENCE DIAGNOSTIC ONLY "
+              f"({len(records)} hours; source MET.DAT bitwise unchanged)")
+
     timings = {}
     started = time.time()
 
@@ -288,12 +319,15 @@ def main() -> int:
     # ---- 1. P6D wind producer --------------------------------------------
     p6d_fields = work / "p6d"
     if args.reuse_p6d and (p6d_fields / "metadata.json").is_file():
+        if gamma_provenance is not None:
+            raise Failure("--reuse-p6d forbidden when source-traced GAMMA is supplied")
         print("[p6d] reusing existing product")
     else:
-        _, elapsed = run(
-            [bins[P6D_TARGET], "--case", case, "--out", p6d_fields,
-             "--hours", args.hours],
-            work / "logs/p6d.log", "p6d")
+        p6d_cmd = [bins[P6D_TARGET], "--case", case, "--out", p6d_fields,
+                   "--hours", args.hours]
+        if gamma_provenance is not None:
+            p6d_cmd.extend(["--gamma", pathlib.Path(args.original_gamma_dir).resolve()])
+        _, elapsed = run(p6d_cmd, work / "logs/p6d.log", "p6d")
         timings["p6d_s"] = elapsed
     p6d_metadata = json.loads((p6d_fields / "metadata.json").read_text())
 
@@ -393,6 +427,17 @@ def main() -> int:
             "B": {"source": "frozen met.dat U/V/W", "wind_file": str(met_dat)},
         },
         "p6d_metadata": p6d_metadata,
+        "forensic_original_gamma": {
+            "mode": ("SOURCE_TRACED_ORIGINAL_REAL4_DIAGNOSTIC_ONLY"
+                     if gamma_provenance is not None else "NOT_SUPPLIED"),
+            "is_self_contained_cpp_calmet": False if gamma_provenance else None,
+            "source_proof": (
+                sha256_of(pathlib.Path(args.original_gamma_manifest))
+                if gamma_provenance is not None else None),
+            "original_met_dat_byte_identical": (
+                gamma_provenance["met_dat_byte_identical"]
+                if gamma_provenance is not None else None),
+        },
         "field_table": {
             "A_reconstructed_wind": rows_a,
             "B_original_wind": rows_b,
