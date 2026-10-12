@@ -140,6 +140,23 @@ void ConcFileWriter::write_period_record(const ConcPeriod& period) {
     ++records_written_;
 }
 
+ConcGridDescriptor original_met_grid_descriptor(
+    float origin_x_m, float origin_y_m, int discrete_receptors) {
+    require_true(std::isfinite(origin_x_m) && std::isfinite(origin_y_m),
+                 "original MET.DAT grid origin must be finite");
+    require_true(discrete_receptors >= 0,
+                 "original discrete receptor count must not be negative");
+    constexpr float kOriginalMetresToKm = 0.001F;
+    ConcGridDescriptor result;
+    result.discrete_receptors = discrete_receptors;
+    result.group_index = 1;
+    result.group_name = "TOTAL";
+    // Preserve original REAL*4 multiply, not double or text conversion.
+    result.x_origin_km = static_cast<double>(origin_x_m * kOriginalMetresToKm);
+    result.y_origin_km = static_cast<double>(origin_y_m * kOriginalMetresToKm);
+    return result;
+}
+
 void ConcFileWriter::write_grid_descriptor(const ConcGridDescriptor& descriptor) {
     require_true(impl_ != nullptr && !impl_->closed, "writer is closed");
     require_true(descriptor.discrete_receptors >= 0, "discrete receptor count must not be negative");
