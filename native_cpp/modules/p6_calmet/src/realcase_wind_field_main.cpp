@@ -25,6 +25,7 @@
 #include "cteas/p6/froude_adjust.hpp"
 #include "cteas/p6/slope_flow.hpp"
 #include "cteas/p6/station_elustr2.hpp"
+#include "cteas/p6/station_mixhtst.hpp"
 #include "cteas/p6e/heatfx.hpp"
 #include "cteas/p6e/elustr_stable.hpp"
 #include "cteas/p6e/elustr_daytime.hpp"
@@ -152,7 +153,7 @@ std::string hour_label(std::chrono::sys_seconds clock){
 }
 
 struct Arguments {
-    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,zi_file,el_file,zii_file,el_cell_file;
+    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,zi_file,el_file,zii_file,el_cell_file,comp_state_prefix;
     int hours=143;
     fs::path out()const{return out_dir;}
 };
@@ -179,10 +180,15 @@ int main(int argc,char** argv){
         else if(flag=="--el")args.el_file=next();
         else if(flag=="--zii-cell")args.zii_file=next();
         else if(flag=="--el-cell")args.el_cell_file=next();
+        else if(flag=="--comp-state-prefix")args.comp_state_prefix=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
         else throw std::invalid_argument("unknown argument "+flag);
     }
     if(args.out_dir.empty())throw std::invalid_argument("--out is required");
+    if(!args.comp_state_prefix.empty() &&
+       (!args.zi_file.empty()||!args.zii_file.empty()||
+        !args.el_file.empty()||!args.el_cell_file.empty()))
+        throw std::invalid_argument("native COMP state cannot mix with original ZII/EL/ZI injection");
     if(args.case_dir.empty()&&(args.geo.empty()||args.deck.empty()||
                                args.surface.empty()||args.upper.empty()))
         throw std::invalid_argument(
@@ -463,6 +469,42 @@ int main(int argc,char** argv){
         stream.read(reinterpret_cast<char*>(el_hours.data()),
                     static_cast<std::streamsize>(bytes));
     }
+    // P6E COMP state (post-AVEMIX ZI/ZICONV, post-MIXHT DPTT). At hour h,
+    // original STHEOR->ELUSTR2->MIXHTST sees COMP state from hour h-1.
+    // These are independent C++-produced fields, not original oracle files.
+    std::vector<float> comp_zi,comp_ziconv,comp_dptt;
+    if(!args.comp_state_prefix.empty()){
+        const auto stem=args.comp_state_prefix.string();
+        const auto metadata=fs::path(stem+".state.json");
+        if(!fs::is_regular_file(metadata))
+            throw std::runtime_error("native COMP state metadata absent: "+metadata.string());
+        const auto meta=read_text(metadata);
+        if(meta.find("\"producer\": \"p6e_calmet_dat21 emit-realcase\"")==std::string::npos ||
+           meta.find("\"dptt\"")==std::string::npos)
+            throw std::runtime_error("COMP state missing native P6E DPTT provenance");
+        const auto read_block=[&](const std::string& suffix)->std::vector<float> {
+            const fs::path path(stem+suffix);
+            const auto expected=std::size_t(args.hours)*std::size_t(nx*ny)*4U;
+            if(!fs::is_regular_file(path)||fs::file_size(path)<expected ||
+               fs::file_size(path)%std::size_t(nx*ny*4)!=0)
+                throw std::runtime_error("native COMP missing/truncated field "+path.string());
+            const auto bytes=fs::file_size(path);
+            std::vector<float> out(static_cast<std::size_t>(bytes/4),0.f);
+            std::ifstream in(path,std::ios::binary);
+            in.read(reinterpret_cast<char*>(out.data()),
+                    static_cast<std::streamsize>(bytes));
+            if(!in||!std::all_of(out.begin(),out.end(),
+                 [](float f){return std::isfinite(f)&&std::abs(f)<999998.f;}))
+                throw std::runtime_error("native COMP has invalid physical values "+path.string());
+            return out;
+        };
+        comp_zi=read_block(".zi.f32");
+        comp_ziconv=read_block(".ziconv.f32");
+        comp_dptt=read_block(".dptt.f32");
+        if(comp_zi.size()!=comp_ziconv.size()||
+           comp_zi.size()!=comp_dptt.size())
+            throw std::runtime_error("native COMP state three streams do not align");
+    }
     const auto envelope=terset(geo.terrain_m,nx,ny,grid_m,grid_m,terrad_km);
     write_f32(args.out()/"terset_hmax.f32",envelope.maximum_m);
     write_f32(args.out()/"terset_hmin.f32",envelope.minimum_m);
@@ -480,6 +522,9 @@ int main(int argc,char** argv){
     std::ofstream station_elustr2_trace(args.out()/"station_elustr2.csv");
     if(!station_elustr2_trace)throw std::runtime_error("cannot open station ELUSTR2 trace");
     station_elustr2_trace<<"hour_end,QH_Wm2,USTAR_mps,EL_m,solar_sine,temp_K,rho_kgm3,Z0_m,station_cell_i,station_cell_j\n";
+    std::ofstream station_mixhtst_trace(args.out()/"station_mixhtst.csv");
+    if(!station_mixhtst_trace)throw std::runtime_error("cannot write station MIXHTST trace");
+    station_mixhtst_trace<<"hour_end,ZI_M,ZICONV_M,DPTT_K,PREV_ZI_M,PREV_ZICONV_M,PREV_DPTT_K,EL_M,source_kind\n";
     std::ofstream index(args.out()/"produced_hours.txt");
     if(!index)throw std::runtime_error("cannot write produced_hours.txt");
     std::size_t similt_levels_min=9,similt_levels_max=0;
@@ -724,6 +769,72 @@ int main(int argc,char** argv){
         // MIXHTST and mutates the DPTT history first. An explicit caller
         // station-ZII stream is diagnostic-only pending native MIXHTST
         // state reconstruction; never claim standalone U/V/W acceptance.
+        if(!args.comp_state_prefix.empty()){
+            const std::size_t previous_offset=h==0?0:(h-1U)*plane_cells+station_cell;
+            StationMixhtstInput mix;
+            mix.previous.zi_m=h==0?0.f:comp_zi[previous_offset];
+            mix.previous.ziconv_m=h==0?0.f:comp_ziconv[previous_offset];
+            mix.previous.dptt_k=h==0?0.f:comp_dptt[previous_offset];
+            mix.qh_wm2=station_flux.sensible_wm2;
+            mix.ustar_mps=station_flux.friction_velocity_mps;
+            mix.el_m=station_flux.monin_obukhov_m;
+            mix.rho_kg_m3=station_physics.rho_kg_m3;
+            mix.zimin_m=zimin_m;
+            mix.zimax_m=deck_scalar(controls,"ZIMAX",3000.f);
+            mix.constn=deck_scalar(controls,"CONSTN",2400.f);
+            mix.dptmin_kperm=deck_scalar(controls,"DPTMIN",0.001f);
+            mix.dzzi_m=deck_scalar(controls,"DZZI",200.f);
+            mix.threshl=deck_scalar(controls,"THRESHL",0.f);
+            mix.tzicrlx_s=deck_scalar(controls,"TZICRLX",800.f);
+            mix.imixh=deck_int(controls,"IMIXH",1);
+            mix.izicrlx=deck_int(controls,"IZICRLX",1);
+            mix.landuse=geo.landuse[station_cell];
+            mix.water_first=geo.iwat1;
+            mix.water_last=geo.iwat2;
+            // ZIPARM user-prescribed Coriolis latitude-independent value for
+            // the selected frozen Hefei case, identical to P6E COMP.
+            float f=deck_scalar(controls,"FCORIOL",1.e-4f);
+            if(f>998.f){
+                constexpr float radians=0.0174533f;
+                f=2.f*(6.2831853f/86400.f)*std::sin(radians*station_lat_deg);
+            }
+            mix.fcori_s=std::max(std::fabs(f),0.25e-4f);
+            mix.cmech=deck_scalar(controls,"CONSTB",1.41f)/std::sqrt(mix.fcori_s);
+            // The original MIXHTST selects the most recent earlier thermal
+            // UP sounding as of the BEGINNING of the target model hour.
+            const auto beginning=clock-std::chrono::hours{1};
+            const UpperSounding* older=nullptr;
+            for(const auto& sounding:upper.soundings){
+                if(sounding.end<=beginning)older=&sounding;
+                else break;
+            }
+            if(older==nullptr)
+                throw std::runtime_error("MIXHTST missing previous thermal sounding");
+            for(const auto& level:older->data){
+                mix.older_sounding.height_m.push_back(level.height_lgl_m);
+                mix.older_sounding.temp_k.push_back(level.temperature_valid?
+                    level.temperature_k:9999.f);
+            }
+            const auto stage=station_mixhtst(mix);
+            const SimiltProfileInput diagi{
+                station_lat_deg,surface_anemometer_height_m,station_physics.z0_m,
+                surface_u,surface_v,station_flux.monin_obukhov_m,
+                stage.zii_to_similt_m,zimin_m,0,zface};
+            const auto profile=original_similt_profile(diagi);
+            station.similt_levels_filled=profile.levels_filled;
+            station.mixing_height_m=stage.zii_to_similt_m;
+            for(std::size_t k=0;k<9;++k)
+                diagi_surface_column[k]=k<profile.levels_filled
+                    ?LayerWind{profile.u_mps[k],profile.v_mps[k]}
+                    :LayerWind{999999.f,999999.f};
+            station_mixhtst_trace<<hour_label(clock)<<","<<std::setprecision(10)
+                <<stage.zii_to_similt_m<<","<<stage.ziconv_after_m<<","
+                <<stage.dptt_for_comp_k<<","<<mix.previous.zi_m<<","
+                <<mix.previous.ziconv_m<<","<<mix.previous.dptt_k<<","
+                <<station_flux.monin_obukhov_m<<",native_p6e_comp_previous_hour\n";
+        }
+        // Forensic reference-ZII input is mutually exclusive with the
+        // native COMP-produced ZII above. Never mix these two provenances.
         if(!zii_hours.empty() && el_hours.empty() && el_cell_hours.empty()){
             if(h>=zii_hours.size())
                 throw std::runtime_error("STHEOR station ZII stream truncated");
