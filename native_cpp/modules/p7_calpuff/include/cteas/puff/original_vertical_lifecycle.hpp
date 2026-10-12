@@ -23,6 +23,7 @@ struct NativeVerticalPuffState {
     std::vector<float> mass_mixed;
     std::vector<float> mass_above;
     std::size_t completed_substeps = 0;
+    std::size_t committed_lid_steps = 0;
 };
 
 struct NativeVerticalWind {
@@ -56,6 +57,12 @@ public:
     [[nodiscard]] SigmaUpdateResult commit_sigma(
         int puff_id, const SigmaUpdateInputs& inputs,
         const SigmaYCurve& sigma_y, const SigmaZCurve& sigma_z);
+    // COMP calpuff.for 11391-11398, AFTER SETPUF and any VMASS operation:
+    //   IPUFCD(II)=ICODE; ZIMAX=AMAX1(ZIMAX,HLID); ZIOLD=HLID.
+    // HLID / adjusted puff code MUST be calculated by the native upstream
+    // VMASS/COMP branch; this method cannot invent the 2-layer mass transfer.
+    // One lid commit for each completed native sigma substep.
+    void commit_lid(int puff_id, float native_hlid_m, int native_puff_code);
     void retire(int puff_id);
     [[nodiscard]] std::size_t active_count() const noexcept;
 private:

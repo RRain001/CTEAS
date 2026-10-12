@@ -1,5 +1,6 @@
 #include "cteas/puff/original_vertical_lifecycle.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -107,6 +108,26 @@ SigmaUpdateResult OriginalVerticalLifecycle::commit_sigma(
     it->second.sigma_z_m=sz;
     ++it->second.completed_substeps;
     return next;
+}
+void OriginalVerticalLifecycle::commit_lid(
+    int id,float native_lid,int native_code) {
+    const auto it=puffs_.find(id);
+    if(it==puffs_.end())throw std::out_of_range("unknown vertical puff");
+    const auto& before=it->second;
+    require(std::isfinite(native_lid) && native_lid>=0.0F,
+            "nonfinite or negative source-ported HLID");
+    require(native_code>0 && native_code<=99,
+            "invalid native VMASS-updated puff code");
+    require(before.completed_substeps==before.committed_lid_steps+1,
+            "COMP lid update must occur once after completed SETPUF/sigma step");
+    // Fortran REAL*4 AMAX1 exactly matches this max of two float32
+    // operands. Keep state authoritative; do not use DGM ZIOLD/ZIMAX here.
+    auto after=before;
+    after.puff_code=native_code;
+    after.zimax_m=std::max(after.zimax_m,native_lid);
+    after.ziold_m=native_lid;
+    ++after.committed_lid_steps;
+    it->second=std::move(after);
 }
 void OriginalVerticalLifecycle::retire(int id) {
     if(puffs_.erase(id)!=1U)throw std::out_of_range("retire unknown vertical puff");

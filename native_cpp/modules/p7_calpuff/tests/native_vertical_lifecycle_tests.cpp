@@ -73,10 +73,31 @@ void local_native_state() {
             "stale caller overwrote native sigma history");
     require(life.state(1).completed_substeps==1,
             "failed sigma transition mutated state");
+    // Original COMP L11391-11398: first lower reflecting lid, then a
+    // higher lid on the following native, source-ported sigma substep.
+    life.commit_lid(1,80.0F,1);
+    const auto first_lid=life.state(1);
+    require(first_lid.ziold_m==80.0F && first_lid.zimax_m==120.0F &&
+            first_lid.committed_lid_steps==1,
+            "CALPUFF COMP REAL4 max/last-lid commit differs");
+    rejects([&]{life.commit_lid(1,80.0F,1);},
+            "duplicate COMP lid commit accepted");
+    rejects([&]{life.commit_lid(1,std::nanf(""),1);},
+            "nonfinite original HLID accepted");
     const auto after=life.sample(1,met,static_met,0.5F,0.5F,50.0F);
     require(after.extent.z_top_m==static_cast<double>(50.0F+committed.sigma_z_m) &&
             after.extent.z_bottom_m==static_cast<double>(50.0F-committed.sigma_z_m),
             "next PUFFDZ step did not consume persisted native SIGZ");
+    auto second_step=inputs;
+    second_step.step.sigma_y_start_m=committed.sigma_y_m;
+    second_step.step.sigma_z_start_m=committed.sigma_z_m;
+    (void)life.commit_sigma(1,second_step,yc,zc);
+    life.commit_lid(1,150.0F,1);
+    const auto second_lid=life.state(1);
+    require(second_lid.ziold_m==150.0F &&
+            second_lid.zimax_m==150.0F &&
+            second_lid.committed_lid_steps==2,
+            "CALPUFF lid increase not propagated through native state");
     rejects([&]{(void)life.sample(1,met,static_met,2.0F,0.5F,50.0F);},
             "out-of-grid native puff accepted");
     life.retire(1);
@@ -143,7 +164,8 @@ int main(int argc,char** argv) {
         std::cout<<"P7_NATIVE_VERTICAL_PERSISTENT=PASS"
                  <<" RELEASE_INJECT=REAL4 PUFFDZ_ADVECT=NATIVE"
                  <<" SIGMA_UPDATE=NATIVE"
-                 <<" MIXING_HISTORY_TRANSITIONS=NOT_YET_VALIDATED"
+                 <<" COMP_LAST_LID_COMMIT=NATIVE_REAL4"
+                 <<" VMASS_FULL_BRANCHES=NOT_YET_VALIDATED"
                  <<" FIRST_ORIGINAL_STEP="<<(argc==3?"EXACT":"NOT_TESTED")<<"\n";
         return 0;
     } catch(const std::exception& e) {
