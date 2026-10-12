@@ -23,6 +23,21 @@ void OriginalPuffMotionLifecycle::introduce(int puff_id, OriginalPuffMotionState
     check_state(value);
     require(puffs_.emplace(puff_id, value).second, "puff index already active");
 }
+void OriginalPuffMotionLifecycle::introduce_point_source(
+    int puff_id, const NewPuffInputs& source) {
+    // Original CALPUFF POINTS1 stores positions and heights into REAL*4
+    // COMMON /PUFF/, and SWAP initializes cumulative distance and age to
+    // zero. Do not seed these values from a future DGM oracle record.
+    require(source.source_type == 1,
+            "native first-release state requires an original point source");
+    const auto released = new_puff_state(source);
+    introduce(puff_id, {
+        static_cast<VendorPuffCommonReal>(released.x_km),
+        static_cast<VendorPuffCommonReal>(released.y_km),
+        static_cast<VendorPuffCommonReal>(released.height_begin_m),
+        0.0F, 0.0F
+    });
+}
 bool OriginalPuffMotionLifecycle::contains(int id) const noexcept {
     return puffs_.find(id) != puffs_.end();
 }
