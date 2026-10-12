@@ -18,7 +18,7 @@ permissions:
 jobs:
   terset-original-fortran-parity:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [cteas-managed, cteas-compute, Linux, X64]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -35,41 +35,41 @@ jobs:
         run: |
           set -euo pipefail
           if ! pkg-config --exists gdal; then
-            sudo -n apt-get update -qq
-            sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgdal-dev
-          fi
+            echo "::error::GDAL headers absent on managed runner; provision libgdal-dev on host"
+            exit 1
+            fi
           gfortran --version | head -1
-          python3 native_cpp/reference/capture_p1_p2.py --output /tmp/p6c-real-p3
-          python3 native_cpp/reference/capture_p3_makegeo.py --output /tmp/p6c-real-p3
-          test -s /tmp/p6c-real-p3/p3/geo.dat
+          python3 native_cpp/reference/capture_p1_p2.py --output ${{ runner.temp }}/p6c-real-p3
+          python3 native_cpp/reference/capture_p3_makegeo.py --output ${{ runner.temp }}/p6c-real-p3
+          test -s ${{ runner.temp }}/p6c-real-p3/p3/geo.dat
       - name: Build independent C++20 terrain kernel and software checks
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-build -DCMAKE_BUILD_TYPE=Release
-          cmake --build /tmp/p6c-build -j2
-          ctest --test-dir /tmp/p6c-build --output-on-failure
+          cmake -S native_cpp/modules/p6_calmet -B ${{ runner.temp }}/p6c-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build ${{ runner.temp }}/p6c-build -j2
+          ctest --test-dir ${{ runner.temp }}/p6c-build --output-on-failure
       - name: Compare original TERSET and modern C++ across 60,000 physical fields
         run: |
           set -euo pipefail
           python3 native_cpp/modules/p6_calmet/reference/compare_original_terset.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
-            --geo /tmp/p6c-real-p3/p3/geo.dat \
-            --cpp /tmp/p6c-build/cteas_p6_terset \
-            --output /tmp/p6c-compare
+            --geo ${{ runner.temp }}/p6c-real-p3/p3/geo.dat \
+            --cpp ${{ runner.temp }}/p6c-build/cteas_p6_terset \
+            --output ${{ runner.temp }}/p6c-compare
       - name: Compare original TERSET+FRADJ against 315000 wind components
         run: |
           set -euo pipefail
           python3 -m native_cpp.modules.p6_calmet.reference.compare_original_fradj \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
-            --geo /tmp/p6c-real-p3/p3/geo.dat \
-            --cpp /tmp/p6c-build/cteas_p6_fradj \
-            --out /tmp/p6d-compare
+            --geo ${{ runner.temp }}/p6c-real-p3/p3/geo.dat \
+            --cpp ${{ runner.temp }}/p6c-build/cteas_p6_fradj \
+            --out ${{ runner.temp }}/p6d-compare
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: p6c-calmet-original-terset-vs-cpp-2022
           path: |
-            /tmp/p6c-compare/
-            /tmp/p6d-compare/
+            ${{ runner.temp }}/p6c-compare/
+            ${{ runner.temp }}/p6d-compare/
           retention-days: 7
           if-no-files-found: warn
