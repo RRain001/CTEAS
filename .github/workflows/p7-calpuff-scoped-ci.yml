@@ -280,6 +280,13 @@ jobs:
             ctest --test-dir "$build" -N -R '^cteas_p7_original_2022_met_header_grid_qa$' |
               grep -Eq 'Test[[:space:]]*#[0-9]+: cteas_p7_original_2022_met_header_grid_qa'
             ctest --test-dir "$build" -R '^cteas_p7_original_2022_met_header_grid_qa$' --output-on-failure
+            ctest --test-dir "$build" -N -R '^cteas_p7_original_2022_native_met_hourly_bytes$' |
+              grep -Eq 'Test[[:space:]]*#[0-9]+: cteas_p7_original_2022_native_met_hourly_bytes' || {
+                echo "::error::Mandatory original 143h native MET byte oracle absent"
+                exit 1
+              }
+            ctest --test-dir "$build" -R '^cteas_p7_original_2022_native_met_hourly_bytes$' --output-on-failure
+            echo "P7_ORIGINAL_MET_143H_TYPED_REAL4_BYTES=PASS"
             echo "P7_ORIGINAL_MET_BINARY_GRID_2500_QA=PASS"
           else
             echo "::error::Original frozen 2022 MET.DAT absent; P7 real binary grid QA NOT_ACCEPTED"

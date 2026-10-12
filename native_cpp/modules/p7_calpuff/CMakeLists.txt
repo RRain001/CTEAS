@@ -40,7 +40,7 @@ else()
 endif()
 add_test(NAME cteas_p7_fortran_record_contract COMMAND cteas_p7_records_tests)
 
-add_library(cteas_p7_calmet21 STATIC src/calmet21.cpp src/gregorian.cpp)
+add_library(cteas_p7_calmet21 STATIC src/calmet21.cpp src/gregorian.cpp src/original_met_hours.cpp)
 target_include_directories(cteas_p7_calmet21 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(cteas_p7_calmet21 PUBLIC cteas_p7_records)
 if(MSVC)
@@ -53,10 +53,16 @@ target_link_libraries(cteas_p7_calmet21_inspect PRIVATE cteas_p7_calmet21)
 add_executable(cteas_p7_calmet21_tests tests/calmet21_tests.cpp)
 target_link_libraries(cteas_p7_calmet21_tests PRIVATE cteas_p7_calmet21)
 add_test(NAME cteas_p7_calmet21_typed_field_contract COMMAND cteas_p7_calmet21_tests)
+add_executable(cteas_p7_native_met_hours src/native_met_hours_cli.cpp)
+target_link_libraries(cteas_p7_native_met_hours PRIVATE cteas_p7_calmet21)
 set(P7G_LOCKED_CASE_MET "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat")
 if(EXISTS "${P7G_LOCKED_CASE_MET}")
   add_test(NAME cteas_p7g_locked_case_static_decode
     COMMAND cteas_p7_calmet21_tests --met "${P7G_LOCKED_CASE_MET}")
+  add_test(NAME cteas_p7_original_2022_native_met_hourly_bytes
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/original_met_hourly_parity.py"
+            --binary "$<TARGET_FILE:cteas_p7_native_met_hours>"
+            --met "${P7G_LOCKED_CASE_MET}")
 endif()
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
