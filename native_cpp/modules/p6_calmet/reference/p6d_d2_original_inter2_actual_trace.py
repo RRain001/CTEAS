@@ -29,7 +29,7 @@ ANCHORS = {
     8568: "      wt3 = 1./(R**2)",
 }
 BEFORE = {8243: "      DOUBLE PRECISION WT"}
-AFTER = {8247: " C", 8568: " c"}
+AFTER = {8247: "C", 8568: "c"}
 
 DECL = """
 c --- P6D D-2 diagnostic only, no original arithmetic changed
