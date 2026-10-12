@@ -163,6 +163,41 @@ else()
 endif()
 add_test(NAME cteas_p7f_dry_deposition_contract COMMAND cteas_p7_dry_deposition_tests)
 set(P7F_LOCKED_CASE_CONTROL "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp")
+# Mode A: the *frozen original CALPUFF control* owns the selected point-source
+# coordinates and stack parameters. Never restore extra lon/lat -> UTM digits
+# from a preprocessing CSV, Python variable, or notebook during source parity.
+# Fail at configure time if the selected, single-source deck is malformed.
+if(EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  file(STRINGS "${P7F_LOCKED_CASE_CONTROL}" P7_ORIGINAL_POINT_SOURCE_ROWS
+    REGEX "^[ \t]*1[ \t]+![ \t]*X[ \t]*=")
+  list(LENGTH P7_ORIGINAL_POINT_SOURCE_ROWS P7_ORIGINAL_POINT_SOURCE_COUNT)
+  if(NOT P7_ORIGINAL_POINT_SOURCE_COUNT EQUAL 1)
+    message(FATAL_ERROR "P7 original-compatible deck needs exactly one active point source X row")
+  endif()
+  list(GET P7_ORIGINAL_POINT_SOURCE_ROWS 0 P7_ORIGINAL_POINT_SOURCE_ROW)
+  string(REGEX MATCH
+    "X[ \t]*=[ \t]*([^,]+),[ \t]*([^,]+),[ \t]*([^,]+),[ \t]*([^,]+),[ \t]*([^,]+),[ \t]*([^,]+),[ \t]*([^,]+),[ \t]*([^,]+),[ \t]*([^,]+),"
+    P7_ORIGINAL_POINT_SOURCE_MATCH "${P7_ORIGINAL_POINT_SOURCE_ROW}")
+  if(NOT P7_ORIGINAL_POINT_SOURCE_MATCH)
+    message(FATAL_ERROR "P7 original-compatible point-source coordinates/stack parameters are malformed")
+  endif()
+  set(P7_STACK_X_KM "${CMAKE_MATCH_1}")
+  set(P7_STACK_Y_KM "${CMAKE_MATCH_2}")
+  set(P7_STACK_HEIGHT_M "${CMAKE_MATCH_3}")
+  set(P7_STACK_BASE_M "${CMAKE_MATCH_4}")
+  set(P7_STACK_DIAMETER_M "${CMAKE_MATCH_5}")
+  set(P7_STACK_EXIT_MS "${CMAKE_MATCH_6}")
+  set(P7_STACK_TEMP_K "${CMAKE_MATCH_7}")
+  set(P7_STACK_DOWNWASH "${CMAKE_MATCH_8}")
+  set(P7_STACK_Q1 "${CMAKE_MATCH_9}")
+  foreach(P7_STACK_PARAMETER X_KM Y_KM HEIGHT_M BASE_M DIAMETER_M EXIT_MS TEMP_K DOWNWASH Q1)
+    string(STRIP "${P7_STACK_${P7_STACK_PARAMETER}}" P7_STACK_${P7_STACK_PARAMETER})
+  endforeach()
+  # The input parser runs even when the (large) frozen MET.DAT is not checked out.
+  # A missing control does not silently turn a hard-coded coordinate into evidence.
+  add_test(NAME cteas_p7c_locked_original_point_input
+    COMMAND cteas_p7_transport_tests "${P7F_LOCKED_CASE_CONTROL}")
+endif()
 if(EXISTS "${P7F_LOCKED_CASE_CONTROL}")
   add_test(NAME cteas_p7f_locked_case_dry_deposition
     COMMAND cteas_p7_dry_deposition_tests --control "${P7F_LOCKED_CASE_CONTROL}")
@@ -318,7 +353,7 @@ add_test(NAME cteas_p7m_source_parity
 if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
   add_test(NAME cteas_p7m_real_grid_ctsg
     COMMAND cteas_p7m_probe --real-grid "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
-            0 2.63e13 513.3846439571 3533.7689269678 70.8)
+            0 2.63e13 ${P7_STACK_X_KM} ${P7_STACK_Y_KM} ${P7_STACK_HEIGHT_M})
 endif()
 
 # P7N: CALPUFF 7.2.1 plume rise (STKTIP/PRB/PRM/PRFIN/PRFPP/GRISE plus the
@@ -349,7 +384,7 @@ add_test(NAME cteas_p7n_source_parity
 if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
   add_test(NAME cteas_p7n_locked_case_rise
     COMMAND cteas_p7n_probe --deck-rise "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
-            0 513.3846439571 3533.7689269678 70.8 1.6 17.26 298.15)
+            0 ${P7_STACK_X_KM} ${P7_STACK_Y_KM} ${P7_STACK_HEIGHT_M} ${P7_STACK_DIAMETER_M} ${P7_STACK_EXIT_MS} ${P7_STACK_TEMP_K})
 endif()
 
 # P7O: the release scheduler (INJECT + the verbatim POINTS1 cadence and
@@ -380,7 +415,7 @@ add_test(NAME cteas_p7o_source_parity
 if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
   add_test(NAME cteas_p7o_locked_case_release
     COMMAND cteas_p7o_probe --deck-release "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
-            0 513.3846439571 3533.7689269678 70.8 1.6 17.26 298.15 8.34e5)
+            0 ${P7_STACK_X_KM} ${P7_STACK_Y_KM} ${P7_STACK_HEIGHT_M} ${P7_STACK_DIAMETER_M} ${P7_STACK_EXIT_MS} ${P7_STACK_TEMP_K} ${P7_STACK_Q1})
 endif()
 
 # P7P: SETPUF's per-step bookkeeping (distance/travel time/calm, settling and the
@@ -411,7 +446,7 @@ add_test(NAME cteas_p7p_source_parity
 if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
   add_test(NAME cteas_p7p_locked_case_step
     COMMAND cteas_p7p_probe --deck-step "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
-            0 513.3846439571 3533.7689269678 70.8)
+            0 ${P7_STACK_X_KM} ${P7_STACK_Y_KM} ${P7_STACK_HEIGHT_M})
 endif()
 
 # P7Q: SETPUF's sigma update (begin/mid/end sigmas and virtuals, the final
@@ -442,7 +477,7 @@ add_test(NAME cteas_p7q_source_parity
 if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
   add_test(NAME cteas_p7q_locked_case_sigma
     COMMAND cteas_p7q_probe --deck-sigma "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
-            0 513.3846439571 3533.7689269678 70.8 1.0 1.0 100.0)
+            0 ${P7_STACK_X_KM} ${P7_STACK_Y_KM} ${P7_STACK_HEIGHT_M} 1.0 1.0 100.0)
 endif()
 
 # P7R: the MCTADJ=2 terrain constraints (CTADJ2 strain, WALLTRAP valley).
@@ -472,7 +507,7 @@ add_test(NAME cteas_p7r_source_parity
 if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
   add_test(NAME cteas_p7r_locked_case_terrain
     COMMAND cteas_p7r_probe --deck-terrain "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
-            0 513.3846439571 3533.7689269678 70.8 89.152 0.9 1.396 0.02)
+            0 ${P7_STACK_X_KM} ${P7_STACK_Y_KM} ${P7_STACK_HEIGHT_M} 89.152 0.9 1.396 0.02)
 endif()
 
 # P7S: the terrain-state producers (TERAVG strip average, TRELIEF relief and
@@ -503,7 +538,7 @@ add_test(NAME cteas_p7s_source_parity
 if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
   add_test(NAME cteas_p7s_locked_case_relief
     COMMAND cteas_p7s_probe --deck-relief "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
-            0 513.3846439571 3533.7689269678 70.8 89.152 0.9 1.396 0.02)
+            0 ${P7_STACK_X_KM} ${P7_STACK_Y_KM} ${P7_STACK_HEIGHT_M} 89.152 0.9 1.396 0.02)
 endif()
 
 # P7T: VWIDTH, the valley-width table producer consumed by WALLTRAP.
@@ -533,7 +568,7 @@ add_test(NAME cteas_p7t_source_parity
 if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
   add_test(NAME cteas_p7t_locked_case_valley
     COMMAND cteas_p7t_probe --deck-valley "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
-            0 513.3846439571 3533.7689269678 70.8)
+            0 ${P7_STACK_X_KM} ${P7_STACK_Y_KM} ${P7_STACK_HEIGHT_M})
 endif()
 
 # P7V: the advection units (ZFIND, ADVWND, ADVECT, PUFFDZ).
@@ -562,7 +597,7 @@ add_test(NAME cteas_p7v_source_parity
 if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
   add_test(NAME cteas_p7v_locked_case_advection
     COMMAND cteas_p7v_probe --deck-advection "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
-            0 513.3846439571 3533.7689269678 70.8 89.152)
+            0 ${P7_STACK_X_KM} ${P7_STACK_Y_KM} ${P7_STACK_HEIGHT_M} 89.152)
 endif()
 
 # P7W: RISEWIND and the one-step numerical comparison against the vendor's
@@ -619,5 +654,5 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}"
     COMMAND cteas_p7w_probe --dgm-steps
             "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin"
             "${P7G_LOCKED_CASE_MET}" "${P7F_LOCKED_CASE_CONTROL}"
-            "513.3846439571" "3533.7689269678" "70.8" "1.6" "17.26" "298.15")
+            "${P7_STACK_X_KM}" "${P7_STACK_Y_KM}" "${P7_STACK_HEIGHT_M}" "${P7_STACK_DIAMETER_M}" "${P7_STACK_EXIT_MS}" "${P7_STACK_TEMP_K}")
 endif()
