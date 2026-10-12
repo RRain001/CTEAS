@@ -166,6 +166,13 @@ def compare(args):
     fields=args.fixture_dir
     maxima={"surface_u":0.0,"surface_v":0.0,"upper_u":0.0,"upper_v":0.0}
     bad=[];checked=0
+    # Original CALMET PREPDI uses EDIT=999.f. In the selected IEXTRP=-4
+    # branch, upper-air level 1 is excluded. C++ WIND1's fixture maps the
+    # missing datum to its own internal 999999.f sentinel. Require this exact
+    # restricted equivalence; never treat a missing wind as real 999 m/s.
+    original_missing=999.0
+    cpp_missing=999999.0
+    excluded_level_one=0
     missing_cutoff=999998.0
     tol=2e-4
     for idx,row in enumerate(rows):
@@ -195,18 +202,36 @@ def compare(args):
         for key in ("upper_u","upper_v"):
             for k in range(9):
                 expected=float(row[key][k]);modern=observed[f"{key}_{k}"]
-                if (abs(expected)>missing_cutoff)!=(abs(modern)>missing_cutoff):
+                if k==0:
+                    if expected==original_missing and modern==cpp_missing:
+                        excluded_level_one+=1
+                        continue
+                    if len(bad)<30:
+                        bad.append({"hour":row["hour"],"level":1,"component":key,
+                                    "original":expected,"modern":modern,
+                                    "reason":"invalid IEXTRP<=0 first-level sentinel"})
+                    continue
+                if (abs(expected)>=original_missing or
+                    abs(modern)>=missing_cutoff):
                     if len(bad)<30:bad.append({
                         "hour":row["hour"],"level":k+1,"component":key,
-                        "original":expected,"modern":modern,"reason":"missing sentinel mismatch"})
+                        "original":expected,"modern":modern,
+                        "reason":"unexpected upper-layer missing marker"})
                     continue
-                if abs(expected)>missing_cutoff:continue
                 difference=abs(expected-modern)
                 maxima[key]=max(maxima[key],difference);checked+=1
                 if difference>tol and len(bad)<30:
                     bad.append({"hour":row["hour"],"level":k+1,"component":key,
                                 "original":expected,"modern":modern,"error":difference})
+    if excluded_level_one!=len(rows)*2:
+        raise RuntimeError("upper-level-one missing-count contract incomplete")
     report={
+        "first_upper_layer_missing_semantics":{
+            "original_PREPDI_EDIT":original_missing,
+            "cpp_WIND1_fixture_sentinel":cpp_missing,
+            "IEXTRP_case":-4,
+            "excluded_UV_values":excluded_level_one,
+            "exactly_scoped_to_upper_level_1":True},
         "status":"PASS_ORIGINAL_PREPDI_VS_CPP_INPUT" if not bad else "FAIL_PREPDI_INPUT_PARITY",
         "scoped_original_Fortran_PREPDI_input_real4":True,
         "original_met_dat_unmodified":True,
