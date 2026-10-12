@@ -1,0 +1,126 @@
+name: P7 vendor precision and independent parallel physics gates
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p7_calpuff/**'
+      - '.github/workflows/p7-precision-and-parallel.yml'
+      - 'docs/reconstruction_cpp/P7_*'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p7-parallel-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  # Kind proof is independent of the expensive original CALPUFF compilation.
+  precision-kind-audit:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /native_cpp/modules/p7_calpuff/**
+            /engine/vendor/src/CALPUFF_v7.2.1_L150618/**
+      - name: Record actual runner and resource topology
+        shell: bash
+        run: |
+          echo "P7_PARALLEL_RUNNER=${RUNNER_NAME} HOST=$(hostname) CORES=$(nproc)"
+          grep -E '^MemTotal:|^MemAvailable:' /proc/meminfo || true
+      - name: Audit Fortran declarations, compiler kinds and C++ COMMON precision
+        shell: bash
+        run: |
+          set -euo pipefail
+          for compiler in gfortran-12 gfortran-11 gfortran; do
+            if command -v "$compiler" >/dev/null 2>&1; then
+              fc="$(command -v "$compiler")"
+              break
+            fi
+          done
+          test -n "${fc:-}" || { echo "::error::No gfortran compiler"; exit 1; }
+          output="${RUNNER_TEMP}/p7-precision-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 native_cpp/modules/p7_calpuff/reference/audit_original_precision.py \
+            --compiler "$fc" --report "$output/precision-audit.json"
+          cmake -S native_cpp/modules/p7_calpuff -B "$output/cpp" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$output/cpp" --target cteas_p7_precision_contract_tests --parallel 2
+          ctest --test-dir "$output/cpp" -R '^cteas_p7_original_fortran_cpp_precision_contract$' --output-on-failure
+          echo "P7_ORIGINAL_PRECISION_AUDIT=PASS"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p7-vendor-precision-kind-audit
+          path: ${{ runner.temp }}/p7-precision-${{ github.run_id }}-${{ github.run_attempt }}/precision-audit.json
+          retention-days: 7
+          if-no-files-found: warn
+
+  # Independent original-source parity modules can run on *different* idle
+  # self-hosted runner instances. Do not pin this matrix to desktop-3.
+  # max-parallel=4 and --parallel 1 avoid unleashing 16 compilers on a shared
+  # physical workstation; actual runner/host distribution is logged.
+  source-parity-shards:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        lane: [release-transport, dispersion-rise, terrain, sampling]
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /native_cpp/modules/p7_calpuff/**
+            /engine/vendor/src/CALPUFF_v7.2.1_L150618/**
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+      - name: Pin lane to immutable source and log host
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "P7_PARITY_LANE=${{ matrix.lane }} RUNNER=${RUNNER_NAME} HOST=$(hostname)"
+          git rev-parse HEAD
+          test -s native_cpp/modules/p7_calpuff/CMakeLists.txt
+          test -s engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
+      - name: Compile only this lane's original-precision physics modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          lane="${{ matrix.lane }}"
+          build="${RUNNER_TEMP}/p7-shard-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${lane}"
+          cmake -S native_cpp/modules/p7_calpuff -B "$build" -DCMAKE_BUILD_TYPE=Debug
+          case "$lane" in
+            release-transport)
+              targets=(cteas_p7o_tests cteas_p7o_probe cteas_p7p_tests cteas_p7p_probe
+                       cteas_p7v_tests cteas_p7v_probe)
+              match='^cteas_p7(o|p|v)_.*(contract|parity)$'
+              ;;
+            dispersion-rise)
+              targets=(cteas_p7_dispersion_tests cteas_p7d_sigma_probe
+                       cteas_p7n_tests cteas_p7n_probe cteas_p7q_tests cteas_p7q_probe)
+              match='^cteas_p7(d|n|q)_.*(contract|parity)$'
+              ;;
+            terrain)
+              targets=(cteas_p7r_tests cteas_p7r_probe cteas_p7s_tests cteas_p7s_probe
+                       cteas_p7t_tests cteas_p7t_probe)
+              match='^cteas_p7(r|s|t)_.*(contract|parity)$'
+              ;;
+            sampling)
+              targets=(cteas_p7e_tests cteas_p7e_probe cteas_p7h_tests
+                       cteas_p7i_tests cteas_p7m_tests cteas_p7m_probe)
+              match='^cteas_p7(e|h|i|m)_.*(contract|parity)$'
+              ;;
+            *) echo "::error::Unexpected parity lane $lane"; exit 1 ;;
+          esac
+          cmake --build "$build" --parallel 1 --target "${targets[@]}"
+          inventory="$(ctest --test-dir "$build" -N -R "$match")"
+          printf '%s\n' "$inventory"
+          printf '%s\n' "$inventory" | grep -Eq 'Test[[:space:]]*#[0-9]+:'
+          ctest --test-dir "$build" -R "$match" --output-on-failure
+          echo "P7_PARALLEL_SOURCE_PARITY=PASS LANE=$lane"
