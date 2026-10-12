@@ -692,27 +692,8 @@ int main(int argc,char** argv){
             heat_flux=cteas::p6e::heatfx(flux).sensible_wm2;
         }
         std::vector<float> corrected_u=first.ug_mps,corrected_v=first.vg_mps;
-        {
-            SlopeInput slope;
-            slope.nx=nx;slope.ny=ny;slope.nz=nz;
-            slope.dx_m=grid_m;slope.dy_m=grid_m;
-            slope.water_first=geo.iwat1;slope.water_last=geo.iwat2;
-            slope.isurft=-1;
-            slope.domain_temperature_k=285.f;  // unused for ISURFT<0
-            slope.zface_m=std::vector<float>(zface.begin(),zface.end());
-            slope.terrain_m=geo.terrain_m;slope.hmax_m=envelope.maximum_m;
-            slope.hmin_m=envelope.minimum_m;
-            slope.disthmax_m=envelope.distance_to_maximum_m;
-            slope.disthmin_m=envelope.distance_to_minimum_m;
-            slope.sensible_heat_w_m2=heat_flux;
-            slope.surface_temperature_k=surface_state.temp_k;
-            slope.landuse=geo.landuse;
-            const auto flow=compute_original_slope_scoped(slope);
-            for(std::size_t n=0;n<22500;++n){
-                corrected_u[n]+=flow.u_mps[n];
-                corrected_v[n]+=flow.v_mps[n];
-            }
-        }
+        // Original DIAGNO MUST apply IFRADJ (L5643) before adding SLOPE
+        // (L5722-L5732). These source-ordered stages are not commutative.
         // Original FRADJ (L5643-L5644) runs BEFORE SLOPE and is enabled only
         // when a gridded GAMMA is available. The real case derives GAMMA in
         // PREPDI via CGAMMA (calmet.for L3340-L3395), which consumes ZICONV;
@@ -740,6 +721,28 @@ int main(int argc,char** argv){
         if(fradj_applied)
             write_f32(args.out()/("fradj_corrected_u_"+hour_label(clock)+".f32"),
                       corrected_u);
+        // Original DIAGNO applies Mahrt slope flow after FRADJ.
+        {
+            SlopeInput slope;
+            slope.nx=nx;slope.ny=ny;slope.nz=nz;
+            slope.dx_m=grid_m;slope.dy_m=grid_m;
+            slope.water_first=geo.iwat1;slope.water_last=geo.iwat2;
+            slope.isurft=-1;
+            slope.domain_temperature_k=285.f;  // unused for ISURFT<0
+            slope.zface_m=std::vector<float>(zface.begin(),zface.end());
+            slope.terrain_m=geo.terrain_m;slope.hmax_m=envelope.maximum_m;
+            slope.hmin_m=envelope.minimum_m;
+            slope.disthmax_m=envelope.distance_to_maximum_m;
+            slope.disthmin_m=envelope.distance_to_minimum_m;
+            slope.sensible_heat_w_m2=heat_flux;
+            slope.surface_temperature_k=surface_state.temp_k;
+            slope.landuse=geo.landuse;
+            const auto flow=compute_original_slope_scoped(slope);
+            for(std::size_t n=0;n<22500;++n){
+                corrected_u[n]+=flow.u_mps[n];
+                corrected_v[n]+=flow.v_mps[n];
+            }
+        }
         write_f32(args.out()/("slope_corrected_u_"+hour_label(clock)+".f32"),
                   corrected_u);
         write_f32(args.out()/("slope_corrected_v_"+hour_label(clock)+".f32"),
