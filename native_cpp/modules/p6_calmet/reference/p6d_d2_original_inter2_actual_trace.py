@@ -24,11 +24,14 @@ MET_SHA = dgm.TARGET_MET_DAT_SHA256
 SELECTED = ((26, 26), (1, 26), (1, 1), (13, 13))
 # Zero other physics instructions altered. Fixed vendor source line anchors.
 ANCHORS = {
+    5726: "C",
+    5732: "  300 CONTINUE",
     8243: "      double precision wt2,wt3",
     8247: "      DATA npts/4/",
     8568: "      wt3 = 1./(R**2)",
 }
-BEFORE = {8243: "      DOUBLE PRECISION WT"}
+BEFORE = {5726: "C     ADD THE SLOPE FLOW COMPONENT TO THE HORIZONTAL WIND FIELD",
+          8243: "      DOUBLE PRECISION WT"}
 AFTER = {8247: "C", 8568: "c"}
 
 DECL = """
@@ -65,6 +68,69 @@ c --- Write-only field values before original IPROG=0 weighted result
 """
 
 
+UPSTREAM_HELPER = """
+c ----------------------------------------------------------------------
+c --- P6D D-2 original-only in-chain SLOPE boundary state dump. This is
+c --- appended to the TEMPORARY copy, never the unchanged vendor source.
+c ----------------------------------------------------------------------
+      subroutine d2upstream(kpt,packed,secs,ug,vg,nx,ny,nz)
+      include 'params.met'
+      integer kpt,packed,secs,nx,ny,nz,i,j,k,ind
+      integer ic(4),jc(4)
+      real ug(mxnx,mxny,mxnz),vg(mxnx,mxny,mxnz)
+      logical first
+      save first
+      data first/.true./
+      data ic/26,1,1,13/,jc/26,26,1,13/
+      if(first)then
+          open(92,file='p6d_upstream_actual.txt',
+     1         form='formatted',status='replace')
+          first=.false.
+      endif
+      do ind=1,4
+          i=ic(ind)
+          j=jc(ind)
+          do k=1,2
+              write(92,*)packed,secs,kpt,i,j,k,ug(i,j,k),vg(i,j,k)
+          enddo
+      enddo
+      return
+      end
+"""
+
+
+def parse_upstream(path: Path):
+    import datetime as dt
+    names=("hour_begin_packed","seconds","kpt","i","j","k","u","v")
+    rows=[]
+    with path.open() as handle:
+        for line in handle:
+            w=line.split()
+            if len(w)!=8:raise RuntimeError("bad original upstream line")
+            record={n:(int(v) if ix<6 else float(v.replace("D","E")))
+                    for ix,(n,v) in enumerate(zip(names,w))}
+            rows.append(record)
+    if len(rows)!=143*2*4*2:
+        raise RuntimeError(f"upstream expected 2288 rows got {len(rows)}")
+    keys=set()
+    per_hour={}
+    for r in rows:
+        packed=r["hour_begin_packed"]
+        year,jday,hour=packed//100000,(packed//100)%1000,packed%100
+        if year!=2022 or jday<1 or jday>6 or hour<0 or hour>23 or r["seconds"]!=0:
+            raise RuntimeError(f"bad timestamp {packed}")
+        label=(dt.datetime(2022,1,1)+dt.timedelta(days=jday-1,hours=hour+1)).strftime("%Y-%m-%d_%H")
+        r["label"]=label
+        key=(label,r["kpt"],r["i"],r["j"],r["k"])
+        if key in keys or r["kpt"] not in (8,9) or (r["i"],r["j"]) not in SELECTED or r["k"] not in (1,2):
+            raise RuntimeError(f"bad/duplicate original upstream record {key}")
+        keys.add(key)
+        per_hour.setdefault(label,set()).add((r["kpt"],r["i"],r["j"],r["k"]))
+    if len(per_hour)!=143 or any(len(v)!=16 for v in per_hour.values()):
+        raise RuntimeError("incomplete original upstream hourly grid")
+    return rows
+
+
 def instrument(source: Path, out: Path):
     raw = source.read_bytes()
     if hashlib.sha256(raw).hexdigest() != BASE_SHA:
@@ -76,11 +142,13 @@ def instrument(source: Path, out: Path):
             assert lines[ln-2].rstrip("\r\n") == BEFORE[ln]
         if ln in AFTER:
             assert lines[ln].rstrip("\r\n") == AFTER[ln], (ln, lines[ln])
-    additions = {8243: DECL, 8247: START, 8568: DUMP}
+    additions = {5726: "      call d2upstream(8,ndathrb,nsecb,ug,vg,nx,ny,nz)\n",
+                 5732: "      call d2upstream(9,ndathrb,nsecb,ug,vg,nx,ny,nz)\n",
+                 8243: DECL, 8247: START, 8568: DUMP}
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes("".join(
+    out.write_bytes(("".join(
         line + additions.get(i, "") for i, line in enumerate(lines, 1)
-    ).encode("latin1"))
+    ) + UPSTREAM_HELPER).encode("latin1"))
     return hashlib.sha256(out.read_bytes()).hexdigest()
 
 
@@ -146,13 +214,22 @@ def main():
     run_dir = staging/"run/met"
     original_run = dgm._run(original_bin, run_dir)
     trace = run_dir/"p6d_inter2_actual.txt"
-    if trace.exists():
+    if trace.exists() or (run_dir/"p6d_upstream_actual.txt").exists():
         raise RuntimeError("untouched original unexpectedly emitted diagnostic trace")
     instrumented_run = dgm._run(instrument_bin, run_dir)
     if original_run["met_dat_sha256"] != MET_SHA or instrumented_run["met_dat_sha256"] != MET_SHA:
         raise RuntimeError("Original/instrumented MET.DAT does not match frozen digest")
     if not trace.exists():
         raise RuntimeError("instrumented real CALMET did not emit INTER2 trace")
+    upstream_trace=run_dir/"p6d_upstream_actual.txt"
+    if not upstream_trace.exists():
+        raise RuntimeError("instrumented CALMET missing pre/post-SLOPE snapshots")
+    upstream_records=parse_upstream(upstream_trace)
+    upstream_csv=out/"original_upstream_actual.csv"
+    with upstream_csv.open("w",newline="") as handle:
+        w=csv.DictWriter(handle,fieldnames=("label","hour_begin_packed","seconds",
+                                          "kpt","i","j","k","u","v"))
+        w.writeheader();w.writerows(upstream_records)
     headers, records = parse_original(trace)
     output = out/"original_inter2_actual.csv"
     with output.open("w", newline="") as handle:
@@ -169,6 +246,9 @@ def main():
         "instrumented_met_sha256": instrumented_run["met_dat_sha256"],
         "csv_sha256": dgm.sha256_file(output),
         "csv_rows": len(records),
+        "upstream_stage_rows": len(upstream_records),
+        "upstream_csv_sha256": dgm.sha256_file(upstream_csv),
+        "upstream_scope": "original DIAGNO kpt8 before slope addition and kpt9 after slope addition; four cells two levels all 143 hours",
         "selected_cells_1based": list(SELECTED),
         "columns": headers,
         "original_compiler_command": original_compile,
