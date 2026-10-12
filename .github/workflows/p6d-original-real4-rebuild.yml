@@ -57,6 +57,7 @@ jobs:
             ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_wind1_real4/p6d8b-wind1-firstguess-parity.json
             ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_similt_real4/p6d-similt-profile-parity.json
             ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_diagno_tail_real4/p6d-final-segment-parity.json
+            ${{ runner.temp }}/p6d-source-first-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}/oracle_inter2_real4/p6d-original-inter2-parity.json
           if-no-files-found: warn
 
   real-hefei-hour-1:
