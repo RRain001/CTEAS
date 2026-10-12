@@ -136,7 +136,7 @@ std::string hour_label(std::chrono::sys_seconds clock){
 }
 
 struct Arguments {
-    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,zi_file,el_file,zii_file,el_cell_file;
+    fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,zi_file,el_file,zii_file,el_cell_file,inter2_trace_file;
     int hours=143;
     fs::path out()const{return out_dir;}
 };
@@ -163,6 +163,7 @@ int main(int argc,char** argv){
         else if(flag=="--el")args.el_file=next();
         else if(flag=="--zii-cell")args.zii_file=next();
         else if(flag=="--el-cell")args.el_cell_file=next();
+        else if(flag=="--trace-inter2")args.inter2_trace_file=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
         else throw std::invalid_argument("unknown argument "+flag);
     }
@@ -189,6 +190,17 @@ int main(int argc,char** argv){
         }
     }
     fs::create_directories(args.out_dir);
+    std::ofstream d2_trace;
+    if(!args.inter2_trace_file.empty()){
+        const auto parent=args.inter2_trace_file.parent_path();
+        if(!parent.empty())fs::create_directories(parent);
+        d2_trace.open(args.inter2_trace_file,std::ios::binary);
+        if(!d2_trace)throw std::runtime_error("cannot write D2 in-kernel trace");
+        d2_trace<<"call,i,j,k,station,selected_rank,rs_km,station_x_km,"
+                <<"station_y_km,observed_mps,wo,step1_mps,weighted_sum_before,"
+                <<"weight_sum_before,r_km,step_weight,nk,nintrp\n";
+        d2_trace<<std::setprecision(17);
+    }
     if(!args.fixture_dir.empty()){
         // The fixture directory is an output of this run: create it rather
         // than making the caller prepare it (the gate step passes a fresh
@@ -770,7 +782,20 @@ int main(int argc,char** argv){
             }
             blend.step1_mps=component==0?corrected_u:corrected_v;
             station_values[component]=blend.station_component_mps;
+            // Preserve exact operands fed into the kernel; trace disabled by
+            // default, and the kernel's calculation is untouched.
+            std::vector<Inter2SelectedTracePoint> d2_rows;
+            if(d2_trace.is_open())blend.trace_points=&d2_rows;
             const auto blended=original_inter2_selected(blend);
+            for(const auto& t:d2_rows){
+                d2_trace<<(2*h+component+1)<<','<<t.i<<','<<t.j<<','
+                        <<t.k<<','<<t.station<<','<<t.selected_rank<<','
+                        <<t.rs_km<<','<<t.station_x_km<<','<<t.station_y_km
+                        <<','<<t.observed_mps<<','<<t.wo<<','<<t.step1_mps
+                        <<','<<t.weighted_sum_before<<','<<t.weight_sum_before
+                        <<','<<t.r_km<<','<<t.step_weight<<','<<t.nk<<','
+                        <<t.nintrp<<'\n';
+            }
             if(component==0)blended_u=blended.component_mps;
             else blended_v=blended.component_mps;
             write_f32(args.out()/((component==0?"inter2_u_":"inter2_v_")+
