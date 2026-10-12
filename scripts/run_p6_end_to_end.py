@@ -359,7 +359,7 @@ def main() -> int:
         if similt_proof is not None:
             source_dir = pathlib.Path(args.original_similt_station_dir).resolve()
             p6d_cmd.extend([
-                "--zii", source_dir/similt_proof["zii_file"],
+                "--zii-cell", source_dir/similt_proof["zii_file"],
                 "--el-cell", source_dir/similt_proof["el_file"],
             ])
         _, elapsed = run(p6d_cmd, work / "logs/p6d.log", "p6d")
