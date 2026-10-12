@@ -21,6 +21,21 @@ int main(){
     throw std::runtime_error("INTER2 3D shape failed");
   if(!(out.component_mps[0]>2.f&&out.component_mps[0]<7.f))
     throw std::runtime_error("INTER2 did not include observation");
+  // Original Hefei deck NINTR2=99 with NWIND=2. It is a maximum, not
+  // an error condition or a value to rewrite as two.
+  in.nintrp_per_layer={99,99};
+  const auto uncapped=original_inter2_selected(in);
+  for(std::size_t k=0;k<out.component_mps.size();++k)
+      if(std::abs(out.component_mps[k]-uncapped.component_mps[k])>1e-7f)
+          throw std::runtime_error("INTER2 NINTRP original-maximum parity drift");
+  // Original PREPDI/INTER2 missing upper-air wind at level 1 is 999;
+  // the original missing threshold is EDITL=998, not a 999999 sentinel.
+  in.edit=999.f;in.editl=998.f;
+  in.station_component_mps[1]=999.f;
+  const auto missing_first=original_inter2_selected(in);
+  if(missing_first.contributing_station_count[0]!=1)
+      throw std::runtime_error("INTER2 did not exclude original level-1 999 sentinel");
+  in.station_component_mps[1]=7.f;
   in.rmax1_km=0.001f;in.rmax2_km=0.001f;in.rmax3_km=0.001f;
   in.lvary=false;
   auto none=original_inter2_selected(in);
