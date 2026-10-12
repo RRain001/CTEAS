@@ -833,3 +833,14 @@ if(EXISTS "${P7_DGM_FIRST_6H}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7_first_hour_lifecycle_tests
       "${P7F_LOCKED_CASE_CONTROL}" "${P7_DGM_FIRST_6H}" 6)
 endif()
+
+# A full 143h original DGM is regenerated on the runner (not committed).
+# This checks independently initialized *hourwise* real4 motion state, NOT
+# autonomous across-hour SWAP/ROLLDN, RISEWIND or puff.con concentration.
+set(P7_DGM_FULL_143H
+  "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_full_143hours.bin")
+if(EXISTS "${P7_DGM_FULL_143H}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7_143_hour_oracle_fed_motion_state_real4
+    COMMAND cteas_p7_first_hour_lifecycle_tests
+      "${P7F_LOCKED_CASE_CONTROL}" "${P7_DGM_FULL_143H}" 143)
+endif()
