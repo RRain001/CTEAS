@@ -330,6 +330,22 @@ else()
   message(FATAL_ERROR "Python3 required for P6 station input semantic contract test")
 endif()
 
+# Source-anchored READCF reference: literal unchanged vendor arithmetic is
+# compiled with Fortran on supported CI/gate hosts. Do not substitute a C++
+# emulation as the independent original oracle.
+find_program(P6_STATION_GFORTRAN NAMES gfortran-11 gfortran-12 gfortran)
+if(P6_STATION_GFORTRAN)
+  add_test(NAME p6d_original_readcf_real4_fortran_source
+           COMMAND ${Python3_EXECUTABLE}
+              ${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_original_deck_station.py
+              --vendor ${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for
+              --deck ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp
+              --compiler ${P6_STATION_GFORTRAN}
+              --out ${CMAKE_CURRENT_BINARY_DIR}/original_readcf_station)
+else()
+  message(STATUS "P6 original Fortran station source comparator unavailable; does not count as PASS")
+endif()
+
 # P6D real-case wind-field producer (partial product: WIND1 step-one UG/VG
 # plus the in-chain TERSET envelope, with explicit provenance metadata).
 add_executable(cteas_p6_realcase_wind_field src/realcase_wind_field_main.cpp)
