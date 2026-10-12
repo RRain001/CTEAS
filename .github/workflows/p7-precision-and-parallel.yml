@@ -377,7 +377,7 @@ jobs:
             cpp="$(command -v c++)"
           fi
           cmake -S native_cpp/modules/p7_calpuff -B "$base/cpp" \
-            -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$base/cpp" --parallel 2 --target cteas_p7_first_hour_lifecycle_tests
           name=cteas_p7_first_six_hour_state_persistence_real4
           ctest --test-dir "$base/cpp" -N -R "^${name}$" |
