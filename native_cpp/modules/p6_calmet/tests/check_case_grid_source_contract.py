@@ -92,6 +92,26 @@ def main(case: Path) -> None:
         raise AssertionError(
             f"grid centre differs from projected centre by >0.5m: {delta_x_m}, {delta_y_m}")
 
+    # Verify original P1/P2/P3 control files actually consumed the frozen
+    # grid.cmn geometry. TERREL's IGRID=1 means southwest cell (1,1) CORNER;
+    # interpreting it as cell-centre would shift every generated field by 50m.
+    for module in ("terrel","ctgproc","makegeo"):
+        deck_path=case/f"geo/{module}/{module}.inp"
+        original_deck=deck_path.read_text(encoding="utf-8")
+        for key,value in (
+            ("IUTMZN",grid.iutmzn),("NX",nx),("NY",ny),
+            ("DGRIDKM",spacing),("XREFKM",xref),("YREFKM",yref)
+        ):
+            equal_float(f"{module} {key}",float(control(original_deck,key)),float(value),1e-6)
+        if control(original_deck,"PMAP").upper()!="UTM":
+            raise AssertionError(f"{module}: PMAP not UTM")
+        if control(original_deck,"UTMHEM").upper()!=grid.lsohem:
+            raise AssertionError(f"{module}: UTM hemisphere disagrees with grid")
+        if control(original_deck,"DATUM").upper()!=grid.datum:
+            raise AssertionError(f"{module}: datum disagrees with grid")
+        if module=="terrel" and int(control(original_deck,"IGRID"))!=1:
+            raise AssertionError("TERREL IGRID must mean SW corner, not cell centre")
+
     inp=(case/"run/met/met.inp").read_text(encoding="utf-8")
     for key,expected in (
         ("IUTMZN",grid.iutmzn),("NX",grid.nx),("NY",grid.ny),
