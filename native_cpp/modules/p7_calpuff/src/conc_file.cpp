@@ -170,8 +170,12 @@ void ConcFileWriter::write_species_field(const std::string& label, int species_i
     std::vector<std::uint8_t> payload;
     const std::string name = padded(label, 8U, "species label");
     append_bytes(payload, name.data(), name.size());
-    // The original writes a right-justified 7-character index field here.
-    const std::string index = padded(std::to_string(species_index), 7U, "species index field");
+    // Original WROUT1 writes an I7 numeric field, right-justified with
+    // LEADING spaces. Padded("1",7) used to left-justify it ("1      "),
+    // which escaped structure-only CONC.DAT tests but changes the bytes.
+    std::string index = std::to_string(species_index);
+    require_true(index.size() <= 7U, "species index exceeds original I7 field");
+    index.insert(0U, 7U - index.size(), ' ');
     append_bytes(payload, index.data(), index.size());
     payload.reserve(payload.size() + values.size() * sizeof(float));
     for (const float value : values) append_float(payload, value);
