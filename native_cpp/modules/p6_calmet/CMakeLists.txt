@@ -308,6 +308,28 @@ else()
 endif()
 add_test(NAME p6d9a_inchain_terset_envelope_contract COMMAND cteas_p6_terset_envelope_tests)
 
+# Original CALMET met.inp station positions: UTM kilometres -> REAL*4
+# relative metres (not the auxiliary CSV geographic projection).
+add_executable(cteas_p6_station_deck_tests tests/p6_station_deck_input_tests.cpp)
+target_link_libraries(cteas_p6_station_deck_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_station_deck_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_station_deck_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6d_original_metinp_station_deck_input
+         COMMAND cteas_p6_station_deck_tests
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp)
+find_package(Python3 QUIET COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME p6d_p3_p4_p5_metinp_station_contract
+           COMMAND ${Python3_EXECUTABLE}
+              ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_case_station_contract.py
+              ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011)
+else()
+  message(FATAL_ERROR "Python3 required for P6 station input semantic contract test")
+endif()
+
 # P6D real-case wind-field producer (partial product: WIND1 step-one UG/VG
 # plus the in-chain TERSET envelope, with explicit provenance metadata).
 add_executable(cteas_p6_realcase_wind_field src/realcase_wind_field_main.cpp)
