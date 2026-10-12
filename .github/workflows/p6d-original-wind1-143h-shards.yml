@@ -5,6 +5,7 @@ on:
     paths:
       - 'native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/compare_realcase_wind1_143h_shard.py'
       - '.github/workflows/p6d-original-wind1-143h-shards.yml'
+      - 'native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/trace_original_prepdi_143h.py'
   workflow_dispatch:
 
 permissions:
@@ -70,3 +71,85 @@ jobs:
           path: ${{ runner.temp }}/p6d-wind1-shard-${{ matrix.first }}-${{ matrix.last }}-${{ github.run_id }}-${{ github.run_attempt }}/evidence/wind1_143h_shard_parity.json
           if-no-files-found: warn
           retention-days: 7
+
+  original-prepdi-143h:
+    name: CALMET original PREPDI station US VS REAL4, byte-identical MET.DAT
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: p6d_prepdi_original_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6d_prepdi_original_checkout
+      - uses: ./p6d_prepdi_original_checkout/.github/actions/cteas-linux-toolchain
+      - name: Source-verify all frozen 2022 station and meteorological inputs
+        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+      - name: Run untouched and write-only instrumented CALMET against identical frozen case
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/trace_original_prepdi_143h.py trace \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --out "$RUNNER_TEMP/p6d-prepdi-source-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --hours 143 --compiler gfortran-11
+      - name: Upload source-exact PREPDI observations and proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6d-source-prepdi-143h-real4
+          path: |
+            ${{ runner.temp }}/p6d-prepdi-source-${{ github.run_id }}-${{ github.run_attempt }}/source_original_prepdi_143h.bin
+            ${{ runner.temp }}/p6d-prepdi-source-${{ github.run_id }}-${{ github.run_attempt }}/original_prepdi_manifest.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  original-prepdi-vs-cpp-input:
+    name: ALL 143 hours original PREPDI vs C++ station wind input parity
+    needs: [original-prepdi-143h]
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: p6d_prepdi_comparison_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6d_prepdi_comparison_checkout
+      - uses: ./p6d_prepdi_comparison_checkout/.github/actions/cteas-linux-toolchain
+      - uses: actions/download-artifact@v4
+        with:
+          name: p6d-source-prepdi-143h-real4
+          path: ${{ runner.temp }}/p6d-prepdi-source-data-${{ github.run_id }}
+      - name: Produce all 143h C++ station profile fixtures from frozen case
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+          scratch="$RUNNER_TEMP/p6d-prepdi-compare-${{ github.run_id }}-${{ github.run_attempt }}"
+          cmake -S native_cpp/modules/p6_calmet -B "$scratch/build" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$scratch/build" --target cteas_p6_realcase_wind_field --parallel 1
+          mkdir -p "$scratch/evidence"
+          "$scratch/build/cteas_p6_realcase_wind_field" \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --hours 143 --fixtures "$scratch/fixtures" --out "$scratch/fields"
+      - name: Compare unmodified Fortran PREPDI US VS against every real-case C++ hour
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$RUNNER_TEMP/p6d-prepdi-compare-${{ github.run_id }}-${{ github.run_attempt }}"
+          source="$RUNNER_TEMP/p6d-prepdi-source-data-${{ github.run_id }}"
+          python3 native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/trace_original_prepdi_143h.py compare \
+            --manifest "$source/original_prepdi_manifest.json" \
+            --dump "$source/source_original_prepdi_143h.bin" \
+            --fixture-dir "$scratch/fixtures" \
+            --out "$scratch/evidence"
+      - name: Archive source-to-C++ station observation 143-hour parity failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6d-original-prepdi-vs-modern-143h
+          path: ${{ runner.temp }}/p6d-prepdi-compare-${{ github.run_id }}-${{ github.run_attempt }}/evidence/prepdi_143h_original_vs_cpp.json
+          if-no-files-found: warn
