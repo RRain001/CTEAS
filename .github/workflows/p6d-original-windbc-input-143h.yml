@@ -1,14 +1,11 @@
 name: P6D original post-SLOPE WINDBC lateral-input 143h forensic
 
 on:
-  push:
-    branches: [audit/p6d-original-boundary-143h-20261012]
-    paths:
-      - 'scripts/p6d_compare_original_windbc_input_143h.py'
-      - '.github/workflows/p6d-original-windbc-input-143h.yml'
   pull_request:
     paths:
       - 'scripts/p6d_compare_original_windbc_input_143h.py'
+      - 'scripts/p6d_diagnose_original_fradj_slope_143h.py'
+      - 'native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp'
       - '.github/workflows/p6d-original-windbc-input-143h.yml'
   workflow_dispatch:
 
