@@ -91,3 +91,25 @@ add_test(NAME p6d_rebuild_independent_inter2_real4_real8_source
     --out "${CMAKE_CURRENT_BINARY_DIR}/oracle_inter2_real4")
 set_tests_properties(p6d_rebuild_independent_inter2_real4_real8_source
   PROPERTIES TIMEOUT 300)
+
+# Independent direct FRADJ port, original Fortran L7289-L7455.
+# HMAX, GAMMA and TEMP2D are handed into both original/modern kernels from
+# identical fixtures. Full upstream TERSET/HEATFX is a separate gate.
+add_executable(cteas_p6d_source_fradj_real4 src/fradj_real4_main.cpp)
+target_include_directories(cteas_p6d_source_fradj_real4 PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p6d_source_fradj_real4 PRIVATE /W4 /WX /fp:strict)
+else()
+  target_compile_options(cteas_p6d_source_fradj_real4 PRIVATE
+    -Wall -Wextra -Wpedantic -Werror -ffp-contract=off -fno-fast-math)
+endif()
+add_test(NAME p6d_rebuild_original_source_fradj_real4
+  COMMAND ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_original_fradj_source_real4.py"
+    --vendor "${P6D_VENDOR}"
+    --cpp "$<TARGET_FILE:cteas_p6d_source_fradj_real4>"
+    --fortran "${P6D_GFORTRAN}"
+    --out "${CMAKE_CURRENT_BINARY_DIR}/oracle_fradj_real4")
+set_tests_properties(p6d_rebuild_original_source_fradj_real4
+  PROPERTIES TIMEOUT 300)
