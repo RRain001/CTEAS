@@ -23,7 +23,6 @@ void OriginalCompNeutralPointDriver::admit(
     auto m=motion_,v=vertical_;
     m.introduce_point_source(id,point);
     v.admit_point(id,point,injection);
-    m=std::move(m);v=std::move(v);
     motion_=std::move(m);vertical_=std::move(v);
     running_.emplace(id,RunningPuff{});
 }
