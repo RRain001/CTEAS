@@ -479,7 +479,7 @@ int main(int argc,char** argv){
     const std::size_t stations_written=1;
     std::ofstream station_elustr2_trace(args.out()/"station_elustr2.csv");
     if(!station_elustr2_trace)throw std::runtime_error("cannot open station ELUSTR2 trace");
-    station_elustr2_trace<<"hour_end,QH_Wm2,USTAR_mps,EL_m,solar_sine,temp_K,rho_kgm3,Z0_m,station_cell_i,station_cell_j\\n";
+    station_elustr2_trace<<"hour_end,QH_Wm2,USTAR_mps,EL_m,solar_sine,temp_K,rho_kgm3,Z0_m,station_cell_i,station_cell_j\n";
     std::ofstream index(args.out()/"produced_hours.txt");
     if(!index)throw std::runtime_error("cannot write produced_hours.txt");
     std::size_t similt_levels_min=9,similt_levels_max=0;
