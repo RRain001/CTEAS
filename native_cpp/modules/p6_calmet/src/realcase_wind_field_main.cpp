@@ -311,6 +311,8 @@ int main(int argc,char** argv){
         upper_station=std::stoi(stem.substr(underscore+1));
         if(upper_station<=0)
             throw std::runtime_error("upper-air station ID must be positive");
+        if(upper_station!=deck_stations.upper.id)
+            throw std::runtime_error("US1 station ID disagrees with UP.DAT filename");
     }
     const auto upper=read_upper_2022(args.upper.string(),upper_station);
 
@@ -907,15 +909,15 @@ int main(int argc,char** argv){
           "\"radii_km\": {\"RMIN\": "<<rmin_km<<", \"RMAX1\": "<<rmax1_km<<", \"RMAX2\": "<<rmax2_km<<", "
                         "\"RMAX3\": "<<rmax3_km<<", \"R1\": "<<r1_km<<", \"R2\": "<<r2_km<<"}, "
           "\"lvary\": "<<(lvary?"true":"false")<<", \"nintrp_per_layer\": 99, "
-          "\\"station_local_km\\": ["<<surface_x_km<<", "<<surface_y_km<<"], "
-          "\\"station_local_km_source\\": \"met.inp SS1/US1 UTM km, float32 local-metre conversion\", "
+          "\"station_local_km\": ["<<surface_x_km<<", "<<surface_y_km<<"], "
+          "\"station_local_km_source\": \"met.inp SS1/US1 UTM km, float32 local-metre conversion\", "
           "\"station_profiles\": \"surface levels = neutral SIMILT profile, upper levels = hourly PREPDI profile\", "
           "\"verification\": \""<<(zi_hours.empty()
             ? "MIXING_HEIGHT_NOT_SUPPLIED_ALL_LEVELS_NEUTRAL_SIMILT: with no --zi/--el the DIAGI/INTER2 surface column is the uncapped neutral SIMILT at all nine levels, which is the measured cause of the height-growing error (against the frozen met.dat: U-LEV 9 13.5074 and U-LEV 8 10.0186 worst over 143 hours, both FAIL)"
-            : "PARTIAL_LEVELS_7_9_PASS: against the frozen met.dat through P6F+P6E (143 hours, 357500 cells per level, tolerance 1e-4+1e-5*|ref|) U/V levels 7-9 pass with zero exceedances at 1.4e-06..4.8e-06 m/s; with the instrumented ZII (the value SIMILT actually receives, not the grid ZI) and the station tables' own coordinates, U/V levels 2-6 sit at 0.0280/0.0018/0.0023/0.0027/0.0023 m/s and every WFACE improved 18-180x (0.000265/0.000718/0.0018/0.0039/0.0085 at levels 2-6/9 against 0.0038/0.0122/0.0301/0.0851/0.158 before); remaining: level 1 0.00156724 (1,450 cells) and the WFACE exceedance tails; report /home/lhy/build/p6d/e2e/work/p6g_report.json")
+            : "PENDING_REALCASE_REVALIDATION_AFTER_METINP_STATION_GEOMETRY_FIX: supersedes prior results obtained with the branch-local equirectangular projection")
             <<"\"},\n";
     meta<<"  \"inter2\": {\"product\": \"inter2_u/v_*.f32 = the pre-tail INTER2 stage\", "
-          "\"verification\": \"PASS_REALCASE_BLEND_ORIGINAL_INTER2: 143 hours, 6,435,000 components compared against the unchanged original INTER2, worst absolute error 4.22e-05 m/s at a 2e-4 m/s tolerance, worst relative 9.37e-04, zero mismatches. An earlier head failed at 10.36 m/s because the producer filled station_component_mps station-major while the original STDAT1(K,L) layout is level-major; fixed and re-verified\"},\n";
+          "\"verification\": \"PENDING_REALCASE_REVALIDATION_AFTER_METINP_STATION_GEOMETRY_FIX: standalone INTER2 kernel equivalence is separately evidenced, while actual-case geometry has changed"},\n";
     meta<<"  \"stages_applied_in_chain\": [";
     meta<<"\"WIND1 selected first guess (IEXTRP=-4 neutral SIMILT)\"";
     meta<<", \"SURFVAR 2-D surface temperature (ISURFT<0, IALL=0, IAVET=1)\"";
