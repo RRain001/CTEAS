@@ -475,7 +475,7 @@ jobs:
           fi
           cmake -S native_cpp/modules/p7_calpuff -B "$base/cpp" \
             -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Debug
-          cmake --build "$base/cpp" --parallel 2 --target cteas_p7_first_hour_lifecycle_tests cteas_p7_original_met_cell_trace
+          cmake --build "$base/cpp" --parallel 2 --target cteas_p7_first_hour_lifecycle_tests cteas_p7_original_met_cell_trace cteas_p7_puffdz_state_trace
           name=cteas_p7_first_six_hour_state_persistence_real4
           ctest --test-dir "$base/cpp" -N -R "^${name}$" |
             grep -Eq "Test[[:space:]]*#[0-9]+: ${name}$" || {
@@ -505,6 +505,9 @@ jobs:
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
             "$base/oracle/case/run/puff/dgm_puffstep.bin" 143
           echo "P7_143H_NATIVE_METFM1_ADVECT_DGM=PASS ZBOT_ZTOP_ORACLE_FED=YES"
+          "$base/cpp/cteas_p7_puffdz_state_trace" \
+            "$base/oracle/case/run/puff/dgm_puffstep.bin" 143
+          echo "P7_143H_DETERMINATE_NATIVE_PUFFDZ=PASS PREVIOUS_SIGZ_ORACLE_FED=YES"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -883,3 +883,16 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}")
       "${P7G_LOCKED_CASE_MET}"
       "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin")
 endif()
+
+# P7V original PUFFDZ state integration: previous SIGZ oracle-fed, but the
+# determinate Gaussian ZTOP/ZBOT calculation is purely native REAL4.
+add_executable(cteas_p7_puffdz_state_trace tests/puffdz_state_trace.cpp)
+target_link_libraries(cteas_p7_puffdz_state_trace PRIVATE cteas_p7_advection)
+if(MSVC)
+  target_compile_options(cteas_p7_puffdz_state_trace PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_puffdz_state_trace PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_native_puffdz_first_hour
+  COMMAND cteas_p7_puffdz_state_trace
+    "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin" 1)
