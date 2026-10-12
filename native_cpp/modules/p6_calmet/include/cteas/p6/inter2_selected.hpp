@@ -9,6 +9,12 @@
 #include <stdexcept>
 #include <vector>
 namespace cteas::calmet::p6 {
+struct Inter2SelectedTracePoint {
+    int i=0,j=0,k=0,station=0,selected_rank=0,nk=0,nintrp=0;
+    float rs_km=0,station_x_km=0,station_y_km=0,observed_mps=0;
+    float wo=0,step1_mps=0,weighted_sum_before=0,weight_sum_before=0,r_km=0;
+    double step_weight=0;
+};
 struct Inter2SelectedInput {
     int nx=0,ny=0,nz=0,nstations=0;
     float dx_m=0,dy_m=0,rmin_km=0,rmax1_km=0,rmax2_km=0,
@@ -23,6 +29,8 @@ struct Inter2SelectedInput {
     std::vector<float> station_component_mps;
     // k-major, row-major, i-fastest: original FGFLD and gridded WO.
     std::vector<float> step1_mps,observation_weight;
+    // Optional observer: records actual in-kernel operands, does not affect output.
+    std::vector<Inter2SelectedTracePoint>* trace_points=nullptr;
 };
 struct Inter2SelectedOutput {
     std::vector<float> component_mps;  // k-major, j-major, i-fastest
@@ -161,6 +169,38 @@ inline Inter2SelectedOutput original_inter2_selected(const Inter2SelectedInput& 
             const double result=(static_cast<double>(sum)+
                                 static_cast<double>(in.step1_mps[p])*step_weight)/
                                 (static_cast<double>(weighted)+step_weight);
+            if(in.trace_points && k<2 &&
+               ((i==25&&j==25)||(i==0&&j==25)||
+                (i==0&&j==0)||(i==12&&j==12))){
+                int rank=0;
+                std::vector<int> selected_ranks(std::size_t(in.nstations),0);
+                for(int m=0;m<considered;++m){
+                    const int l=order[std::size_t(m)];
+                    const float observation=in.station_component_mps[
+                        std::size_t(k)*std::size_t(in.nstations)+std::size_t(l)];
+                    if(observation>in.editl||
+                       rs[std::size_t(l)]>(land?radius:in.rmax3_km))continue;
+                    selected_ranks[std::size_t(l)]=++rank;
+                    if(rank==in.nintrp_per_layer[std::size_t(k)])break;
+                }
+                if(rank==0 && in.lvary && closest_idx[std::size_t(k)]>=0)
+                    selected_ranks[std::size_t(closest_idx[std::size_t(k)])]=1;
+                for(int l=0;l<in.nstations;++l){
+                    Inter2SelectedTracePoint t;
+                    t.i=i+1;t.j=j+1;t.k=k+1;t.station=l+1;
+                    t.selected_rank=selected_ranks[std::size_t(l)];
+                    t.rs_km=rs[std::size_t(l)];
+                    t.station_x_km=in.station_x_km[std::size_t(l)];
+                    t.station_y_km=in.station_y_km[std::size_t(l)];
+                    t.observed_mps=in.station_component_mps[
+                        std::size_t(k)*std::size_t(in.nstations)+std::size_t(l)];
+                    t.wo=in.observation_weight[p];t.step1_mps=in.step1_mps[p];
+                    t.weighted_sum_before=sum;t.weight_sum_before=weighted;
+                    t.r_km=influence;t.step_weight=step_weight;
+                    t.nk=selected;t.nintrp=in.nintrp_per_layer[std::size_t(k)];
+                    in.trace_points->push_back(t);
+                }
+            }
             out.component_mps[p]=static_cast<float>(result);
             out.contributing_station_count[p]=selected;
         }
