@@ -158,4 +158,25 @@ PointRelease point_source_from_control(const ControlFile& c) {
     for(double r:s.rate_per_s) check(finite(r)&&r>=0,"nonfinite source rate");
     return s;
 }
+
+PointRelease point_source_from_original_met_grid(
+    const ControlFile& control, const OriginalMetGridFrame& met) {
+    auto source = point_source_from_control(control);
+    const auto x = control.required_float_list("X");
+    const auto control_x_origin_km = control.required_float_list("XORIGKM");
+    const auto control_y_origin_km = control.required_float_list("YORIGKM");
+    if (control_x_origin_km.size() != 1U || control_y_origin_km.size() != 1U) {
+        throw std::invalid_argument("P7 original source needs scalar XORIGKM/YORIGKM");
+    }
+    // Preserve each separately rounded original input, including the
+    // CALMET metre -> kilometre REAL*4 multiply and the REAL*4 local offset.
+    // Absolute QA coordinates are not the internal XPT1GRD/YPT1GRD fields.
+    const auto qa = original_point_qa_xy(
+        met, static_cast<float>(x[0]), static_cast<float>(x[1]),
+        static_cast<float>(control_x_origin_km[0]),
+        static_cast<float>(control_y_origin_km[0]));
+    source.x_m = static_cast<double>(qa.x_km) * 1000.0;
+    source.y_m = static_cast<double>(qa.y_km) * 1000.0;
+    return source;
+}
 } // namespace cteas::puff
