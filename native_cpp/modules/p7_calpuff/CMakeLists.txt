@@ -943,3 +943,27 @@ add_test(NAME cteas_p7_native_vmass_source_branch_mass_contract
 # substitute an independently retyped Fortran formula.
 add_executable(cteas_p7_vmass_probe src/original_vmass_probe.cpp)
 target_link_libraries(cteas_p7_vmass_probe PRIVATE cteas_p7_vmass)
+
+# The first native continuous COMP controller: one *rise-neutral* point puff.
+# It is a genuine producer of persistent state, not a DGM replay. Original
+# 143h 2022 Hefei source is NOT rise-neutral and remains unaccepted.
+add_library(cteas_p7_original_comp_neutral STATIC src/original_comp_neutral.cpp)
+target_include_directories(cteas_p7_original_comp_neutral PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_comp_neutral PUBLIC
+  cteas_p7_original_vertical cteas_p7_original_motion cteas_p7_step_integration)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_neutral PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_neutral PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7_original_comp_neutral_tests tests/original_comp_neutral_tests.cpp)
+target_link_libraries(cteas_p7_original_comp_neutral_tests PRIVATE cteas_p7_original_comp_neutral)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_neutral_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_neutral_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+foreach(HOURS IN ITEMS 1 6 143)
+  add_test(NAME cteas_p7_native_comp_neutral_${HOURS}h_persistent
+           COMMAND cteas_p7_original_comp_neutral_tests ${HOURS})
+endforeach()
