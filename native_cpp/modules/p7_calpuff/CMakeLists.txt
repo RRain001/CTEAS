@@ -717,3 +717,17 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}"
       "${P7_QA_2022_DIRECTORY}/qapnts.dat"
       "${P7_QA_2022_DIRECTORY}/qarecg.dat")
 endif()
+
+# Original Fortran storage-kind contract: common-block default REAL*4,
+# explicitly typed DOUBLE PRECISION / REAL*8, and default INTEGER*4.
+# Runtime code still uses DOUBLE only when the original declares it; a
+# double-valued test/probe transport interface is not proof of vendor precision.
+add_executable(cteas_p7_precision_contract_tests tests/original_precision_contract_tests.cpp)
+target_include_directories(cteas_p7_precision_contract_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_precision_contract_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_precision_contract_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_original_fortran_cpp_precision_contract
+  COMMAND cteas_p7_precision_contract_tests)
