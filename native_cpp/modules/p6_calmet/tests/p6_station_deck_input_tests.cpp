@@ -26,6 +26,10 @@ int main(int argc,char** argv) {
 ! US1 ='U1'    58424     513.384   3533.772  0 !
 )";
     const auto xy=original_calmet_station_deck(deck,510.885f,3531.269f);
+    expect(!cteas::calmet::p6::original_calmet_deck_logical(
+        "! LVARY = F !","LVARY",true),"LVARY=F must override fallback");
+    expect(cteas::calmet::p6::original_calmet_deck_logical(
+        "! LVARY = T !","LVARY",false),"LVARY=T must not be read as numeric 0");
     expect(xy.surface.id==583210&&xy.upper.id==58424,"station ids");
     expect(xy.surface.local_x_m==2500.f&&xy.surface.local_y_m==2500.f,
            "surface local geometry");
