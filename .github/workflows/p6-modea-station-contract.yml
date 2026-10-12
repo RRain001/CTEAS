@@ -21,9 +21,14 @@ jobs:
     name: Original Fortran READCF and isolated C++ station geometry
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: p6_modea_checkout
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/cteas-linux-toolchain
+        with:
+          path: p6_modea_checkout
+      - uses: ./p6_modea_checkout/.github/actions/cteas-linux-toolchain
       - name: Verify source deck from the checked-out Git commit
         run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode source
       - name: Require Fortran compiler and original control deck
@@ -65,9 +70,14 @@ jobs:
     name: Real-case hour 1 original Fortran WIND1 first guess
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: p6_modea_checkout
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/cteas-linux-toolchain
+        with:
+          path: p6_modea_checkout
+      - uses: ./p6_modea_checkout/.github/actions/cteas-linux-toolchain
       - name: Verify complete frozen observation and grid inputs
         run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
       - name: Build P6D producer and standalone selected WIND1 driver
@@ -104,8 +114,13 @@ jobs:
     name: Grid generator to P1-P5 to CALMET inputs
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: p6_modea_checkout
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: p6_modea_checkout
       - name: Verify grid and station fixtures from the checked-out Git commit
         run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
       - name: Require original generated grid and case inputs
@@ -132,12 +147,17 @@ jobs:
     name: 143-hour original U/V/W and P6F-P6E coupling
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: p6_modea_checkout
     steps:
       # Do not demand git-lfs on all sixteen self-hosted workers: most frozen
       # scientific inputs are immutable Git blobs, and content is checked
       # explicitly before computation. A real LFS pointer fails closed below.
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/cteas-linux-toolchain
+        with:
+          path: p6_modea_checkout
+      - uses: ./p6_modea_checkout/.github/actions/cteas-linux-toolchain
       - name: Verify full frozen 143-hour scientific data from Git HEAD
         run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode full
       - name: Reject missing or LFS-pointer frozen scientific inputs
