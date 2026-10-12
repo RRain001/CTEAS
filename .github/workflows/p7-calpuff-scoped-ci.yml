@@ -12,6 +12,58 @@ concurrency:
   group: p7-scoped-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 jobs:
+  # Fast original-QA coordinate gate on ANY idle self-hosted Linux runner.
+  # Builds only the point/receptor input libraries; does not occupy the
+  # P7-specific lhy-desktop-3 physical runner for the entire CALPUFF suite.
+  p7-coordinate-qa:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 12
+    steps:
+      - name: Sparse checkout immutable P7 and original 2022 QA artifacts
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /native_cpp/modules/p7_calpuff/**
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/qapnts.dat
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/qarecg.dat
+      - name: Require original vendor QA inputs (no skip)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in puff.inp qapnts.dat qarecg.dat; do
+            test -s "project/cases/hefei5km_2022_reference_case_20261011/run/puff/$name" || {
+              echo "::error::Missing P7 original 2022 QA input: $name"
+              exit 1
+            }
+          done
+          echo "P7_FAST_QA_RUNNER=${RUNNER_NAME}"
+      - name: Compile and execute original REAL4 point and 2500 receptor QA parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v g++-12 >/dev/null 2>&1; then
+            compiler="$(command -v g++-12)"
+          elif command -v g++-11 >/dev/null 2>&1; then
+            compiler="$(command -v g++-11)"
+          else
+            compiler="$(command -v c++)"
+          fi
+          build="${RUNNER_TEMP}/p7-qa-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cmake -S native_cpp/modules/p7_calpuff -B "$build" \
+            -DCMAKE_CXX_COMPILER="$compiler" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$build" --target cteas_p7_original_grid_qa_tests --parallel 2
+          ctest --test-dir "$build" -R '^cteas_p7_original_2022_qa_real4_coordinates$' --output-on-failure
+          "$build/cteas_p7_original_grid_qa_tests" \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/qapnts.dat \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/qarecg.dat
+          echo "P7_FAST_QA_FLOAT32_ORIGINAL=PASS"
+
   p7-scoped:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
     runs-on: [self-hosted, lhy-desktop-3]
