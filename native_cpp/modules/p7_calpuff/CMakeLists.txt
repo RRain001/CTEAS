@@ -693,3 +693,27 @@ if(EXISTS "${P7F_LOCKED_CASE_CONTROL}"
       --center "${P7_ORIGINAL_GRID_DIR}/center_location"
       --negative)
 endif()
+
+# Stronger P7 original input gate: use the ACTUAL CALMET.DAT binary header
+# rather than the fixed synthetic REAL*4 frame. Proves the frozen runtime
+# MET.DAT, CALPUFF control and grid.cmn authoring geometry coexist correctly.
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}"
+   AND EXISTS "${P7_ORIGINAL_GRID_DIR}/grid.cmn"
+   AND EXISTS "${P7_QA_2022_DIRECTORY}/qapnts.dat"
+   AND EXISTS "${P7_QA_2022_DIRECTORY}/qarecg.dat")
+  add_executable(cteas_p7_original_met_grid_tests tests/p7_original_met_grid_tests.cpp)
+  target_link_libraries(cteas_p7_original_met_grid_tests PRIVATE
+    cteas_p7_transport cteas_p7_receptors cteas_p7_calmet21)
+  if(MSVC)
+    target_compile_options(cteas_p7_original_met_grid_tests PRIVATE /W4 /WX)
+  else()
+    target_compile_options(cteas_p7_original_met_grid_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  add_test(NAME cteas_p7_original_2022_met_header_grid_qa
+    COMMAND cteas_p7_original_met_grid_tests
+      "${P7_ORIGINAL_GRID_DIR}/grid.cmn"
+      "${P7F_LOCKED_CASE_CONTROL}"
+      "${P7G_LOCKED_CASE_MET}"
+      "${P7_QA_2022_DIRECTORY}/qapnts.dat"
+      "${P7_QA_2022_DIRECTORY}/qarecg.dat")
+endif()
