@@ -175,6 +175,7 @@ jobs:
             /native_cpp/modules/p7_calpuff/**
             /engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con
       - name: Require pinned original source and first-hour puff state
         shell: bash
         run: |
@@ -207,7 +208,8 @@ jobs:
           for name in cteas_p7_vendor_substep_order_contract \
                       cteas_p7_original_initial_internal_xy \
                       cteas_p7_original_first_hour_advance_real4 \
-                      cteas_p7_original_source_dgm_execution_order; do
+                      cteas_p7_original_source_dgm_execution_order \
+                      cteas_p7_original_wrout1_header_avefactor_audit; do
             ctest --test-dir "$build" -N -R "^${name}$" |
               grep -Eq "Test[[:space:]]*#[0-9]+: ${name}" || {
                 echo "::error::Original CALPUFF order gate absent: $name"
@@ -223,11 +225,17 @@ jobs:
             --control project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
             --audit-record native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm-audit.json \
             --report "$build/P7_ORIGINAL_ORDER_DGM_AUDIT.json"
+          python3 native_cpp/modules/p7_calpuff/reference/audit_vendor_wrout1_output.py \
+            --control project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            --original-con project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
+            --report "$build/P7_ORIGINAL_WROUT1_INVENTORY.json"
           echo "P7_ORDER_ORIGINAL_AND_CPP_INITIAL=PASS"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: p7-original-comp-order-and-first-hour
-          path: ${{ runner.temp }}/p7-order-${{ github.run_id }}-${{ github.run_attempt }}/P7_ORIGINAL_ORDER_DGM_AUDIT.json
+          path: |
+            ${{ runner.temp }}/p7-order-${{ github.run_id }}-${{ github.run_attempt }}/P7_ORIGINAL_ORDER_DGM_AUDIT.json
+            ${{ runner.temp }}/p7-order-${{ github.run_id }}-${{ github.run_attempt }}/P7_ORIGINAL_WROUT1_INVENTORY.json
           retention-days: 7
           if-no-files-found: warn

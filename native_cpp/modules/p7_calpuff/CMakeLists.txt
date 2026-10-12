@@ -785,3 +785,13 @@ if(EXISTS "${P7_DGM_HOUR0}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
     COMMAND cteas_p7_first_hour_advance_tests
       "${P7F_LOCKED_CASE_CONTROL}" "${P7_DGM_HOUR0}")
 endif()
+
+# Original 143h WROUT1 structure / PG AVET=PGTIME evidence, not C++ output parity.
+set(P7_ORIGINAL_CON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con")
+if(EXISTS "${P7_ORIGINAL_CON_FILE}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7_original_wrout1_header_avefactor_audit
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/reference/audit_vendor_wrout1_output.py"
+      --control "${P7F_LOCKED_CASE_CONTROL}"
+      --original-con "${P7_ORIGINAL_CON_FILE}")
+endif()
