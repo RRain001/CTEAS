@@ -42,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           root="$RUNNER_TEMP/p6d-native-comp-compile-$GITHUB_RUN_ID"
-          cmake -S native_cpp/modules/p6_calmet/p6e -B "$root/p6e" -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet/p6e -B "$root/p6e" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$root/p6e" \
             --target p6e_calmet_dat21 p6e_mixht_observed_mc_tests p6e_mixhmc_tests p6e_mixdt_tests \
             --parallel 2
