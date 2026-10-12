@@ -56,6 +56,12 @@ jobs:
           root="$RUNNER_TEMP/p6d-native-comp-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           mkdir -p "$root"
           case_dir="frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011"
+          # P6F CMake has a hard-coded frozen reference path relative to the
+          # source tree. Link the SHA-verified independent checkout there;
+          # do not duplicate, alter, or substitute the original MET.DAT.
+          mkdir -p project/cases
+          ln -sfn "$PWD/$case_dir" project/cases/hefei5km_2022_reference_case_20261011
+          test -s project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
           set +e
           python3 scripts/run_p6_end_to_end.py \
             --case "$case_dir" --build-dir "$root/build" \
