@@ -795,3 +795,29 @@ if(EXISTS "${P7_ORIGINAL_CON_FILE}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
       --control "${P7F_LOCKED_CASE_CONTROL}"
       --original-con "${P7_ORIGINAL_CON_FILE}")
 endif()
+
+# Non-prototype native COMP position+SETPUF state-bearing slice. Unlike the
+# earlier oracle-fed 1275 independent calls, state is retained and passed
+# from one substep to the next for each contiguous puff episode.
+add_library(cteas_p7_original_motion STATIC src/original_motion_lifecycle.cpp)
+target_include_directories(cteas_p7_original_motion PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(cteas_p7_original_motion PUBLIC cteas_p7_step cteas_p7_step_integration)
+if(MSVC)
+  target_compile_options(cteas_p7_original_motion PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_motion PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(EXISTS "${P7_DGM_HOUR0}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_executable(cteas_p7_first_hour_lifecycle_tests
+    tests/dgm_first_hour_lifecycle_tests.cpp)
+  target_link_libraries(cteas_p7_first_hour_lifecycle_tests PRIVATE
+    cteas_p7_original_motion cteas_p7_control)
+  if(MSVC)
+    target_compile_options(cteas_p7_first_hour_lifecycle_tests PRIVATE /W4 /WX)
+  else()
+    target_compile_options(cteas_p7_first_hour_lifecycle_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  add_test(NAME cteas_p7_first_hour_state_persistence_real4
+    COMMAND cteas_p7_first_hour_lifecycle_tests
+      "${P7F_LOCKED_CASE_CONTROL}" "${P7_DGM_HOUR0}")
+endif()
