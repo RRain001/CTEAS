@@ -767,3 +767,21 @@ if(EXISTS "${P7_DGM_HOUR0}" AND EXISTS "${P7_DGM_META}" AND EXISTS "${P7_DGM_AUD
       --metadata "${P7_DGM_META}" --first-hour "${P7_DGM_HOUR0}"
       --control "${P7F_LOCKED_CASE_CONTROL}" --audit-record "${P7_DGM_AUDIT}")
 endif()
+
+# Original DGM first-hour stepping is oracle-FED: physical UADV/WS, old puff
+# coordinate and final TSAMP are captured from Fortran; this is NOT a full
+# C++ self-propagating puff simulation.
+if(EXISTS "${P7_DGM_HOUR0}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_executable(cteas_p7_first_hour_advance_tests tests/dgm_first_hour_advance_tests.cpp)
+  target_link_libraries(cteas_p7_first_hour_advance_tests PRIVATE
+    cteas_p7_step_integration cteas_p7_control)
+  if(MSVC)
+    target_compile_options(cteas_p7_first_hour_advance_tests PRIVATE /W4 /WX)
+  else()
+    target_compile_options(cteas_p7_first_hour_advance_tests PRIVATE
+      -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  add_test(NAME cteas_p7_original_first_hour_advance_real4
+    COMMAND cteas_p7_first_hour_advance_tests
+      "${P7F_LOCKED_CASE_CONTROL}" "${P7_DGM_HOUR0}")
+endif()

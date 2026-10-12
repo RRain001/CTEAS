@@ -203,9 +203,10 @@ jobs:
           cmake -S native_cpp/modules/p7_calpuff -B "$build" \
             -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$build" --parallel 2 \
-            --target cteas_p7_vendor_order_tests cteas_p7_initial_dgm_tests
+            --target cteas_p7_vendor_order_tests cteas_p7_initial_dgm_tests cteas_p7_first_hour_advance_tests
           for name in cteas_p7_vendor_substep_order_contract \
                       cteas_p7_original_initial_internal_xy \
+                      cteas_p7_original_first_hour_advance_real4 \
                       cteas_p7_original_source_dgm_execution_order; do
             ctest --test-dir "$build" -N -R "^${name}$" |
               grep -Eq "Test[[:space:]]*#[0-9]+: ${name}" || {
