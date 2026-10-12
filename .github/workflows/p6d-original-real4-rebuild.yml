@@ -104,6 +104,7 @@ jobs:
           src_build="$RUNNER_TEMP/p6d-rebuild-hour-source-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           evidence="$RUNNER_TEMP/p6d-rebuild-hour-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           python3 native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/compare_realcase_diagno_tail_independent.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
             --case project/cases/hefei5km_2022_reference_case_20261011 \
             --p6d-fields "$evidence/p6d_fields" \
             --cpp "$src_build/cteas_p6d_source_diagno_tail_real4" \
