@@ -23,6 +23,7 @@
 #include "cteas/p6/froude_adjust.hpp"
 #include "cteas/p6/slope_flow.hpp"
 #include "cteas/p6e/heatfx.hpp"
+#include "cteas/p6e/elustr_stable.hpp"
 #include "cteas/p6e/surface_solar.hpp"
 #include "cteas/p6e/surfvar_observed.hpp"
 #include "cteas/p6/inter2_selected.hpp"
@@ -695,6 +696,49 @@ int main(int argc,char** argv){
             flux.anthropogenic_wm2=geo.qf;
             flux.initial_qh.assign(2500,0.f);
             heat_flux=cteas::p6e::heatfx(flux).sensible_wm2;
+        }
+        // Original DIAGNO L5686 HEATFX supplies a placeholder QH=-0.1
+        // under stable/night conditions. ELUSTR L6510-6573 then replaces
+        // that placeholder by -996 * RHO * USTAR * THETAS before SLOPE
+        // L5722 consumes QH. The source-scoped P6E stable kernel already
+        // reproduces that per-cell formula. Its land-use mask is adapted
+        // ONLY for the daytime QH>=0 cells (ELUSTR processes those in its
+        // separate daylight branch and leaves QH untouched); actual GEO
+        // landuse remains unchanged for HEATFX, FRADJ, SLOPE and INTER2.
+        {
+            cteas::p6e::StableElustr night;
+            night.nx=nx;night.ny=ny;
+            night.mcloud=1;
+            night.water_first=geo.iwat1;night.water_last=geo.iwat2;
+            night.zm=center_m[0];
+            night.landuse=geo.landuse;
+            night.nearest.assign(2500,1);
+            night.station_cloud={obs->opaque_cloud_tenths};
+            night.cloud_grid.assign(2500,0.1f*static_cast<float>(
+                obs->opaque_cloud_tenths));
+            night.z0=geo.z0_m;
+            night.u1.assign(first.ug_mps.begin(),first.ug_mps.begin()+2500);
+            night.v1.assign(first.vg_mps.begin(),first.vg_mps.begin()+2500);
+            night.temp_k=surface_state.temp_k;
+            night.rho.assign(2500,0.f);
+            night.heat_flux_initial=heat_flux;
+            bool has_stable_land=false;
+            for(std::size_t n=0;n<2500;++n) {
+                // Source AIRDEN L2096-2097 uses 0.3484321*PRES/TEMP2D.
+                // With one eligible surface station, NEARS=1 everywhere.
+                if(!obs->pressure_valid)
+                    throw std::runtime_error(
+                        "ELUSTR AIRDEN requires measured surface pressure at "+
+                        hour_label(clock));
+                night.rho[n]=0.3484321f*obs->pressure_mb/
+                             surface_state.temp_k[n];
+                if(geo.landuse[n]<geo.iwat1||geo.landuse[n]>geo.iwat2) {
+                    if(heat_flux[n]<0.f) has_stable_land=true;
+                    else night.landuse[n]=geo.iwat1;  // mask daylight ONLY
+                }
+            }
+            if(has_stable_land)
+                heat_flux=cteas::p6e::stable_elustr(night).qh_wm2;
         }
         std::vector<float> corrected_u=first.ug_mps,corrected_v=first.vg_mps;
         // Original FRADJ (L5643-L5644) runs BEFORE SLOPE and is enabled only
