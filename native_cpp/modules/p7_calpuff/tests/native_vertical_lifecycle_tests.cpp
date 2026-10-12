@@ -104,6 +104,73 @@ void local_native_state() {
     require(life.active_count()==0,"retirement did not discard native state");
     rejects([&]{(void)life.state(1);},"retired puff still alive");
 }
+void local_native_vmass_integration() {
+    using namespace cteas::puff;
+    OriginalVerticalLifecycle native;
+    NewPuffInputs point;
+    point.source_x_km=0.5;
+    point.source_y_km=0.5;
+    point.effective_height_m=50.0;
+    point.sigma_y_source_m=1.0;
+    point.sigma_z_source_m=1.0;
+    point.stability_class=4;
+    InjectionInputs source;
+    source.species_count=2;
+    source.emission_duration_s=10.0;
+    source.effective_height_m=50.0;
+    source.max_layer_height_m=500.0;
+    source.mixing_height_m=120.0;
+    source.mass_fraction_mixed=1.0;
+    source.stability_class=4;
+    source.gaussian_distribution=1;
+    source.emission_rate={2.0,1.0};
+    native.admit_point(44,point,source);
+    auto yc=[](double sigma,double dx,double dt)->SigmaCurvePoint {
+        return {sigma>0?sigma:1.0+dt*0.1,dt,dx};
+    };
+    auto zc=[](double sigma,double dx,double dt,double)->SigmaCurvePoint {
+        return {sigma>0?sigma:1.0+dt*0.05,dt,dx};
+    };
+    SigmaUpdateInputs step;
+    step.step.puff_code=1;
+    step.step.sigma_y_start_m=1;
+    step.step.sigma_z_start_m=1;
+    step.step.puff_height_m=50;
+    step.step.mid_time_s=10;
+    step.step.mid_distance_km=0.05;
+    rejects([&]{
+        (void)native.commit_vmass_and_lid(44,80,50,50,1,4,0);
+    },"VMASS committed without sigma update");
+    (void)native.commit_sigma(44,step,yc,zc);
+    // Actual VMASS takes low DPBL and compresses current Gaussian 1-layer
+    // reflecting lid, then COMP records last lid and max.
+    const auto vm= native.commit_vmass_and_lid(44,80,50,50,1,4,0);
+    const auto after=native.state(44);
+    require(vm.puff_code==1 && vm.reflecting_lid_m==80.0F &&
+            after.ziold_m==80.0F && after.zimax_m==80.0F &&
+            after.mass_mixed[0]==20.0F && after.mass_above[0]==0.0F &&
+            after.committed_lid_steps==1,
+            "native VMASS->COMP did not persist source mass / history");
+    rejects([&]{
+        (void)native.commit_vmass_and_lid(44,80,50,50,1,4,0);
+    },"duplicate VMASS step committed");
+    rejects([&]{
+        (void)native.commit_lid(44,80,1);
+    },"direct COMP lid path bypassed already-committed VMASS");
+    step.step.sigma_y_start_m=after.sigma_y_m;
+    step.step.sigma_z_start_m=after.sigma_z_m;
+    (void)native.commit_sigma(44,step,yc,zc);
+    const auto greater= native.commit_vmass_and_lid(44,160,50,50,1,4,0);
+    const auto persisted=native.state(44);
+    require(greater.reflecting_lid_m==160.0F &&
+            persisted.ziold_m==160.0F &&
+            persisted.zimax_m==160.0F &&
+            persisted.committed_lid_steps==2 &&
+            persisted.completed_substeps==2,
+            "native upper lid history not propagated across sigma substeps");
+    native.retire(44);
+    require(native.active_count()==0,"native VMASS retirement failed");
+}
 void original_first_step(const char* met_path,const char* dgm_path) {
     using namespace cteas::puff;
     std::ifstream file(dgm_path,std::ios::binary);
@@ -159,13 +226,15 @@ void original_first_step(const char* met_path,const char* dgm_path) {
 int main(int argc,char** argv) {
     try {
         local_native_state();
+        local_native_vmass_integration();
         if(argc==3) original_first_step(argv[1],argv[2]);
         else if(argc!=1)throw std::invalid_argument("usage: native-vertical-test [MET DGM]");
         std::cout<<"P7_NATIVE_VERTICAL_PERSISTENT=PASS"
                  <<" RELEASE_INJECT=REAL4 PUFFDZ_ADVECT=NATIVE"
                  <<" SIGMA_UPDATE=NATIVE"
                  <<" COMP_LAST_LID_COMMIT=NATIVE_REAL4"
-                 <<" VMASS_FULL_BRANCHES=NOT_YET_VALIDATED"
+                 <<" VMASS_REAL4_NATIVE_STATE=PERSISTED"
+                 <<" VMASS_ORIGINAL_143H_INTEGRATION=NOT_YET_VALIDATED"
                  <<" FIRST_ORIGINAL_STEP="<<(argc==3?"EXACT":"NOT_TESTED")<<"\n";
         return 0;
     } catch(const std::exception& e) {

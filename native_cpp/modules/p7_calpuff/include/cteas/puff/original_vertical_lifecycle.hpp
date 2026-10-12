@@ -2,6 +2,7 @@
 
 #include "cteas/puff/original_met_cell.hpp"
 #include "cteas/puff/release.hpp"
+#include "cteas/puff/original_vmass.hpp"
 #include "cteas/puff/sigma_update.hpp"
 
 #include <cstddef>
@@ -63,6 +64,15 @@ public:
     // VMASS/COMP branch; this method cannot invent the 2-layer mass transfer.
     // One lid commit for each completed native sigma substep.
     void commit_lid(int puff_id, float native_hlid_m, int native_puff_code);
+    // Production VMASS + COMP transition. Uses native state QM/QU and
+    // ZIOLD/ZIMAX; never accepts an original DGM state. The supplied
+    // height/PBL must come from the independently computed COMP/MET state.
+    // Enforces exactly one transition per native sigma update.
+    [[nodiscard]] VmassResult commit_vmass_and_lid(
+        int puff_id, float native_pbl_m,
+        float native_height_begin_m, float native_height_end_m,
+        float native_sigma_z_end_m, int native_stability_class,
+        int native_plume_tilt);
     void retire(int puff_id);
     [[nodiscard]] std::size_t active_count() const noexcept;
 private:

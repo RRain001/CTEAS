@@ -903,7 +903,8 @@ add_test(NAME cteas_p7_native_puffdz_first_hour
 add_library(cteas_p7_original_vertical STATIC src/original_vertical_lifecycle.cpp)
 target_include_directories(cteas_p7_original_vertical PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(cteas_p7_original_vertical PUBLIC
-  cteas_p7_release cteas_p7_sigma_update cteas_p7_original_met_cell)
+  cteas_p7_release cteas_p7_sigma_update cteas_p7_original_met_cell
+  cteas_p7_vmass)
 if(MSVC)
   target_compile_options(cteas_p7_original_vertical PRIVATE /W4 /WX)
 else()

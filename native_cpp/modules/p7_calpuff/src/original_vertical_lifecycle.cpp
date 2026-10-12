@@ -129,6 +129,42 @@ void OriginalVerticalLifecycle::commit_lid(
     ++after.committed_lid_steps;
     it->second=std::move(after);
 }
+VmassResult OriginalVerticalLifecycle::commit_vmass_and_lid(
+    int id,float pbl,float height_begin,float height_end,
+    float sigze,int stable,int tilt) {
+    const auto it=puffs_.find(id);
+    if(it==puffs_.end())throw std::out_of_range("unknown native vertical puff");
+    const auto& before=it->second;
+    require(before.completed_substeps==before.committed_lid_steps+1,
+            "native VMASS must follow exactly one completed sigma substep");
+    // Original VMASS L11667-11950 followed by COMP L11391-11398.
+    // Every input is a native production field, NOT a replayed DGM state.
+    VmassInputs input;
+    input.puff_code=before.puff_code;
+    input.stability_class=stable;
+    input.plume_tilt=tilt;
+    input.pbl_height_m=real4(pbl,"native VMASS DPBL");
+    input.height_begin_m=real4(height_begin,"native VMASS ZPB");
+    input.height_end_m=real4(height_end,"native VMASS ZPE");
+    input.sigma_z_begin_m=before.sigma_z_m;
+    input.sigma_z_end_m=real4(sigze,"native VMASS SIGZE");
+    input.ziold_m=before.ziold_m;
+    input.zimax_m=before.zimax_m;
+    input.mass_mixed=before.mass_mixed;
+    input.mass_above=before.mass_above;
+    const auto updated=original_vmass(input);
+    const float lid=updated.reflecting_lid_m;
+    require(std::isfinite(lid) && lid>=0.0F,"native VMASS invalid HLID");
+    NativeVerticalPuffState after=before;
+    after.puff_code=updated.puff_code;
+    after.mass_mixed=updated.mass_mixed;
+    after.mass_above=updated.mass_above;
+    after.zimax_m=std::max(updated.zimax_m,lid);
+    after.ziold_m=lid;
+    ++after.committed_lid_steps;
+    it->second=std::move(after);
+    return updated;
+}
 void OriginalVerticalLifecycle::retire(int id) {
     if(puffs_.erase(id)!=1U)throw std::out_of_range("retire unknown vertical puff");
 }
