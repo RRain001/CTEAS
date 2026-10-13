@@ -3,6 +3,10 @@
 #include "cteas/puff/original_met_hours.hpp"
 #include "cteas/puff/original_release_wind.hpp"
 #include "cteas/puff/plume_rise.hpp"
+#include "cteas/puff/control.hpp"
+#include "cteas/puff/release.hpp"
+#include <bit>
+#include <cstdint>
 #include "cteas/puff/original_native_terrain.hpp"
 #include <algorithm>
 #include <cmath>
@@ -77,6 +81,21 @@ int main(int argc,char** argv){
         if(argc!=3)throw std::invalid_argument(
             "usage: original_hefei_source_met_bridge_tests MET.DAT puff.inp");
         const auto source=read_selected_point(argv[2]);
+        const auto deck=cteas::puff::ControlFile::read_file(argv[2]);
+        demand(deck.required_int("METFM")==1 &&
+               deck.required_int("MTRANS")==1 &&
+               deck.required_int("MTIP")==1 &&
+               deck.required_int("MRISE")==1 &&
+               deck.required_int("MPARTL")==1 &&
+               deck.required_int("MSHEAR")==0 &&
+               deck.required_int("MGAUSS")==1 &&
+               deck.required_int("MXNEW")==99,
+               "native first-hour bridge requires frozen original Briggs point flags");
+        const auto factor=deck.required_float_list("FMFAC");
+        const auto sampling=deck.required_float_list("XSAMLEN");
+        demand(factor.size()==1&&factor[0]==1.0 &&
+               sampling.size()==1&&sampling[0]==1.0,
+               "native POINTS1 flux or XTMP1 control differs from frozen deck");
         std::size_t hours=0;
         float min_ws=std::numeric_limits<float>::infinity();
         float max_ws=0.0F;
@@ -132,7 +151,7 @@ int main(int argc,char** argv){
                         .ambient_temperature_k=hour.tempk[cell],
                         .temperature_excess_k=std::max(0.0F,
                             source.row[6]-hour.tempk[cell]),
-                        .momentum_flux_factor=1.0 // frozen Group 13b FMFAC
+                        .momentum_flux_factor=factor[0] // actual Group 13b FMFAC
                     });
                     demand(flux.buoyancy_m4s3>0&&flux.momentum_m4s2>0,
                            "genuine HTO_STACK buoyancy/momentum flux absent");
@@ -184,6 +203,39 @@ int main(int argc,char** argv){
                     demand(std::isfinite(heff)&&heff>stack &&
                            std::isfinite(rise.x_final_m)&&rise.x_final_m>0,
                            "native first-hour PRFIN produced invalid effective height");
+                    const float wsnew=std::max(
+                        wind.wind_speed_ms,upper.wind_speed_ms);
+                    const float xtmp1=3600.0F /
+                        (header.dx_m*static_cast<float>(sampling[0]));
+                    const auto cadence=cteas::puff::release_cadence({
+                        .wind_speed_ms=wsnew,
+                        .emission_interval=xtmp1,
+                        .max_puffs=deck.required_int("MXNEW"),
+                        .hour_seconds=3600.0
+                    });
+                    // ORIGINAL DGM 2022-first-hour slice manifest:
+                    // zold min=max=136.40403747558594, wsvar=1.493919849395752,
+                    // reftsamp=66.66666412353516. These are CHECKS only;
+                    // the native values were calculated from met.dat + deck.
+                    // Never use the DGM values as initial/solver inputs.
+                    demand(std::bit_cast<std::uint32_t>(heff)==
+                               std::bit_cast<std::uint32_t>(136.40403747558594F),
+                           "first-hour PRFIN HEFF differs from frozen original DGM");
+                    demand(std::bit_cast<std::uint32_t>(wsnew)==
+                               std::bit_cast<std::uint32_t>(1.493919849395752F),
+                           "first-hour RLSMET WSNEW differs from frozen original DGM");
+                    demand(cadence.puff_count==54 &&
+                           std::bit_cast<std::uint32_t>(
+                               static_cast<float>(cadence.emission_duration_s))==
+                           std::bit_cast<std::uint32_t>(66.66666412353516F),
+                           "native first-hour POINTS1 cadence differs from original DGM");
+                    std::cout<<"P7_FIRST_HOUR_PRFIN_DGM_COMPARE=PASS"
+                             <<" HEFF_REAL4=BITWISE"
+                             <<" WSNEW_REAL4=BITWISE"
+                             <<" NPUFFS="<<cadence.puff_count
+                             <<" DT_S="<<cadence.emission_duration_s
+                             <<" ORACLE_USED_AS_SOLVER_INPUT=NO"
+                             <<" COMPLETE_COMP=NOT_ACCEPTED\\n";
                     std::cout<<"P7_FIRST_HOUR_NATIVE_PRFIN"
                              <<" STACK_WS_MS="<<wind.wind_speed_ms
                              <<" HEFF_WS_MS="<<upper.wind_speed_ms
