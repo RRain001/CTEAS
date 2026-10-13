@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   independent-upstream-static-source:
@@ -24,7 +25,7 @@ jobs:
           sparse-checkout: |
             native_cpp/modules/p6_calmet/p6f
             native_cpp/modules/p6_calmet/include/cteas/p6/read_geo.hpp
-            native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/calmet_dat21.hpp
+            native_cpp/modules/p6_calmet/p6e
             native_cpp/modules/p7_calpuff/reference/original_decode_calmet_hourly.py
             project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/geo.dat
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp
@@ -81,6 +82,37 @@ jobs:
           fi
           grep -q 'P6F_SRC_STATIC_NOT_PASS: ZFACE/met.inp' "$RUNNER_TEMP/p6f-negative.out"
           echo "PASS_P6F_GEO_SOURCE_STATIC_RECONSTRUCTION_AND_MUTATION_REJECTION"
+      - name: Retrieve source-accepted native C++ 143h meteorology
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 38372382572
+          github-token: ${{ github.token }}
+          name: p6-causal-original-case-143h
+          path: ${{ runner.temp }}/p6f-native-case
+      - name: Rebuild static records into native C++ output; preserve full 45-field science
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=project/cases/hefei5km_2022_reference_case_20261011
+          native="$RUNNER_TEMP/p6f-native-case/native_causal_calmet.dat"
+          test -s "$native"
+          "$RUNNER_TEMP/p6f-source-build/cteas_p6f_geo_static_provenance" \
+            --geo "$root/geo/makegeo/geo.dat" \
+            --deck "$root/run/met/met.inp" \
+            --candidate "$native" \
+            --emit-source-statics "$RUNNER_TEMP/p6f-native-with-source-static.dat" \
+            | tee "$RUNNER_TEMP/p6f-native-static-report.json"
+          cmp "$native" "$RUNNER_TEMP/p6f-native-with-source-static.dat"
+          cmake -S native_cpp/modules/p6_calmet/p6e \
+            -B "$RUNNER_TEMP/p6f-source-e22" \
+            -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/p6f-source-e22" \
+            --target p6e_calmet_dat21 --parallel 2
+          "$RUNNER_TEMP/p6f-source-e22/p6e_calmet_dat21" compare \
+            --reference "$root/run/met/met.dat" \
+            --candidate "$RUNNER_TEMP/p6f-native-with-source-static.dat" \
+            --out "$RUNNER_TEMP/p6f-native-full45-verdict.json"
+          echo "PASS_P6F_INDEPENDENT_GEO_DECK_STATIC_IN_NATIVE_143H_45FIELD_CANDIDATE"
       - name: Archive source static reconstruction evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -89,5 +121,7 @@ jobs:
           path: |
             ${{ runner.temp }}/p6f-static-source-report.json
             ${{ runner.temp }}/p6f-negative.out
+            ${{ runner.temp }}/p6f-native-static-report.json
+            ${{ runner.temp }}/p6f-native-full45-verdict.json
           if-no-files-found: warn
           retention-days: 14
