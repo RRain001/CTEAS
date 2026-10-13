@@ -111,7 +111,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     const ReceptorSet& receptors,float met_spacing_m,
     float averaging_period_s,float impact_sigma_multiple,
     OriginalFlatVerticalMethod vertical_method,
-    OriginalMctadj2TerrainLookup terrain_lookup) {
+    OriginalMctadj2TerrainLookup terrain_lookup,
+    bool selected_h3_from_multispecies) {
     if(!receptors.gridded || !receptors.discrete.empty() ||
        receptors.mesh_down!=1 || receptors.sampling_nx<=0 ||
        receptors.sampling_ny<=0 || receptors.ibsamp<1 ||
@@ -137,7 +138,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     const float grid_x=static_cast<float>(receptors.ibsamp)-0.5F;
     const float grid_y=static_cast<float>(receptors.jbsamp)-0.5F;
     return [nrecs,nx,grid_x,grid_y,met_spacing_m,averaging_period_s,
-            impact_sigma_multiple,vertical_method,terrain_lookup](
+            impact_sigma_multiple,vertical_method,terrain_lookup,
+            selected_h3_from_multispecies](
             const RiseCompSamplingState& s) {
         const bool terrain_mode=
             vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2;
@@ -147,8 +149,10 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
         if(s.after_setpuf_before_lid.puff_code!=s.vmass.puff_code ||
            !s.after_setpuf_before_lid.vmass_pending ||
            s.vmass.mass_mixed.empty() ||
-           s.vmass.mass_mixed.size()!=1 ||
-           s.vmass.mass_above.size()!=1 ||
+           (selected_h3_from_multispecies ?
+                s.vmass.mass_mixed.size()!=2 :
+                s.vmass.mass_mixed.size()!=1) ||
+           s.vmass.mass_above.size()!=s.vmass.mass_mixed.size() ||
            !std::isfinite(s.step_seconds) || s.step_seconds<=0.0F ||
            s.step_seconds>averaging_period_s) {
             throw std::invalid_argument(
