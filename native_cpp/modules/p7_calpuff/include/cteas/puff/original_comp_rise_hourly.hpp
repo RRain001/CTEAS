@@ -102,6 +102,17 @@ public:
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban,const OriginalPointHourSource& source,
         float calm_threshold_ms);
+    // Atomic vendor slot compaction + native release wind + restricted COMP.
+    // inactive_old_ids is an EXPLICIT, previously diagnosed list; this
+    // overload does not claim autonomous off-domain/zero-mass detection.
+    // If the subsequent COMP hour fails (including unsupported FSTEP),
+    // ROLLDN retirement, physical states and the hour counter ALL roll back.
+    [[nodiscard]] OriginalCompMxsamHour
+    advance_hour_point_mxsam99_native_wsnew_unsplit_rolldn(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource& source,
+        float calm_threshold_ms,const std::vector<int>& inactive_old_ids);
     [[nodiscard]] OriginalCompMxsamHour advance_hour_point_mxsam99_unsplit(
         const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,const DispersionSetup& pg,
