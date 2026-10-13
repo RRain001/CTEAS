@@ -36,6 +36,7 @@ struct Args {
     int station_id=58424;
     int upper_i=0,upper_j=0;
     float zupt_m=0.f;
+    int causal_hours=0; // 1..143: consume only preceding COMP hours
 };
 std::string next_arg(int& n,int argc,char** argv) {
     if(n+1>=argc)throw std::invalid_argument(
@@ -53,13 +54,14 @@ Args parse(int argc,char** argv) {
         else if(flag=="--upper-i")a.upper_i=std::stoi(next_arg(n,argc,argv));
         else if(flag=="--upper-j")a.upper_j=std::stoi(next_arg(n,argc,argv));
         else if(flag=="--station-id")a.station_id=std::stoi(next_arg(n,argc,argv));
+        else if(flag=="--causal-hours")a.causal_hours=std::stoi(next_arg(n,argc,argv));
         else throw std::invalid_argument("CGAMMA bridge unknown flag "+flag);
     }
     if(a.up.empty()||a.p6e_prefix.empty()||a.out.empty()||
        !std::isfinite(a.zupt_m)||a.zupt_m<=0.f||
        a.upper_i<1||a.upper_i>static_cast<int>(kNx)||
        a.upper_j<1||a.upper_j>static_cast<int>(kNy)||
-       a.station_id<=0)
+       a.station_id<=0||a.causal_hours<0||a.causal_hours>143)
         throw std::invalid_argument(
             "CGAMMA bridge requires --up --p6e-state-prefix --out "
             "--zupt (m) --upper-i 1..50 --upper-j 1..50");
@@ -84,12 +86,13 @@ void verify_p6e_metadata(const fs::path& path) {
             "P6E state manifest is not the validated 143 x 50 x 50 MIXHT "
             "internal-state export, or could be a source/original substitution");
 }
-std::vector<float> read_ziconv(const fs::path& file) {
-    if(!fs::is_regular_file(file)||fs::file_size(file)!=kHours*kCells*4)
-        throw std::runtime_error("P6E native ZICONV 143h byte length invalid");
+std::vector<float> read_ziconv(const fs::path& file,std::size_t available_hours=kHours) {
+    if(available_hours==0)return {};
+    if(!fs::is_regular_file(file)||fs::file_size(file)!=available_hours*kCells*4)
+        throw std::runtime_error("P6E native ZICONV history length invalid for causal hour");
     std::ifstream f(file,std::ios::binary);
     if(!f)throw std::runtime_error("P6E native ZICONV unavailable");
-    std::vector<float> z(kHours*kCells);
+    std::vector<float> z(available_hours*kCells);
     f.read(reinterpret_cast<char*>(z.data()),
            static_cast<std::streamsize>(z.size()*sizeof(float)));
     if(!f)throw std::runtime_error("P6E native ZICONV truncated");
@@ -122,8 +125,20 @@ void write_gamma_plane(const fs::path& path,float value) {
 int main(int argc,char** argv) {
  try {
     const Args a=parse(argc,argv);
-    verify_p6e_metadata(a.p6e_prefix.string()+".state.json");
-    const auto z=read_ziconv(a.p6e_prefix.string()+".ziconv.f32");
+    if(a.causal_hours==0)
+        verify_p6e_metadata(a.p6e_prefix.string()+".state.json");
+    else if(a.causal_hours>1) {
+        const auto m=read_text(a.p6e_prefix.string()+".state.json");
+        const std::string clock="\"first_hour_zero_based\": "+
+                                std::to_string(a.causal_hours-2);
+        if(m.find("\"producer\": \"p6e_calmet_dat21 emit-realcase\"")==
+             std::string::npos||m.find(clock)==std::string::npos||
+           m.find("\"dtype\": \"float32 little-endian\"")==std::string::npos)
+            throw std::runtime_error("CGAMMA causal P6E state producer/previous-hour mismatch");
+    }
+    const auto z=read_ziconv(a.p6e_prefix.string()+".ziconv.f32",
+                             a.causal_hours>0?
+                                static_cast<std::size_t>(a.causal_hours-1):kHours);
     const auto upper=read_upper_2022(a.up,a.station_id);
     // The case's actual ZFACE layers. This is the selected fixed 2022 grid;
     // do not reuse the bridge for a different met.inp without revalidation.
@@ -144,7 +159,9 @@ int main(int argc,char** argv) {
     if(!table)throw std::runtime_error("CGAMMA CSV manifest unavailable");
     table<<"hour_index,hour_end,prior_p6e_ziconv_m,native_gamma_kpm,branch\n";
     table<<std::setprecision(10);
-    for(std::size_t h=0;h<kHours;++h) {
+    const auto requested=a.causal_hours>0?
+        static_cast<std::size_t>(a.causal_hours):kHours;
+    for(std::size_t h=0;h<requested;++h) {
         // hour 1 uses native CALMET initial ZICONV=0; hour h>1 consumes
         // P6E's post-MIXHT/AVEMIX hour h-1 state. Never use future data.
         const float entering=h==0?0.f:z[(h-1)*kCells+station_cell];
@@ -159,7 +176,9 @@ int main(int argc,char** argv) {
         minimum=std::min(minimum,value.kelvin_per_m);
         maximum=std::max(maximum,value.kelvin_per_m);
         const std::string label=hour_label(hours[h].interpolated.end);
-        write_gamma_plane(a.out/("gamma_"+label+".f32"),value.kelvin_per_m);
+        // Causal mode emits only the current hour; no future PREPDI data.
+        if(a.causal_hours==0||h+1==requested)
+            write_gamma_plane(a.out/("gamma_"+label+".f32"),value.kelvin_per_m);
         table<<h+1<<','<<label<<','<<entering<<','
              <<value.kelvin_per_m<<','<<value.branch<<'\n';
     }
@@ -173,7 +192,7 @@ int main(int argc,char** argv) {
           <<"  \"original_reference_injected\": false,\n"
           <<"  \"current_hour_leakage\": false,\n"
           <<"  \"first_hour_initial_ziconv_m\": 0.0,\n"
-          <<"  \"hours\": "<<kHours<<", \"nx\": 50, \"ny\": 50,\n"
+          <<"  \"hours\": "<<requested<<", \"nx\": 50, \"ny\": 50,\n"
           <<"  \"station_cell_i\": "<<a.upper_i<<", \"station_cell_j\": "<<a.upper_j<<",\n"
           <<"  \"zupt_m\": "<<a.zupt_m<<",\n"
           <<"  \"minimum_gamma_kpm\": "<<minimum
