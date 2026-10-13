@@ -110,9 +110,10 @@ int main(int argc,char** argv) {
         if((argc!=7&&argc!=9)||std::string(argv[1])!="--geo"||
            std::string(argv[3])!="--deck"||
            std::string(argv[5])!="--candidate"||
-           (argc==9&&std::string(argv[7])!="--emit-source-statics"))
+           (argc==9&&std::string(argv[7])!="--emit-source-statics"&&
+                      std::string(argv[7])!="--emit-native-header"))
             throw std::runtime_error(
-                "usage: p6f_geo_static_provenance --geo GEO.DAT --deck met.inp --candidate CALMET.DAT [--emit-source-statics OUT]");
+                "usage: p6f_geo_static_provenance --geo GEO.DAT --deck met.inp --candidate NATIVE_HOURLY_CALMET.DAT [--emit-source-statics OUT | --emit-native-header OUT]");
         const auto deck=input_text(argv[4]);
         auto file=cteas::p6f::read_calmet_dat21(argv[6]);
         const auto& hdr=file.header;
@@ -252,7 +253,70 @@ int main(int argc,char** argv) {
             require(period_seconds>0&&period_seconds%3600==0,
                     "source run window not integral hours");
             h.irlg=static_cast<std::int32_t>(period_seconds/3600);
-            cteas::p6f::write_calmet_dat21(argv[8],file);
+            if(std::string(argv[7])=="--emit-native-header") {
+                // Full independently sourced OUTPUT *header and statics*.
+                // The input's only retained data is its native P6D/P6E
+                // hourly field values and their source-locked hour records.
+                // The original comment count/text is intentionally NOT kept.
+                cteas::p6f::Calmet21File assembled;
+                assembled.hourly=std::move(file.hourly);
+                assembled.statics=std::move(file.statics);
+                auto& head=assembled.header;
+                head.dataset="CALMET.DAT";
+                head.version="2.1";
+                head.model="No-Obs file structure with embedded control file";
+                head.comments={
+                    "CTEAS P6F native OUTHD from source met.inp + GEO.DAT",
+                    "Hourly fields: C++ P6D + P6E; not from original CALMET output"};
+                {
+                    std::istringstream lines(deck);
+                    std::string line;
+                    while(std::getline(lines,line)) {
+                        if(!line.empty()&&line.back()=='\\r')line.pop_back();
+                        require(line.size()<=132,
+                            "source control line exceeds CALMET 132-column comment width");
+                        head.comments.push_back(line);
+                    }
+                }
+                // Recover the source projection date from GEO.DAT v2.1,
+                // not from an existing CALMET.DAT header.
+                const std::string geo_text=input_text(argv[2]);
+                const std::regex datum_date("WGS-84\\\\s+([0-9]{2}-[0-9]{2}-[0-9]{4})");
+                std::smatch date_match;
+                require(std::regex_search(geo_text,date_match,datum_date),
+                        "no WGS-84 coordinate datum date in GEO.DAT");
+                const std::string geo_date=date_match[1].str();
+                head.begin_year=h.begin_year;head.begin_month=h.begin_month;
+                head.begin_day=h.begin_day;head.begin_hour=h.begin_hour;
+                head.begin_second=h.begin_second;
+                head.end_year=h.end_year;head.end_month=h.end_month;
+                head.end_day=h.end_day;head.end_hour=h.end_hour;
+                head.end_second=h.end_second;
+                head.timezone=h.timezone;head.irlg=h.irlg;
+                head.irtype=h.irtype;head.lcalgrd=h.lcalgrd;
+                head.nx=h.nx;head.ny=h.ny;head.nz=h.nz;
+                head.nssta=h.nssta;head.nusta=h.nusta;
+                head.npsta=h.npsta;head.nowsta=h.nowsta;
+                head.dgrid_m=h.dgrid_m;
+                head.xorigin_m=h.xorigin_m;head.yorigin_m=h.yorigin_m;
+                head.nlu=h.nlu;head.iwat1=h.iwat1;head.iwat2=h.iwat2;
+                head.iwfcod=number_i(deck,"IWFCOD");
+                head.projection.pmap=field(deck,"PMAP");
+                head.projection.datum=field(deck,"DATUM");
+                head.projection.daten=geo_date;
+                head.projection.utmhem=field(deck,"UTMHEM");
+                head.projection.iutmzn=number_i(deck,"IUTMZN");
+                head.projection.feast=number_f(deck,"FEAST");
+                head.projection.fnorth=number_f(deck,"FNORTH");
+                // Selected UTM projection does not use these other-map
+                // parameters. Preserve the original documented zero values,
+                // without reading them from the input file.
+                head.projection.rnlat0=0.f;head.projection.relon0=0.f;
+                head.projection.xlat1=0.f;head.projection.xlat2=0.f;
+                cteas::p6f::write_calmet_dat21(argv[8],assembled);
+            }else{
+                cteas::p6f::write_calmet_dat21(argv[8],file);
+            }
         }
         std::cout<<"{\"status\":\"PASS_P6F_INDEPENDENT_SOURCE_STATIC_VALUES\","
                  <<"\"compared_static_values\":"<<compared<<","
@@ -260,7 +324,8 @@ int main(int argc,char** argv) {
                  <<"\"source\":\"GEO.DAT+met.inp independent of CALMET.DAT static inputs\","
                  <<"\"static_records_rebuilt\":"<<(argc==9?"true":"false")<<","
                  <<"\"numeric_run_controls_rebuilt\":"<<(argc==9?"true":"false")<<","
-                 <<"\"header_comments_independent\":false,"
+                 <<"\"header_comments_independent\":"<<
+                      (argc==9&&std::string(argv[7])=="--emit-native-header"?"true":"false")<<","
                  <<"\"all_stations_independent\":false,"
                  <<"\"hourly_field_inputs_independent\":false,"
                  <<"\"full_P6F_acceptance\":false}\n";
