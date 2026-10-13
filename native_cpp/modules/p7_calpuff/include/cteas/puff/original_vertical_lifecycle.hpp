@@ -54,6 +54,11 @@ public:
         int puff_id, const OriginalMetHour& met,
         const Calmet21Static& statics, float x_cells, float y_cells,
         float height_m) const;
+    // COMP L10629-10649: CALMET WDIV inflates stored SIGZB AFTER
+    // PUFFDZ/ADVECT, BEFORE VMASS/SETPUF. Never re-run PUFFDZ for this
+    // step with the updated sigma; original uses old ZBOT/ZTOP.
+    void commit_wdiv_sigma_z(int puff_id,float expected_before,
+                             float updated_sigma_z);
     // COMP L10859 VMASS: consumes PRE-SETPUF SIGZB and updates QM/QU,
     // ICODE and intermediate ZIOLD/ZIMAX without committing next-step HLID.
     [[nodiscard]] VmassResult commit_vmass(
