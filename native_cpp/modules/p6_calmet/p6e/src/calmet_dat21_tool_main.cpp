@@ -1097,10 +1097,10 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     }
     write_calmet_dat21(out_path,candidate_header,reference.statics,hourly);
     if(!state_prefix.empty()) {
-        if(exported_ziconv.size()!=reference.intervals*cells||
-           exported_zi.size()!=reference.intervals*cells||
-           exported_dptt.size()!=reference.intervals*cells||
-           exported_pre_mixht_dptt.size()!=reference.intervals*cells)
+        if(exported_ziconv.size()!=count*cells||
+           exported_zi.size()!=count*cells||
+           exported_dptt.size()!=count*cells||
+           exported_pre_mixht_dptt.size()!=count*cells)
             throw std::invalid_argument(
                 "state export requires a wind and GEO source for every hour");
         const auto write_binary=[&](const std::string& path,
@@ -1131,23 +1131,24 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         meta+="  \"units\": {\"zi\":\"m\",\"ziconv\":\"m\",\"dptt\":\"K\"},\n";
         meta+="  \"dtype\": \"float32 little-endian\",\n";
         meta+="  \"layout\": \"hour-major, then j-major rows with i fastest, exactly as CALMET.DAT field payloads\",\n";
-        meta+="  \"shape\": ["+std::to_string(reference.intervals)+", "+
+        meta+="  \"first_hour_zero_based\": "+std::to_string(first)+",\n";
+        meta+="  \"shape\": ["+std::to_string(count)+", "+
               std::to_string(h.ny)+", "+std::to_string(h.nx)+"],\n";
         meta+="  \"values_per_file\": "+std::to_string(exported_zi.size())+",\n";
         meta+="  \"water_sentinel\": -7777.0,\n";
         meta+="  \"missing_sentinel\": 9999.0,\n";
         meta+="  \"negative_dptt_or_zero_ziconv_is_physical\": true,\n";
         meta+="  \"comp_dptt_provenance\": \"post-MIXHT /TJMP/ DPTT at every hour; not spatially averaged by AVEMIX, required to initialize next DIAGNO ELUSTR2-MIXHTST\",\n";
-        meta+="  \"wind_source\": "+json_string(wind_path)+",\n";
+        meta+="  \"wind_source\": "+json_string(native_p6d_dir.empty()?wind_path:native_p6d_dir)+",\n";
         meta+="  \"station_flux_source\": "+json_string(station_flux_path)+",\n";
         meta+="  \"station_dptt_mutation\": \""+std::string(station_flux_path.empty()?"LEGACY_ESTIMATE_FROM_GRID":"SOURCE_ORDER_NATIVE_ELUSTR2_MIXHTST")+"\",\n";
         meta+="  \"geo_source\": "+json_string(geo_path)+",\n";
         meta+="  \"candidate_artifact\": "+json_string(out_path)+",\n";
         meta+="  \"difference_from_met_dat_ZI\": \"CALMET.DAT carries ZI (max of convective and mechanical, after AVEMIX averaging); ZICONV is the internal convective height that CGAMMA consumes. This export provides both from the P6E chain; the ZI field here still disagrees with the frozen reference on 4488 of 357500 cells (1.26%, max abs 51.06 m, concentrated in 42 daylight hours), so use ZICONV for wiring until the convective-growth audit closes.\",\n";
         meta+="  \"hour_labels\": [";
-        for(std::size_t hour=0;hour<reference.intervals;++hour) {
+        for(std::size_t hour=first;hour<end;++hour) {
             const auto& begin=reference.hourly[hour*reference.fields_per_hour].begin;
-            meta+=std::string(hour?", ":"")+"{\"packed\": "+std::to_string(calmet21_pack(begin))+
+            meta+=std::string(hour==first?"":", ")+"{\"packed\": "+std::to_string(calmet21_pack(begin))+
                   ", \"seconds\": "+std::to_string(begin.seconds)+
                   ", \"year\": "+std::to_string(begin.year)+
                   ", \"julian_day\": "+std::to_string(begin.julian_day)+
@@ -1163,7 +1164,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     if(!state_prefix.empty())report+="  \"state_export_prefix\": "+json_string(state_prefix)+",\n";
     report+="  \"reference\": "+json_string(reference_path)+",\n";
     report+="  \"observations\": "+json_string(observations_path)+",\n";
-    report+="  \"intervals\": "+std::to_string(reference.intervals)+",\n";
+    report+="  \"intervals\": "+std::to_string(count)+",\n";
     report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\",\"QSW\",\"RHO\"";
     if(wind)report+=",\"IPGT\"";
     if(geo&&wind)report+=",\"USTAR\",\"EL\",\"ZI\",\"WSTAR\",\"T-LEV1..NZ\"";
@@ -1525,7 +1526,11 @@ int main(int argc,char** argv) {
                           std::stoi(argument(argc,argv,"--dptt-refresh","1")),
                           argument(argc,argv,"--mixht-trace"),
                           argument(argc,argv,"--station-flux-csv"),
-                          std::stoi(argument(argc,argv,"--native-hour-comp","0"))!=0);
+                          std::stoi(argument(argc,argv,"--native-hour-comp","0"))!=0,
+                          number_argument(argc,argv,"--first-hour",0),
+                          number_argument(argc,argv,"--hours",0),
+                          argument(argc,argv,"--native-p6d-dir"),
+                          argument(argc,argv,"--previous-comp-prefix"));
             return 0;
         }
         if(mode=="dump-field") {
