@@ -3,6 +3,11 @@ on:
   pull_request:
     paths:
       - 'native_cpp/modules/p7_calpuff/tests/original_hefei_source_met_bridge_tests.cpp'
+      - 'native_cpp/modules/p7_calpuff/tests/original_hefei_firsthour_native_comp_tests.cpp'
+      - 'native_cpp/modules/p7_calpuff/include/cteas/puff/original_ptlaps.hpp'
+      - 'native_cpp/modules/p7_calpuff/include/cteas/puff/original_comp_neutral.hpp'
+      - 'native_cpp/modules/p7_calpuff/src/original_comp_rise.cpp'
+      - 'native_cpp/modules/p7_calpuff/CMakeLists.txt'
       - '.github/workflows/p7-firsthour-prfin-source-met.yml'
   workflow_dispatch:
 permissions:
