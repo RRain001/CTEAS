@@ -74,6 +74,7 @@ struct NativeHourFields {
     // Hour-major is outside this interface. Each hour is k-major/i-fastest.
     std::vector<float> u_mps, v_mps, w_face_mps;
     std::vector<float> temperature_k;
+    // P6E native grid fields; the full CALMET.DAT record set is a separate G4 gate.
     std::vector<float> qh_wm2, ustar_mps, el_m, wstar_mps;
 };
 
@@ -172,7 +173,7 @@ private:
         const std::size_t n = nx_ * ny_, three = n * nz_;
         validate_array(f.u_mps, three, "U");
         validate_array(f.v_mps, three, "V");
-        validate_array(f.w_face_mps, three, "WFACE");
+        validate_array(f.w_face_mps, n * (nz_ + 1U), "WFACE_ALL_NZ_PLUS_ONE_FACES");
         validate_array(f.temperature_k, three, "TEMP3D");
         validate_array(f.qh_wm2, n, "QH");
         validate_array(f.ustar_mps, n, "USTAR");
