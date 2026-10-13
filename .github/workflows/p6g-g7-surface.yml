@@ -1,0 +1,35 @@
+name: P6G G7 multi-station and cross-year SURF input parity
+
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/read_surface_dynamic.hpp'
+      - 'native_cpp/modules/p6_calmet/tests/p6g_surface_dynamic_tests.cpp'
+      - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
+      - '.github/workflows/p6g-g7-surface.yml'
+  push:
+    branches:
+      - codex/p6g-g7-multistation-surf-20261014
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  p6g-surf-native:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure P6 C++ strict warning mode
+        run: cmake -S native_cpp/modules/p6_calmet -B "${{ runner.temp }}/p6g-surf" -DCMAKE_BUILD_TYPE=${{ matrix.mode }}
+      - name: Build G7 SURF and original 143h scoped reference
+        run: cmake --build "${{ runner.temp }}/p6g-surf" --target cteas_p6g_surface_dynamic_tests cteas_p6_surface_tests cteas_p6g_station_set_tests -j2
+      - name: Source-field exact parity / multi-site / cross-year / invalid records
+        run: |
+          ctest --test-dir "${{ runner.temp }}/p6g-surf" --output-on-failure \
+            -R 'p6g_surface_multi_site_multiyear_frozen_143h_parity|p6c_surface_selected_scoped_software|p6g_multistation_readcf_real4_parity'
