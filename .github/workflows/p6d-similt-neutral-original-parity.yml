@@ -14,7 +14,7 @@ jobs:
   source-similt-neutral:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
     # P6D alone owns this custom label; never select generic self-hosted workers.
-    runs-on: [self-hosted, lhy-desktop]
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
       - name: Verify dedicated P6D host and source transports
