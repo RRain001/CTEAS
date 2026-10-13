@@ -147,10 +147,11 @@ int main(int argc,char** argv) {
         check_array(stat.xlai,geo.lai,"XLAI/GEO.DAT",compared);
         if(hdr.nssta==1) {
             const auto xy=station_xy(deck,"SS1");
-            // Original OUTHD station table is relative to the SW grid origin,
-            // unlike absolute UTM kilometres in met.inp SS1/US1.
-            const float east_m=(xy[0]-number_f(deck,"XORIGKM"))*1000.f;
-            const float north_m=(xy[1]-number_f(deck,"YORIGKM"))*1000.f;
+            // Original OUTHD uses REAL*4 (station_km*1000) -
+            // (origin_km*1000), NOT (station_km-origin_km)*1000.
+            // e.g. USTA X should be 2498.96875, not 2498.962402.
+            const float east_m=xy[0]*1000.f-number_f(deck,"XORIGKM")*1000.f;
+            const float north_m=xy[1]*1000.f-number_f(deck,"YORIGKM")*1000.f;
             check_array(stat.surface_x_m,std::vector<float>{east_m},
                         "XSSTA/met.inp",compared);
             check_array(stat.surface_y_m,std::vector<float>{north_m},
@@ -161,8 +162,8 @@ int main(int argc,char** argv) {
         }
         if(hdr.nusta==1) {
             const auto xy=station_xy(deck,"US1");
-            const float east_m=(xy[0]-number_f(deck,"XORIGKM"))*1000.f;
-            const float north_m=(xy[1]-number_f(deck,"YORIGKM"))*1000.f;
+            const float east_m=xy[0]*1000.f-number_f(deck,"XORIGKM")*1000.f;
+            const float north_m=xy[1]*1000.f-number_f(deck,"YORIGKM")*1000.f;
             check_array(stat.upper_x_m,std::vector<float>{east_m},
                         "XUSTA/met.inp",compared);
             check_array(stat.upper_y_m,std::vector<float>{north_m},
