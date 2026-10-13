@@ -567,7 +567,10 @@ int main(int argc,char** argv){
             throw std::runtime_error(
                 "surface wind observation missing for "+hour_label(clock));
         const float speed=obs->wind_speed_mps;
-        const float radians=obs->wind_direction_deg*3.14159265358979f/180.f;
+        // CALMET 6.5.0 PREPDI calmet.for L13890: WDRAD = 0.0174533 * WD.
+        // Preserve the source REAL*4 literal and multiplication order; using
+        // WD*pi/180 alters the station U/V before STHEOR/SIMILT and INTER2.
+        const float radians=0.0174533f*obs->wind_direction_deg;
         const float surface_u=-speed*std::sin(radians);
         const float surface_v=-speed*std::cos(radians);
         speed_min=std::min(speed_min,speed);
