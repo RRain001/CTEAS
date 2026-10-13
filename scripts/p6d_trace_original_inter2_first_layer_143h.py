@@ -28,7 +28,7 @@ NH=143
 PLANE=2500
 HEADER="<5i4f"
 H_SIZE=struct.calcsize(HEADER)
-REC_SIZE=H_SIZE+2*PLANE*4
+REC_SIZE=H_SIZE+4*PLANE*4
 # This helper only READS original COMMON state, then writes its own file;
 # it does not modify the original arrays, calls, or output stream.
 HELPER=r"""
@@ -51,6 +51,9 @@ c --- P6D source-locked write-only layer-1 INTER2 chain trace
       write(94) us(1,1),vs(1,1),us(1,2),vs(1,2)
       write(94) ((u(i,j,1),i=1,nx),j=1,ny)
       write(94) ((v(i,j,1),i=1,nx),j=1,ny)
+c --- Before INTER2: the corrected FRADJ+SLOPE first-guess UG/VG.
+      write(94) ((ug(i,j,1),i=1,nx),j=1,ny)
+      write(94) ((vg(i,j,1),i=1,nx),j=1,ny)
       return
       end
 """
@@ -58,6 +61,7 @@ STATION_COLS=("surface_u","surface_v","upper_u","upper_v")
 TOL={
     "surface_u":(2.e-5,1.e-5),"surface_v":(2.e-5,1.e-5),
     "upper_u":(2.e-5,1.e-5),"upper_v":(2.e-5,1.e-5),
+    "pre_inter2_u":(1.e-4,1.e-5),"pre_inter2_v":(1.e-4,1.e-5),
     "inter2_u":(1.e-4,1.e-5),"inter2_v":(1.e-4,1.e-5)
 }
 def digest(path):
@@ -88,7 +92,11 @@ def read_orig(path):
             raise RuntimeError(f"source INTER2 sequence/size/hour mismatch {h+1}")
         u=struct.unpack_from("<2500f",raw,begin+H_SIZE)
         v=struct.unpack_from("<2500f",raw,begin+H_SIZE+PLANE*4)
-        yield dict(zip(STATION_COLS,station))|{"inter2_u":u,"inter2_v":v}
+        ug=struct.unpack_from("<2500f",raw,begin+H_SIZE+2*PLANE*4)
+        vg=struct.unpack_from("<2500f",raw,begin+H_SIZE+3*PLANE*4)
+        yield dict(zip(STATION_COLS,station))|{
+            "inter2_u":u,"inter2_v":v,
+            "pre_inter2_u":ug,"pre_inter2_v":vg}
 def read_native_grid(path):
     raw=path.read_bytes()
     if len(raw)!=9*PLANE*4:
@@ -129,7 +137,8 @@ def main():
     if len(rows)!=NH or list(rows[0])!=["hour_end",*STATION_COLS]:
         raise RuntimeError("native first-layer station input stream mismatch")
     stats={k:{"compared":0,"exceedances":0,"max_abs":0.,
-              "first_exceedance":None,"worst":None,"hour_exceedances":{}}
+              "first_exceedance":None,"worst":None,"hour_exceedances":{},
+              "source_and_native_both_missing":0}
            for k in TOL}
     for h,orig in enumerate(read_orig(source),1):
         actual_row=rows[h-1]
@@ -137,8 +146,10 @@ def main():
             raise RuntimeError("native station INTER2 hour-end label drift")
         for field in TOL:
             reference=orig[field]
+            native_name=(field.replace("pre_inter2_","slope_corrected_")
+                          if field.startswith("pre_inter2_") else field)
             got=(float(actual_row[field]) if field in STATION_COLS else
-                 read_native_grid(native/f"{field}_{label(h)}.f32"))
+                 read_native_grid(native/f"{native_name}_{label(h)}.f32"))
             rr=(reference,) if field in STATION_COLS else reference
             nn=(got,) if field in STATION_COLS else got
             abstol,reltol=TOL[field]
@@ -146,8 +157,16 @@ def main():
             for n,(ref,val) in enumerate(zip(rr,nn)):
                 if not(math.isfinite(ref) and math.isfinite(val)):
                     raise RuntimeError(f"nonfinite source/candidate {field} hour {h}")
-                delta=abs(ref-val)
+                # The original sets EDIT=999, EDITL=900 (calmet.for L5185).
+                # This C++ selected case represents invalid upper-layer
+                # observations as 999999 with editl=999998. Both are missing:
+                # INTER2 excludes each by its own EDITL. Compare their
+                # missingness semantics, not the raw sentinel magnitudes.
                 st["compared"]+=1
+                if field.startswith("upper_") and ref>=900. and val>=999998.:
+                    st["source_and_native_both_missing"]+=1
+                    continue
+                delta=abs(ref-val)
                 if delta>st["max_abs"]:
                     st["max_abs"]=delta
                     st["worst"]={"hour":h,"i":n%NX+1,"j":n//NX+1,
@@ -174,7 +193,8 @@ def main():
         "trace_file_sha256":digest(source),
         "no_original_intermediate_injected_into_native":True,
         "levels_compared":[1],"hours":NH,"grid":[NX,NY],
-        "stage":"DIAGNO source 6072 after INTER2 U/V and station US/VS level1",
+        "stage":"DIAGNO original post-FRADJ/SLOPE UG/VG + post-INTER2 U/V + station US/VS level1",
+        "missing_data_policy":"Original EDITL=900, EDIT=999 vs native EDITL=999998, EDIT=999999: both invalid upper-layer values compare as semantically missing; no numeric acceptance claim for missing data",
         "fields":stats,"tolerances":TOL,
         "full_143h_UVW_pass":False}
     a.out.parent.mkdir(parents=True,exist_ok=True)
