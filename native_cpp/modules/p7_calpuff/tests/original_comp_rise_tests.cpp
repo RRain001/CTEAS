@@ -25,8 +25,8 @@ struct Fixture {
         hour.ipgt.assign(n,4);
         hour.u.assign(n*3,0.002F);
         hour.v.assign(n*3,0.0F);
-        // Native RISEWIND MUST select lower-layer wind during rise and
-        // final-rise wind in upper layer after XFINAL.
+        // Source-ordered RISEWIND samples the rise profile only while
+        // XTOTB<XFINAL; after final rise, COMP uses ADVECT's puff layer.
         for(std::size_t k=n;k<2*n;++k)hour.u[k]=0.006F;
         for(std::size_t k=2*n;k<3*n;++k)hour.u[k]=0.010F;
         statics.cell_face_m={0,100,200,300};
@@ -88,7 +88,10 @@ void scenario(int hours) {
                 result.after.travel_time_s==static_cast<float>((i+1)*3600) &&
                 state.completed_substeps==static_cast<std::size_t>(i+1) &&
                 state.committed_lid_steps==static_cast<std::size_t>(i+1) &&
-                result.rise.adjusted.passes==2 &&
+                // Vendor COMP L10505–10519 calls RISEWIND only while rising.
+                // Once XTOTB>=XFINAL the original uses ADVECT directly.
+                result.rise.adjusted.passes==
+                    (old.total_distance_m<230.0F ? 2 : 0) &&
                 result.after.x_cells>old.x_cells &&
                 result.after.y_cells==old.y_cells &&
                 result.after.total_distance_m>old.total_distance_m &&
