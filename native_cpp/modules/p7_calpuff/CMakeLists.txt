@@ -1182,8 +1182,20 @@ add_test(NAME cteas_p7_original_comp_exit_source_contract
 # METFM1/GRISE/RISEWIND/PG/VMASS inner substeps, no FSTEP dynamic split.
 add_executable(cteas_p7_original_comp_mxsam99_unsplit_tests
   tests/original_comp_mxsam99_unsplit_tests.cpp)
+# Restricted native CALCPF gridded point-source bridge: PFSCRN/PFSAMP/VCOUP.
+# This is NOT a replacement for full original receptor-specific PUFRECS.
+add_library(cteas_p7_original_flat_calcpf STATIC src/original_flat_calcpf.cpp)
+target_include_directories(cteas_p7_original_flat_calcpf PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_flat_calcpf PUBLIC cteas_p7_receptors)
+if(MSVC)
+  target_compile_options(cteas_p7_original_flat_calcpf PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_flat_calcpf PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
 target_link_libraries(cteas_p7_original_comp_mxsam99_unsplit_tests PRIVATE
-  cteas_p7_original_comp_rise_hourly cteas_p7_receptors)
+  cteas_p7_original_comp_rise_hourly cteas_p7_receptors cteas_p7_original_flat_calcpf)
 if(MSVC)
   target_compile_options(cteas_p7_original_comp_mxsam99_unsplit_tests PRIVATE /W4 /WX)
 else()

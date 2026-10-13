@@ -1,5 +1,6 @@
 #include "cteas/puff/original_comp_rise_hourly.hpp"
 #include "cteas/puff/receptors.hpp"
+#include "cteas/puff/original_flat_calcpf.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -615,6 +616,52 @@ void test(){
              <<" PFSAMP_GRID_UNITS=YES"
              <<" HOUR_ATOMIC=YES"
              <<" FULL_PUFRECS_VCBAR=NOT_YET_ACCEPTED\\n";
+
+    // Actual 2500-cell native substep field: PFSCRN -> PFSAMP -> VCOUP,
+    // no caller-invented vertical coupling coefficient, and 1-hour
+    // output retained as 2500-element REAL4 receptor accumulator.
+    ReceptorSet flat_grid;
+    flat_grid.gridded=true;
+    flat_grid.mesh_down=1;
+    flat_grid.ibsamp=1;flat_grid.jbsamp=1;
+    flat_grid.iesamp=50;flat_grid.jesamp=50;
+    flat_grid.sampling_nx=50;flat_grid.sampling_ny=50;
+    flat_grid.spacing_km=0.1;
+    flat_grid.grid.assign(2500,Receptor{});
+    auto planar_kernel=make_original_flat_calcpf_sampler(
+        flat_grid,100.0F,3600.0F);
+    OriginalCompRiseMultiPuffHours native_receptors;
+    auto single_mass=fast;
+    single_mass.mass.species_count=1;
+    single_mass.mass.emission_rate={2.0};
+    const auto flat1=native_receptors.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+        met,geo,ctl,pg,false,single_mass,wide_domain,2,2500,planar_kernel);
+    need(flat1.receptor_concentrations.size()==2500 &&
+         flat1.steps.size()>1 && native_receptors.completed_hours()==1,
+         "flat 2500-grid CALCPF not called through real FSTEP COMP");
+    std::vector<float> rebuilt(2500,0.0F);
+    for(const auto& sub:flat1.steps){
+        need(sub.step.receptor_increments.size()==2500,
+             "flat CALCPF did not return a complete 2500-cell substep");
+        for(std::size_t i=0;i<2500;++i){
+            const auto delta=sub.step.receptor_increments[i];
+            need(std::isfinite(delta),"flat CALCPF nonfinite species field");
+            rebuilt[i]+=delta;
+        }
+    }
+    need(rebuilt==flat1.receptor_concentrations,
+         "flat CALCPF FSTEP sum changed REAL4 operation order");
+    bool bad_flat=false;
+    try{(void)make_original_flat_calcpf_sampler(flat_grid,0.0F,3600.0F);}
+    catch(const std::invalid_argument&){bad_flat=true;}
+    need(bad_flat,"flat CALCPF silently accepted invalid MET grid spacing");
+    std::cout<<"P7_NATIVE_2500_FLAT_CALCPF_HOOK=PASS"
+             <<" RECEPTORS=2500"
+             <<" PFSCRN=ORIGINAL_REAL4 PFSAMP=ORIGINAL_REAL4"
+             <<" VCOUP=SOURCE_PORTED"
+             <<" FSTEP_ACCUMULATOR=REAL4"
+             <<" PUFRECS=NOT_YET_INTEGRATED"
+             <<" FROZEN_2022_PARITY=NOT_YET_ACCEPTED\\n";
 
     const auto state=driver.motion(1);
     const auto count=driver.completed_hours();
