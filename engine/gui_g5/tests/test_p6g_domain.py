@@ -2,10 +2,16 @@
 import json
 import math
 import tempfile
+from contextlib import redirect_stdout
+from io import StringIO
+from unittest.mock import patch
+
+import yaml
 import unittest
 from pathlib import Path
 
 from engine.gui_g5.case_setup import initial_config, write_case_grid
+from engine.gui_g5 import p6_domain
 from engine.gui_g5.p6_domain import Station, fit_domain, read_stations
 from engine.run_met.common import lon_lat_to_utm_km
 from engine.run_met.station_grid import load_strict_utm_grid,lon_lat_in_utm_grid
@@ -74,6 +80,39 @@ class G6DomainTests(unittest.TestCase):
                 {"id":"S1","kind":"surface","lon":117.14,"lat":31.94},
                 {"id":"U1","kind":"upper","lon":117.16,"lat":31.92}]))
             self.assertEqual(len(read_stations(p)),2)
+
+    def test_cli_default_dryrun_apply_and_frozen_case_protection(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            (root/"run/met").mkdir(parents=True)
+            case_file=root/"case.yaml"
+            case_file.write_text(yaml.safe_dump(self.config),encoding="utf-8")
+            write_case_grid(root,self.config)
+            station_file=root/"stations.json"
+            station_file.write_text(json.dumps([
+                {"kind":r.kind,"id":r.id,"lon":r.lon,"lat":r.lat}
+                for r in self.stations
+            ]),encoding="utf-8")
+            args=["--case","G6_TEST","--stations",str(station_file),
+                  "--max-horizontal-cells","2500"]
+            with patch.object(p6_domain,"case_dir",return_value=root):
+                prior=case_file.read_bytes()
+                buf=StringIO()
+                with redirect_stdout(buf):
+                    self.assertEqual(p6_domain.main(args),0)
+                self.assertEqual(prior,case_file.read_bytes())
+                self.assertFalse(json.loads(buf.getvalue())["applied"])
+                buf=StringIO()
+                with redirect_stdout(buf):
+                    self.assertEqual(p6_domain.main(args+["--apply"]),0)
+                self.assertTrue(json.loads(buf.getvalue())["applied"])
+                self.assertGreater(float(
+                    yaml.safe_load(case_file.read_text())["preprocess"]["grid"]["resolution_km"]),0.1)
+                stable=case_file.read_bytes()
+                (root/"run/met/met.dat").write_text("PROTECTED")
+                with self.assertRaises(SystemExit):
+                    p6_domain.main(args+["--apply"])
+                self.assertEqual(stable,case_file.read_bytes())
 
     def test_immutable_planner_and_cost_separation(self):
         source=initial_config("IMMUTABLE")
