@@ -228,6 +228,13 @@ int main(int argc,char** argv){
             }
             std::size_t compare=std::min(hour.steps.size(),original.size());
             std::size_t aligned=0,first=0;
+            std::size_t bitwise_sigz=0,bitwise_sigz_triplet=0;
+            std::size_t bitwise_trajectory=0,bitwise_old_xy=0;
+            std::size_t first_sigma_difference=0;
+            const auto same_float=[](float x,float y){
+                return std::bit_cast<std::uint32_t>(x)==
+                       std::bit_cast<std::uint32_t>(y);
+            };
             float dx=0,dy=0;
             for(std::size_t i=0;i<compare;++i){
                 const auto& a=hour.steps[i];
@@ -263,6 +270,22 @@ int main(int argc,char** argv){
                              <<"\n";
                 }
 
+                const auto& n=a.step;
+                const bool match_sigz=same_float(n.vertical_after.sigma_z_m,b.f[43]);
+                const bool match_all_sigz=
+                    same_float(static_cast<float>(n.sigma.adjust.sigma_z_begin_m),b.f[56]) &&
+                    same_float(static_cast<float>(n.sigma.adjust.sigma_z_mid_m),b.f[57]) &&
+                    same_float(static_cast<float>(n.sigma.adjust.sigma_z_end_m),b.f[58]);
+                if(match_sigz)++bitwise_sigz;
+                if(match_all_sigz)++bitwise_sigz_triplet;
+                if(!match_sigz && first_sigma_difference==0)
+                    first_sigma_difference=i+1;
+                if(same_float(n.before.x_cells,b.f[0]) &&
+                   same_float(n.before.y_cells,b.f[1]))++bitwise_old_xy;
+                if(same_float(n.after.x_cells,b.f[38]) &&
+                   same_float(n.after.y_cells,b.f[39]) &&
+                   same_float(n.after.total_distance_m,b.f[40]))
+                    ++bitwise_trajectory;
                 if(a.puff_id!=b.i[3]||a.ksam!=b.i[16]||
                    a.step.after.x_cells!=b.f[38]||
                    a.step.after.y_cells!=b.f[39]){
@@ -281,6 +304,14 @@ int main(int argc,char** argv){
                      <<" FIRST_DX_CELLS="<<dx<<" FIRST_DY_CELLS="<<dy
                      <<" RETIRED="<<hour.retired.size()
                      <<" COMP_NUMERICAL_PARITY=OPEN\\n";
+            std::cout<<"P7_HEFEI_FIRSTHOUR_REAL4_PHYSICS_AUDIT"
+                     <<" EXACT_OLD_XY="<<bitwise_old_xy
+                     <<" EXACT_NEW_XY_AND_DISTANCE="<<bitwise_trajectory
+                     <<" EXACT_STORED_SIGZ="<<bitwise_sigz
+                     <<" EXACT_SIGZ_BEGIN_MID_END="<<bitwise_sigz_triplet
+                     <<" FIRST_SIGZ_DIFFERENCE="<<first_sigma_difference
+                     <<" TOTAL_REFERENCE="<<original.size()
+                     <<" REAL_CASE_CONCENTRATIONS=NOT_YET_ACCEPTED\\n";
         }catch(const std::exception& e){
             std::cout<<"P7_HEFEI_FIRST_HOUR_NATIVE_COMP_BLOCKER="
                      <<e.what()
