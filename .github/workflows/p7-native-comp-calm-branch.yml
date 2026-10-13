@@ -29,7 +29,10 @@ jobs:
           set -euo pipefail
           build="${RUNNER_TEMP}/p7-calm-${GITHUB_RUN_ID}"
           cmake -S native_cpp/modules/p7_calpuff -B "$build" -DCMAKE_BUILD_TYPE=Debug
-          cmake --build "$build" --parallel 2 --target cteas_p7_original_comp_calm_tests
-          ctest --test-dir "$build" -R '^cteas_p7_native_comp_calm_branch_atomic$' --output-on-failure -V
+          cmake --build "$build" --parallel 2 --target cteas_p7_original_comp_calm_tests cteas_p7_original_comp_calm_integrated_tests
+          ctest --test-dir "$build" -R '^cteas_p7_native_comp_calm_(branch_atomic|idopt1_transaction) --output-on-failure -V
+          echo 'P7_CALM_TRANSPORT_AND_ATOMIC_REFUSAL=PASS'
+          echo 'P7_ORIGINAL_CALM_SIGTY_IDOPT1_AND_989_SUBSTEPS=NOT_YET_ACCEPTED'
+ --output-on-failure -V
           echo 'P7_CALM_TRANSPORT_AND_ATOMIC_REFUSAL=PASS'
           echo 'P7_ORIGINAL_CALM_SIGTY_IDOPT1_AND_989_SUBSTEPS=NOT_YET_ACCEPTED'
