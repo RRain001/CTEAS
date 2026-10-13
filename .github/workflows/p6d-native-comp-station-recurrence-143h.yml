@@ -184,3 +184,27 @@ jobs:
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/baseline.log
           if-no-files-found: warn
           retention-days: 14
+      - name: Enforce independent 143h U V W scientific parity (not merely workflow completion)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-native-comp-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 - "$root/coupled_uvw_reference.json" <<'PY'
+          import json,sys
+          from pathlib import Path
+          path=Path(sys.argv[1])
+          if not path.is_file():
+              raise SystemExit("P6D full 143h U/V/W: NO SCIENTIFIC REPORT; FAIL")
+          report=json.loads(path.read_text())
+          fields=[f for f in report.get("fields",[])
+                  if f.get("label","").startswith(("U-LEV","V-LEV","WFACE"))]
+          failures={f["label"]:f["exceedances"] for f in fields
+                    if f.get("exceedances",0)!=0}
+          if len(fields)!=27 or report.get("intervals")!=143:
+              raise SystemExit("P6D full 143h U/V/W: wrong coverage; FAIL")
+          if failures:
+              print("P6D_FULL_UVW=FAIL_NUMERIC",failures)
+              raise SystemExit(1)
+          print("P6D_FULL_UVW=PASS_ORIGINAL_143H_ALL_27_FIELDS")
+          PY
