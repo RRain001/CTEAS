@@ -169,6 +169,27 @@ add_test(NAME cteas_p7_calm_idopt1_original_fortran_subset
     --probe "$<TARGET_FILE:cteas_p7_calm_sigma_probe>"
     --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 
+# Original CALPUFF MDISP=3 calm TURBSET fallback from original Hefei
+# SVMIN/SWMIN arrays, never an inferred land/water category.
+add_executable(cteas_p7_original_turbset_mdisp3_tests
+  tests/original_turbset_mdisp3_tests.cpp)
+target_include_directories(cteas_p7_original_turbset_mdisp3_tests PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_turbset_mdisp3_tests PRIVATE
+  cteas_p7_control)
+if(MSVC)
+  target_compile_options(cteas_p7_original_turbset_mdisp3_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_turbset_mdisp3_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+set(P7_CALM_HEFEI_CONTROL
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp")
+if(EXISTS "${P7_CALM_HEFEI_CONTROL}")
+  add_test(NAME cteas_p7_original_turbset_mdisp3_hefei_minima
+    COMMAND cteas_p7_original_turbset_mdisp3_tests "${P7_CALM_HEFEI_CONTROL}")
+endif()
+
 # P7F: CALPUFF 7.2.1 MDRY=1 dry deposition for the selected real-case species
 # methods (H-3 computed gas, HE-3 no removal).
 add_library(cteas_p7_dry_deposition STATIC src/dry_deposition.cpp)

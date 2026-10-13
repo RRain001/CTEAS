@@ -23,6 +23,7 @@ jobs:
           sparse-checkout: |
             /native_cpp/modules/p7_calpuff/**
             /engine/vendor/src/CALPUFF_v7.2.1_L150618/**
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
       - name: Compare native IDOPT1 against untouched SIGTY and SIGTZ
         shell: bash
         run: |
@@ -30,5 +31,6 @@ jobs:
           test -n "$(command -v gfortran || true)"
           build="${RUNNER_TEMP}/p7-calm-idopt1-${GITHUB_RUN_ID}"
           cmake -S native_cpp/modules/p7_calpuff -B "$build" -DCMAKE_BUILD_TYPE=Debug
-          cmake --build "$build" --parallel 2 --target cteas_p7_calm_sigma_probe cteas_p7_calm_sigma_tests
-          ctest --test-dir "$build" -R '^cteas_p7_calm_idopt1_(native_subset|original_fortran_subset)$' --output-on-failure -V
+          cmake --build "$build" --parallel 2 --target cteas_p7_calm_sigma_probe cteas_p7_calm_sigma_tests cteas_p7_original_turbset_mdisp3_tests
+          ctest --test-dir "$build" -R '^(cteas_p7_calm_idopt1_(native_subset|original_fortran_subset)|cteas_p7_original_turbset_mdisp3_hefei_minima) --output-on-failure -V
+ --output-on-failure -V
