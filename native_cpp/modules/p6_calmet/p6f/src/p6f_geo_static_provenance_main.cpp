@@ -107,13 +107,14 @@ void check_scalar(int actual,int expected,const std::string& name) {
 }
 int main(int argc,char** argv) {
     try {
-        if(argc!=7||std::string(argv[1])!="--geo"||
+        if((argc!=7&&argc!=9)||std::string(argv[1])!="--geo"||
            std::string(argv[3])!="--deck"||
-           std::string(argv[5])!="--candidate")
+           std::string(argv[5])!="--candidate"||
+           (argc==9&&std::string(argv[7])!="--emit-source-statics"))
             throw std::runtime_error(
-                "usage: p6f_geo_static_provenance --geo GEO.DAT --deck met.inp --candidate CALMET.DAT");
+                "usage: p6f_geo_static_provenance --geo GEO.DAT --deck met.inp --candidate CALMET.DAT [--emit-source-statics OUT]");
         const auto deck=input_text(argv[4]);
-        const auto file=cteas::p6f::read_calmet_dat21(argv[6]);
+        auto file=cteas::p6f::read_calmet_dat21(argv[6]);
         const auto& hdr=file.header;
         const auto& stat=file.statics;
         check_scalar(hdr.nx,number_i(deck,"NX"),"NX");
@@ -169,12 +170,38 @@ int main(int argc,char** argv) {
             check_array(stat.upper_y_m,std::vector<float>{north_m},
                         "YUSTA/met.inp",compared);
         }
+        if(argc==9) {
+            // Rebuild every supported case static from the primary GEO/deck,
+            // not from the CALMET.DAT file under audit. Original hourly fields,
+            // commentary, and unsupported header metadata are retained solely
+            // as the comparison envelope, not independently generated here.
+            require(hdr.nssta==1&&hdr.nusta==1&&hdr.npsta==0&&hdr.nowsta==0,
+                    "source-static emission supports exactly one surface/upper station and no precipitation stations");
+            auto& out=file.statics;
+            out.zface_m=face_list(deck);
+            out.z0_m=geo.z0_m;
+            out.ilandu.assign(geo.landuse.begin(),geo.landuse.end());
+            out.elev_m=geo.terrain_m;
+            out.xlai=geo.lai;
+            const auto xy_s=station_xy(deck,"SS1");
+            const auto xy_u=station_xy(deck,"US1");
+            const float xorig=number_f(deck,"XORIGKM")*1000.f;
+            const float yorig=number_f(deck,"YORIGKM")*1000.f;
+            out.surface_x_m={xy_s[0]*1000.f-xorig};
+            out.surface_y_m={xy_s[1]*1000.f-yorig};
+            out.upper_x_m={xy_u[0]*1000.f-xorig};
+            out.upper_y_m={xy_u[1]*1000.f-yorig};
+            out.nears.assign(2500,1);
+            cteas::p6f::write_calmet_dat21(argv[8],file);
+        }
         std::cout<<"{\"status\":\"PASS_P6F_INDEPENDENT_SOURCE_STATIC_VALUES\","
                  <<"\"compared_static_values\":"<<compared<<","
                  <<"\"grid\":["<<hdr.nx<<","<<hdr.ny<<","<<hdr.nz<<"],"
-                 <<"\"source\":\"GEO.DAT+met.inp; never derived from original CALMET.DAT\","
+                 <<"\"source\":\"GEO.DAT+met.inp independent of CALMET.DAT static inputs\","
+                 <<"\"static_records_rebuilt\":"<<(argc==9?"true":"false")<<","
                  <<"\"header_comments_independent\":false,"
                  <<"\"all_stations_independent\":false,"
+                 <<"\"hourly_field_inputs_independent\":false,"
                  <<"\"full_P6F_acceptance\":false}\n";
         return 0;
     }catch(const std::exception& e){
