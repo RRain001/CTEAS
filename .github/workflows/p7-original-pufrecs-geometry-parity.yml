@@ -36,16 +36,8 @@ jobs:
             --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
             --probe "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_pufrecs_geometry_probe"
           ctest --test-dir "$RUNNER_TEMP/p7-pufrecs" -R '^cteas_p7_original_native_terrain_real_input_adapter$' --output-on-failure
-          ctest --test-dir "$RUNNER_TEMP/p7-pufrecs" -R '^cteas_p7_original_puffct2_source_contract
-          python3 native_cpp/modules/p7_calpuff/reference/compare_original_puffct2.py \
-            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
-            --probe "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_puffct2_probe"
- --output-on-failure
-          ctest --test-dir "$RUNNER_TEMP/p7-pufrecs" -R '^cteas_p7_hefei_frozen_met_terrain_source
-          python3 native_cpp/modules/p7_calpuff/reference/compare_original_puffct2.py \
-            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
-            --probe "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_puffct2_probe"
- --output-on-failure
+          ctest --test-dir "$RUNNER_TEMP/p7-pufrecs" -R '^cteas_p7_original_puffct2_source_contract$' --output-on-failure
+          ctest --test-dir "$RUNNER_TEMP/p7-pufrecs" -R '^cteas_p7_hefei_frozen_met_terrain_source$' --output-on-failure
           "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_native_terrain_frozen_met_tests" \
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
           python3 native_cpp/modules/p7_calpuff/reference/compare_original_puffct2.py \
