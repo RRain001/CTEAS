@@ -36,8 +36,8 @@ CPP_PROBE = """            if(i==11 && j==18) {
             }
 """
 
-QH_PRE_ANCHOR = "          if (itprog.lt.2) call airden(pres,temp2d,rho)\\n"
-QH_POST_ANCHOR = "      2               nx,ny,mcloud,ccgrid,ipsifcn,qh,ustar,el)\\n"
+QH_PRE_ANCHOR = "          if (itprog.lt.2) call airden(pres,temp2d,rho)\n"
+QH_POST_ANCHOR = "      2               nx,ny,mcloud,ccgrid,ipsifcn,qh,ustar,el)\n"
 QH_PRE_PROBE = """          open(92,file='dgm_qh_pre_probe.txt',status='unknown',
      1         position='append')
           write(92,'(7(ES24.15E3,1X))') ug(23,29,1),vg(23,29,1),
@@ -51,19 +51,19 @@ QH_POST_PROBE = """          open(91,file='dgm_qh_post_probe.txt',status='unknow
      1         ustar(23,29),el(23,29)
           close(91)
 """
-CPP_QH_PRE_ANCHOR = "        const auto stable_state=cteas::p6e::stable_elustr(stable);\\n"
+CPP_QH_PRE_ANCHOR = "        const auto stable_state=cteas::p6e::stable_elustr(stable);\n"
 CPP_QH_PRE_PROBE = """        if(h==131U) {
             const auto qk=static_cast<std::size_t>(28*nx+22);
             std::fprintf(stderr,
-                "CTEAS_QH_PRE %.9g %.9g %.9g %.9g %.9g %.9g %.9g\\\\n",
+                "CTEAS_QH_PRE %.9g %.9g %.9g %.9g %.9g %.9g %.9g\\n",
                 corrected_u[qk],corrected_v[qk],surface_state.temp_k[qk],
                 diag_rho[qk],heat_flux[qk],geo.z0_m[qk],sinalpc[qk]);
         }
 """
-CPP_QH_POST_ANCHOR = "        // SLOPE now consumes the source-ordered *post-ELUSTR* QH field.\\n"
+CPP_QH_POST_ANCHOR = "        // SLOPE now consumes the source-ordered *post-ELUSTR* QH field.\n"
 CPP_QH_POST_PROBE = """        if(h==131U) {
             const auto qk=static_cast<std::size_t>(28*nx+22);
-            std::fprintf(stderr,"CTEAS_QH_POST %.9g %.9g %.9g\\\\n",
+            std::fprintf(stderr,"CTEAS_QH_POST %.9g %.9g %.9g\\n",
                 heat_flux[qk],stable_state.ustar_ms[qk],
                 stable_state.monin_obukhov_m[qk]);
         }
