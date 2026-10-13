@@ -156,6 +156,7 @@ std::string hour_label(std::chrono::sys_seconds clock){
 struct Arguments {
     fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,zi_file,el_file,zii_file,el_cell_file,comp_state_prefix;
     int hours=143;
+    int first_hour=0; // original zero-based hourly label index
     fs::path out()const{return out_dir;}
 };
 } // namespace
@@ -183,9 +184,13 @@ int main(int argc,char** argv){
         else if(flag=="--el-cell")args.el_cell_file=next();
         else if(flag=="--comp-state-prefix")args.comp_state_prefix=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
+        else if(flag=="--first-hour")args.first_hour=std::stoi(next());
         else throw std::invalid_argument("unknown argument "+flag);
     }
     if(args.out_dir.empty())throw std::invalid_argument("--out is required");
+    if(args.first_hour<0||args.first_hour>=143||args.hours<1||
+       args.hours>143-args.first_hour)
+        throw std::invalid_argument("P6D hour window exceeds 143 original intervals");
     if(!args.comp_state_prefix.empty() &&
        (!args.zi_file.empty()||!args.zii_file.empty()||
         !args.el_file.empty()||!args.el_cell_file.empty()))
@@ -351,7 +356,7 @@ int main(int argc,char** argv){
 
     const auto start=std::chrono::sys_days{std::chrono::year{2022}/1/1};
     std::vector<std::chrono::sys_seconds> labels;
-    for(int n=1;n<=args.hours;++n)
+    for(int n=1;n<=args.first_hour+args.hours;++n)
         labels.push_back(start+std::chrono::hours{n});
 
     // Original PREPDI hourly upper-air preparation (VERTAV layer averages plus
@@ -485,7 +490,11 @@ int main(int argc,char** argv){
             throw std::runtime_error("COMP state missing native P6E DPTT provenance");
         const auto read_block=[&](const std::string& suffix)->std::vector<float> {
             const fs::path path(stem+suffix);
-            const auto expected=std::size_t(args.hours)*std::size_t(nx*ny)*4U;
+            // A native per-hour DIAGNO step must never demand future COMP
+            // state. Hour n reads at most COMP states 0..n-1.
+            const auto required_hours=(args.first_hour==0?args.hours:
+                                       args.first_hour+args.hours-1);
+            const auto expected=std::size_t(required_hours)*std::size_t(nx*ny)*4U;
             if(!fs::is_regular_file(path)||fs::file_size(path)<expected ||
                fs::file_size(path)%std::size_t(nx*ny*4)!=0)
                 throw std::runtime_error("native COMP missing/truncated field "+path.string());
@@ -534,7 +543,8 @@ int main(int argc,char** argv){
     std::size_t similt_levels_min=9,similt_levels_max=0;
     int written=0;
     float speed_min=1.e9f,speed_max=-1.e9f;
-    for(std::size_t h=0;h<labels.size()&&written<args.hours;++h){
+    for(std::size_t h=static_cast<std::size_t>(args.first_hour);
+        h<labels.size()&&written<args.hours;++h){
         const auto clock=labels[h];
         const auto& hour=hourly_upper[h];
         // Surface observation at this hour; fail closed on missing winds.
@@ -1184,6 +1194,7 @@ int main(int argc,char** argv){
           "\"effect_measured\": \"level 1 of the first-guess field changes by up to 0.45 m/s against a run without the exclusion while levels 2-9 stay bit-identical\", "
           "\"RMIN2\": \"-1.0 in the deck; original PREPDI L5831 skips a surface station only when FMIN < RMIN2, which cannot happen for a negative RMIN2, so with RMIN2=-1.0 no surface station is ever skipped. This case has one surface station, so the rule is satisfied but inert; multi-surface-station cases would need it modelled\"},\n";
     meta<<"  \"hourly_labels\": "<<written<<",\n";
+    meta<<"  \"first_hour_zero_based\": "<<args.first_hour<<",\n";
     meta<<"  \"hour_label\": \"END\", \"hour_label_note\": \"YYYY-MM-DD_HH in UTC; the label is the hourly interval end\",\n";
     meta<<"  \"surface_wind_speed_range_mps\": ["<<speed_min<<", "<<speed_max<<"],\n";
     meta<<"  \"blend\": {\"product\": \"blend_u_*.f32 / blend_v_*.f32 = the closed DIAGNO field (INTER2, SMOOTH, DIVCEL); the pre-tail INTER2 stage stays available as inter2_u/v_*.f32\", "
