@@ -113,6 +113,41 @@ jobs:
             --candidate "$RUNNER_TEMP/p6f-native-with-source-static.dat" \
             --out "$RUNNER_TEMP/p6f-native-full45-verdict.json"
           echo "PASS_P6F_INDEPENDENT_GEO_DECK_STATIC_IN_NATIVE_143H_45FIELD_CANDIDATE"
+          "$RUNNER_TEMP/p6f-source-build/cteas_p6f_geo_static_provenance" \
+            --geo "$root/geo/makegeo/geo.dat" \
+            --deck "$root/run/met/met.inp" \
+            --candidate "$native" \
+            --emit-native-header "$RUNNER_TEMP/p6f-native-independent-header.dat" \
+            | tee "$RUNNER_TEMP/p6f-independent-header-report.json"
+          # Independently rebuilt met.inp comments must change header bytes.
+          if cmp -s "$native" "$RUNNER_TEMP/p6f-native-independent-header.dat"; then
+            echo "FAIL_P6F_NATIVE_HEADER_NOT_INDEPENDENT"; exit 1
+          fi
+          "$RUNNER_TEMP/p6f-source-e22/p6e_calmet_dat21" compare \
+            --reference "$root/run/met/met.dat" \
+            --candidate "$RUNNER_TEMP/p6f-native-independent-header.dat" \
+            --out "$RUNNER_TEMP/p6f-independent-header-45field-verdict.json"
+          python3 native_cpp/modules/p7_calpuff/reference/original_decode_calmet_hourly.py \
+            "$RUNNER_TEMP/p6f-native-independent-header.dat" \
+            --report "$RUNNER_TEMP/p6f-independent-header-p7-decoder.json"
+          python3 - <<'PY'
+          import os,pathlib,struct
+          file=pathlib.Path(os.environ['RUNNER_TEMP'])/'p6f-native-independent-header.dat'
+          with file.open('rb') as f:
+              length=struct.unpack('<i',f.read(4))[0]
+              f.seek(length+4,1)
+              marker=struct.unpack('<i',f.read(4))[0]
+              assert marker==4
+              ncomments=struct.unpack('<i',f.read(4))[0]
+              assert struct.unpack('<i',f.read(4))[0]==4
+              start=struct.unpack('<i',f.read(4))[0]
+              assert start==132
+              comment=f.read(132)
+              assert comment.startswith(b'CTEAS P6F native OUTHD')
+              assert ncomments>=1000
+          print('PASS_P6F_SOURCE_GENERATED_CONTROL_COMMENTS',ncomments)
+          PY
+          echo "PASS_P6F_NATIVE_INDEPENDENT_HEADER_WITH_NATIVE_HOURLY_45_FIELDS"
       - name: Archive source static reconstruction evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -123,5 +158,8 @@ jobs:
             ${{ runner.temp }}/p6f-negative.out
             ${{ runner.temp }}/p6f-native-static-report.json
             ${{ runner.temp }}/p6f-native-full45-verdict.json
+            ${{ runner.temp }}/p6f-independent-header-report.json
+            ${{ runner.temp }}/p6f-independent-header-45field-verdict.json
+            ${{ runner.temp }}/p6f-independent-header-p7-decoder.json
           if-no-files-found: warn
           retention-days: 14
