@@ -1,0 +1,222 @@
+name: P6D original CALMET WIND1 all 143 real hours sharded
+
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/compare_realcase_wind1_143h_shard.py'
+      - '.github/workflows/p6d-original-wind1-143h-shards.yml'
+      - 'native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/trace_original_prepdi_143h.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p6d-original-wind1-143h-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  four-hour-shards:
+    name: Original REAL4 WIND1 Hefei hours ${{ matrix.first }}-${{ matrix.last }}
+    runs-on:
+      - "${{ matrix.pool }}"
+      - Linux
+      - X64
+    timeout-minutes: 65
+    defaults:
+      run:
+        working-directory: p6d_wind1_143h_checkout
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - { first: 1, last: 36, pool: cteas-compute }
+          - { first: 37, last: 72, pool: cteas-compute }
+          - { first: 73, last: 108, pool: cteas-compute }
+          - { first: 109, last: 143, pool: cteas-reserve }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6d_wind1_143h_checkout
+      - uses: ./p6d_wind1_143h_checkout/.github/actions/cteas-linux-toolchain
+      - name: Restore immutable 2022 input-contract files
+        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+      - name: Build source-first independently ported WIND1 and actual-case producer
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$RUNNER_TEMP/p6d-wind1-shard-${{ matrix.first }}-${{ matrix.last }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cmake -S native_cpp/modules/p6_calmet/p6d_original_rebuild \
+            -B "$scratch/independent" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$scratch/independent" --target cteas_p6d_source_wind1_real4 --parallel 1
+          cmake -S native_cpp/modules/p6_calmet \
+            -B "$scratch/realcase" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$scratch/realcase" --target cteas_p6_realcase_wind_field --parallel 1
+      - name: Compare ALL source first-guess U/V cells over assigned real-hour interval
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$RUNNER_TEMP/p6d-wind1-shard-${{ matrix.first }}-${{ matrix.last }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/compare_realcase_wind1_143h_shard.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --p6d "$scratch/realcase/cteas_p6_realcase_wind_field" \
+            --cpp "$scratch/independent/cteas_p6d_source_wind1_real4" \
+            --fortran gfortran-11 \
+            --first-hour "${{ matrix.first }}" --last-hour "${{ matrix.last }}" \
+            --out "$scratch/evidence"
+      - name: Archive original source parity (independent source vs real-case emission)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6d-original-wind1-hours-${{ matrix.first }}-${{ matrix.last }}
+          path: ${{ runner.temp }}/p6d-wind1-shard-${{ matrix.first }}-${{ matrix.last }}-${{ github.run_id }}-${{ github.run_attempt }}/evidence/wind1_143h_shard_parity.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  original-prepdi-143h:
+    name: CALMET original PREPDI station US VS REAL4, byte-identical MET.DAT
+    runs-on: [cteas-reserve, Linux, X64]
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: p6d_prepdi_original_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6d_prepdi_original_checkout
+      - uses: ./p6d_prepdi_original_checkout/.github/actions/cteas-linux-toolchain
+      - name: Source-verify all frozen 2022 station and meteorological inputs
+        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+      - name: Run untouched and write-only instrumented CALMET against identical frozen case
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/trace_original_prepdi_143h.py trace \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --out "$RUNNER_TEMP/p6d-prepdi-source-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --hours 143 --compiler gfortran-11
+      - name: Upload source-exact PREPDI observations and proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6d-source-prepdi-143h-real4
+          path: |
+            ${{ runner.temp }}/p6d-prepdi-source-${{ github.run_id }}-${{ github.run_attempt }}/source_original_prepdi_143h.bin
+            ${{ runner.temp }}/p6d-prepdi-source-${{ github.run_id }}-${{ github.run_attempt }}/original_prepdi_manifest.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  original-prepdi-vs-cpp-input:
+    name: ALL 143 hours original PREPDI vs C++ station wind input parity
+    needs: [original-prepdi-143h]
+    runs-on: [cteas-reserve, Linux, X64]
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: p6d_prepdi_comparison_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6d_prepdi_comparison_checkout
+      - uses: ./p6d_prepdi_comparison_checkout/.github/actions/cteas-linux-toolchain
+      - uses: actions/download-artifact@v4
+        with:
+          name: p6d-source-prepdi-143h-real4
+          path: ${{ runner.temp }}/p6d-prepdi-source-data-${{ github.run_id }}
+      - name: Produce all 143h C++ station profile fixtures from frozen case
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+          scratch="$RUNNER_TEMP/p6d-prepdi-compare-${{ github.run_id }}-${{ github.run_attempt }}"
+          cmake -S native_cpp/modules/p6_calmet -B "$scratch/build" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$scratch/build" --target cteas_p6_realcase_wind_field --parallel 1
+          mkdir -p "$scratch/evidence"
+          "$scratch/build/cteas_p6_realcase_wind_field" \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --hours 143 --fixtures "$scratch/fixtures" --out "$scratch/fields"
+      - name: Compare unmodified Fortran PREPDI US VS against every real-case C++ hour
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$RUNNER_TEMP/p6d-prepdi-compare-${{ github.run_id }}-${{ github.run_attempt }}"
+          source="$RUNNER_TEMP/p6d-prepdi-source-data-${{ github.run_id }}"
+          python3 native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/trace_original_prepdi_143h.py compare \
+            --manifest "$source/original_prepdi_manifest.json" \
+            --dump "$source/source_original_prepdi_143h.bin" \
+            --fixture-dir "$scratch/fixtures" \
+            --out "$scratch/evidence"
+      - name: Archive source-to-C++ station observation 143-hour parity failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6d-original-prepdi-vs-modern-143h
+          path: ${{ runner.temp }}/p6d-prepdi-compare-${{ github.run_id }}-${{ github.run_attempt }}/evidence/prepdi_143h_original_vs_cpp.json
+          if-no-files-found: warn
+
+  independent-kernel-reacceptance:
+    name: Light pool original source gate ${{ matrix.id }}
+    runs-on: [cteas-light, Linux, X64]
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include:
+          - { id: WIND1, target: cteas_p6d_source_wind1_real4, test: p6d_rebuild_independent_wind1_source_real4 }
+          - { id: SIMILT, target: cteas_p6d_source_similt_real4, test: p6d_rebuild_independent_similt_psiud_original_real4_real8 }
+          - { id: INTER2, target: cteas_p6d_source_inter2_real4, test: p6d_rebuild_independent_inter2_real4_real8_source }
+          - { id: DIAGNO, target: cteas_p6d_source_diagno_tail_real4, test: p6d_rebuild_independent_diagno_final_real4 }
+          - { id: FRADJ, target: cteas_p6d_source_fradj_real4, test: p6d_rebuild_original_source_fradj_real4 }
+          - { id: SLOPE, target: cteas_p6d_source_slope_real4, test: p6d_rebuild_independent_original_slope_real4 }
+          - { id: ORDER, target: none, test: p6d_rebuild_original_fr_adj_slope_inter2_order }
+          - { id: SOURCE, target: syntax, test: source-blob-and-trace-syntax }
+    defaults:
+      run:
+        working-directory: p6d_light_source_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6d_light_source_checkout
+          filter: blob:none
+          sparse-checkout: |
+            .github/actions/cteas-linux-toolchain
+            native_cpp/modules/p6_calmet
+            engine/vendor/src/CALMET_v6.5.0_L150223
+      - uses: ./p6d_light_source_checkout/.github/actions/cteas-linux-toolchain
+      - name: Verify one independent original-source numerical gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$RUNNER_TEMP/p6d-light-${{ matrix.id }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$scratch"
+          if [[ "${{ matrix.target }}" == "syntax" ]]; then
+            python3 -m py_compile native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/trace_original_prepdi_143h.py
+            python3 -m py_compile native_cpp/modules/p6_calmet/p6d_original_rebuild/reference/compare_realcase_wind1_143h_shard.py
+            blob="$(git hash-object engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for)"
+            test "$blob" = "437f43bb7f0e51a1919e56664663e1a046986ed0"
+            printf 'PASS_SOURCE_BLOB_AND_PYTHON_SYNTAX %s\n' "$blob" | tee "$scratch/ctest.log"
+          else
+            cmake -S native_cpp/modules/p6_calmet/p6d_original_rebuild -B "$scratch/build" -DCMAKE_BUILD_TYPE=Release
+            if [[ "${{ matrix.target }}" != "none" ]]; then
+              cmake --build "$scratch/build" --target "${{ matrix.target }}" --parallel 1
+            fi
+            ctest --test-dir "$scratch/build" -R "^${{ matrix.test }}$" --output-on-failure --timeout 300 | tee "$scratch/ctest.log"
+          fi
+      - name: Archive optional light-source log
+        id: light_archive
+        uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: p6d-light-original-source-${{ matrix.id }}
+          path: ${{ runner.temp }}/p6d-light-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}/ctest.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Surface lost log archive without changing numerical verdict
+        if: always() && steps.light_archive.outcome == 'failure'
+        run: |
+          echo "::warning::Light-source CTest result is preserved in this job log, but artifact upload failed; do not claim archived evidence."
