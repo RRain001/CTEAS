@@ -116,7 +116,7 @@ def cpp(args):
     source=main.read_text()
     source=inject_once(source,CPP_QH_PRE_ANCHOR,CPP_QH_PRE_PROBE)
     source=inject_once(source,CPP_QH_POST_ANCHOR,CPP_QH_POST_PROBE)
-    source=source.replace("#include <iomanip>","#include <iomanip>\\n#include <cstdio>",1)
+    source=source.replace("#include <iomanip>","#include <iomanip>\n#include <cstdio>",1)
     main.write_text(source)
     print("CXX_AVETMP_AND_QH_FORENSIC_BUILD_ONLY_PROBES_INSTALLED")
 
