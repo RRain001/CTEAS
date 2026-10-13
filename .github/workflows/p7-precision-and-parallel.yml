@@ -443,6 +443,11 @@ jobs:
           # extractor. Keep the 89MB data in RUNNER_TEMP, never commit it.
           ln -s "$base/oracle/case/run/puff/dgm_puffstep.bin" \
             native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_full_143hours.bin
+          # Read-only scientific inventory of ORIGINAL 143h FSTEP behavior.
+          # The vendor SHA is pinned and the audit must never feed solver state.
+          python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/audit_original_fstep_143h.py \
+            --dgm "$base/oracle/case/run/puff/dgm_puffstep.bin" \
+            --report "$base/P7_ORIGINAL_FSTEP_143H_AUDIT.json"
           if command -v g++-12 >/dev/null 2>&1; then
             cpp="$(command -v g++-12)"
           elif command -v g++-11 >/dev/null 2>&1; then
@@ -507,5 +512,6 @@ jobs:
           path: |
             native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_first_six_hours.bin
             native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_first_six_hours_provenance.json
+            ${{ runner.temp }}/p7-six-hours-${{ github.run_id }}-${{ github.run_attempt }}/P7_ORIGINAL_FSTEP_143H_AUDIT.json
           if-no-files-found: warn
           retention-days: 7
