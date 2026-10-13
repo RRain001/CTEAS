@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P6G end-to-end runner: P6D wind producer -> P6F CALMET.DAT writer -> P6E
+"""FORENSIC P6G multi-pass validator (NOT the original one-pass COMP/DIAGNO). P6D wind producer -> P6F CALMET.DAT writer -> P6E
 `emit-realcase` -> 45-field comparison against the frozen 2022 reference.
 
 One command runs the whole chain and prints a per-field verdict table plus a
@@ -227,6 +227,8 @@ def main() -> int:
     parser.add_argument("--p6f-bin", default=None)
     parser.add_argument("--p6e-bin", default=None)
     parser.add_argument("--bridge-bin", default=None)
+    parser.add_argument("--require-native-single-pass", action="store_true",
+                        help="fail closed: multi-pass P6D/P6E cannot certify original COMP/DIAGNO")
     parser.add_argument("--hours", type=int, default=FROZEN_HOURS)
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--original-gamma-dir", default=None,
@@ -245,6 +247,8 @@ def main() -> int:
                         help="reuse an existing <work>/p6d product instead of "
                              "re-running the producer")
     args = parser.parse_args()
+    if args.require_native_single_pass:
+        raise Failure("this forensic multi-pass script cannot certify an independently native single-pass COMP/DIAGNO solver")
 
     repo = pathlib.Path(args.repo).resolve() if args.repo else \
         pathlib.Path(__file__).resolve().parent.parent
@@ -445,6 +449,10 @@ def main() -> int:
 
     # ---- 7. report --------------------------------------------------------
     report = {
+        "scientific_acceptance": "NOT_PASS",
+        "native_single_pass_comp_diagno": False,
+        "original_reference_backfill": {"p6f_statics": True, "p6f_met_fields": True},
+        "scientific_limitation": "Forensic multi-pass with frozen original met.dat backfill; not an independent CALMET.DAT",
         "status": "PASS" if all(
             r["verdict"] in ("PASS", "NOT_PRODUCED") for r in rows_a + rows_b)
             else "FAIL_NUMERIC",
@@ -504,6 +512,7 @@ def main() -> int:
           f"sha256={report['wind_provenance']['A']['p6f_calmet_dat_sha256']}")
     print(f"B wind source  : {met_dat} (frozen)")
     print(f"report         : {report_path}")
+    print("SCIENTIFIC_ACCEPTANCE=NOT_PASS: forensic multi-pass and reference backfill")
     print_table("A) reconstructed wind  vs frozen met.dat", rows_a)
     print_table("B) original wind (control) vs frozen met.dat", rows_b)
     print_table("A - B) error the P6D wind segment propagates through P6E", rows_ab)
