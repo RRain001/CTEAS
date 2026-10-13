@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   source-vs-native-3d:
-    name: Original WIND1 REAL4 full 3D: first-hour layer-by-layer source trace
+    name: "Original WIND1 REAL4 full 3D: first-hour layer-by-layer source trace"
     runs-on: ubuntu-22.04
     timeout-minutes: 65
     steps:
