@@ -45,6 +45,7 @@ struct OriginalPointHourSource {
 // with any MET grid-relative XY, not a hard-coded Hefei source location.
 struct OriginalPointNativeSourceParameters {
     float base_elevation_m=0.0F;
+    float met_spacing_m=0.0F; // original CALMET DELSAM, not release coords
     float initial_sigma_y_m=0.0F;  // original MAX(SYMIN,SYIPT1)
     float initial_sigma_z_m=0.0F;  // original MAX(SZMIN,SZIPT1)
     std::vector<double> emission_rates;
