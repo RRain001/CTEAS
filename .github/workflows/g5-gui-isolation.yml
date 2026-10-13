@@ -1,0 +1,37 @@
+name: G5 copied GUI isolation and native dispatcher
+
+on:
+  pull_request:
+    paths:
+      - "engine/gui_g5/**"
+      - "engine/run_met/station_grid.py"
+      - ".github/workflows/g5-gui-isolation.yml"
+      - "cteas-g5gui"
+  push:
+    branches:
+      - codex/p6g-g5-shared-utm-p4-p5-20261013
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  g5-isolated-native-wiring:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install YAML dependency (no GUI required for source smoke)
+        run: python3 -m pip install --disable-pip-version-check PyYAML
+      - name: Compile every new G5 Python module
+        run: python3 -m compileall -q engine/gui_g5
+      - name: Verify copied GUI has no legacy orchestration entrypoint
+        run: python3 -m unittest discover -s engine/gui_g5/tests -p 'test_*.py' -v
+      - name: Show supported stage matrix (read-only, no native execution)
+        run: |
+          python3 - <<'PY'
+          from engine.gui_g5.pipeline import STAGES, BLOCKED
+          assert set(STAGES) == {'preprocess', 'upperair', 'surface', 'met', 'puff', 'all'}
+          assert all(stage in BLOCKED for stage in ('preprocess', 'upperair', 'met', 'puff', 'all'))
+          print("G5_NATIVE_ONLY_NO_FORTRAN_FALLBACK=PASS")
+          PY
