@@ -9,6 +9,7 @@
 #include "cteas/puff/dry_deposition.hpp"
 #include "cteas/puff/original_turbset_mdisp3.hpp"
 #include <optional>
+#include <stdexcept>
 
 namespace cteas::puff {
 
@@ -40,6 +41,18 @@ struct NativeCalmMdisp3Controls {
     OriginalTurbsetMdisp3 original_turbulence;
     int iwat1=0, iwat2=0;
 };
+// Use the *same* immutable puff.inp and makegeo.inp accepted by the
+// original case, not user supplied/fitted turbulence defaults.
+[[nodiscard]] inline NativeCalmMdisp3Controls original_calm_mdisp3_from_decks(
+    const ControlFile& puff_control,const ControlFile& makegeo_control) {
+    NativeCalmMdisp3Controls out;
+    out.original_turbulence=original_turbset_mdisp3_from_control(puff_control);
+    out.iwat1=makegeo_control.required_int("IWAT1");
+    out.iwat2=makegeo_control.required_int("IWAT2");
+    if(out.iwat1<0||out.iwat1>out.iwat2)
+        throw std::invalid_argument("invalid source MAKEGEO IWAT1/IWAT2");
+    return out;
+}
 struct NeutralCompControls {
     float seconds=3600.0F;
     float source_period_s=3600.0F;
