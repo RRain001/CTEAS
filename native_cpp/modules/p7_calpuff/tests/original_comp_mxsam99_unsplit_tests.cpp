@@ -706,6 +706,33 @@ void test(){
     plume_grid.jbsamp=40;
     const auto plume_sampler=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F);
+    std::size_t sample_diagnostic_count=0;
+    std::size_t nonzero_lower_mass_steps=0;
+    std::size_t positive_concentration_steps=0;
+    const RiseCompSamplingKernel sampled_plume=[&](const RiseCompSamplingState& state) {
+        auto concentrations=plume_sampler(state);
+        const auto present=std::count_if(concentrations.begin(),concentrations.end(),
+                                        [](float v){return v>0.0F;});
+        if(state.vmass.mass_mixed[0]>0.0F)++nonzero_lower_mass_steps;
+        if(present>0)++positive_concentration_steps;
+        if(sample_diagnostic_count<5 || present>0){
+            if(sample_diagnostic_count<5 || positive_concentration_steps<3)
+                std::cerr<<"P7_6H_CALCPF_DIAG"
+                         <<" substep="<<sample_diagnostic_count
+                         <<" old=("<<state.before.x_cells<<","<<state.before.y_cells<<","
+                                      <<state.before.z_m<<")"
+                         <<" new=("<<state.after.x_cells<<","<<state.after.y_cells<<","
+                                      <<state.after.z_m<<")"
+                         <<" qm="<<state.vmass.mass_mixed[0]
+                         <<" qu="<<state.vmass.mass_above[0]
+                         <<" sz_mid="<<state.sigmas.step.sigma_z_mid_m
+                         <<" sy_mid="<<state.sigmas.step.sigma_y_mid_m
+                         <<" h_lid="<<state.vmass.reflecting_lid_m
+                         <<" affected="<<present<<"\\n";
+        }
+        ++sample_diagnostic_count;
+        return concentrations;
+    };
     std::vector<std::vector<float>> six_fields;
     std::size_t meaningful_cells=0;
     {
@@ -717,7 +744,7 @@ void test(){
         for(int h=0;h<6;++h){
             const auto six=six_native.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
                 met,geo,ctl,pg,false,single_mass,wide_domain,99,
-                2500,plume_sampler);
+                2500,sampled_plume);
             need(six.hour_index==static_cast<std::size_t>(h) &&
                  six.receptor_concentrations.size()==2500 &&
                  six_native.completed_hours()==static_cast<std::size_t>(h+1),
@@ -734,6 +761,12 @@ void test(){
              "six-hour OUTPUT lacked period/source/species field records");
         binary.close();
     }
+    if(meaningful_cells==0)
+        std::cerr<<"P7_NATIVE_6H_ZERO_FIELD_DIAGNOSTIC"
+                 <<" sampling_substeps="<<sample_diagnostic_count
+                 <<" mass_present_steps="<<nonzero_lower_mass_steps
+                 <<" positive_receptor_steps="<<positive_concentration_steps
+                 <<" grid_origin_cells=("<<plume_grid.ibsamp<<","<<plume_grid.jbsamp<<")\\n";
     need(meaningful_cells>0,
          "flat CALCPF six-hour output passed on an entirely zero concentration field");
     const auto observed=read_conc_species_fields(binary_path.string(),50,50);
