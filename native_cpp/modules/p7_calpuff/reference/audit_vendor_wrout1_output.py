@@ -203,7 +203,7 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
         report.write_text(json.dumps(out,indent=2)+"\n")
     print("P7_ORIGINAL_WROUT1_AUDIT=PASS "
           f"RECORDS={ORIGINAL_RECORDS} DATA={DATA_RECORDS} "
-          f"NONDATA={NONDATA_RECORDS} MISSING_CPP_NONDATA={NONDATA_RECORDS-2}")
+          f"NONDATA={NONDATA_RECORDS} ECHO={ncomments} METADATA=6")
     print("P7_ORIGINAL_PG_AVET=PASS AVET=60 PGTIME=60 AVERAGING_FACTOR=1")
     print("P7_CPP_WROUT1_143H_CONCENTRATION=NOT_YET_IMPLEMENTED")
     return out

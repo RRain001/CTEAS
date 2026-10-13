@@ -212,7 +212,7 @@ void frozen_wrout1_identifiers(const fs::path& original,
     h.latlon_labels={opt("RLAT0"),opt("RLON0"),
                      opt("XLAT1"),opt("XLAT2")};
     {
-        ConcFileWriter out(native.string(),"2.2","selected typed metadata",{});
+        ConcFileWriter out(native.string(),"7.0","File structure with embedded control file",{});
         out.write_original_wrout1_general_header(h);
         out.write_original_wrout1_source_type_counts(source_counts);
         out.write_original_wrout1_identity(typed);
@@ -224,16 +224,17 @@ void frozen_wrout1_identifiers(const fs::path& original,
     FortranRecordReader generated(native.string(),4,RecordByteOrder::LittleEndian);
     std::vector<std::uint8_t> a,b;
     require(orig.next(a)&&a.size()==96 &&
-            orig.next(a)&&a.size()==4,
-            "original WROUT1 version/count records changed");
+            generated.next(b)&&b.size()==96 && a==b,
+            "source-derived original WROUT1 version record is not binary exact");
+    require(orig.next(a)&&a.size()==4,
+            "original WROUT1 embedded comment count missing");
     std::int32_t comments=0;
     std::memcpy(&comments,a.data(),4);
     require(comments==3218,"original WROUT1 embedded comment count changed");
     for(int i=0;i<comments;++i)
         require(orig.next(a),"original WROUT1 embedded echo truncated");
-    require(generated.next(b)&&b.size()==96 &&
-            generated.next(b)&&b.size()==4,
-            "native typed WROUT1 fixture lacks prefix");
+    require(generated.next(b)&&b.size()==4,
+            "native typed WROUT1 fixture lacks comment-count prefix");
     require(orig.next(a)&&generated.next(b)&&a.size()==300U&&
             a==b,"native source-derived 300B run parameters differ from frozen WROUT1");
     require(orig.next(a)&&generated.next(b)&&a.size()==52U&&
@@ -243,10 +244,10 @@ void frozen_wrout1_identifiers(const fs::path& original,
                 a.size()==bytes&&b.size()==bytes&&a==b,
                 "source-derived WROUT1 metadata differs from frozen original");
     }
-    std::cout<<"P7_ORIGINAL_WROUT1_SIX_TYPED_METADATA=PASS"
-             <<" RECORD_BYTES=300,52,240,15,16,20"
+    std::cout<<"P7_ORIGINAL_WROUT1_VERSION_AND_SIX_TYPED_METADATA=PASS"
+             <<" RECORD_BYTES=96,300,52,240,15,16,20"
              <<" FROZEN_BINARY_RECORDS=BITWISE_EXACT"
-             <<" PREFIX_3218_ECHO=OPEN"
+             <<" EMBEDDED_3218_ECHO=OPEN"
              <<" FULL_PUFF_CON=NOT_YET_ACCEPTED\\n";
 }
 

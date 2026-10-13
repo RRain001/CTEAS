@@ -342,7 +342,7 @@ jobs:
                       cteas_p7_first_hour_state_persistence_real4 \
                       cteas_p7_original_source_dgm_execution_order \
                       cteas_p7_original_wrout1_header_avefactor_audit \
-                      cteas_p7e_original_wrout1_four_typed_metadata; do
+                      cteas_p7e_original_wrout1_version_six_metadata; do
             ctest --test-dir "$build" -N -R "^${name}$" |
               grep -Eq "Test[[:space:]]*#[0-9]+: ${name}" || {
                 echo "::error::Original CALPUFF order gate absent: $name"
