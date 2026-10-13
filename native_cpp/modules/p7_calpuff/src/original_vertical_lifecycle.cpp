@@ -104,6 +104,19 @@ NativeVerticalWind OriginalVerticalLifecycle::sample(
         real4(extent.z_top_m,"ZTOP"));
     return {cell,extent,wind,stable,mixing};
 }
+void OriginalVerticalLifecycle::commit_wdiv_sigma_z(
+    int id,float expected_before,float updated_sigma_z) {
+    const auto it=puffs_.find(id);
+    if(it==puffs_.end())throw std::out_of_range("original WDIV unknown puff");
+    auto& state=it->second;
+    require(!state.vmass_pending &&
+            state.completed_substeps==state.committed_lid_steps &&
+            std::isfinite(expected_before) &&
+            state.sigma_z_m==expected_before &&
+            std::isfinite(updated_sigma_z) && updated_sigma_z>=0.0F,
+            "original WDIV cannot overwrite stale/uncommitted SIGZB");
+    state.sigma_z_m=updated_sigma_z;
+}
 SigmaUpdateResult OriginalVerticalLifecycle::commit_sigma(
     int id,const SigmaUpdateInputs& inputs,
     const SigmaYCurve& yc,const SigmaZCurve& zc,
