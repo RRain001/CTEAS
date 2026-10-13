@@ -6,6 +6,7 @@ on:
     paths:
       - 'scripts/p6d_compare_native_comp_station_143h.py'
       - 'scripts/p6d_trace_original_inter2_first_layer_143h.py'
+      - 'scripts/p6d_trace_original_inter2_first_layer_143h.py'
       - 'scripts/p6d_bisect_original_diagno_stage_boundaries.py'
       - 'scripts/p6d_compare_original_comp_dptt_143h.py'
       - 'scripts/run_p6_end_to_end.py'
