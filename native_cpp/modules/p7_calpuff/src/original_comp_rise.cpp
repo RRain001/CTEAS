@@ -338,8 +338,23 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     // The WDIV field is reconstructed from ORIGINAL hourly CALMET W and
     // ZFACE, never fetched from DGM; CDIV is frozen puff.inp input.
     if(control.original_wdiv){
-        const auto end_cell=original_met_cell(
-            moved.state.x_cells,moved.state.y_cells,met.nx,met.ny);
+        // Source GETCELL/GRIDIJ L82559-82720 CLAMPS the meteorological
+        // end-cell lookup at an outer domain edge. A puff center can
+        // cross the original computational bounds ON THIS SUBSTEP and is
+        // retired only after WDIV/SETPUF. The stricter interior-only
+        // original_met_cell wrapper is correct for the start cell but
+        // not for this end-cell profile lookup.
+        const auto edge=grid_cell({
+            .x_cells=moved.state.x_cells,
+            .y_cells=moved.state.y_cells,
+            .nx=met.nx,.ny=met.ny,
+            .domains=1,.domain=1,.nest_factor=1.0
+        });
+        const OriginalMetCell end_cell{
+            edge.i,edge.j,
+            static_cast<std::size_t>(edge.j-1)*static_cast<std::size_t>(met.nx)+
+            static_cast<std::size_t>(edge.i-1)
+        };
         const auto dz=original_vertical_divergence(
             met,statics,sampled.cell,end_cell,
             r4(sampled.extent.z_bottom_m,"WDIV original ZBOT"),
