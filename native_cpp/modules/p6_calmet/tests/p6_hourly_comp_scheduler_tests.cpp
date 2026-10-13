@@ -38,7 +38,7 @@ struct DeterministicNativeAdapter final : NativeHourPhysics {
         if (stage == NativeHourStage::CommitOutput) {
             frame.fields.u_mps.assign(22500, 1.0f);
             frame.fields.v_mps.assign(22500, 1.0f);
-            if (!omit_w) frame.fields.w_face_mps.assign(22500, 0.0f);
+            if (!omit_w) frame.fields.w_face_mps.assign(25000, 0.0f);
             frame.fields.temperature_k.assign(22500, 280.0f);
             frame.fields.qh_wm2.assign(2500, 25.0f);
             frame.fields.ustar_mps.assign(2500, 0.3f);
@@ -109,6 +109,8 @@ int main() {
         need(caught && rollback.completed_hours() == 0,
              "missing native WFACE silently accepted");
 
+        // A nine-layer W array is incorrect: the native DIAGNO state
+        // carries 10 vertical faces; the output writer omits only the bottom.
         native.omit_w = false;
         rollback.advance({0, 1, "hour-0"}, native);
         need(rollback.completed_hours() == 1, "valid retry did not commit");
