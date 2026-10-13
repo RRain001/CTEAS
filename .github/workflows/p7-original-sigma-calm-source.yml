@@ -84,13 +84,13 @@ jobs:
                   print(f'[{lo+i:05d}] {sub[i]}')
                   last=i
           print('P7_CALM_UPSTREAM_MET_PROVENANCE_END')
-          header=re.compile(r'^      subroutine turbset\\b',re.I)
+          header=re.compile(r'^      subroutine turbset\b',re.I)
           starts=[i for i,line in enumerate(lines) if header.match(line)]
           if len(starts)!=1:
               raise RuntimeError(f'exact TURBSET source header expected, got {len(starts)}')
           start=starts[0]
           stops=[i for i in range(start+1,len(lines)) if
-                 re.match(r'^      end\\s*'+'$',lines[i],re.I)]
+                 re.match(r'^      end\s*'+'$',lines[i],re.I)]
           if not stops:
               raise RuntimeError('TURBSET end not found')
           end=stops[0]
