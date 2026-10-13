@@ -1,19 +1,30 @@
-# P7 output chain (original WROUT1 / AVET) audit — 2026-10-12
+# P7 WROUT1 header reconstruction and AVET audit — updated 2026-10-13
 
-Selected frozen case: `hefei5km_2022_reference_case_20261011`, `METFM=1, MWET=0`. This document is an **audit of original Fortran output requirements, not an assertion that native C++ WROUT1 is implemented**.
+Selected frozen case: `hefei5km_2022_reference_case_20261011`, METFM=1, MWET=0, 143 hours, 50×50 receptor sampling grid. This document distinguishes **complete header byte parity** from **unaccepted concentration-value parity**.
 
-## Case-specific AVET behavior
+## Confirmed native-header acceptance
 
-The active control has `AVET=60` minutes and `PGTIME=60` minutes. Therefore the PG sigma-y time-scaling factor `(AVET/PGTIME)^0.2` is exactly **1** for this case. A blanket claim that no output averaging exists is **not** justified: `AVET` is the PG dispersion averaging-time parameter, whereas the model still must accumulate hourly receptor concentration in the original output chronology. Any other deck (`AVET != PGTIME`) requires its own numerical evaluation.
+Frozen original `puff.con`: 1,896,056 bytes, SHA256 `0d51bdb68ff1a5798048bc41067107d3ffe10dc6222f25336df856bcbf48ba10`, **3,655** sequential-unformatted Fortran records.
 
-## WROUT1 / CONC.DAT gap is countable
+The original record sequence is now classified and entirely source-reconstructed up to the first data record:
 
-Frozen original `puff.con`: 1,896,056 bytes; SHA256 `0d51bdb68ff1a5798048bc41067107d3ffe10dc6222f25336df856bcbf48ba10`. There are **3,655** Fortran sequential-unformatted records. The 143 hourly periods contribute **429** data records (period / TOTAL source descriptor / H-3 REAL4 field). **Direct binary decoding in GitHub-hosted original-execution-order CI #38379037656** established that the first two records are the 96-byte version record and four-byte count **3218**, followed immediately by **3,218 embedded 132-byte control/comment records**. This leaves only **six as-yet-unclassified non-hourly records** beyond the comment prefix and 429 data records. The earlier estimate that *3,224 distinct header records had to be reimplemented* was inaccurate: 3,218 are an embedded-text stream, not distinct physical subroutines or metadata tables.
+| Section | Records | Native source of record bodies | Acceptance |
+|---|---:|---|---|
+| CONC.DAT version and embedded-comment count | 2 | CALPUFF WROUT1 v7.0 header + computed comment count | BITWISE PASS |
+| Embedded 132-byte comments | 3,218 | 2 CALPUFF/COORDLIB provenance lines + all 2,098 raw `puff.inp` lines + 3 separator lines + source `MET.DAT` 96-byte identity + 1,114 original MET header comments | BITWISE PASS |
+| General run parameters | 1 × 300 B | Typed C++ serialization in original `WROUT1` L57177–57183 order, selected deck and metre-precision MET grid origin | BITWISE PASS |
+| Source-type counts | 1 × 52 B | Original 13 `INTEGER*4` source-type counts; 1 point source | BITWISE PASS |
+| Run title / H-3 / Bq/m3 / HTO_STACK | 4 (240/15/16/20 B) | Selected deck titles and native typed metadata | BITWISE PASS |
+| 143 hourly period/TOTAL/H-3 fields | 429 | Independently computed native receptor fields **still required** | **NOT ACCEPTED** |
 
-The existing C++ `ConcFileWriter` already writes version/count and an arbitrary vector of 132-byte comment records; **it does not yet independently reconstruct the original 3,218 embedded lines**. Do not copy reference `puff.con` header bytes. The original `puff.inp` has a different text-line count, so reproducing the comment stream requires auditing original Fortran input echo/preprocessing, not merely calling `splitlines()` on `puff.inp`. The six residual records still need original `WROUT1` statement mapping and native construction.
+Thus the **first 3,226 records are byte-for-byte equivalent** to the pinned original, as checked by [GitHub-hosted Ubuntu Actions #38383774781](https://github.com/RRain001/CTEAS/actions/runs/38383774781), test `cteas_p7e_original_wrout1_full_native_header` PASS. All headers are reconstituted from input/source metadata. The C++ output path does **not** copy the original `puff.con` header.
 
-The new `reference/audit_vendor_wrout1_output.py` reads the *real frozen* binary file as Fortran sequential-unformatted records (checking marker/payload/trailer size), validates its SHA256, counts and histograms every record size, and confirms the selected `AVET=PGTIME` branch. It saves first-record byte offsets and sizes as evidence. A separate CTest and fast P7 Runner job gate verify these invariants. Even on PASS, this is **reference output characterization only**.
+The 1,118 lines beyond the direct `puff.inp` echo were isolated and their provenance confirmed: 4 MET separators/identity lines and **1,114** contiguous 132-byte comment records read directly from pinned original `MET.DAT`. The CALMET source SHA256 is `b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30`. Binary audits also confirm `WROUT1` L57127–57275 ordering. The historical estimate that **3,224 independent header records were missing** was incorrect and has been withdrawn.
 
-Next required work is mapping each of the six remaining vendor WROUT1 metadata records and the original 3,218-line embedded-text generation to Fortran write statements and its required run/source/grid metadata, implementing an independently produced C++ record stream (not copying original frozen headers), and comparing every 143-hour concentration value and record. `CONC.DAT` formatting must preserve original record sequencing and REAL*4 storage. The complete model must also keep its per-hour `POINTS1→COMP` state authoritative and satisfy 1h/6h/143h puff-step DGM parity.
+**Important scope:** This is an exact header test for the **selected frozen 2022 configuration** and its specified CALPUFF version, COORDLIB version, WGS-84 datum epoch, original station count and metre-precision MET origin. Other CALPUFF configurations require parameter/source-deck audit before claiming compatibility. The native writer still needs to be plugged into the genuine source-ordered full-case driver to produce the final 429 original numerical records.
 
-**Boundary:** `WROUT1` parity, C++ concentration-value parity, and a complete original-ordered C++ driver are **not implemented / not accepted** by this audit. `MWET=0` means wet removal is outside this frozen-case acceptance.
+## AVET and physical completeness
+
+Here `AVET=PGTIME=60 min`, so the PG sigma-y averaging factor is exactly 1. This does **not** eliminate hourly CALCPF receptor accumulation or justify zero/nonphysical output. Complete P7 acceptance still requires native persistent `POINTS1→COMP→PUFRECS/VCBAR/CALCPF` behavior, dry-case mass bookkeeping, and true 1h, 6h and 143h original concentration-value equivalence.
+
+**Status: WROUT1 HEADER = PASS; FULL REAL 143h puff.con AND P7 FINAL = OPEN.**
