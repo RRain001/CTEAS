@@ -49,11 +49,12 @@ def mutation_bytes(original: bytes) -> tuple[bytes, list[dict]]:
                 # only perturb one finite, non-missing reference meteorological
                 # value. The independent C++ P6E native path must ignore it.
                 first = offset + 4 + 24
-                for cell in (0, 123, 2499):
+                for cell in range(GRID_CELLS):
                     at = first + cell * 4
                     old = struct.unpack_from("<f", image, at)[0]
-                    if old != MISSING and abs(old) < 5000:
-                        new = struct.unpack("<f", struct.pack("<f", old + 0.5))[0]
+                    if old != MISSING and abs(old) < 1.0e10:
+                        delta = max(0.5, abs(old) * 0.01)
+                        new = struct.unpack("<f", struct.pack("<f", old + delta))[0]
                         if old == new:
                             raise RuntimeError("REAL4 mutation unexpectedly rounded away")
                         struct.pack_into("<f", image, at, new)
