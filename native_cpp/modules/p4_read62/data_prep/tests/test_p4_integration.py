@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from engine.run_met.common import GridDef, lon_lat_to_utm_km
 
 from native_cpp.modules.p4_read62.data_prep import download_igra as downloader
 from native_cpp.modules.p4_read62.data_prep import parse_igra_to_csv as parser
@@ -41,10 +42,12 @@ class SelectionIntegrationTest(unittest.TestCase):
                         coverage=valid / exp, eligible=valid * 5 > exp * 4,
                         soundings_cleaned=valid, soundings_dropped=0)
 
+        x, y = lon_lat_to_utm_km(117.14, 31.94, 50, True)
+        grid = GridDef("UTM", 50, "N", "WGS-84", x-2.5, y-2.5, 50, 50, 0.1, 1, [0.0, 20.0])
         fake_raw = lambda sid, out: (self.root / (sid + "-data.txt"), False, None)
         with patch.object(downloader, "DATA_ROOT", self.root), \
              patch.object(downloader, "parse_center", return_value=(31.94, 117.14)), \
-             patch.object(downloader, "parse_grid", return_value=(0.1, 50, 50)), \
+             patch.object(downloader, "load_strict_utm_grid", return_value=grid), \
              patch.object(downloader, "load_station_list", return_value=stations), \
              patch.object(downloader, "download_igra_data", side_effect=fake_raw), \
              patch.object(parser, "observed_year_coverage", side_effect=scan), \
@@ -65,6 +68,7 @@ class SelectionIntegrationTest(unittest.TestCase):
         self.assertTrue(all(x["site_type"] == "OBSERVED" for x in rows))
         self.assertTrue(all(x["lat"] == x["source_lat"] and x["lon"] == x["source_lon"] for x in rows))
         self.assertEqual(len(audit["selected"]), 2)
+        self.assertEqual(audit["selection_geometry"], "STRICT_WGS84_UTM_GRID_CMN_SW_CORNER_CLOSED_EDGES")
 
     def test_none_inside_nearest_qualifying_single_proxy(self):
         rc, rows, audit = self.select(2022, {
