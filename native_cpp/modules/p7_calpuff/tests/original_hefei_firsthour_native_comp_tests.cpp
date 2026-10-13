@@ -165,6 +165,12 @@ int main(int argc,char** argv){
         ctrl.max_sample_distance_cells=static_cast<float>(sample[0]);
         ctrl.calm_threshold_ms=0.5F;
         ctrl.max_sampling_steps=99;
+        const auto cdiv=deck.required_float_list("CDIV");
+        demand(cdiv.size()==2 && cdiv[0]==0.0 && cdiv[1]==0.0,
+               "frozen 2022 CDIV thresholds were silently substituted");
+        ctrl.original_wdiv=NativeOriginalWdivControls{
+            static_cast<float>(cdiv[0]),static_cast<float>(cdiv[1])};
+
         DispersionSetup pg;
         pg.mdisp=3;
         pg.averaging_factor=1;
@@ -176,6 +182,15 @@ int main(int argc,char** argv){
         try {
             const auto hour=driver.advance_hour_point_mxsam99_adaptive_bounded(
                  met,geo,ctrl,pg,false,src,bounds);
+            if(!hour.steps.empty()){
+                std::cout<<"P7_HEFEI_FIRSTHOUR_NATIVE_WDIV"
+                         <<" ORIG_FIRST_SIGZ_IN="<<original.front().f[22]
+                         <<" NAT_FIRST_SIGZ_IN="<<hour.steps.front().step.sigma.step.sigma_z_begin_m
+                         <<" ORIG_FIRST_SIGZ_OUT="<<original.front().f[43]
+                         <<" NAT_FIRST_SIGZ_OUT="<<hour.steps.front().step.vertical_after.sigma_z_m
+                         <<" VERTICAL_DIVERGENCE=SOURCE_PORTED"
+                         <<" REAL4_NUMERICAL_PARITY=UNDER_TEST\\n";
+            }
             std::size_t compare=std::min(hour.steps.size(),original.size());
             std::size_t aligned=0,first=0;
             float dx=0,dy=0;
