@@ -72,18 +72,17 @@ jobs:
                     f'xynew=({f[38]:.9g},{f[39]:.9g}) sigin=({f[21]:.9g},{f[22]:.9g})')
           print('P7_ORIGINAL_ADMISSION_SOURCE_REVIEW=PASS NATIVE_ADMISSIONS=NOT_YET_ACCEPTED')
           PY
-      - name: Execute real 2022 MET first-hour independent stack input gate
+      - name: Execute real Hefei source and 54 puff admission gates
         shell: bash
         run: |
           set -euo pipefail
           test -s project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
           test -s project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+          test -s native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin
           build="${RUNNER_TEMP}/p7-firsthour-input-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           cmake -S native_cpp/modules/p7_calpuff -B "$build" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$build" --parallel 2 --target \
             cteas_p7_original_hefei_source_met_bridge_tests \
             cteas_p7_hefei_firsthour_native_comp_tests
-          ctest --test-dir "$build" -R '^cteas_p7_hefei_(source_met_stack_bridge|real_54_puff_native_admissions)
+          ctest --test-dir "$build" -R '^cteas_p7_hefei_(source_met_stack_bridge|real_54_puff_native_admissions)$' --output-on-failure -V
           echo 'P7_FIRST_HOUR_NATIVE_PRFIN_AND_POINT_ADMISSIONS=PASS FULL_COMP_PARITY=OPEN'
- --output-on-failure -V
-          echo 'P7_FIRST_HOUR_NATIVE_PRFIN_DGM=PASS SOURCE_REAL4=BITWISE COMPLETE_COMP=NOT_YET_ACCEPTED'
