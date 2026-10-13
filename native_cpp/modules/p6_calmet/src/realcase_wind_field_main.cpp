@@ -715,6 +715,10 @@ int main(int argc,char** argv){
                   first.vvw_surface1);
         write_f32(args.out()/("wind1_vvw_upper1_"+hour_label(clock)+".f32"),
                   first.vvw_upper1);
+        write_f32(args.out()/("wind1_pre_vvw_surface1_"+hour_label(clock)+".f32"),
+                  first.pre_vvw_surface1);
+        write_f32(args.out()/("wind1_pre_vvw_upper1_"+hour_label(clock)+".f32"),
+                  first.pre_vvw_upper1);
         write_f32(args.out()/("wind1_vvw_before_surface1_"+hour_label(clock)+".f32"),
                   first.vvw_surface_before1);
         write_f32(args.out()/("wind1_vvw_before_upper1_"+hour_label(clock)+".f32"),

@@ -38,6 +38,8 @@ struct Wind1FirstGuessSelectedFields {
     std::vector<float> rsq_surface,rsq_upper;
     // Final level-one weights after BIAS and upper missing-value redistribution.
     std::vector<float> vvw_surface1,vvw_upper1;
+    // Weights after BETA/GAMMA, before any calm or upper-missing reallocation.
+    std::vector<float> pre_vvw_surface1,pre_vvw_upper1;
     // VVW after BIAS/calm weighting but BEFORE upper missing-data rebalance.
     std::vector<float> vvw_surface_before1,vvw_upper_before1;
 };
@@ -98,6 +100,8 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
     out.rsq_upper.assign(cells,0.f);
     out.vvw_surface1.assign(cells,0.f);
     out.vvw_upper1.assign(cells,0.f);
+    out.pre_vvw_surface1.assign(cells,0.f);
+    out.pre_vvw_upper1.assign(cells,0.f);
     out.vvw_surface_before1.assign(cells,0.f);
     out.vvw_upper_before1.assign(cells,0.f);
 
@@ -138,6 +142,10 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
             }
             float vsurface=beta*rsq_surface;
             float vupper=gamma*rsq_upper;
+            if(k==0){
+                out.pre_vvw_surface1[cell]=vsurface;
+                out.pre_vvw_upper1[cell]=vupper;
+            }
             if(c.icalm==0&&first_speed<0.0001f&&k>0){
                 if(vsurface<0.9999f) {
                     vupper=vupper/(1.f-vsurface);
