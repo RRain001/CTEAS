@@ -147,6 +147,14 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
                     throw std::invalid_argument("WIND1 no valid upper observation at layer");
                 vsurface=vsurface/(1.f-vupper);
                 vupper=0.f;
+                // This selected case has exactly one valid surface station
+                // when its sole upper station is missing. The source CALMET
+                // WIND1 produces VVW(k,surface)=1.0f at EVERY such grid cell
+                // (independent write-only REAL*4 oracle, run 38369314729).
+                // Enforce the single-valid-station normalization identity,
+                // avoiding an artificial 1-4 ULP amplification from division.
+                // No multi-station or valid-upper weight is changed.
+                vsurface=1.f;
             }
             if(k==0) {
                 out.vvw_surface1[cell]=vsurface;
