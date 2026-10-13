@@ -384,6 +384,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     dispersion.step.puff_height_m=before.z_m;
     dispersion.step.mid_time_s=bookkeeping.mid_time_s;
     dispersion.step.mid_distance_km=bookkeeping.mid_distance_km;
+    float current_receptor_bvf=0.0F;
     OriginalTerrainSigmaInputs terrain_inputs;
     const OriginalTerrainSigmaInputs* selected_terrain=nullptr;
     if(control.mctadj2){
@@ -425,6 +426,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
                 r4(sampled.extent.z_top_m,"COMP PTLAPS ZTOP"),
                 control.mctadj2->minimum_pt_gradient_k_per_m);
         }
+        current_receptor_bvf=bvf;
         terrain_inputs.brunt_vaisala_s=bvf;
         terrain_inputs.met_spacing_m=control.met_spacing_m;
         selected_terrain=&terrain_inputs;
@@ -541,7 +543,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             state.buoyancy_variance_m2,
             state.initial_sigma_y_squared_m2,
             state.minimum_sigma_y_m,state.minimum_sigma_z_m,
-            ctadj2_step
+            ctadj2_step,current_receptor_bvf,ws
         };
         receptor_increments=sampling_kernel(at_receptor);
         for(float increment:receptor_increments){
