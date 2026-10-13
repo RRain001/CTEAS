@@ -231,7 +231,8 @@ jobs:
             -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_BUILD_TYPE=Release \
             -DP6F_REPO_ROOT="$GITHUB_WORKSPACE/original_locked_case"
           cmake --build "$RUNNER_TEMP/p6e-native-p6f" \
-            --target cteas_p6f_p6e_source_metadata --parallel 2
+            --target cteas_p6f_p6e_source_metadata \
+                     cteas_p6f_geo_static_provenance --parallel 2
       - name: Run native 143h with independent GEO and deck metadata replacing original CALMET for P6E
         shell: bash
         run: |
@@ -243,10 +244,19 @@ jobs:
             --bridge "$RUNNER_TEMP/p6e-native-p6e/p6e_p6c_hourly_bridge" \
             --cgamma "$RUNNER_TEMP/p6e-native-p6d/cteas_p6_native_cgamma_grid_143h" \
             --p6e-source-builder "$RUNNER_TEMP/p6e-native-p6f/cteas_p6f_p6e_source_metadata" \
+            --p6f-writer "$RUNNER_TEMP/p6e-native-p6f/cteas_p6f_geo_static_provenance" \
             --work "$RUNNER_TEMP/p6e-source-only-143" --hours 143
           grep -q '"p6e_reference_is_geo_deck_metadata_only": true' \
             "$RUNNER_TEMP/p6e-source-only-143/native_cpp_hourly_manifest.json"
           test -s "$RUNNER_TEMP/p6e-source-only-143/p6e_geo_deck_metadata_only.dat"
+          grep -q '"independent_p6f_source_header_written": true' \
+            "$RUNNER_TEMP/p6e-source-only-143/native_cpp_hourly_manifest.json"
+          independent="$RUNNER_TEMP/p6e-source-only-143/native_causal_independent_header_calmet.dat"
+          test -s "$independent"
+          baseline="$RUNNER_TEMP/original-metadata-baseline/native_causal_independent_header_calmet.dat"
+          test -s "$baseline"
+          cmp "$baseline" "$independent"
+          echo "PASS_P6_NO_ORIGINAL_CALMET_INPUT_143H_SOURCE_ONLY_FULL_OUTHD_BIT_EXACT"
       - name: Compare every real 1h meteorological Fortran record against frozen prior result
         shell: bash
         run: |
@@ -287,7 +297,7 @@ jobs:
         run: |
           set -euo pipefail
           original="$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat"
-          candidate="$RUNNER_TEMP/p6e-source-only-143/native_causal_calmet.dat"
+          candidate="$RUNNER_TEMP/p6e-source-only-143/native_causal_independent_header_calmet.dat"
           "$RUNNER_TEMP/p6e-native-p6e/p6e_calmet_dat21" compare \
             --reference "$original" --candidate "$candidate" \
             --out "$RUNNER_TEMP/p6e-source-only-143/original45_verdict.json"
@@ -306,6 +316,7 @@ jobs:
           path: |
             ${{ runner.temp }}/p6e-source-only-143/native_cpp_hourly_manifest.json
             ${{ runner.temp }}/p6e-source-only-143/original45_verdict.json
+            ${{ runner.temp }}/p6e-source-only-143/p6f-native-header.log
             ${{ runner.temp }}/p6e-source-only-143/p6e_source_metadata.log
             ${{ runner.temp }}/p6e-source-only-143/p6e_geo_deck_metadata_only.dat
           if-no-files-found: warn
