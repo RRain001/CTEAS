@@ -1,7 +1,12 @@
 #include "cteas/puff/original_comp_rise_hourly.hpp"
 #include "cteas/puff/receptors.hpp"
 #include "cteas/puff/original_flat_calcpf.hpp"
+#include "cteas/puff/hourly_conc.hpp"
 #include <algorithm>
+#include <bit>
+#include <chrono>
+#include <filesystem>
+#include <cstdint>
 #include <cmath>
 #include <iostream>
 #include <optional>
@@ -662,6 +667,84 @@ void test(){
              <<" FSTEP_ACCUMULATOR=REAL4"
              <<" PUFRECS=NOT_YET_INTEGRATED"
              <<" FROZEN_2022_PARITY=NOT_YET_ACCEPTED\\n";
+
+    // A strictly limited 1h -> 6h output continuation: same native
+    // puff lifetime and flat CALCPF 2500-cell hook, source-typed OUTPUT
+    // period/descriptor/H-3 records, and bitwise REAL4 read-back. The
+    // vendor WROUT1 full header and real Hefei 2022 values remain OPEN.
+    // First validate a physically nonzero near-ground synthetic puff.
+    RiseCompSamplingState known;
+    known.puff_id=99;
+    known.before.x_cells=5.0F; known.before.y_cells=5.5F;
+    known.before.z_m=10.0F;
+    known.after.x_cells=6.0F; known.after.y_cells=5.5F;
+    known.after.z_m=10.0F;
+    known.after_setpuf_before_lid.puff_code=1;
+    known.after_setpuf_before_lid.vmass_pending=true;
+    known.vmass.puff_code=1;
+    known.vmass.reflecting_lid_m=100.0F;
+    known.vmass.mass_mixed={2.0F};
+    known.vmass.mass_above={0.0F};
+    known.sigmas.step.sigma_y_mid_m=50.0;
+    known.sigmas.step.sigma_y_end_m=50.0;
+    known.sigmas.step.sigma_z_mid_m=30.0;
+    known.step_seconds=60.0F;
+    const auto known_cells=planar_kernel(known);
+    need(known_cells.size()==2500 && known_cells[5+5*50]>0.0F &&
+         known_cells[2499]==0.0F,
+         "flat source-ported VCOUP/PFSAMP receptor result was not localized/positive");
+
+    const auto binary_path=std::filesystem::temp_directory_path() /
+        ("cteas-p7-flat6h-"+std::to_string(
+            std::chrono::steady_clock::now().time_since_epoch().count())+".con");
+    std::vector<std::vector<float>> six_fields;
+    {
+        ConcFileWriter binary(binary_path.string(),"2.2",
+            "P7 restricted native six-hour test",{});
+        HourlyConcSeriesWriter series(binary,
+            original_total_source_descriptor(510885.0F,3531269.0F),50,50);
+        OriginalCompRiseMultiPuffHours six_native;
+        for(int h=0;h<6;++h){
+            const auto six=six_native.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+                met,geo,ctl,pg,false,single_mass,wide_domain,99,
+                2500,planar_kernel);
+            need(six.hour_index==static_cast<std::size_t>(h) &&
+                 six.receptor_concentrations.size()==2500 &&
+                 six_native.completed_hours()==static_cast<std::size_t>(h+1),
+                 "flat CALCPF failed original across-hour stateful source continuation");
+            ConcPeriod hour{};
+            hour.begin_year=2022;hour.begin_julian=1;hour.begin_hour=h;
+            hour.end_year=2022;hour.end_julian=1;hour.end_hour=h+1;
+            series.write_hour(hour,six.receptor_concentrations);
+            six_fields.push_back(six.receptor_concentrations);
+        }
+        need(series.hours_written()==6 && binary.records_written()==18,
+             "six-hour OUTPUT lacked period/source/species field records");
+        binary.close();
+    }
+    const auto observed=read_conc_species_fields(binary_path.string(),50,50);
+    const auto periods=read_conc_periods(binary_path.string());
+    need(observed.size()==6 && periods.size()==6,
+         "six-hour source-typed OUTPUT period/species count mismatched");
+    for(std::size_t hour=0;hour<6;++hour){
+        need(observed[hour].species_index==1 &&
+             periods[hour].begin_hour==static_cast<int>(hour) &&
+             periods[hour].end_hour==static_cast<int>(hour+1) &&
+             observed[hour].values.size()==2500,
+             "six-hour native field timestamp or H-3 source descriptor mismatch");
+        for(std::size_t i=0;i<2500;++i)
+            need(std::bit_cast<std::uint32_t>(observed[hour].values[i])==
+                 std::bit_cast<std::uint32_t>(six_fields[hour][i]),
+                 "six-hour native CALCPF field bytes changed during OUTPUT");
+    }
+    std::filesystem::remove(binary_path);
+    std::cout<<"P7_NATIVE_FLAT_CALCPF_OUTPUT_6H=PASS"
+             <<" HOURS=6 RECORDS=18 RECEIVERS=2500"
+             <<" PERSISTENT_NATIVE_PUFFS=YES"
+             <<" CONCENTRATION_REAL4=BITWISE_READBACK"
+             <<" SOURCE_DESCRIPTOR=ORIGINAL_OUTPUT_LAYOUT"
+             <<" FULL_WROUT1=NOT_YET_ACCEPTED"
+             <<" REAL_2022_PARITY=NOT_YET_ACCEPTED\\n";
 
     const auto state=driver.motion(1);
     const auto count=driver.completed_hours();
