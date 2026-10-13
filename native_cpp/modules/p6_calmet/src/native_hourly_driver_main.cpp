@@ -24,7 +24,7 @@ namespace fs=std::filesystem;
 namespace {
 constexpr const char* kMetHash="b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30";
 struct Options {
-    fs::path source, p6d, p6e, cgamma, bridge, work, p6f_writer;
+    fs::path source, p6d, p6e, cgamma, bridge, work, p6f_writer, p6e_source_builder;
     int hours=6;
     bool emit_source_stage_trace=false;
 };
@@ -54,6 +54,7 @@ Options parse(int argc,char** argv) {
         else if(flag=="--bridge")o.bridge=v;
         else if(flag=="--work")o.work=v;
         else if(flag=="--p6f-writer")o.p6f_writer=v;
+        else if(flag=="--p6e-source-builder")o.p6e_source_builder=v;
         else if(flag=="--hours")o.hours=std::stoi(v);
         else throw std::invalid_argument("unknown argument "+flag);
     }
@@ -74,6 +75,8 @@ Options parse(int argc,char** argv) {
             throw std::invalid_argument("independent P6F native header requires complete 143h source run");
         o.p6f_writer=fs::absolute(o.p6f_writer).lexically_normal();
     }
+    if(!o.p6e_source_builder.empty())
+        o.p6e_source_builder=fs::absolute(o.p6e_source_builder).lexically_normal();
     if(fs::exists(o.work)&&!fs::is_empty(o.work))
         throw std::invalid_argument("work directory not empty: "+str(o.work));
     return o;
@@ -130,16 +133,29 @@ int main(int argc,char** argv){
         const auto upper=o.source/"met/upperair/final/up_58424.dat";
         const auto geo=o.source/"geo/makegeo/geo.dat";
         for(const auto& f:{met,surf,upper,geo,o.p6d,o.p6e,o.bridge,o.cgamma})require(f);
-        if(!o.p6f_writer.empty()) {
-            require(o.p6f_writer);
+        if(!o.p6f_writer.empty())require(o.p6f_writer);
+        if(!o.p6e_source_builder.empty())require(o.p6e_source_builder);
+        if(!o.p6f_writer.empty()||!o.p6e_source_builder.empty())
             require(o.source/"run/met/met.inp");
-        }
         if(cteas::p6f::sha256_hex_file(str(met))!=kMetHash)
             throw std::runtime_error("locked original CALMET.DAT SHA256 mismatch");
         fs::create_directories(o.work);
         const auto observations=o.work/"observations.csv";
         run({str(o.bridge),str(surf),str(upper),"58424",str(observations)},o.work/"bridge.log");
         require(observations);
+        // Optional source-independent P6E *metadata* input. All hourly 45
+        // fields are XMISS in this file. The P6E native-hour mode must supply
+        // every live value from native P6D + P6E and the P4/P5 observation bridge.
+        // The pinned original met.dat is still used upstream by P6D, and is
+        // therefore NOT a whole-P6 reference-free acceptance.
+        fs::path p6e_metadata=met;
+        if(!o.p6e_source_builder.empty()) {
+            p6e_metadata=o.work/"p6e_geo_deck_metadata_only.dat";
+            run({str(o.p6e_source_builder),"--geo",str(geo),
+                 "--deck",str(o.source/"run/met/met.inp"),"--out",
+                 str(p6e_metadata)},o.work/"p6e_source_metadata.log");
+            require(p6e_metadata);
+        }
         const auto history=o.work/"history/comp";
         cteas::calmet::p6::NativeCompHistory history_owner(history);
         std::vector<std::string> hourly_files,station_lines,stage_rows;
@@ -171,7 +187,7 @@ int main(int argc,char** argv){
             station_lines.push_back(flux[1]);
             const auto comp=dir/"comp",hour_met=dir/"met_native_1h.dat";
             std::vector<std::string> e={str(o.p6e),"emit-realcase",
-                "--reference",str(met),"--observations",str(observations),
+                "--reference",str(p6e_metadata),"--observations",str(observations),
                 "--geo-file",str(geo),"--native-hour-comp","1",
                 "--native-p6d-dir",str(diagno),"--station-flux-csv",
                 str(diagno/"station_elustr2.csv"),"--first-hour",std::to_string(hour),
@@ -249,7 +265,9 @@ int main(int argc,char** argv){
         std::string report="{\n  \"status\": \"PASS_CPP_PROCESS_COORDINATOR_EXECUTION\",\n"
             "  \"hours_completed\": "+std::to_string(o.hours)+",\n"
             "  \"native_wind\": true,\n  \"native_previous_hour_comp_state\": true,\n"
-            "  \"original_met_role\": \"CASE_CONTROL_HEADER_ONLY\",\n"
+            "  \"original_met_role\": \"P6D_LOCKED_CASE_REFERENCE_STILL_REQUIRED\",\n"
+            "  \"p6e_reference_is_geo_deck_metadata_only\": "+
+                 std::string(o.p6e_source_builder.empty()?"false":"true")+",\n"
             "  \"in_process_kernel_adapter\": false,\n"
             "  \"comp_history_owner\": \"NativeCompHistory\",\n"
             "  \"independent_p6f_source_header_written\": "+std::string(native_header?"true":"false")+",\n"
