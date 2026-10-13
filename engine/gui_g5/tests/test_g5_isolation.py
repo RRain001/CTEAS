@@ -48,6 +48,23 @@ class G5IsolationTests(unittest.TestCase):
             pipeline.validate_case({**self.data, "preprocess": {
                 **self.data["preprocess"], "stack": {}}})
 
+    def test_edited_centre_reprojects_stack_across_utm_zone(self):
+        # The disk grid starts in UTM 50N. Editing case.yaml to Japan
+        # must publish UTM 54N and immediately use 54N for source x/y.
+        old_grid = load_strict_utm_grid(self.case_root / "grid/grid.cmn")
+        self.assertEqual(old_grid.iutmzn, 50)
+        self.data["preprocess"]["grid"]["center"] = {
+            "longitude": 139.0, "latitude": 35.0}
+        self.data["preprocess"]["stack"] = {
+            "longitude": 139.02, "latitude": 35.01}
+        x, y = case_setup.projected_stack_utm_km(self.data)
+        case_setup.write_case_grid(self.case_root, self.data)
+        new_grid = load_strict_utm_grid(self.case_root / "grid/grid.cmn")
+        self.assertEqual(new_grid.iutmzn, 54)
+        self.assertTrue(lon_lat_in_utm_grid(139.02, 35.01, new_grid))
+        self.assertLess(abs(x - (new_grid.xrefkm + 25)), 5)
+        self.assertLess(abs(y - (new_grid.yrefkm + 25)), 5)
+
     def test_grid_respects_configured_layers_and_rejects_bad_zface(self):
         g = self.data["preprocess"]["grid"]
         g["nz"] = 3
