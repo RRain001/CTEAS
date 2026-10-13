@@ -25,6 +25,18 @@ int main(){
              std::isfinite(lookup.relief(5.2,6.1,5)) &&
              lookup.valley_width(5.2,6.1,1)>=-1,
              "original TRELIEF/VWIDTH/GETELEV native source cache incomplete");
+        // Original CALPUFF GETCELL/GRIDIJ (unlike a strict grid accessor)
+        // clamps the last step of a departing puff to its boundary MET
+        // cell. Its independent GETELEV bilinear interpolation remains
+        // a different, source-defined operation.
+        need(lookup.cell_elevation_msl(-0.2,6.1)==
+                 statics.elevation_m[6*nx] &&
+             lookup.cell_elevation_msl(12.3,6.1)==
+                 statics.elevation_m[6*nx+(nx-1)] &&
+             lookup.relief(-0.2,6.1,5)==lookup.relief(0.0,6.1,5) &&
+             lookup.valley_width(12.3,6.1,1)==
+                 lookup.valley_width(11.3,6.1,1),
+             "source GETCELL did not clamp out-of-domain final puff substep");
         const OriginalPuffct2Result position{
             .x_m=520.0F,.y_m=610.0F,.z_m=30.0F};
         const auto receiver=terrain.receptor(
