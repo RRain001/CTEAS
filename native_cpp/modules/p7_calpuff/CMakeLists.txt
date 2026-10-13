@@ -1157,6 +1157,27 @@ if(EXISTS "${P7_DGM_FULL_143H}")
     COMMAND cteas_p7_original_fstep_trace "${P7_DGM_FULL_143H}" 143)
 endif()
 
+# Vendor COMP early QALL retirement (L10450) and post-step puff-center
+# domain exit (L11400). CALPUFF original XB/XE/YB/YE supplied by caller.
+add_library(cteas_p7_original_comp_exit STATIC src/original_comp_exit.cpp)
+target_include_directories(cteas_p7_original_comp_exit PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_exit PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_exit PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+target_link_libraries(cteas_p7_original_comp_rise_hourly PUBLIC cteas_p7_original_comp_exit)
+add_executable(cteas_p7_original_comp_exit_tests tests/original_comp_exit_tests.cpp)
+target_link_libraries(cteas_p7_original_comp_exit_tests PRIVATE cteas_p7_original_comp_exit)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_exit_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_exit_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_original_comp_exit_source_contract
+  COMMAND cteas_p7_original_comp_exit_tests)
+
 # Selected REAL4 COMP old/new MXSAM=99 outer-hour execution and native
 # METFM1/GRISE/RISEWIND/PG/VMASS inner substeps, no FSTEP dynamic split.
 add_executable(cteas_p7_original_comp_mxsam99_unsplit_tests
