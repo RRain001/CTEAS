@@ -35,7 +35,7 @@ def main() -> None:
     required=require_clean_run(finished,"P6F_INDEPENDENT_OUTHD",143)
     layout=listing_evidence(finished["listing"])
     values=concentration_stats(finished["concentration"])
-    if values.get("total",0)<=0 or values.get("maximum",0)<=0:
+    if values["values"]<=0 or values["nonzero"]<=0 or values["maximum"]<=0:
         raise RuntimeError("P6F_CALPUFF original did not produce finite positive nonzero data")
     result={
         "status":"PASS_P6F_UNMODIFIED_ORIGINAL_CALPUFF_READS_INDEPENDENT_OUTHD",
