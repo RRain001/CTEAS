@@ -998,3 +998,25 @@ else()
 endif()
 add_test(NAME cteas_p7_native_metfm1_grise_risewind
   COMMAND cteas_p7_original_rise_met_tests)
+
+# A deterministic, transactional native COMP *hour* over multiple puffs.
+# The tested fixture uses caller admissions, not original POINTS1/SWAP.
+add_library(cteas_p7_original_comp_hourly STATIC src/original_comp_hourly.cpp)
+target_include_directories(cteas_p7_original_comp_hourly PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_comp_hourly PUBLIC cteas_p7_original_comp_neutral)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_hourly PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_hourly PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7_original_comp_hourly_tests tests/original_comp_hourly_tests.cpp)
+target_link_libraries(cteas_p7_original_comp_hourly_tests PRIVATE cteas_p7_original_comp_hourly)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_hourly_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_hourly_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+foreach(HOURS IN ITEMS 1 6 143)
+  add_test(NAME cteas_p7_native_comp_pg_multipuff_${HOURS}h
+           COMMAND cteas_p7_original_comp_hourly_tests ${HOURS})
+endforeach()
