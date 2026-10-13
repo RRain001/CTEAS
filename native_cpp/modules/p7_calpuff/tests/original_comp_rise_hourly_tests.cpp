@@ -109,11 +109,18 @@ void run(int total_hours){
             const int released=rec.puff_id==1?0:rec.puff_id==2?6:70;
             const auto clock=static_cast<std::size_t>(h-released+1);
             const auto v=scheduler.vertical(rec.puff_id);
+            // Source COMP L10503-L10519 only runs RISEWIND while
+            // the odd-ICODE puff still travels toward XFINAL. Earlier
+            // synthetic tests incorrectly required two rise iterations
+            // even after the plume reached its final-rise distance.
+            const bool rising=
+                rec.step.before.total_distance_m<230.0F;
+            check(rec.step.rise.adjusted.passes==(rising?2:0),
+                  "source COMP post-XFINAL RISEWIND gating drifted");
             check(rec.step.after.travel_time_s==
                     static_cast<float>(clock*3600) &&
                   v.completed_substeps==clock &&
                   v.committed_lid_steps==clock &&
-                  rec.step.rise.adjusted.passes==2 &&
                   rec.step.bookkeeping.mid_time_s==1800 &&
                   rec.step.after.z_m==rec.step.final_height_m,
                   "native multi-puff rise/PG/VMASS state was not persistent");
