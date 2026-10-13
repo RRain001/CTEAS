@@ -2,6 +2,8 @@
 
 #include "cteas/puff/original_comp_rise.hpp"
 #include "cteas/puff/receptors.hpp"
+#include "cteas/puff/original_puffct2.hpp"
+#include <functional>
 
 namespace cteas::puff {
 
@@ -14,8 +16,14 @@ enum class OriginalFlatVerticalMethod {
     // Original CALCPF L4234-4275 uses PUFRECS's receptor-specific
     // SIGTY/SIGTZ, no-building GRISE and VCOUP, NOT a global VCBAR.
     // Still restricted to MCTADJ=0/MTILT=0/LPDF=F/MDRY=0.
-    receptor_pg_vcoup
+    receptor_pg_vcoup,
+    // No defaults for authentic CTADJ2 step, TRELIEF and GETELEV.
+    receptor_pg_vcoup_mctadj2
 };
+using OriginalMctadj2TerrainLookup=std::function<
+    OriginalMctadj2ReceptorTerrain(
+        const RiseCompSamplingState&,std::size_t,
+        const OriginalPuffct2Result&)>;
 
 // Restricted, deliberately non-oracle flat-grid CALCPF integration.
 // This connects native COMP's per-substep hook to the independently
@@ -34,6 +42,7 @@ enum class OriginalFlatVerticalMethod {
     const ReceptorSet& receptors, float met_spacing_m,
     float averaging_period_s, float impact_sigma_multiple = 3.0F,
     OriginalFlatVerticalMethod vertical_method =
-        OriginalFlatVerticalMethod::midpoint_vcoup);
+        OriginalFlatVerticalMethod::midpoint_vcoup,
+    OriginalMctadj2TerrainLookup terrain_lookup={});
 
 } // namespace cteas::puff

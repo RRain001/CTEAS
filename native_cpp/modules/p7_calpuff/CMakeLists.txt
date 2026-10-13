@@ -1257,7 +1257,7 @@ target_include_directories(cteas_p7_original_flat_calcpf PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(cteas_p7_original_flat_calcpf PUBLIC
   cteas_p7_receptors cteas_p7_dispersion cteas_p7_plume_rise
-  cteas_p7_original_pufrecs_geometry)
+  cteas_p7_original_pufrecs_geometry cteas_p7_original_puffct2)
 if(MSVC)
   target_compile_options(cteas_p7_original_flat_calcpf PRIVATE /W4 /WX)
 else()

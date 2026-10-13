@@ -110,7 +110,8 @@ ReceptorPgSigma receptor_pg_sigma(
 RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     const ReceptorSet& receptors,float met_spacing_m,
     float averaging_period_s,float impact_sigma_multiple,
-    OriginalFlatVerticalMethod vertical_method) {
+    OriginalFlatVerticalMethod vertical_method,
+    OriginalMctadj2TerrainLookup terrain_lookup) {
     if(!receptors.gridded || !receptors.discrete.empty() ||
        receptors.mesh_down!=1 || receptors.sampling_nx<=0 ||
        receptors.sampling_ny<=0 || receptors.ibsamp<1 ||
@@ -126,12 +127,23 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
         throw std::invalid_argument(
             "flat CALCPF supports only validated MESHDN=1 gridded ground receptors");
     }
+    const bool terrain_mode=
+        vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2;
+    if(terrain_mode && !terrain_lookup)
+        throw std::invalid_argument(
+            "CALCPF MCTADJ2 needs authentic TRELIEF/GETELEV receptor lookup");
     const auto nrecs=receptors.grid.size();
     const auto nx=static_cast<std::size_t>(receptors.sampling_nx);
     const float grid_x=static_cast<float>(receptors.ibsamp)-0.5F;
     const float grid_y=static_cast<float>(receptors.jbsamp)-0.5F;
     return [nrecs,nx,grid_x,grid_y,met_spacing_m,averaging_period_s,
-            impact_sigma_multiple,vertical_method](const RiseCompSamplingState& s) {
+            impact_sigma_multiple,vertical_method,terrain_lookup](
+            const RiseCompSamplingState& s) {
+        const bool terrain_mode=
+            vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2;
+        if(terrain_mode && !s.original_ctadj2_step)
+            throw std::invalid_argument(
+                "CALCPF MCTADJ2 requires native SETPUF FRACZ1/LUP1");
         if(s.after_setpuf_before_lid.puff_code!=s.vmass.puff_code ||
            !s.after_setpuf_before_lid.vmass_pending ||
            s.vmass.mass_mixed.empty() ||
@@ -193,7 +205,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             c.terrain_adjustment=0;
             c.plume_tilt=0;
             vfactor=static_cast<float>(vertical_coupling_bar(c));
-        } else if(vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup) {
+        } else if(vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup ||
+                  terrain_mode) {
             // CALCPF L4234–4275: the Gaussian receptor vertical factor
             // is determined *inside* the receptor loop after PUFRECS,
             // not from the substep-averaged VCBAR.
@@ -205,7 +218,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             throw std::invalid_argument("flat CALCPF invalid original VCOUP factor");
         std::vector<float> values(nrecs,0.0F);
         const bool per_receptor_vertical=
-            vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup;
+            (vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup ||
+             terrain_mode);
         // Original CALCPF Gaussian path evaluates VCOUP using the result
         // of each receptor-specific PUFRECS. Global VCBAR=0 cannot be
         // used to discard that receptor's possible concentration.
@@ -219,7 +233,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             throw std::invalid_argument("flat CALCPF sampling radius overflow");
         const float frac=s.step_seconds/averaging_period_s;
         const bool pg_receiver=
-            vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup;
+            (vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup ||
+             terrain_mode);
         // Source-ported SETCSIG uses the meteorology already selected by
         // native COMP for this substep; never use a frozen DGM class/wind.
         const auto curves=pg_receiver ?
@@ -262,11 +277,23 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                     grid_step,i);
                 const auto pufrecs=receptor_pg_sigma(s,geometry,*curves);
                 receptor_sigma_y=pufrecs.y;
-                // Vendor CALCPF L4275: PUFRECS supplies SZREC and ZPR,
-                // then VCOUP uses receptor pole height (ground=0 here).
+                // Vendor CALCPF L4234–4275: PUFRECS computes per-receptor
+                // ZPR/ZRPOLE, with PUFFCT2 MCTADJ2 at L5321–5369.
+                float zpr=pufrecs.grise_height_m;
+                float zrpole=0.0F;
+                if(terrain_mode) {
+                    const auto position=original_puffct2(
+                        *s.original_ctadj2_step,geometry.fraction);
+                    const auto met_terrain=terrain_lookup(s,i,position);
+                    const auto adjusted=original_mctadj2_receptor_height(
+                        position,pufrecs.grise_height_m,
+                        static_cast<float>(s.receptor_rise.final_rise_m),
+                        met_terrain);
+                    zpr=adjusted.puff_height_above_ground_m;
+                    zrpole=adjusted.pole_height_m;
+                }
                 receptor_vertical=static_cast<float>(vertical_coupling({
-                    s.vmass.puff_code,0.0,pufrecs.grise_height_m,
-                    pufrecs.z,lid,max_lid
+                    s.vmass.puff_code,zrpole,zpr,pufrecs.z,lid,max_lid
                 }));
                 if(!std::isfinite(receptor_vertical) ||
                    receptor_vertical<0.0F)
