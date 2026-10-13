@@ -132,13 +132,20 @@ int main(int argc,char** argv){
         const auto surf=o.source/"met/surface/final/surf.dat";
         const auto upper=o.source/"met/upperair/final/up_58424.dat";
         const auto geo=o.source/"geo/makegeo/geo.dat";
-        for(const auto& f:{met,surf,upper,geo,o.p6d,o.p6e,o.bridge,o.cgamma})require(f);
+        for(const auto& f:{surf,upper,geo,o.p6d,o.p6e,o.bridge,o.cgamma})require(f);
+        if(!o.p6e_source_builder.empty()) {
+            // Genuine source-only P6E metadata mode must succeed even when
+            // the original Fortran CALMET.DAT is physically absent. This
+            // permits a stronger negative-provenance acceptance test.
+        } else {
+            require(met);
+            if(cteas::p6f::sha256_hex_file(str(met))!=kMetHash)
+                throw std::runtime_error("locked original CALMET.DAT SHA256 mismatch");
+        }
         if(!o.p6f_writer.empty())require(o.p6f_writer);
         if(!o.p6e_source_builder.empty())require(o.p6e_source_builder);
         if(!o.p6f_writer.empty()||!o.p6e_source_builder.empty())
             require(o.source/"run/met/met.inp");
-        if(cteas::p6f::sha256_hex_file(str(met))!=kMetHash)
-            throw std::runtime_error("locked original CALMET.DAT SHA256 mismatch");
         fs::create_directories(o.work);
         const auto observations=o.work/"observations.csv";
         run({str(o.bridge),str(surf),str(upper),"58424",str(observations)},o.work/"bridge.log");
@@ -146,8 +153,9 @@ int main(int argc,char** argv){
         // Optional source-independent P6E *metadata* input. All hourly 45
         // fields are XMISS in this file. The P6E native-hour mode must supply
         // every live value from native P6D + P6E and the P4/P5 observation bridge.
-        // The pinned original met.dat is still used upstream by P6D, and is
-        // therefore NOT a whole-P6 reference-free acceptance.
+        // No CALMET.DAT read is required in this branch; all P6D selected
+        // model inputs come from deck, GEO, surface and upper-air originals.
+        // This does NOT assert wider CALMET configuration portability.
         fs::path p6e_metadata=met;
         if(!o.p6e_source_builder.empty()) {
             p6e_metadata=o.work/"p6e_geo_deck_metadata_only.dat";
@@ -265,7 +273,10 @@ int main(int argc,char** argv){
         std::string report="{\n  \"status\": \"PASS_CPP_PROCESS_COORDINATOR_EXECUTION\",\n"
             "  \"hours_completed\": "+std::to_string(o.hours)+",\n"
             "  \"native_wind\": true,\n  \"native_previous_hour_comp_state\": true,\n"
-            "  \"original_met_role\": \"P6D_LOCKED_CASE_REFERENCE_STILL_REQUIRED\",\n"
+            "  \"original_met_role\": \""+
+                std::string(o.p6e_source_builder.empty()?
+                    "ORIGINAL_LOCKED_CASE_METADATA_INPUT":
+                    "NOT_REQUIRED_NOT_OPENED_BY_NATIVE_EXECUTION")+"\",\n"
             "  \"p6e_reference_is_geo_deck_metadata_only\": "+
                  std::string(o.p6e_source_builder.empty()?"false":"true")+",\n"
             "  \"in_process_kernel_adapter\": false,\n"
