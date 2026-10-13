@@ -25,6 +25,7 @@ jobs:
             /engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
             /project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+            /native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin
       - name: Pin original POINTS1 PRFIN RLSMET physical order
         shell: bash
         run: |
@@ -47,6 +48,29 @@ jobs:
                           print(f'P7_VENDOR_FIRST_HOUR {j+1:6d} {lines[j]}')
                           shown.add(j)
           print('P7_FIRST_HOUR_VENDOR_SOURCE_SHA=PASS LINES_PRINTED='+str(len(shown)))
+          PY
+      - name: Audit original POINTS1 admission sigma/BIDSQ and frozen DGM first-hour anatomy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,struct
+          source=pathlib.Path('engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for').read_bytes().decode('latin-1').splitlines()
+          for first,last in ((15972,16190),):
+              for i in range(first-1,last):
+                  print(f'P7_POINT_ADMISSION_SOURCE {i+1:6d} {source[i]}')
+          path=pathlib.Path('native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin')
+          row=struct.Struct('<24i64f')
+          raw=path.read_bytes()
+          assert len(raw)==1275*row.size
+          for index in (0,1,53,54,1274):
+              values=row.unpack_from(raw,index*row.size)
+              i=values[:24];f=values[24:]
+              print(f'P7_FIRST_HOUR_DGM row={index+1} ii={i[3]} ksam={i[16]} nsam={i[10]} '
+                    f'nsstr={i[11]} old={i[12]} icode={i[4]} '
+                    f'x={f[0]:.9g} y={f[1]:.9g} z={f[2]:.9g} '
+                    f'xynew=({f[38]:.9g},{f[39]:.9g}) sigin=({f[21]:.9g},{f[22]:.9g})')
+          print('P7_ORIGINAL_ADMISSION_SOURCE_REVIEW=PASS NATIVE_ADMISSIONS=NOT_YET_ACCEPTED')
           PY
       - name: Execute real 2022 MET first-hour independent stack input gate
         shell: bash
