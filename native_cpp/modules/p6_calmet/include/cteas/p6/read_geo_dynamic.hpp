@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace cteas::calmet::p6 {
+namespace cteas::calmet::p6g {
 struct GeoGrid {
     int nx=0,ny=0,zone=0;
     char hemisphere='N';
@@ -201,4 +201,4 @@ inline GeoGrid read_geo_dynamic(const std::string& path,const GeoGridSpec& expec
     for(float value:out.z0_m)geo_require(value>0,"invalid surface roughness");
     return out;
 }
-} // namespace cteas::calmet::p6
+} // namespace cteas::calmet::p6g
