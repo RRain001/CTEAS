@@ -160,10 +160,10 @@ void frozen_wrout1_identifiers(const fs::path& original,
         require(std::regex_search(control_text,match,pattern),
                 "missing original WROUT1 control option");
         std::string value=match[1].str();
-        const auto begin=value.find_first_not_of(" \\t\\r\\n");
+        const auto begin=value.find_first_not_of(" \t\r\n");
         require(begin!=std::string::npos,
                 "empty original WROUT1 control option");
-        const auto end=value.find_last_not_of(" \\t\\r\\n");
+        const auto end=value.find_last_not_of(" \t\r\n");
         return value.substr(begin,end-begin+1);
     };
     auto oi=[&](const std::string& k){return std::stoi(opt(k));};
