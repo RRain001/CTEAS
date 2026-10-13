@@ -23,7 +23,7 @@ jobs:
           sparse-checkout: |
             /native_cpp/modules/p7_calpuff/**
             /engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
-      - name: Source-ported SLGFRAC and PUFRECS geometry REAL4 parity
+      - name: Source-ported SLGFRAC, PUFFCT2 and native CALMET terrain parity
         shell: bash
         run: |
           set -euo pipefail
@@ -34,16 +34,8 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/reference/compare_original_pufrecs_geometry.py \
             --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
             --probe "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_pufrecs_geometry_probe"
-          ctest --test-dir "$RUNNER_TEMP/p7-pufrecs" -R '^cteas_p7_original_native_terrain_real_input_adapter
-          python3 native_cpp/modules/p7_calpuff/reference/compare_original_puffct2.py \
-            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
-            --probe "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_puffct2_probe"
- --output-on-failure
-          ctest --test-dir "$RUNNER_TEMP/p7-pufrecs" -R '^cteas_p7_original_puffct2_source_contract
-          python3 native_cpp/modules/p7_calpuff/reference/compare_original_puffct2.py \
-            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
-            --probe "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_puffct2_probe"
- --output-on-failure
+          ctest --test-dir "$RUNNER_TEMP/p7-pufrecs" -R '^cteas_p7_original_native_terrain_real_input_adapter$' --output-on-failure
+          ctest --test-dir "$RUNNER_TEMP/p7-pufrecs" -R '^cteas_p7_original_puffct2_source_contract$' --output-on-failure
           python3 native_cpp/modules/p7_calpuff/reference/compare_original_puffct2.py \
             --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
             --probe "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_puffct2_probe"
