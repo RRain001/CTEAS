@@ -1,38 +1,57 @@
-# P6G G5: scenario generalization audit and first UTM handoff
+# P6G G5 — separate GUI, native-only orchestration, projected station selection
 
-Date: 2026-10-13. Development branch: `codex/p6g-g5-shared-utm-p4-p5-20261013`, stacked on PR #40's P4/P5 input-contract branch, **not** on `main` or PR #53. GitHub-hosted Ubuntu only.
+Date: 2026-10-13. **PR #54** (Draft, stacked onto PR #40). No legacy GUI/P4/P5/prepare_met production files are modified by the final PR diff. Original/reference Fortran sources and pinned Hefei 143h P6 physics are unchanged. GitHub-hosted Ubuntu runners only.
 
-## 1. Scope completed in this patch (CI must be checked at final commit)
+## 1. Architecture decision
 
-- Introduce one projection/boundary authority: `engine/run_met/station_grid.py`. Parse the **published** `grid.cmn` UTM zone/hemisphere/SW origin, spacing, NX/NY, and datum; reject malformed numerical grids. Inclusive projected outer edges use the same 1e-10 km floating boundary buffer as P5.
-- Route native P4 IGRA selection through this authority rather than centre-relative degrees/km. Preserve year-qualified candidates, strict >80% original 00/12 UTC sounding coverage, all accepted in-domain stations, external nearest valid virtual proxy, and source vs effective coordinates. The GUI/legacy orchestration path is **not** implicitly migrated here.
-- Route native P5 through the identical shared projected boundary and station CRS convention. Preserve the P5 unit-test projection injection seam, original annual NOAA coverage gates, primary/secondary identities, and fallback policies.
-- Audit the supported GUI dispatch: `engine/preprocess/bin/run_preprocessing_pipeline.py` invokes the legacy `engine/preprocess/read62_upperair_data/run_upperair_pipeline.py` and `engine/preprocess/smerge_surf_data/run_isd_surface_pipeline.py`. Both legacy **download selectors** now share the same UTM geometry, without converting legacy processing into the native C++ implementation. Legacy P4's implicit reuse of the first year's IGRA station has been eliminated, while explicit user station choice remains respected.
-- Tests: annual candidate membership and station changes, two simultaneous P4 stations, grid shift independent of `center_location`, UTM closed edges/corners, both P4/P5 point classification, full mocked P4 integration (including external virtual fallback), and existing P5 selection rules. A GitHub-hosted Ubuntu workflow runs all these tests and blocks approximate selection functions in both scoped codepaths.
+**Keep the current product intact.** The existing `./calpuff-cli desktopgui` and `engine/gui/workbench.py` still use the old stage orchestration, and must remain a reference/legacy product while the native rebuild is incomplete.
 
-**Do not relabel this patch as P6G physical generalization PASS until CI and the independent original CALMET comparisons pass.** The original vendor source, frozen Hefei reference, `met.inp` physics and P6D/P6E/P6F calculations are unchanged.
+The new G5 GUI is copied into `engine/gui_g5/`:
 
-## 2. Branch and input ownership
+- `workbench.py`: physical copy of the PySide6 workbench, updated title, stage descriptions, case coordinates and G5-only execution command.
+- `app.py`: separate case-management facade. New cases are created through `engine.gui_g5.case_setup`, **not** the legacy `engine.preprocess.bin.new_case`.
+- `main.py` / `__main__.py`: independent GUI entrypoint `python3 -m engine.gui_g5.main` (`bash cteas-g5gui`).
+- `case_setup.py`: defines case.yaml, distinct stack and domain centre, published WGS-84 UTM `grid.cmn` (SW corner rounded to 0.001 km), year window and vertical ZFACE; source coordinate is converted into the configured grid zone.
+- `pipeline.py`: an exclusive G5 stage-control interface; **never falls back** to legacy `engine.orchestrator.cli`, original CALMET, original CALPUFF, or old preprocessing modules.
 
-- Original GUI/case-definition path should write `case.yaml` (stack longitude/latitude, model length, model width, horizontal grid spacing, vertical layers, start/end) and publish **one** derived `grid.cmn`, `research_time` and source/stack metadata.
-- The published `grid.cmn` controls the numerical footprint. `center_location` may be rounded and is not allowed to redefine the domain for station selection.
-- Both native P4 `native_cpp/modules/p4_read62/data_prep/prepare_inputs.py` and the legacy GUI P4 runner now select anew each calendar year unless the user explicitly configures one station; this patch fixes the native approximate spatial test and the legacy automatic reuse policy.
-- Native P5 `native_cpp/modules/p5_smerge/data_prep/download_isd_by_grid.py` was previously updated by stacked PR #52. Native AND GUI legacy P4/P5 selectors now use the shared UTM geometry. This proves selector routing only; it does **not** prove that the GUI is operating the native C++ P4/P5 data writers or a generic P6 physical computation.
-- P4 `stations.csv` physical/effective coordinate and year identity, P5 per-year station manifests, and `met.inp` SSn/USn must reconcile independently and fail closed on duplicates, missing source records, invalid CRS or geometry mismatches.
+The UI represents native P1–P7 stages and their acceptance boundaries. Currently `preprocess` (P1–P3), `upperair` (full P4 writer), `met` (generic P6), `puff` (generic P7) and `all` are fail-closed. **Do not mark G5 end-to-end production-ready because its GUI can be opened.**
 
-## 3. Remaining acceptance gates, in priority order
+**P5 is the only provisionally executable native stage** in the new dispatcher. It requires an existing executable supplied explicitly by `CTEAS_G5_P5_BIN` and invokes `native_cpp.modules.p5_smerge.data_prep.prepare_inputs --native-cpp-bin … --stack-lat … --stack-lon … --execute`. This is still subject to its own source-data checks and is **not** a generic P6/P7 physics qualification. P4 native station selection and year-specific test code are implemented but lack the accepted generic publication scheduler for multiple annual UP.DAT inputs.
 
-1. **Input/UI route acceptance:** the GUI currently dispatches legacy P4/P5 processing, not the native writers. Verify the GUI-generated `case.yaml`→`grid.cmn`→`met.inp` handoff on a newly configured scenario, and explicitly choose native vs legacy writer migration without silently switching production physics.
-2. **Multistation/multiyear physical input chain:** 2+ surface, 2+ upper soundings, cross-year effective coordinate changes; construct original Fortran CALMET input with identical selection and raw observations. Record station provenance, timezone, availability/coverage and exact yearly membership. Do not mislabel cross-region P5 synthetic 2-station SMERGE evidence as same-domain CALMET physics.
-3. **Dynamic P6D implementation:** remove 50×50×9, 100 m, one surface/upper station and 143-interval hardcoded guards only after auditing dependent `read_geo_50`, `read_upper_2022`, station-pair deck parsing, topological masks, layer allocations, station buffers, initial/previous-hour COMP state, and time endpoint semantics. Add configuration contracts and memory bounds before changing scientific kernels.
-4. **Independent source parity matrix:** include alternate NX/NY/NZ/DGRIDKM, 1 vs 2+ surface/upper stations, UTM zone/hemisphere and year boundary; original CALMET 1h→6h→full-window independent per-field comparisons. Halt on first mismatching stage and preserve the 50×50×9, 100m, 143-interval Hefei reference in PR #53.
-5. **Production boundary:** independently generate P6F static/header provenance (not frozen `met.dat`), and integrate GUI→P4/P5→P6D/P6E→P6F. Rain/precipitation modes are separate unaccepted physics gates.
+## 2. P4/P5 projected selection
 
-### Status labels
+The native reconstructed P4 IGRA and P5 NOAA selection share `engine/run_met/station_grid.py`:
 
-- `G5_SHARED_UTM_CODE=IMPLEMENTED_PENDING_CI`
-- `G5_NATIVE_P4_P5_INTERFACES=TESTING`
-- `G5_GUI_SELECTOR_ENTRYPOINTS=IDENTIFIED_AND_PATCHED_PENDING_CI`
-- `G5_MULTISTATION_3D_CALMET=NOT_ACCEPTED`
-- `G5_ARBITRARY_GRID_TIME_LAYER=NOT_ACCEPTED`
-- `G5_143H_HEFEI_REGRESSION=UNCHANGED_IN_THIS_PATCH`
+- Use the published `grid.cmn` numerical UTM zone, hemisphere, origin, NX/NY and DGRIDKM, **not** approximated geographic bbox.
+- Include all edges/corners; reject invalid projection, dimensions and unrepresentable station coordinates.
+- Native P4 evaluates eligible stations per year and preserves its strict original 00/12 UTC sounding coverage and virtual-proxy policy.
+- Native P5 retains independently qualified annual raw NOAA coverage, primary/secondary policy and station-identity controls.
+
+**The old GUI's** `engine/preprocess/read62_upperair_data`, `engine/preprocess/smerge_surf_data`, `engine/preprocess/bin/run_preprocessing_pipeline.py`, `engine/run_met/prepare_met.py` and original `engine/gui/` are deliberately untouched. They retain historical behavior (including approximate legacy selectors). Only the copied G5 product must eventually use fully qualified native P1–P7 stage adapters.
+
+## 3. Executing the new UI and diagnostics
+
+Run `python3 -m engine.gui_g5.main` from the repository root with PySide6 installed. This does not replace `./calpuff-cli desktopgui`.
+
+Create a new G5 case in that GUI, enter study-domain centre, study length/width, grid spacing, stack longitude/latitude, vertical layers and start/end, and save. The G5 copy publishes the derived `grid.cmn`, `center_location`, `stack_location` and `research_time`. Users must explicitly synchronize `project/current` for the intended case before running.
+
+Headless stage inspection: `python3 -m engine.gui_g5.pipeline plan --case <case> --stage <preprocess|upperair|surface|met|puff|all>`. A plan with `ready: false` or a blocked native stage must not be construed as an accepted simulation. The `run` action refuses unsupported stages without executing a legacy workflow.
+
+CI (Ubuntu): `.github/workflows/g5-gui-isolation.yml` and `.github/workflows/p4-p5-shared-utm.yml`. The former verifies source isolation, independent cases, stack-versus-centre UTM handling and fail-closed stage routing; the latter protects native P4/P5 selection tests. Headless source checks do not by themselves certify interactive PySide6 GUI behavior.
+
+## 4. Next acceptance gates
+
+1. Complete the native P4 multistation/multiyear UP.DAT scheduler and P1/P2/P3 dynamic-grid adapters for the G5 GUI, with exact metadata provenance and independent original reference testing.
+2. Replace remaining P6D fixed 50×50×9, 100 m, one-surface/one-upper and 143-hour assumptions **only after** all dependent geometry, station buffers, previous-hour COMP state and output layout are audited.
+3. Run original CALMET numerical parity over multiple NX/NY/NZ, resolutions, station combinations, regions and year boundaries, and keep frozen Hefei 143h G3/G4 45-field acceptance unmodified.
+4. Accept complete P6F independently sourced header/metadata, integrate validated P7 multi-hour puff lifecycle and original CALPUFF scientific comparison.
+5. Only then unlock the GUI's P6/P7/all commands. Do not silently opt into legacy physics or change numeric tolerances.
+
+### Explicit status
+
+- `G5_SEPARATE_GUI=IMPLEMENTED`
+- `G5_GUI_HEADLESS_TESTS=SEE_CI`
+- `G5_LEGACY_GUI_MODIFIED=FALSE`
+- `G5_NATIVE_P4_P5_UTM=IMPLEMENTED_PENDING_FULL_REGRESSION`
+- `G5_GENERIC_P6_P7_EXECUTION=BLOCKED_NOT_ACCEPTED`
+- `G5_FULL_END_TO_END_PHYSICS=NOT_ACCEPTED`
