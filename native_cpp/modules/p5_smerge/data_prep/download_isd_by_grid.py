@@ -75,7 +75,13 @@ def contains_projected_utm_km(x: float, y: float, grid: GridDef) -> bool:
 
 
 def station_in_utm_grid(st: Station, grid: GridDef) -> bool:
-    return lon_lat_in_utm_grid(st.lon, st.lat, grid)
+    # Preserve the P5 projection seam for independent source and zone tests.
+    # Bounds and projection convention are identical to the shared P4 kernel.
+    try:
+        x, y = lon_lat_to_utm_km(st.lon, st.lat, grid.iutmzn, grid.lsohem == "N")
+    except ValueError:
+        return False
+    return contains_projected_utm_km(x, y, grid)
 
 
 def parse_history_txt(path: Path) -> list[Station]:
