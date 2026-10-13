@@ -35,6 +35,12 @@ def main():
     print(f"P7_VENDOR_PUFFCT2_SOURCE_SPAN={start+1}-{tail+1}")
     for i in range(start,tail+1):
         print(f"P7_VENDOR_PUFFCT2_RAW LINE={i+1} TEXT={source[i].rstrip()!r}")
+    ctadj_calls=[i for i,line in enumerate(source) if
+                 line.lstrip().lower().startswith("call ctadj2(")]
+    print("P7_VENDOR_CTADJ2_CALL_SITES="+str([i+1 for i in ctadj_calls]))
+    for callsite in ctadj_calls:
+        for i in range(max(0,callsite-22),min(len(source),callsite+48)):
+            print(f"P7_VENDOR_CTADJ2_CONTEXT LINE={i+1} TEXT={source[i].rstrip()!r}")
     for i in range(5319,5376):
         print(f"P7_VENDOR_MCTADJ2_PUFRECS_RAW LINE={i+1} TEXT={source[i].rstrip()!r}")
     if "frac=AMAX1(" not in geom or "xtt1 = xttb1+xr1" not in geom:
