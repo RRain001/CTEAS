@@ -108,7 +108,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     auto v=vertical_;
     auto state=found->second;
     const auto before=m.state(id);
-    const auto vs=v.state(id);
+    auto vs=v.state(id);
     require(vs.completed_substeps==state.completed &&
             vs.committed_lid_steps==state.completed,
             "native rising puff sigma/mass clock drift");
@@ -332,6 +332,22 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             const auto r=original_calm_sigma(p);
             return SigmaCurvePoint{r.sz,r.virtz,r.virdz};
         };
+    }
+    // Original COMP L10629-10649: LDIV && Gaussian puff, *after* the
+    // old-sigma PUFFDZ/ADVECT wind and movement, *before* VMASS/SETPUF.
+    // The WDIV field is reconstructed from ORIGINAL hourly CALMET W and
+    // ZFACE, never fetched from DGM; CDIV is frozen puff.inp input.
+    if(control.original_wdiv){
+        const auto end_cell=original_met_cell(
+            moved.state.x_cells,moved.state.y_cells,met.nx,met.ny);
+        const auto dz=original_vertical_divergence(
+            met,statics,sampled.cell,end_cell,
+            r4(sampled.extent.z_bottom_m,"WDIV original ZBOT"),
+            r4(sampled.extent.z_top_m,"WDIV original ZTOP"),
+            r4(substep.step_s,"WDIV original TSAMP"),
+            vs.sigma_z_m,vs.puff_code,*control.original_wdiv);
+        v.commit_wdiv_sigma_z(id,vs.sigma_z_m,dz.sigma_z_m);
+        vs.sigma_z_m=dz.sigma_z_m;
     }
     auto dispersion=control.dispersion;
     dispersion.calm=lcalm;
