@@ -25,6 +25,77 @@ float native_point_wsnew(
 }
 } // namespace
 
+OriginalPointHourSource original_point_hour_from_prfin(
+    const OriginalPointPrfinRequest& in,
+    const OriginalPointPrfinResult& rise,
+    const OriginalPointNativeSourceParameters& src) {
+    if(!std::isfinite(src.base_elevation_m)||
+       !std::isfinite(src.met_spacing_m)||src.met_spacing_m<=0.0F||
+       !std::isfinite(src.initial_sigma_y_m)||src.initial_sigma_y_m<=0.0F||
+       !std::isfinite(src.initial_sigma_z_m)||src.initial_sigma_z_m<=0.0F||
+       src.emission_rates.empty()||
+       !std::all_of(src.emission_rates.begin(),src.emission_rates.end(),
+            [](double q){return std::isfinite(q)&&q>=0.0;})||
+       !(rise.stability_class>=1 && rise.stability_class<=4)||
+       !(rise.effective_height_m>in.stack_height_m)||
+       !(rise.x_final_m>0.0F)||
+       !(rise.buoyancy_variance_m2>=0.0F)||
+       !(rise.release_wind_ms>=0.0F))
+        throw std::invalid_argument("POINTS1 native admission lacks supported source physical data");
+    const float sampling=in.hour_seconds/
+        (src.met_spacing_m*in.max_sample_distance_cells);
+    if(!std::isfinite(sampling)||sampling<=0.0F)
+        throw std::invalid_argument("POINTS1 XTMP1 must be finite and positive");
+    OriginalPointHourSource out;
+    auto& point=out.point;
+    point.source_type=1;
+    point.source_x_km=in.x_cells; // original XPT1GRD: relative grid cells
+    point.source_y_km=in.y_cells;
+    point.base_elevation_m=src.base_elevation_m;
+    point.sigma_y_source_m=src.initial_sigma_y_m; // original SYSRC
+    point.sigma_z_source_m=src.initial_sigma_z_m; // original SZSRC
+    point.initial_sigma_y_m=src.initial_sigma_y_m;
+    point.initial_sigma_z_m=src.initial_sigma_z_m;
+    point.effective_height_m=rise.effective_height_m;
+    point.x_final_m=rise.x_final_m;
+    point.final_rise_variance_m2=rise.buoyancy_variance_m2;
+    point.buoyancy_flux=rise.buoyancy_flux;
+    point.momentum_flux=rise.momentum_flux;
+    point.x_final_buoyancy_m=rise.brigg.x_final_buoyancy_m;
+    point.x_final_momentum_m=rise.brigg.x_final_momentum_m;
+    point.z_final_buoyancy_m=rise.brigg.z_final_buoyancy_m;
+    point.z_final_momentum_m=rise.brigg.z_final_momentum_m;
+    point.stack_tip_downwash_m=rise.stack_tip_downwash_m;
+    point.stack_height_m=in.stack_height_m;
+    point.exit_velocity_ms=in.exit_velocity_ms;
+    point.diameter_m=in.diameter_m;
+    point.stack_wind_speed_ms=rise.stack_wind_ms;
+    point.stability_class=rise.stability_class;
+    point.sqrt_stability_s=0.0; // A-D PRFIN does not read SQRTS
+    point.downwash_code=0; // this source factory accepts no building
+    // The receiver terrain and deposition controls remain separately
+    // mandatory for a real full-case comparison.
+    auto& mass=out.mass;
+    mass.species_count=static_cast<int>(src.emission_rates.size());
+    mass.emission_duration_s=rise.release.emission_duration_s;
+    mass.effective_height_m=rise.effective_height_m;
+    mass.mixing_height_m=rise.mixing_height_m;
+    mass.max_layer_height_m=rise.max_layer_height_m;
+    mass.mass_fraction_mixed=rise.mixed_fraction;
+    mass.stability_class=rise.stability_class;
+    mass.gaussian_distribution=1;
+    mass.emission_rate=src.emission_rates;
+    out.cadence.wind_speed_ms=rise.release_wind_ms;
+    out.cadence.emission_interval=sampling;
+    out.cadence.max_puffs=in.max_new_puffs;
+    out.cadence.hour_seconds=in.hour_seconds;
+    if(release_cadence(out.cadence).puff_count!=rise.release.puff_count||
+       static_cast<float>(release_cadence(out.cadence).emission_duration_s)!=
+           static_cast<float>(rise.release.emission_duration_s))
+        throw std::logic_error("POINTS1 PRFIN source and release cadence disagree");
+    return out;
+}
+
 RiseCompHour OriginalCompRiseMultiPuffHours::advance_hour(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& controls,const DispersionSetup& pg,
