@@ -57,6 +57,18 @@ struct ReceptorSet {
 
 // PFSAMP equivalent: the two sampling integrals for a puff moving from
 // (x_old, y_old) to (x_new, y_new) relative to one receptor.
+// Original CALPUFF PFSCRN (calpuff.for L4619-4680): REAL*4 geometric
+// nearest-approach screen using the END-of-step puff radius. All XY and
+// radius values MUST use the same frame (vendor sampling-grid cells).
+struct PuffScreeningResult {
+    double closest_distance_squared = 0.0;
+    bool has_impact = false;
+    bool calm_midpoint_branch = false;
+};
+[[nodiscard]] PuffScreeningResult original_puff_screen(
+    double x_old,double y_old,double x_new,double y_new,
+    double x_receptor,double y_receptor,double puff_radius);
+
 struct SamplingIntegrals {
     double i1 = 0.0;
     double i2 = 0.0;

@@ -182,6 +182,46 @@ double erf_difference(double x1, double x2) {
     return static_cast<double>(difference);
 }
 
+PuffScreeningResult original_puff_screen(
+    double x_old,double y_old,double x_new,double y_new,
+    double x_receptor,double y_receptor,double puff_radius) {
+    for(double v:{x_old,y_old,x_new,y_new,x_receptor,y_receptor,puff_radius})
+        require_finite(v,"PFSCRN input");
+    require_true(puff_radius>0.0,"PFSCRN radius must be positive");
+    // Vendor calpuff.for L4649-4678. Preserve REAL*4 and MIN/MAX order.
+    const R dx=static_cast<R>(x_new)-static_cast<R>(x_old);
+    const R dy=static_cast<R>(y_new)-static_cast<R>(y_old);
+    const R dx1=static_cast<R>(x_old)-static_cast<R>(x_receptor);
+    const R dy1=static_cast<R>(y_old)-static_cast<R>(y_receptor);
+    const R c1=dx*dx+dy*dy;
+    const R radius=static_cast<R>(puff_radius);
+    const R radius2=radius*radius;
+    require_true(std::isfinite(radius2)&&radius2>0.0F,
+                 "PFSCRN radius squared underflows/overflows REAL4");
+    const R a=c1/radius2;
+    R dist2=0.0F;
+    const bool calm=a<1.0e-4F;
+    if(calm){
+        const R rx=static_cast<R>(x_receptor) -
+                   (static_cast<R>(x_old)+0.5F*dx);
+        const R ry=static_cast<R>(y_receptor) -
+                   (static_cast<R>(y_old)+0.5F*dy);
+        dist2=rx*rx+ry*ry;
+    }else{
+        const R c2=dx*dx1+dy*dy1;
+        R fraction=-c2/c1;
+        fraction=std::max(fraction,0.0F);
+        fraction=std::min(fraction,1.0F);
+        const R nearest_x=static_cast<R>(x_old)+dx*fraction;
+        const R nearest_y=static_cast<R>(y_old)+dy*fraction;
+        const R rx=static_cast<R>(x_receptor)-nearest_x;
+        const R ry=static_cast<R>(y_receptor)-nearest_y;
+        dist2=rx*rx+ry*ry;
+    }
+    require_true(std::isfinite(dist2),"PFSCRN nearest-distance overflow");
+    return {static_cast<double>(dist2),dist2<=radius2,calm};
+}
+
 SamplingIntegrals puff_sampling_integrals(double x_old_km, double y_old_km, double x_new_km,
                                           double y_new_km, double x_receptor_km,
                                           double y_receptor_km, double sigma_y_at_receptor_m,
