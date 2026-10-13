@@ -368,9 +368,8 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     RiseCompStep outcome{
         before,moved.state,post,sampled,rise,
         cadence,substep,bookkeeping,sigma,mass,end_height,
-        std::move(receptor_increments)
+        std::move(receptor_increments),std::move(dry_result)
     };
-    outcome.dry=std::move(dry_result);
     motion_=std::move(m);
     vertical_=std::move(v);
     found->second=std::move(state);
