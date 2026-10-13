@@ -39,6 +39,9 @@ int main_run(const std::string& file,const int expected_hours) {
     std::set<int> hours;
     std::size_t records=0,correct_new=0,wrong_new=0;
     std::size_t old_measured=0,old_postwind_differences=0;
+    std::size_t effective_delta_count=0,tleft_positive_count=0;
+    int first_effective_delta_hour=0,first_effective_delta_puff=0;
+    int first_positive_tleft_hour=0,first_positive_tleft_puff=0;
     std::size_t old_pre_exact=0,old_pre_mismatch=0;
     int first_error_hour=0;
     int first_old_hour=0,first_old_puff=0,first_old_ns=0,first_old_pred=0;
@@ -50,6 +53,25 @@ int main_run(const std::string& file,const int expected_hours) {
         const int nsstr=rec.i[11],iold=rec.i[12],ipno=rec.i[14],ksam=rec.i[16];
         const float wsvar=rec.r[18],postwind=rec.r[11];
         const float reftsamp=rec.r[17];
+        const float effective_tsamp=rec.r[62];
+        const float tleft=rec.r[60];
+        need(std::isfinite(effective_tsamp) && effective_tsamp>0.0F &&
+             std::isfinite(tleft),
+             "original COMP TLEFT/TSAMP is not finite");
+        if(bits(effective_tsamp)!=bits(reftsamp)){
+            ++effective_delta_count;
+            if(!first_effective_delta_hour){
+                first_effective_delta_hour=hour;
+                first_effective_delta_puff=puff;
+            }
+        }
+        if(tleft>0.0F){
+            ++tleft_positive_count;
+            if(!first_positive_tleft_hour){
+                first_positive_tleft_hour=hour;
+                first_positive_tleft_puff=puff;
+            }
+        }
         need(rec.i[0]==1 && hour>202200000 && puff>0 &&
              nsam>=1 && nsam<=99 && nsstr>=1 && nsstr<=nsam &&
              ksam>=nsstr && ksam<=nsam && std::isfinite(reftsamp) &&
@@ -173,6 +195,12 @@ int main_run(const std::string& file,const int expected_hours) {
              <<" OLD_PRE_RISE_WIND_EXACT="<<old_pre_exact
              <<" OLD_PRE_RISE_WIND_MISMATCH="<<old_pre_mismatch
              <<" OLD_UV=ORIGINAL_ADVECT_DGM_STEP4"
+             <<" EFFECTIVE_TSAMP_DIFFERS_REF_RECORDS="<<effective_delta_count
+             <<" TLEFT_POSITIVE_RECORDS="<<tleft_positive_count
+             <<" FIRST_TSAMP_DIFFERENCE_HOUR="<<first_effective_delta_hour
+             <<" FIRST_TSAMP_DIFFERENCE_PUFF="<<first_effective_delta_puff
+             <<" FIRST_TLEFT_HOUR="<<first_positive_tleft_hour
+             <<" FIRST_TLEFT_PUFF="<<first_positive_tleft_puff
              <<" ORIGINAL_SOURCE_MUTATED=NO"
              <<" FULL_NATIVE_COMP_MXSAM99=NOT_ACCEPTED\n";
     if(first_old_hour)
