@@ -750,8 +750,18 @@ void test(){
     auto plume_grid=flat_grid;
     plume_grid.ibsamp=1;
     plume_grid.jbsamp=1;
+    // Make original P7H VCBAR (native begin/mid/end SIGTZ and GRISE heights)
+    // the *live* sampling kernel for every actual COMP FSTEP, rather than
+    // stopping at a one-puff constructed fixture. The midpoint VCOUP path
+    // remains an independent, deliberately restricted control.
     const auto plume_sampler=make_original_flat_calcpf_sampler(
-        plume_grid,100.0F,3600.0F);
+        plume_grid,100.0F,3600.0F,3.0F,
+        OriginalFlatVerticalMethod::substep_vcbar);
+    const auto midpoint_control=make_original_flat_calcpf_sampler(
+        plume_grid,100.0F,3600.0F,3.0F,
+        OriginalFlatVerticalMethod::midpoint_vcoup);
+    std::size_t vcbar_native_substeps=0;
+    std::size_t vcbar_changed_receptor_increments=0;
     std::size_t sample_diagnostic_count=0;
     std::size_t nonzero_lower_mass_steps=0;
     std::size_t positive_concentration_steps=0;
@@ -787,6 +797,18 @@ void test(){
              "PUFRECS native receptor frame returned invalid geometry");
         ++geometry_bridge_substeps;
         auto concentrations=plume_sampler(state);
+        const auto midpoint=midpoint_control(state);
+        need(midpoint.size()==concentrations.size() &&
+             concentrations.size()==2500U,
+             "native VCBAR live field diverged in receptor dimensions");
+        ++vcbar_native_substeps;
+        for(std::size_t i=0;i<concentrations.size();++i) {
+            need(std::isfinite(concentrations[i]) && concentrations[i]>=0.0F,
+                 "native VCBAR live returned nonfinite/negative concentration");
+            if(std::bit_cast<std::uint32_t>(concentrations[i])!=
+               std::bit_cast<std::uint32_t>(midpoint[i]))
+                ++vcbar_changed_receptor_increments;
+        }
         const auto present=std::count_if(concentrations.begin(),concentrations.end(),
                                         [](float v){return v>0.0F;});
         if(state.vmass.mass_mixed[0]>0.0F)++nonzero_lower_mass_steps;
@@ -848,6 +870,9 @@ void test(){
     need(geometry_bridge_substeps==sample_diagnostic_count &&
          geometry_bridge_substeps>0,
          "PUFRECS native geometry was not checked at every CALCPF substep");
+    need(vcbar_native_substeps==sample_diagnostic_count &&
+         vcbar_native_substeps>0,
+         "VCBAR was not evaluated on every native COMP substep");
     std::cout<<"P7_NATIVE_COMP_PUFRECS_RECEIVER_FRAME=PASS"
              <<" SUBSTEPS="<<geometry_bridge_substeps
              <<" REAL4_CENTER_MAPPING=YES"
@@ -868,13 +893,16 @@ void test(){
                  "six-hour native CALCPF field bytes changed during OUTPUT");
     }
     std::filesystem::remove(binary_path);
-    std::cout<<"P7_NATIVE_FLAT_CALCPF_OUTPUT_6H=PASS"
+    std::cout<<"P7_NATIVE_VCBAR_CALCPF_OUTPUT_6H=PASS"
              <<" HOURS=6 RECORDS=18 RECEIVERS=2500"
+             <<" VCBAR_REAL_NATIVE_SUBSTEPS="<<vcbar_native_substeps
+             <<" VCBAR_VCOUP_CHANGED_INCREMENTS="<<vcbar_changed_receptor_increments
              <<" PERSISTENT_NATIVE_PUFFS=YES"
              <<" NONZERO_RECEPTOR_VALUES="<<meaningful_cells
              <<" CONCENTRATION_REAL4=BITWISE_READBACK"
              <<" SOURCE_DESCRIPTOR=ORIGINAL_OUTPUT_LAYOUT"
-             <<" FULL_WROUT1=NOT_YET_ACCEPTED"
+             <<" FULL_WROUT1_HEADER=ACCEPTED_SEPARATELY"
+             <<" ORIGINAL_RECEPTOR_SPECIFIC_PUFRECS=NOT_YET_ACCEPTED"
              <<" REAL_2022_PARITY=NOT_YET_ACCEPTED\\n";
 
     const auto state=driver.motion(1);
