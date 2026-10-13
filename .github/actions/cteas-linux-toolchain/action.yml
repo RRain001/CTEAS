@@ -1,5 +1,5 @@
 name: CTEAS isolated modern Linux compilers
-description: 'Fail-closed self-hosted C++20/Fortran toolchain selection; no privileged host changes'
+description: 'Linux C++20/Fortran toolchain selection for GitHub-hosted ubuntu-22.04 jobs'
 runs:
   using: composite
   steps:
@@ -10,12 +10,21 @@ runs:
           echo "::error::CTEAS validated runner requires Linux/X64"
           exit 1
         fi
+        # GitHub-hosted Ubuntu images are ephemeral. Install only when the
+        # image does not already provide the required toolchain.
+        if ! command -v g++-12 >/dev/null 2>&1 ||
+           { ! command -v gfortran-13 >/dev/null 2>&1 &&
+             ! command -v gfortran-12 >/dev/null 2>&1 &&
+             ! command -v gfortran-11 >/dev/null 2>&1; }; then
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-12 gfortran-12
+        fi
         if command -v g++-13 >/dev/null 2>&1; then
           cpp="$(command -v g++-13)"
         elif command -v g++-12 >/dev/null 2>&1; then
           cpp="$(command -v g++-12)"
         else
-          echo "::error::Install g++-12 or later on the self-hosted Ubuntu runner"
+          echo "::error::Missing g++-12 or newer on GitHub-hosted Ubuntu"
           exit 1
         fi
         if command -v gfortran-13 >/dev/null 2>&1; then
@@ -25,7 +34,7 @@ runs:
         elif command -v gfortran-11 >/dev/null 2>&1; then
           fort="$(command -v gfortran-11)"
         else
-          echo "::error::Install gfortran-11 or later on the self-hosted runner"
+          echo "::error::Missing gfortran-11 or newer on GitHub-hosted Ubuntu"
           exit 1
         fi
         # Verify this compiler's standard library actually implements the
@@ -41,5 +50,5 @@ runs:
         echo "$tool_bin" >> "$GITHUB_PATH"
         echo "CXX=$cpp" >> "$GITHUB_ENV"
         echo "FC=$fort" >> "$GITHUB_ENV"
-        echo "CTEAS_CI_SELF_HOSTED=1" >> "$GITHUB_ENV"
+        echo "CTEAS_CI_GITHUB_HOSTED=1" >> "$GITHUB_ENV"
         echo "CI toolchain: CXX=$cpp FC=$fort (job-local gfortran shim)"
