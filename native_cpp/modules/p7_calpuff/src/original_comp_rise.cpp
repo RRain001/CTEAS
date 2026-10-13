@@ -280,27 +280,32 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
                                s.virtual_distance_z_km};
     };
     if(lcalm){
-        // COMP L10839-10842 obtains ILW from the current met cell.
-        // Disallow ambiguous cell crossing until midpoint selection parity.
+        // Source COMP L10695-10703 resolves midpoint IXMET/IYMET;
+        // L10839-10842 selects ILW from THAT cell, not release/origin.
         const auto mid_cell=original_met_cell(
             0.5F*(before.x_cells+moved.state.x_cells),
             0.5F*(before.y_cells+moved.state.y_cells),met.nx,met.ny);
-        require(mid_cell.offset_0based==sampled.cell.offset_0based,
-                "calm COMP midpoint met-cell crossing not yet accepted");
-        require(sampled.cell.offset_0based<met.el.size(),
-                "native calm SETCSIG requires real hourly EL");
+        require(mid_cell.offset_0based<met.el.size() &&
+                mid_cell.offset_0based<met.ipgt.size(),
+                "native calm SETCSIG requires real midpoint EL and JDSTAB");
+        const int mid_stability=met.ipgt[mid_cell.offset_0based];
+        // Full VMASS and TIBL changes across differing stability zones
+        // have not yet passed source parity; never use the old PG class
+        // while reading new-cell turbulence without saying so.
+        require(mid_stability==sampled.stability_class,
+                "calm COMP cross-cell stability transition not yet accepted");
         const auto& cfg=*control.calm_mdisp3;
         const auto turb=original_turbset_mdisp3_from_cell(
             cfg.original_turbulence,statics,
             static_cast<std::size_t>(met.nx),
             static_cast<std::size_t>(met.ny),
-            sampled.cell.offset_0based,sampled.stability_class,
+            mid_cell.offset_0based,mid_stability,
             cfg.iwat1,cfg.iwat2);
         OriginalCalmSigmaInput parameters;
         parameters.uavg=ws;
         parameters.sigv=turb.sigv_ms;
         parameters.sigw=turb.sigw_ms;
-        parameters.el=met.el[sampled.cell.offset_0based];
+        parameters.el=met.el[mid_cell.offset_0based];
         parameters.tyidr=cfg.original_turbulence.tyidr;
         parameters.tzidr=cfg.original_turbulence.tzidr;
         parameters.tzisdr=cfg.original_turbulence.tzisdr;
