@@ -91,6 +91,22 @@ jobs:
                           shown.add(j)
           print('P7_VENDOR_SIGZ_FIRST_DIVERGENCE_AUDIT=PASS NATIVE_PRESETUP_SIGZ_PARITY=OPEN')
           PY
+      - name: Trace vendor WDIV generation and CDIV branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,re
+          src=pathlib.Path('engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for').read_bytes().decode('latin-1').splitlines()
+          hits=[i for i,s in enumerate(src) if re.search(r'\bwdiv\s*\(|\bldiv\b|\bcdiv\s*\(',s,re.I) and not s.lstrip().lower().startswith('c ')]
+          print('P7_VENDOR_WDIV_SOURCE_MATCHES='+str(len(hits)))
+          shown=set()
+          for i in hits:
+              for j in range(max(0,i-3),min(len(src),i+5)):
+                  if j not in shown:
+                      print(f'P7_VENDOR_WDIV {j+1:6d} {src[j]}')
+                      shown.add(j)
+          PY
       - name: Execute real Hefei source and 54 puff admission gates
         shell: bash
         run: |
