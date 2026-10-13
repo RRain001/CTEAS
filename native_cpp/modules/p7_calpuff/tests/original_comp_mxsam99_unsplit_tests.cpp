@@ -697,7 +697,17 @@ void test(){
     const auto binary_path=std::filesystem::temp_directory_path() /
         ("cteas-p7-flat6h-"+std::to_string(
             std::chrono::steady_clock::now().time_since_epoch().count())+".con");
+    // Source x/y is near the 50th MET cell. Move only the sampling
+    // window (not the puff or wind) so a real, nonzero native transport
+    // contribution can reach it; the earlier local 1..50 window was
+    // capable of passing only zero-field output round trips.
+    auto plume_grid=flat_grid;
+    plume_grid.ibsamp=40;
+    plume_grid.jbsamp=40;
+    const auto plume_sampler=make_original_flat_calcpf_sampler(
+        plume_grid,100.0F,3600.0F);
     std::vector<std::vector<float>> six_fields;
+    std::size_t meaningful_cells=0;
     {
         ConcFileWriter binary(binary_path.string(),"2.2",
             "P7 restricted native six-hour test",{});
@@ -707,7 +717,7 @@ void test(){
         for(int h=0;h<6;++h){
             const auto six=six_native.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
                 met,geo,ctl,pg,false,single_mass,wide_domain,99,
-                2500,planar_kernel);
+                2500,plume_sampler);
             need(six.hour_index==static_cast<std::size_t>(h) &&
                  six.receptor_concentrations.size()==2500 &&
                  six_native.completed_hours()==static_cast<std::size_t>(h+1),
@@ -715,6 +725,8 @@ void test(){
             ConcPeriod hour{};
             hour.begin_year=2022;hour.begin_julian=1;hour.begin_hour=h;
             hour.end_year=2022;hour.end_julian=1;hour.end_hour=h+1;
+            for(const float conc:six.receptor_concentrations)
+                if(conc>0.0F)++meaningful_cells;
             series.write_hour(hour,six.receptor_concentrations);
             six_fields.push_back(six.receptor_concentrations);
         }
@@ -722,6 +734,8 @@ void test(){
              "six-hour OUTPUT lacked period/source/species field records");
         binary.close();
     }
+    need(meaningful_cells>0,
+         "flat CALCPF six-hour output passed on an entirely zero concentration field");
     const auto observed=read_conc_species_fields(binary_path.string(),50,50);
     const auto periods=read_conc_periods(binary_path.string());
     need(observed.size()==6 && periods.size()==6,
@@ -741,6 +755,7 @@ void test(){
     std::cout<<"P7_NATIVE_FLAT_CALCPF_OUTPUT_6H=PASS"
              <<" HOURS=6 RECORDS=18 RECEIVERS=2500"
              <<" PERSISTENT_NATIVE_PUFFS=YES"
+             <<" NONZERO_RECEPTOR_VALUES="<<meaningful_cells
              <<" CONCENTRATION_REAL4=BITWISE_READBACK"
              <<" SOURCE_DESCRIPTOR=ORIGINAL_OUTPUT_LAYOUT"
              <<" FULL_WROUT1=NOT_YET_ACCEPTED"
