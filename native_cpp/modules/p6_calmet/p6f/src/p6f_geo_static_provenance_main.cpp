@@ -82,7 +82,7 @@ std::vector<float> station_xy(const std::string& deck,const std::string& key) {
     rest>>identifier>>east>>north;
     require(!identifier.empty()&&rest.good()&&east>0.f&&north>0.f,
             "station coordinates malformed "+key);
-    return {east*1000.f,north*1000.f};
+    return {east,north};
 }
 template<class A,class B> void check_array(const A& actual,const B& expected,
                                              const std::string& label,
@@ -147,9 +147,13 @@ int main(int argc,char** argv) {
         check_array(stat.xlai,geo.lai,"XLAI/GEO.DAT",compared);
         if(hdr.nssta==1) {
             const auto xy=station_xy(deck,"SS1");
-            check_array(stat.surface_x_m,std::vector<float>{xy[0]},
+            // Original OUTHD station table is relative to the SW grid origin,
+            // unlike absolute UTM kilometres in met.inp SS1/US1.
+            const float east_m=(xy[0]-number_f(deck,"XORIGKM"))*1000.f;
+            const float north_m=(xy[1]-number_f(deck,"YORIGKM"))*1000.f;
+            check_array(stat.surface_x_m,std::vector<float>{east_m},
                         "XSSTA/met.inp",compared);
-            check_array(stat.surface_y_m,std::vector<float>{xy[1]},
+            check_array(stat.surface_y_m,std::vector<float>{north_m},
                         "YSSTA/met.inp",compared);
             // Only one surface station => nearest station ID is deterministically 1.
             check_array(stat.nears,std::vector<int>(2500,1),
@@ -157,9 +161,11 @@ int main(int argc,char** argv) {
         }
         if(hdr.nusta==1) {
             const auto xy=station_xy(deck,"US1");
-            check_array(stat.upper_x_m,std::vector<float>{xy[0]},
+            const float east_m=(xy[0]-number_f(deck,"XORIGKM"))*1000.f;
+            const float north_m=(xy[1]-number_f(deck,"YORIGKM"))*1000.f;
+            check_array(stat.upper_x_m,std::vector<float>{east_m},
                         "XUSTA/met.inp",compared);
-            check_array(stat.upper_y_m,std::vector<float>{xy[1]},
+            check_array(stat.upper_y_m,std::vector<float>{north_m},
                         "YUSTA/met.inp",compared);
         }
         std::cout<<"{\"status\":\"PASS_P6F_INDEPENDENT_SOURCE_STATIC_VALUES\","
