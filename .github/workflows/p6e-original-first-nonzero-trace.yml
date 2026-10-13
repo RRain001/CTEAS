@@ -32,10 +32,10 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             project/cases/hefei5km_2022_reference_case_20261011
-      - name: Retrieve independently accepted native 143h source stage traces
+      - name: Retrieve post-READCF effective BIAS 143h stage traces
         uses: actions/download-artifact@v4
         with:
-          run-id: 38367339733
+          run-id: 38371232159
           github-token: ${{ github.token }}
           name: p6-causal-original-case-143h
           path: ${{ runner.temp }}/p6e-earliest-stage/native-evidence
