@@ -457,7 +457,23 @@ jobs:
           fi
           cmake -S native_cpp/modules/p7_calpuff -B "$base/cpp" \
             -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Debug
-          cmake --build "$base/cpp" --parallel 2 --target cteas_p7_first_hour_lifecycle_tests cteas_p7_original_met_cell_trace cteas_p7_puffdz_state_trace cteas_p7_original_release_wind_tests cteas_p7_original_comp_cadence_trace
+          cmake --build "$base/cpp" --parallel 2 --target cteas_p7_first_hour_lifecycle_tests cteas_p7_original_met_cell_trace cteas_p7_puffdz_state_trace cteas_p7_original_release_wind_tests cteas_p7_original_comp_cadence_trace cteas_p7_original_fstep_trace
+          # Strict source-controller trace: all original 1h, 6h, 143h
+          # records, with read-only WS/NSAM/REFTSAMP as inputs. Real TSAMP
+          # and TLEFT must be computed by native C++, never DGM-fed.
+          for selected in cteas_p7_original_first_hour_fstep_controller \\
+                          cteas_p7_original_six_hour_fstep_controller \\
+                          cteas_p7_original_143_hour_fstep_controller; do
+            ctest --test-dir "$base/cpp" -N -R "^$selected$" |
+              grep -Eq "Test[[:space:]]*#[0-9]+: $selected$" || {
+                echo "::error::Required original FSTEP gate not registered: $selected"
+                exit 1
+              }
+            ctest --test-dir "$base/cpp" -R "^$selected$" --output-on-failure
+          done
+          "$base/cpp/cteas_p7_original_fstep_trace" \\
+            "$base/oracle/case/run/puff/dgm_puffstep.bin" 143
+          echo "P7_NATIVE_ORIGINAL_143H_FSTEP_STEP_CONTROLLER=PASS FULL_COMP=NOT_YET_ACCEPTED"
           name=cteas_p7_first_six_hour_state_persistence_real4
           ctest --test-dir "$base/cpp" -N -R "^${name}$" |
             grep -Eq "Test[[:space:]]*#[0-9]+: ${name}$" || {
