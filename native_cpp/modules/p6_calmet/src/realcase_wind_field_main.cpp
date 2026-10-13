@@ -157,6 +157,7 @@ struct Arguments {
     fs::path case_dir,out_dir,geo,deck,surface,upper,fixture_dir,gamma_dir,zi_file,el_file,zii_file,el_cell_file,comp_state_prefix;
     int hours=143;
     int first_hour=0; // original zero-based hourly label index
+    bool native_setup_hour0=false; // original CALMET SETUP zero COMMON history
     fs::path out()const{return out_dir;}
 };
 } // namespace
@@ -185,6 +186,7 @@ int main(int argc,char** argv){
         else if(flag=="--comp-state-prefix")args.comp_state_prefix=next();
         else if(flag=="--hours")args.hours=std::stoi(next());
         else if(flag=="--first-hour")args.first_hour=std::stoi(next());
+        else if(flag=="--native-setup-hour0")args.native_setup_hour0=true;
         else throw std::invalid_argument("unknown argument "+flag);
     }
     if(args.out_dir.empty())throw std::invalid_argument("--out is required");
@@ -195,6 +197,13 @@ int main(int argc,char** argv){
        (!args.zi_file.empty()||!args.zii_file.empty()||
         !args.el_file.empty()||!args.el_cell_file.empty()))
         throw std::invalid_argument("native COMP state cannot mix with original ZII/EL/ZI injection");
+    if(args.native_setup_hour0 &&
+       (args.first_hour!=0||args.hours!=1||
+        !args.comp_state_prefix.empty()||!args.zi_file.empty()||
+        !args.el_file.empty()||!args.zii_file.empty()||
+        !args.el_cell_file.empty()))
+        throw std::invalid_argument(
+            "original SETUP initial state may be used only for causal hour 0, never with oracle/COMP history");
     if(args.case_dir.empty()&&(args.geo.empty()||args.deck.empty()||
                                args.surface.empty()||args.upper.empty()))
         throw std::invalid_argument(
@@ -783,7 +792,7 @@ int main(int argc,char** argv){
         // MIXHTST and mutates the DPTT history first. An explicit caller
         // station-ZII stream is diagnostic-only pending native MIXHTST
         // state reconstruction; never claim standalone U/V/W acceptance.
-        if(!args.comp_state_prefix.empty()){
+        if(args.native_setup_hour0||!args.comp_state_prefix.empty()){
             const std::size_t previous_offset=h==0?0:(h-1U)*std::size_t(nx*ny)+station_cell;
             StationMixhtstInput mix;
             mix.previous.zi_m=h==0?0.f:comp_zi[previous_offset];
@@ -845,7 +854,8 @@ int main(int argc,char** argv){
                 <<stage.zii_to_similt_m<<","<<stage.ziconv_after_m<<","
                 <<stage.dptt_for_comp_k<<","<<mix.previous.zi_m<<","
                 <<mix.previous.ziconv_m<<","<<mix.previous.dptt_k<<","
-                <<station_flux.monin_obukhov_m<<",native_p6e_comp_previous_hour\n";
+                <<station_flux.monin_obukhov_m<<","<<(args.native_setup_hour0?
+                "original_setup_zero_initial_state":"native_p6e_comp_previous_hour")<<"\n";
         }
         // Forensic reference-ZII input is mutually exclusive with the
         // native COMP-produced ZII above. Never mix these two provenances.
@@ -1195,6 +1205,7 @@ int main(int argc,char** argv){
           "\"RMIN2\": \"-1.0 in the deck; original PREPDI L5831 skips a surface station only when FMIN < RMIN2, which cannot happen for a negative RMIN2, so with RMIN2=-1.0 no surface station is ever skipped. This case has one surface station, so the rule is satisfied but inert; multi-surface-station cases would need it modelled\"},\n";
     meta<<"  \"hourly_labels\": "<<written<<",\n";
     meta<<"  \"first_hour_zero_based\": "<<args.first_hour<<",\n";
+    meta<<"  \"original_setup_zero_first_hour\": "<<(args.native_setup_hour0?"true":"false")<<",\n";
     meta<<"  \"hour_label\": \"END\", \"hour_label_note\": \"YYYY-MM-DD_HH in UTC; the label is the hourly interval end\",\n";
     meta<<"  \"surface_wind_speed_range_mps\": ["<<speed_min<<", "<<speed_max<<"],\n";
     meta<<"  \"blend\": {\"product\": \"blend_u_*.f32 / blend_v_*.f32 = the closed DIAGNO field (INTER2, SMOOTH, DIVCEL); the pre-tail INTER2 stage stays available as inter2_u/v_*.f32\", "
