@@ -1,6 +1,7 @@
 #include "cteas/puff/original_native_terrain.hpp"
 #include "cteas/puff/terrain_relief.hpp"
 #include "cteas/puff/terrain_width.hpp"
+#include "cteas/puff/step_integration.hpp"
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -57,11 +58,16 @@ TerrainLookup OriginalNativeTerrain::constraint_lookup() const {
     const auto index=[p](double x,double y){
         if(!std::isfinite(x)||!std::isfinite(y))
             throw std::invalid_argument("native MCTADJ2 non-finite MET position");
-        const int i=static_cast<int>(std::floor(x))+1;
-        const int j=static_cast<int>(std::floor(y))+1;
-        if(i<1||j<1||i>p->nx||j>p->ny)
-            throw std::out_of_range("native MCTADJ2 GETCELL outside MET grid");
-        return std::pair<int,int>{i,j};
+        // CALPUFF GETCELL/GRIDIJ (L82559-82720) returns a clamped
+        // outer-edge cell even when the puff endpoint leaves the grid.
+        // COMP retires the puff only AFTER the current SETPUF step.
+        // Reuse the already source-ported REAL*4 grid_cell rather than
+        // rejecting this physically valid last substep.
+        const auto cell=grid_cell({
+            .x_cells=x,.y_cells=y,
+            .nx=p->nx,.ny=p->ny,.domains=1,.domain=1,.nest_factor=1.0
+        });
+        return std::pair<int,int>{cell.i,cell.j};
     };
     TerrainLookup out;
     out.elevation_msl=[p,cell](double x,double y){
