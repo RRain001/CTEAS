@@ -166,6 +166,55 @@ jobs:
             --candidate "$independent" \
             --out "$RUNNER_TEMP/p6-native-causal-143h/p6f-independent-direct-45field.json"
           echo "PASS_P6_NATIVE_COORDINATOR_ORIGINAL_FREE_P6E_AND_DIRECT_P6F_143H"
+      - name: P6F direct GEO+deck+143 hourly payload assembly and failure isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/p6-native-causal-143h"
+          case_root="$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011"
+          tool="$RUNNER_TEMP/native-p6f/cteas_p6f_geo_static_provenance"
+          "$tool" --geo "$case_root/geo/makegeo/geo.dat" \
+            --deck "$case_root/run/met/met.inp" \
+            --source-metadata "$work/p6e_geo_deck_metadata_only.dat" \
+            --hour-manifest "$work/native_hourly_files.txt" \
+            --emit-native-header "$work/native_causal_direct_manifest_calmet.dat" \
+            | tee "$work/p6f-direct-143h-report.json"
+          cmp "$work/native_causal_direct_manifest_calmet.dat" \
+              "$work/native_causal_independent_header_calmet.dat"
+          sha256sum "$work/native_causal_direct_manifest_calmet.dat"
+          # Fault injection 1: a duplicated first native hour must NOT be
+          # accepted in hour 2 even if all its 45 grid fields are finite.
+          python3 - <<'PY'
+          import os,pathlib
+          w=pathlib.Path(os.environ['RUNNER_TEMP'])/'p6-native-causal-143h'
+          files=(w/'native_hourly_files.txt').read_text().splitlines()
+          assert len(files)==143
+          files[1]=files[0]
+          (w/'p6f-corrupted-hour-manifest.txt').write_text('\n'.join(files)+'\n')
+          PY
+          if "$tool" --geo "$case_root/geo/makegeo/geo.dat" \
+            --deck "$case_root/run/met/met.inp" \
+            --source-metadata "$work/p6e_geo_deck_metadata_only.dat" \
+            --hour-manifest "$work/p6f-corrupted-hour-manifest.txt" \
+            --emit-native-header "$work/INVALID-duplicate-hour.dat" \
+            > "$work/p6f-corrupt-hour-rejection.log" 2>&1; then
+            echo "::error::P6F accepted duplicated hour 0 in slot 1"
+            exit 1
+          fi
+          test ! -e "$work/INVALID-duplicate-hour.dat"
+          # Fault injection 2: original-free input MUST have all its
+          # 143*45 hour fields at the metadata-only missing sentinel.
+          if "$tool" --geo "$case_root/geo/makegeo/geo.dat" \
+            --deck "$case_root/run/met/met.inp" \
+            --source-metadata "$work/native_causal_calmet.dat" \
+            --hour-manifest "$work/native_hourly_files.txt" \
+            --emit-native-header "$work/INVALID-live-reference.dat" \
+            > "$work/p6f-live-metadata-rejection.log" 2>&1; then
+            echo "::error::P6F accepted live weather as source-only metadata"
+            exit 1
+          fi
+          test ! -e "$work/INVALID-live-reference.dat"
+          echo "PASS_P6F_DIRECT_SOURCE_ONLY_143_NATIVE_HOURS_BYTE_PARITY_AND_FAULT_REJECTION"
       - name: Original-wind P6E three-field control with SAME native station flux
         shell: bash
         run: |
@@ -188,6 +237,9 @@ jobs:
             ${{ runner.temp }}/p6-native-causal-143h/native_causal_independent_header_calmet.dat
             ${{ runner.temp }}/p6-native-causal-143h/p6f-independent-direct-45field.json
             ${{ runner.temp }}/p6-native-causal-143h/p6f-native-header.log
+            ${{ runner.temp }}/p6-native-causal-143h/p6f-direct-143h-report.json
+            ${{ runner.temp }}/p6-native-causal-143h/p6f-corrupt-hour-rejection.log
+            ${{ runner.temp }}/p6-native-causal-143h/p6f-live-metadata-rejection.log
             ${{ runner.temp }}/p6-native-causal-143h/writer.log
             ${{ runner.temp }}/p6-native-causal-143h/three_field_control/p6e_three_field_wind_control.json
             ${{ runner.temp }}/p6-native-causal-143h/native_source_stage_143h/
