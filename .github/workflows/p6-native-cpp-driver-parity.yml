@@ -7,6 +7,11 @@ on:
       - native_cpp/modules/p6_calmet/src/native_hourly_driver_main.cpp
       - native_cpp/modules/p6_calmet/CMakeLists.txt
       - .github/workflows/p6-native-cpp-driver-parity.yml
+  pull_request:
+    paths:
+      - native_cpp/modules/p6_calmet/src/native_hourly_driver_main.cpp
+      - native_cpp/modules/p6_calmet/CMakeLists.txt
+      - .github/workflows/p6-native-cpp-driver-parity.yml
   workflow_dispatch:
 
 permissions:
