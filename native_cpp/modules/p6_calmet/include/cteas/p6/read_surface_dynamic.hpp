@@ -107,9 +107,10 @@ inline frozen::SurfaceObserved parse_surface_fields(const std::string& row) {
 }
 inline SurfaceSeries read_surface_dynamic(
     const std::string& path,const std::vector<int>& declared_station_ids={},
-    std::size_t max_hours=200000,std::size_t max_stations=1000) {
+    std::size_t max_hours=200000,std::size_t max_stations=1000,
+    std::size_t max_hour_station_slots=2000000) {
     using namespace std::chrono;
-    require_surf(max_hours>=1&&max_stations>=1,
+    require_surf(max_hours>=1&&max_stations>=1&&max_hour_station_slots>=1,
                  "SURF bounds cannot be zero");
     std::ifstream in(path);
     require_surf(static_cast<bool>(in),"cannot open P6G SURF.DAT");
@@ -151,6 +152,9 @@ inline SurfaceSeries read_surface_dynamic(
     const auto n_hours=static_cast<std::size_t>(
         duration_cast<hours>(result.end-result.begin).count());
     require_surf(n_hours>=1&&n_hours<=max_hours,"SURF window exceeds hour budget");
+    require_surf(n_hours<=max_hour_station_slots/
+                 static_cast<std::size_t>(station_count),
+                 "SURF hour x station allocation exceeds safe cell budget");
     std::set<int> ids;
     for(int n=0;n<station_count;++n) {
         std::istringstream scan(line_surf(in,"SURF station ID row missing"));
