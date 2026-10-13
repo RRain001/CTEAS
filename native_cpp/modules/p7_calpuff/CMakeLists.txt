@@ -1076,6 +1076,20 @@ foreach(HOURS IN ITEMS 1 6 143)
            COMMAND cteas_p7_original_comp_hourly_tests ${HOURS})
 endforeach()
 
+# Source CALPUFF COMP L10629-10649 / METFM1 WDIV L9555-9566,
+# independently opt-in (never changed for historical non-WDIV regression).
+add_library(cteas_p7_original_vertical_divergence STATIC src/original_vertical_divergence.cpp)
+target_include_directories(cteas_p7_original_vertical_divergence PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_vertical_divergence PUBLIC
+  cteas_p7_advection cteas_p7_calmet21 cteas_p7_original_met_cell)
+if(MSVC)
+  target_compile_options(cteas_p7_original_vertical_divergence PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_vertical_divergence PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 # Native restricted *rising* point puff chain: METFM1 -> PUFFDZ -> 
 # GRISE/RISEWIND -> location -> REAL4 PG SIGTY/SIGTZ -> VMASS/COMP.
 add_library(cteas_p7_original_comp_rise STATIC src/original_comp_rise.cpp)
@@ -1084,7 +1098,8 @@ target_link_libraries(cteas_p7_original_comp_rise PUBLIC
   cteas_p7_original_vertical cteas_p7_original_motion
   cteas_p7_original_rise_met cteas_p7_step_integration
   cteas_p7_step cteas_p7_dispersion
-  cteas_p7_dry_deposition cteas_p7_coupling)
+  cteas_p7_dry_deposition cteas_p7_coupling
+  cteas_p7_original_vertical_divergence)
 if(MSVC)
   target_compile_options(cteas_p7_original_comp_rise PRIVATE /W4 /WX)
 else()
