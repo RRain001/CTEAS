@@ -106,8 +106,8 @@ jobs:
           r=json.load(open(sys.argv[1]))
           print("EXPERIMENT_CI_ONLY_THETA2",r["scientific_verdict"])
           print("SCIENTIFIC_QH_TEMP2D_AB",
-                {k:{"exceedances":r["summary"][k]["exceedances"],
-                    "max_abs":r["summary"][k]["max_abs"]}
+                {k:{"exceedances":r["fields"][k]["exceedances"],
+                    "max_abs":r["fields"][k]["max_abs"]}
                  for k in ("QH","TEMP2D")})
           print("NO_PRODUCTION_PHYSICS_OR_TOLERANCE_CHANGE")
           PY

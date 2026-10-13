@@ -184,7 +184,7 @@ def report(args):
     for line in (args.work/"cpp_avetmp_probe.log").read_text().splitlines():
         for prefix,dest,expected in (("CTEAS_QH_PRE",qh_native_pre,7),
                                      ("CTEAS_QH_POST",qh_native_post,3)):
-            m=re.search(prefix+r"\\s+(.+)$",line)
+            m=re.search(prefix+r"\s+(.+)$",line)
             if m:
                 vals=[float(v) for v in m.group(1).split()]
                 if len(vals)!=expected:raise ValueError("malformed QH probe")
@@ -204,7 +204,7 @@ def report(args):
         "after_abs_by_field":
             [abs(a-b) for a,b in zip(qh_original_post[qh_index],qh_native_post[0])]}
     outfile=args.work/"avetmp_first_divergence.json"
-    outfile.write_text(json.dumps(report,indent=2)+"\\n")
+    outfile.write_text(json.dumps(report,indent=2)+"\n")
     print(json.dumps({
         "status":report["status"],"original_calls":len(originals),
         "native_calls":len(candidates),"by_stage":by_phase,
