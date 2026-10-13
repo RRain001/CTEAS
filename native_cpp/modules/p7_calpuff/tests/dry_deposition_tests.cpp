@@ -146,6 +146,35 @@ void test_original_gaussian_dry_mass() {
              <<" QM_REAL4=YES INTEGRATED_COMP=NOT_YET_ACCEPTED\\n";
 }
 
+void test_original_uniform_dry_mass() {
+    cteas::puff::DryDepositionStep resistance;
+    resistance.velocity_ms={0.005,0.0};
+    resistance.boundary_ratio={0.8,1.0};
+    resistance.fraction_remaining={0.6,1.0};
+    const std::vector<float> mass={10.0F,7.0F};
+    const auto uniform=cteas::puff::original_uniform_dry_mass(
+        resistance,2,mass);
+    require(uniform.mixed_mass_after==std::vector<float>({6.0F,7.0F}) &&
+            uniform.removed_mass[0]==4.0F &&
+            uniform.removed_mass[1]==0.0F,
+            "uniform DRY must apply VDPVD-diffusion mass fraction");
+    const auto slug=cteas::puff::original_uniform_dry_mass(
+        resistance,16,mass);
+    require(slug.mixed_mass_after==uniform.mixed_mass_after,
+            "uniform code 16 must follow original ICODE6 DRY branch");
+    const auto skip=cteas::puff::original_uniform_dry_mass(
+        resistance,4,mass);
+    require(skip.mixed_mass_after==mass,
+            "original DRY ICODE4 mass must remain unchanged");
+    require_throw([&]{
+        (void)cteas::puff::original_uniform_dry_mass(resistance,1,mass);
+    },"Gaussian code cannot use uniform-only VDPVD exponent");
+    std::cout<<"P7_NATIVE_ORIGINAL_UNIFORM_DRY_MASS=PASS"
+             <<" VDPVD_FROM_NATIVE_DRYSOURCE=YES"
+             <<" H3_DEPLETED_HE3_PRESERVED=YES"
+             <<" ICODE4_SKIP=YES\\n";
+}
+
 void test_method_validation() {
     require(static_cast<int>(cteas::puff::require_supported_dry_deposition_method(0, "X")) == 0,
             "method 0 accepted");
@@ -436,6 +465,7 @@ int main(int argc, char** argv) {
     try {
         test_method_validation();
         test_original_gaussian_dry_mass();
+        test_original_uniform_dry_mass();
         test_setup_from_control();
         test_setup_fail_closed();
         test_resistance_model();

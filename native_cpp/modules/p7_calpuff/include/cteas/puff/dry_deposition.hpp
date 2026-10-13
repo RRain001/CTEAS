@@ -147,15 +147,24 @@ struct DryDepositionStep {
 // VDPVD=1, calls VCBAR after SETPUF and uses a different exponent. VCBAR is explicitly input from native P7H (not oracle DGM).
 // Only Gaussian codes 1/3/5 (or 11/13/15 slugs) and skipped 4/14/99
 // are represented; uniform 2/6/12/16 belong to the other DRY branch.
-struct OriginalGaussianDryResult {
+struct OriginalDryMassResult {
     std::vector<float> fraction_remaining;
     std::vector<float> mixed_mass_after;
     std::vector<float> removed_mass;
     float vcbar_m_inverse=0.0F;
 };
+using OriginalGaussianDryResult=OriginalDryMassResult;
 [[nodiscard]] OriginalGaussianDryResult original_gaussian_dry_mass(
     const DryDepositionStep& resistance, int puff_code,
     float sampling_step_s, float native_vcbar_m_inverse,
+    const std::vector<float>& mixed_mass_before);
+
+// Original DRY L26227–26274 uniformly mixed ICODE2/6 uses the
+// VDPVD diffusion boundary ratio from VDCOMP and TSAMP/HLID. ICODE4/99
+// bypasses both VD and mass changes. The input DRY step contains the
+// original REAL4 VDCOMP+uniform removal factors, not Gaussian VCBAR.
+[[nodiscard]] OriginalDryMassResult original_uniform_dry_mass(
+    const DryDepositionStep& resistance, int puff_code,
     const std::vector<float>& mixed_mass_before);
 
 // Case-level audit: method per species, which options are effective, and the

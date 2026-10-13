@@ -187,6 +187,44 @@ std::vector<TableRow> parse_table(const std::vector<std::string>& lines, std::si
 
 } // namespace
 
+OriginalDryMassResult original_uniform_dry_mass(
+    const DryDepositionStep& d,int puff_code,
+    const std::vector<float>& before) {
+    int code=puff_code;
+    if(code>=11 && code<=16)code-=10;
+    if(puff_code!=99 && code!=4 && code!=2 && code!=6)
+        throw std::invalid_argument(
+            "P7F original uniform DRY refuses Gaussian puff code");
+    if(d.fraction_remaining.size()!=before.size() ||
+       d.velocity_ms.size()!=before.size() ||
+       d.boundary_ratio.size()!=before.size())
+        throw std::invalid_argument(
+            "P7F original uniform DRY species dimension mismatch");
+    const bool skipped=(puff_code==99||code==4);
+    OriginalDryMassResult out;
+    out.fraction_remaining.reserve(before.size());
+    out.mixed_mass_after.reserve(before.size());
+    out.removed_mass.reserve(before.size());
+    for(std::size_t j=0;j<before.size();++j) {
+        const R mass=before[j];
+        // Uniform DRY L26227–26261 is already computed by the
+        // native dry_deposition_step; unlike Gaussian DRY, VDPVD
+        // is NOT equal to unity for deposited gases here.
+        const R fraction=skipped?1.0F:
+            static_cast<R>(d.fraction_remaining[j]);
+        const R after=static_cast<R>(mass*fraction);
+        if(!std::isfinite(mass)||mass<0.0F ||
+           !std::isfinite(fraction)||fraction<0.0F||fraction>1.0F ||
+           !std::isfinite(after)||after<0.0F)
+            throw std::invalid_argument(
+                "P7F original uniform DRY invalid fraction or QM");
+        out.fraction_remaining.push_back(fraction);
+        out.mixed_mass_after.push_back(after);
+        out.removed_mass.push_back(static_cast<R>(mass-after));
+    }
+    return out;
+}
+
 OriginalGaussianDryResult original_gaussian_dry_mass(
     const DryDepositionStep& d, int puff_code,
     float tsamp, float vcbar, const std::vector<float>& before) {

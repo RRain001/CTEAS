@@ -309,27 +309,42 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         const auto resistance=dry_deposition_step(
             setup,e,mass.reflecting_lid_m,substep.step_s,
             sampled.mixing_height_m,met.wstar[index]);
-        VcbarInputs vc;
-        vc.state.puff_code=mass.puff_code;
-        vc.state.x_begin1=before.x_cells;
-        vc.state.y_begin1=before.y_cells;
-        vc.state.x_end1=moved.state.x_cells;
-        vc.state.y_end1=moved.state.y_cells;
-        vc.state.z_begin1=before.z_m;
-        vc.state.z_end1=moved.state.z_m;
-        vc.state.sigma_z_begin1=sigma.adjust.sigma_z_begin_m;
-        vc.state.sigma_z_mid=sigma.adjust.sigma_z_mid_m;
-        vc.state.sigma_z_end1=sigma.adjust.sigma_z_end_m;
-        vc.lid_height_m=mass.reflecting_lid_m;
-        vc.terrain_adjustment=control.mctadj2?2:0;
-        vc.plume_path_coefficient=
-            control.gaussian_dry->plume_path_coefficient;
-        const float vbar=r4(
-            vertical_coupling_bar(vc),"native DRY original VCBAR");
-        auto updated=original_gaussian_dry_mass(
-            resistance,mass.puff_code,
-            r4(substep.step_s,"native DRY TSAMP"),
-            vbar,mass.mass_mixed);
+        int original_type=mass.puff_code;
+        if(original_type>=11 && original_type<=16)
+            original_type-=10;
+        OriginalDryMassResult updated;
+        if(mass.puff_code==99 || original_type==4 ||
+           original_type==2 || original_type==6) {
+            // Original DRY L26227–26261: uniform ICODE 2/6
+            // computes VDPVD and TSAMP/HLID; ICODE4/99 skips.
+            updated=original_uniform_dry_mass(
+                resistance,mass.puff_code,mass.mass_mixed);
+        } else {
+            // Original DRY L26266–26276: Gaussian ICODE 1/3/5
+            // uses source-ported VCBAR instead of 1/HLID and
+            // leaves VDPVD exactly 1.
+            VcbarInputs vc;
+            vc.state.puff_code=mass.puff_code;
+            vc.state.x_begin1=before.x_cells;
+            vc.state.y_begin1=before.y_cells;
+            vc.state.x_end1=moved.state.x_cells;
+            vc.state.y_end1=moved.state.y_cells;
+            vc.state.z_begin1=before.z_m;
+            vc.state.z_end1=moved.state.z_m;
+            vc.state.sigma_z_begin1=sigma.adjust.sigma_z_begin_m;
+            vc.state.sigma_z_mid=sigma.adjust.sigma_z_mid_m;
+            vc.state.sigma_z_end1=sigma.adjust.sigma_z_end_m;
+            vc.lid_height_m=mass.reflecting_lid_m;
+            vc.terrain_adjustment=control.mctadj2?2:0;
+            vc.plume_path_coefficient=
+                control.gaussian_dry->plume_path_coefficient;
+            const float vbar=r4(
+                vertical_coupling_bar(vc),"native DRY original VCBAR");
+            updated=original_gaussian_dry_mass(
+                resistance,mass.puff_code,
+                r4(substep.step_s,"native DRY TSAMP"),
+                vbar,mass.mass_mixed);
+        }
         // State and returned VMASS must agree at CALCPF and next hour.
         v.commit_dry(id,mass.mass_mixed,updated.mixed_mass_after);
         mass.mass_mixed=updated.mixed_mass_after;
