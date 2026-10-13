@@ -27,7 +27,12 @@ namespace cteas::puff {
 // only in labelled regression cases, never silently substituted on Hefei.
 struct NativeMctadj2Controls {
     TerrainLookup terrain;
-    float brunt_vaisala_s=0.0F;  // from independently resolved CALPUFF met
+    float brunt_vaisala_s=0.0F;  // scoped synthetic fixed-BVF regressions only
+    // Original COMP L10893-10896 recomputes PTLAPS/BVF for EACH puff
+    // substep from its live METFM1 cell, ZBOT/ZTOP and TMET. Selecting
+    // this mode prevents an hour-constant synthetic BVF in a real case.
+    bool derive_bvf_from_metfm1=false;
+    float minimum_pt_gradient_k_per_m=0.005F;
 };
 // Selected original CALPUFF MDRY=1 gas deposition at COMP
 // L11076-11097. Explicitly opt-in until frozen 2022 setup/cell
