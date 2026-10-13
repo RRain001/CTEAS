@@ -24,12 +24,12 @@ def main():
     # MCTADJ=2 caller, not an independently invented terrain algorithm.
     import re
     anchors=[i for i,line in enumerate(source)
-             if re.match(r"^\\s{6}subroutine\\s+puffct2\\s*\\(",line,re.I)]
+             if re.match(r"^\s{6}subroutine\s+puffct2\s*\(",line,re.I)]
     if len(anchors)!=1:
         raise AssertionError(f"original PUFFCT2 anchor changed: {anchors}")
     start=anchors[0]
     tail=next((i for i in range(start+1,min(start+700,len(source)))
-               if re.match(r"^\\s{6}end\\s*$",source[i],re.I)),None)
+               if re.match(r"^\s{6}end\s*$",source[i],re.I)),None)
     if tail is None:
         raise AssertionError("PUFFCT2 vendor routine END not found")
     print(f"P7_VENDOR_PUFFCT2_SOURCE_SPAN={start+1}-{tail+1}")
