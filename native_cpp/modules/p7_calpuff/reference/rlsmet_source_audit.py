@@ -38,15 +38,16 @@ def audit(vendor: pathlib.Path) -> tuple[dict,list[str]]:
                 matches.append({"file":path.name,"line":i+1,"text":line.rstrip()})
         for i,line in enumerate(lines):
             h=HEADER.match(line)
-            if h and h.group(1).lower()=="rlsmet":
+            if h and h.group(1).lower() in ("rlsmet","windset","zfind"):
                 end=next((j for j in range(i+1,len(lines)) if TERMINATOR.match(lines[j])),None)
                 if end is None: raise ValueError(f"RLSMET missing END at {path.name}:{i+1}")
                 src="\n".join(lines[i:end+1])+"\n"
                 record={"file":path.name,"first_line":i+1,"last_line":end+1,
                         "source_sha256":hashlib.sha256(src.encode("latin-1")).hexdigest(),
                         "lines":end+1-i}
-                subroutines.append(record)
-                extracted += [f"RLSMET original {record}:"]+[f"{j+1:6d} {lines[j]}" for j in range(i,end+1)]
+                name=h.group(1).lower()
+                if name=="rlsmet": subroutines.append(record)
+                extracted += [f"{name.upper()} original {record}:"]+[f"{j+1:6d} {lines[j]}" for j in range(i,end+1)]
         if path.name=="calpuff.for":
             start=next((i for i,line in enumerate(lines) if re.search(r"^      subroutine points1\b",line,re.I)),None)
             if start is None: raise ValueError("Original POINTS1 subroutine missing")
