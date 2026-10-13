@@ -174,14 +174,39 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
     return out
 
 
+def source_wrou1_writes(vendor: Path) -> None:
+    # Inspect original source independently of the frozen binary. This
+    # identifies each 300/52/240/15/16/20 record's authoring statements.
+    source=vendor.read_text(encoding="latin-1").splitlines()
+    begin=next((i for i,s in enumerate(source) if re.match(
+        r"^\\s{5,}SUBROUTINE\\s+WROUT1\\b",s,re.I)),None)
+    if begin is None:
+        raise ValueError("vendor WROUT1 subroutine not found")
+    stop=next((i for i in range(begin+1,len(source))
+               if re.match(r"^\\s{5,}END\\s*(?:!.*)?$",source[i],re.I)),None)
+    if stop is None:
+        raise ValueError("vendor WROUT1 routine boundary missing")
+    # Vendor source is the evidence, not a retyped assumption about the record.
+    matches=[(i+1,source[i].strip()) for i in range(begin,stop)
+             if re.search(r"\\bWRITE\\s*\\(|\\bFORMAT\\s*\\(|\\bREWIND\\b|"
+                          r"\\bNCOM\\w*\\b|\\bCREC\\w*\\b",source[i],re.I)]
+    print(f"P7_VENDOR_WROUT1_SOURCE BEGIN={begin+1} END={stop+1}"
+          f" WRITE_ANCHORS={len(matches)}")
+    for index,line in matches[:65]:
+        print(f"P7_VENDOR_WROUT1_STATEMENT LINE={index} CODE={line[:160]!r}")
+
+
 def main() -> int:
     p=argparse.ArgumentParser()
     p.add_argument("--control",type=Path,required=True)
     p.add_argument("--original-con",type=Path,required=True)
+    p.add_argument("--vendor",type=Path)
     p.add_argument("--report",type=Path)
     args=p.parse_args()
     try:
         audit(args.control,args.original_con,args.report)
+        if args.vendor is not None:
+            source_wrou1_writes(args.vendor)
         return 0
     except (OSError,ValueError,AssertionError,struct.error) as e:
         print("P7_ORIGINAL_WROUT1_AUDIT=FAIL "+str(e),file=sys.stderr)
