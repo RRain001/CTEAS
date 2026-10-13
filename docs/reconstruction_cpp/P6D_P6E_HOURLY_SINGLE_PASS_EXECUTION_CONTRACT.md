@@ -140,3 +140,9 @@ Scientific CI is intentionally red because the strict comparator rejects those t
 
 Keep the 27 original U/V/W wind fields' explicit frozen-case PASS (no strict wind-record exceedances), but add an independent **coupling sensitivity** gate before declaring P6E complete; wind tolerance PASS does not imply downstream ELUSTR parity.
 
+
+### Actual C++ P6D REAL*4 compilation semantics experiment (P6E E5/E8 residual)
+
+[Hosted matrix run 38350618893](https://github.com/RRain001/CTEAS/actions/runs/38350618893), using precisely the same original 2022 143h case, causal previous-hour COMP, frozen original numeric comparator, and unchanged native P6E physics. The P6D `-O3 -DNDEBUG -ffp-contract=off` variant completed and gave **exactly the baseline 7,228 original 45-field exceedances**: U/V first-level errors unchanged (U max 5.96048e-6 m/s, V max 9.53676e-6 m/s), USTAR 5,952, EL 1,105, WSTAR 171. Thus changing the C++ compiler's FMA contraction flag is **not a demonstrated fix**, nor is there a scientific rationale to alter production settings on that basis. The `-O0 -DNDEBUG -ffp-contract=off` variant is tested in a separate matrix worker; record its own result before making conclusions about optimization order.
+
+No production physical kernel is altered by these compiler probes; a successful CI probe means the source numerical comparator produced a verdict, **not** numerical acceptance.
