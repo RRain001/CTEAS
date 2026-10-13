@@ -20,15 +20,23 @@ def main():
     if not original.lstrip().lower().startswith("subroutine slgfrac("):
         raise AssertionError("SLGFRAC vendor source anchor changed")
     geom="".join(source[4960:4985])
-    # Source inspection required before porting receptor-specific SIGTY,
-    # SIGTZ and GRISE. Emit original lines, including fixed-form continuation
-    # statements, so the physical execution order is never guessed.
-    print("P7_ORIGINAL_PUFRECS_RECEIVER_BRANCH_BEGIN")
-    for i in list(range(5340,5436))+list(range(4080,4300)):
-        if i<0 or i>=len(source):
-            raise AssertionError("source range changed")
-        print(f"P7_ORIGINAL_PUFRECS_RAW LINE={i+1} TEXT={source[i].rstrip()!r}")
-    print("P7_ORIGINAL_PUFRECS_RECEIVER_BRANCH_END")
+    # Source-anchored terrain gate: emit *original* PUFFCT2 and the
+    # MCTADJ=2 caller, not an independently invented terrain algorithm.
+    import re
+    anchors=[i for i,line in enumerate(source)
+             if re.match(r"^\\s{6}subroutine\\s+puffct2\\s*\\(",line,re.I)]
+    if len(anchors)!=1:
+        raise AssertionError(f"original PUFFCT2 anchor changed: {anchors}")
+    start=anchors[0]
+    tail=next((i for i in range(start+1,min(start+700,len(source)))
+               if re.match(r"^\\s{6}end\\s*$",source[i],re.I)),None)
+    if tail is None:
+        raise AssertionError("PUFFCT2 vendor routine END not found")
+    print(f"P7_VENDOR_PUFFCT2_SOURCE_SPAN={start+1}-{tail+1}")
+    for i in range(start,tail+1):
+        print(f"P7_VENDOR_PUFFCT2_RAW LINE={i+1} TEXT={source[i].rstrip()!r}")
+    for i in range(5319,5376):
+        print(f"P7_VENDOR_MCTADJ2_PUFRECS_RAW LINE={i+1} TEXT={source[i].rstrip()!r}")
     if "frac=AMAX1(" not in geom or "xtt1 = xttb1+xr1" not in geom:
         raise AssertionError("PUFRECS FCLIP/front geometry source changed")
     # Direct vendor statements inserted literally; no formula retyping.
