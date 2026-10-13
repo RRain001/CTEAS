@@ -1,0 +1,43 @@
+name: P6G G6 dynamic GEO plus station-envelope grid planning
+
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/read_geo_dynamic.hpp'
+      - 'native_cpp/modules/p6_calmet/tests/p6g_dynamic_geo_tests.cpp'
+      - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
+      - 'engine/gui_g5/p6_domain.py'
+      - 'engine/gui_g5/tests/test_p6g_domain.py'
+      - '.github/workflows/p6g-g6-dynamic-geo.yml'
+  push:
+    branches:
+      - codex/p6g-g6-dynamic-geo-domain-20261013
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  p6g-geometry-and-domain:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python prerequisites
+        run: python3 -m pip install -q --disable-pip-version-check PyYAML
+      - name: Validate G5 expanded-domain planning and source station inclusion
+        run: |
+          python3 -m compileall -q engine/gui_g5/p6_domain.py
+          python3 -m unittest engine.gui_g5.tests.test_p6g_domain -v
+      - name: Configure P6 C++ strict Debug
+        run: cmake -S native_cpp/modules/p6_calmet -B "${{ runner.temp }}/p6g-g6-debug" -DCMAKE_BUILD_TYPE=Debug
+      - name: Build new geometry reader and FROZEN 50x50 test
+        run: |
+          cmake --build "${{ runner.temp }}/p6g-g6-debug" --target cteas_p6g_dynamic_geo_tests cteas_p6_geo_tests -j2
+      - name: Compare synthetic 50x50 original and dynamic fields, plus all other sizes
+        run: ctest --test-dir "${{ runner.temp }}/p6g-g6-debug" --output-on-failure -R 'p6g_dynamic_geo_utm_and_frozen_field_parity|p6c_geo_selected_scoped_software'
+      - name: Rebuild and retest Release against frozen scoped reader
+        run: |
+          cmake -S native_cpp/modules/p6_calmet -B "${{ runner.temp }}/p6g-g6-release" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "${{ runner.temp }}/p6g-g6-release" --target cteas_p6g_dynamic_geo_tests cteas_p6_geo_tests -j2
+          ctest --test-dir "${{ runner.temp }}/p6g-g6-release" --output-on-failure -R 'p6g_dynamic_geo_utm_and_frozen_field_parity|p6c_geo_selected_scoped_software'
