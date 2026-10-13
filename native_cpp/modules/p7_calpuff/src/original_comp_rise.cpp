@@ -75,7 +75,8 @@ void OriginalCompRisePointDriver::admit(
 RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     int id,const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& control,const DispersionSetup& pg,bool urban,
-    RiseCompSourceSampling source_sampling) {
+    RiseCompSourceSampling source_sampling,
+    const RiseCompSamplingKernel& sampling_kernel) {
     const auto found=rise_.find(id);
     if(found==rise_.end())throw std::out_of_range("unknown rise puff");
     require(pg.mdisp==3 && !pg.heffter_sigma_z &&
@@ -229,8 +230,22 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     dispersion.step.mid_distance_km=bookkeeping.mid_distance_km;
     const auto sigma=v.commit_sigma(id,dispersion,sigma_y,sigma_z);
     order.completed(VendorSubstepPhase::CommitSetpuf);
-    // Restricted PG rise mode: full COMP CHEM/WET/DRY and CALCPF still
-    // require integration HERE before the L11391-11398 late history commit.
+    // Native receptor accumulation belongs AFTER SETPUF but BEFORE COMP
+    // L11391-11398. A pure sampling callback returns staged increments;
+    // it must not directly write puff.con or mutate external accumulators.
+    // Full CALCPF PUFRECS/VCBAR and CHEM/WET/DRY remain outside scope.
+    std::vector<float> receptor_increments;
+    if(sampling_kernel){
+        const RiseCompSamplingState at_receptor{
+            id,before,moved.state,v.state(id),sigma,mass,
+            r4(substep.step_s,"native sample step seconds")
+        };
+        receptor_increments=sampling_kernel(at_receptor);
+        for(float increment:receptor_increments){
+            if(!std::isfinite(increment))
+                throw std::invalid_argument("CALCPF sampler returned nonfinite increment");
+        }
+    }
     v.commit_lid(id,mass.reflecting_lid_m,mass.puff_code);
     order.completed(VendorSubstepPhase::CommitNextStepHistory);
     order.finish();
@@ -242,7 +257,8 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     ++state.completed;
     RiseCompStep outcome{
         before,moved.state,post,sampled,rise,
-        cadence,substep,bookkeeping,sigma,mass,end_height
+        cadence,substep,bookkeeping,sigma,mass,end_height,
+        std::move(receptor_increments)
     };
     motion_=std::move(m);
     vertical_=std::move(v);

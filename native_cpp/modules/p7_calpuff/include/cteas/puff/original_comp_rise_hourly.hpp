@@ -84,6 +84,9 @@ struct OriginalCompMxsamHour {
     std::size_t capacity_rolldn_removed=0;
     std::size_t occupied_slots_after=0;
     std::size_t inactive_slots_after=0;
+    // Staged source/receptor contributions in original substep order.
+    // Only returned on a successful hour-atomic commit.
+    std::vector<float> receptor_concentrations;
 };
 class OriginalCompRiseMultiPuffHours {
 public:
@@ -191,6 +194,16 @@ public:
         const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban,const OriginalCompPuffBounds& bounds,std::size_t mxpuff);
+    // Scoped PFSAMP/CALCPF sampling callback, executed at the actual
+    // SETPUF -> [CALCPF] -> late-history boundary for EACH native substep.
+    // Callback must not modify external state; the float32 total is
+    // published only after successful complete-hour advancement.
+    [[nodiscard]] OriginalCompMxsamHour advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource& source,
+        const OriginalCompPuffBounds& bounds,std::size_t mxpuff,
+        std::size_t receptor_values,const RiseCompSamplingKernel& kernel);
     [[nodiscard]] const OriginalPuffCapacityInventory& capacity_inventory()const;
     [[nodiscard]] OriginalPuffMotionState motion(int id)const;
     [[nodiscard]] NativeVerticalPuffState vertical(int id)const;
@@ -215,12 +228,16 @@ private:
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban,const OriginalPointHourSource* source,bool adaptive,
         const OriginalCompPuffBounds* bounds=nullptr,
-        bool deferred_original_rolldn=false);
+        bool deferred_original_rolldn=false,
+        const RiseCompSamplingKernel* sampling_kernel=nullptr,
+        std::size_t receptor_values=0);
     [[nodiscard]] OriginalCompMxsamHour advance_hour_capacity(
         const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban,const OriginalPointHourSource* source,
-        const OriginalCompPuffBounds& bounds,std::size_t mxpuff);
+        const OriginalCompPuffBounds& bounds,std::size_t mxpuff,
+        const RiseCompSamplingKernel* sampling_kernel=nullptr,
+        std::size_t receptor_values=0);
     OriginalCompRisePointDriver puffs_;
     std::vector<int> active_ids_;
     std::size_t hours_=0;

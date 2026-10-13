@@ -1,4 +1,5 @@
 #include "cteas/puff/original_comp_rise_hourly.hpp"
+#include "cteas/puff/receptors.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -548,6 +549,72 @@ void test(){
              <<" CAPACITY_PRESSURE_ROLLDN=YES"
              <<" FAILED_ADMISSION=ATOMIC"
              <<" WET_CALCPF_OUTPUT=NOT_YET_INTEGRATED\\n";
+
+    // Source-ordered CALCPF seam: use source-ported PFSAMP + source-ported
+    // gridded CALCPF horizontal mass weighting at a receptor positioned on
+    // each substep trajectory. PFSAMP expects sigma in SAMPLING GRID UNITS
+    // (metres / sampling-grid spacing), whereas CALCPF's denominator needs
+    // the same receptor sigma in METRES. Full PUFRECS/VCBAR is NOT here.
+    OriginalCompRiseMultiPuffHours sampled_driver;
+    std::vector<float> sampled_deltas;
+    const RiseCompSamplingKernel kernel=[&](const RiseCompSamplingState& step) {
+        need(step.after_setpuf_before_lid.vmass_pending &&
+             step.after_setpuf_before_lid.completed_substeps==
+               step.after_setpuf_before_lid.committed_lid_steps+1 &&
+             step.vmass.mass_mixed.size()==2,
+             "CALCPF callback did not run between SETPUF and late lid");
+        const double sy_m=step.sigmas.step.sigma_y_mid_m;
+        need(sy_m>0,"sampled CALCPF sigma-y is invalid");
+        const double sy_sample_units=sy_m/ctl.met_spacing_m;
+        const double xrec=0.5*(step.before.x_cells+step.after.x_cells);
+        const double yrec=0.5*(step.before.y_cells+step.after.y_cells);
+        const auto ints=puff_sampling_integrals(
+            step.before.x_cells,step.before.y_cells,
+            step.after.x_cells,step.after.y_cells,
+            xrec,yrec,sy_sample_units,0.0);
+        const auto inc=receptor_concentration_increment(ints,{
+            .mass_old=step.vmass.mass_mixed.at(0),
+            .mass_new=step.vmass.mass_mixed.at(0),
+            .sigma_y_at_receptor_m=sy_m,
+            .closest_approach_squared_km2=0,
+            .vertical_factor=1.0,  // explicitly supplied test VCOUP factor
+            .time_fraction=step.step_seconds/3600.0,
+            .deposition_ratio=1.0,.area_source_factor=1.0
+        });
+        const float v=static_cast<float>(inc);
+        need(std::isfinite(v) && v>0.0F,"native CALCPF contributed no finite receptor value");
+        sampled_deltas.push_back(v);
+        return std::vector<float>{v};
+    };
+    const auto sampled=sampled_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+        met,geo,ctl,pg,false,fast,wide_domain,1,1,kernel);
+    float recomputed=0;
+    for(float v:sampled_deltas)recomputed+=v;
+    need(sampled.receptor_concentrations.size()==1 &&
+         sampled.receptor_concentrations[0]==recomputed &&
+         sampled_deltas.size()==sampled.steps.size() &&
+         sampled.steps.size()>1 &&
+         sampled_driver.completed_hours()==1,
+         "CALCPF sampling did not accumulate each actual FSTEP substep");
+    const auto sampled_before=sampled_driver.motion(1);
+    auto no_sample=[](const RiseCompSamplingState&)->std::vector<float>{
+        throw std::runtime_error("intentional CALCPF failure");
+    };
+    const auto sampled_count=sampled_driver.completed_hours();
+    bool sample_refused=false;
+    try{(void)sampled_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+        met,geo,ctl,pg,false,fast,wide_domain,2,1,no_sample);}
+    catch(const std::runtime_error&){sample_refused=true;}
+    need(sample_refused && sampled_driver.completed_hours()==sampled_count &&
+         sampled_driver.motion(1).travel_time_s==sampled_before.travel_time_s &&
+         sampled_driver.capacity_inventory().occupied()==1,
+         "CALCPF callback failure partially committed puff/source hour");
+    std::cout<<"P7_CALCPF_NATIVE_SUBSTEP_HOOK=PASS"
+             <<" AFTER_SETPUF_BEFORE_LID=YES"
+             <<" FSTEP_SAMPLES="<<sampled_deltas.size()
+             <<" PFSAMP_GRID_UNITS=YES"
+             <<" HOUR_ATOMIC=YES"
+             <<" FULL_PUFRECS_VCBAR=NOT_YET_ACCEPTED\\n";
 
     const auto state=driver.motion(1);
     const auto count=driver.completed_hours();

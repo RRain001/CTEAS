@@ -250,7 +250,9 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& controls,const DispersionSetup& pg,
     bool urban,const OriginalPointHourSource* source,bool adaptive,
-    const OriginalCompPuffBounds* bounds,bool deferred_original_rolldn) {
+    const OriginalCompPuffBounds* bounds,bool deferred_original_rolldn,
+    const RiseCompSamplingKernel* sampling_kernel,
+    std::size_t receptor_values) {
     if(capacity_slots_ && !deferred_original_rolldn)
         throw std::logic_error("capacity-controlled COMP cannot mix legacy schedulers");
     if(deferred_original_rolldn && !capacity_slots_)
@@ -288,6 +290,11 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
     OriginalCompMxsamHour result;
     result.hour_index=hours_;
     result.release=release;
+    if(sampling_kernel){
+        if(!*sampling_kernel || receptor_values==0)
+            throw std::invalid_argument("CALCPF sampler needs nonempty kernel and receptors");
+        result.receptor_concentrations.assign(receptor_values,0.0F);
+    }
     const auto mark_retired=[&](int id,OriginalCompExitReason why){
         if(why==OriginalCompExitReason::Active)
             throw std::logic_error("COMP invalid active retirement request");
@@ -335,7 +342,8 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
                 const auto physics=trial.step_pg_rise(
                     id,met,statics,ctrl,pg,urban,
                     {.ksam=k,.nsam=plan.sampling_steps,
-                     .lsubsam=adaptive && plan.subsampling});
+                     .lsubsam=adaptive && plan.subsampling},
+                    sampling_kernel?*sampling_kernel:RiseCompSamplingKernel{});
                 const float used=static_cast<float>(physics.substep.step_s);
                 if(!(used>0.0F && used<=tsamp && std::isfinite(used)))
                     throw std::logic_error("invalid native COMP effective TSAMP");
@@ -357,6 +365,17 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
                             "COMP requires FSTEP split: use adaptive scheduler");
                 }
                 if(physics.substep.split)++result.fstep_shortened_steps;
+                if(sampling_kernel){
+                    if(physics.receptor_increments.size()!=receptor_values)
+                        throw std::invalid_argument("CALCPF receptor field size drift");
+                    for(std::size_t j=0;j<receptor_values;++j){
+                        const float next=result.receptor_concentrations[j]+
+                                         physics.receptor_increments[j];
+                        if(!std::isfinite(next))
+                            throw std::overflow_error("CALCPF hourly REAL4 accumulation overflow");
+                        result.receptor_concentrations[j]=next;
+                    }
+                }
                 result.steps.push_back({id,rel,k,plan,physics});
                 // Original COMP L11400-L11413: only after the actual
                 // native substep, test PUFF CENTER (not sigma footprint).
@@ -487,6 +506,16 @@ std::size_t OriginalCompRiseMultiPuffHours::compact_original_inactive(
     return plan.retired_old;
 }
 OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalPointHourSource& source,
+    const OriginalCompPuffBounds& bounds,std::size_t mxpuff,
+    std::size_t receptor_values,const RiseCompSamplingKernel& kernel) {
+    return advance_hour_capacity(
+        met,statics,controls,pg,urban,&source,bounds,mxpuff,&kernel,receptor_values);
+}
+OriginalCompMxsamHour
 OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_adaptive_bounded_capacity(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& controls,const DispersionSetup& pg,
@@ -512,7 +541,9 @@ OriginalCompMxsamHour OriginalCompRiseMultiPuffHours::advance_hour_capacity(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& controls,const DispersionSetup& pg,
     bool urban,const OriginalPointHourSource* source,
-    const OriginalCompPuffBounds& bounds,std::size_t mxpuff) {
+    const OriginalCompPuffBounds& bounds,std::size_t mxpuff,
+    const RiseCompSamplingKernel* sampling_kernel,
+    std::size_t receptor_values) {
     // The inventory, source, physical puffs, ages and hour counter all
     // roll back if capacity, meteorology or substep physics fail.
     auto trial=*this;
@@ -535,7 +566,8 @@ OriginalCompMxsamHour OriginalCompRiseMultiPuffHours::advance_hour_capacity(
     trial.active_ids_=live;
     const int old_last=trial.last_id_;
     auto result=trial.advance_hour_mxsam99_core(
-        met,statics,controls,pg,urban,source,true,&bounds,true);
+        met,statics,controls,pg,urban,source,true,&bounds,true,
+        sampling_kernel,receptor_values);
     if(source && static_cast<std::size_t>(trial.last_id_-old_last)!=incoming)
         throw std::logic_error("POINTS1 new releases differ from capacity admission");
     for(int id=old_last+1;id<=trial.last_id_;++id) {

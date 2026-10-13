@@ -3,7 +3,9 @@
 #include "cteas/puff/original_comp_neutral.hpp"
 #include "cteas/puff/original_rise_met.hpp"
 #include <cstddef>
+#include <functional>
 #include <unordered_map>
+#include <vector>
 
 namespace cteas::puff {
 
@@ -13,6 +15,22 @@ namespace cteas::puff {
 // This covers one complete noncalm / one-sample / no-building puff substep,
 // not original POINTS1/SWAP/MXSAM multi-substep scheduling or frozen Hefei
 // numerical parity. PRFIN/PRFPP release parameters must be native inputs.
+// Immutable state delivered precisely between original COMP SETPUF and
+// its post-CALCPF historical ZIOLD/ZIMAX commit. A sampling callback must
+// be pure: it returns per-receptor increments rather than mutating output.
+// Chemistry, wet/dry mass removal, and receptor-specific PUFRECS/VCBAR
+// remain independent full-case integration gates.
+struct RiseCompSamplingState {
+    int puff_id=0;
+    OriginalPuffMotionState before;
+    OriginalPuffMotionState after;
+    NativeVerticalPuffState after_setpuf_before_lid;
+    SigmaUpdateResult sigmas;
+    VmassResult vmass;
+    float step_seconds=0.0F;
+};
+using RiseCompSamplingKernel=std::function<std::vector<float>(
+    const RiseCompSamplingState&)>;
 struct RiseCompStep {
     OriginalPuffMotionState before;
     OriginalPuffMotionState after;
@@ -25,6 +43,7 @@ struct RiseCompStep {
     SigmaUpdateResult sigma;
     VmassResult vmass;
     float final_height_m=0.0F;
+    std::vector<float> receptor_increments;
 };
 
 // COMP KSAM/NSAM context (vendor L10417, 10553-10581). Defaults reproduce
@@ -44,7 +63,8 @@ public:
         int id,const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,
         const DispersionSetup& pg,bool urban,
-        RiseCompSourceSampling source_sampling={});
+        RiseCompSourceSampling source_sampling={},
+        const RiseCompSamplingKernel& sampling_kernel={});
     // Native COMP old-puff sampling wind BEFORE RISEWIND, from current
     // persistent PUFFDZ/ADVECT state (vendor L10119-10143).
     [[nodiscard]] NativeVerticalWind pre_cadence_wind(
