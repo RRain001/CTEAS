@@ -267,7 +267,7 @@ jobs:
           set -euo pipefail
           ctest --test-dir "$RUNNER_TEMP/native-p6d" --output-on-failure \
             -R '^p6_native_cpp_hourly_driver_fail_closed_missing_case$'
-      - name: Control-variable replay: 6h first, then full 143h
+      - name: "Control-variable replay: 6h first, then full 143h"
         shell: bash
         run: |
           set -euo pipefail
