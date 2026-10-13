@@ -20,12 +20,12 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 13
     steps:
-      - name: Verify dedicated P6D runner
+      - name: Verify GitHub-hosted P6D environment
         shell: bash
         run: |
           echo "P6D runner=$RUNNER_NAME os=$RUNNER_OS arch=$RUNNER_ARCH"
-          if [[ "$RUNNER_NAME" != "lhy-desktop" || "$RUNNER_OS" != "Linux" ]]; then
-            echo "::error::P6D must run on the Linux lhy-desktop runner"
+          if [[ "$RUNNER_OS" != "Linux" || "$RUNNER_ARCH" != "X64" ]]; then
+            echo "::error::P6D requires a Linux/X64 GitHub-hosted runner"
             exit 1
           fi
       - name: Probe GitHub checkout transports on dedicated P6D host
