@@ -1045,3 +1045,25 @@ foreach(HOURS IN ITEMS 1 6 143)
   add_test(NAME cteas_p7_native_rise_comp_pg_${HOURS}h
            COMMAND cteas_p7_original_comp_rise_tests ${HOURS})
 endforeach()
+
+# Native multi-point puff GRISE + RISEWIND + PG COMP whole-hour transaction;
+# frozen Hefei numerical parity and original POINTS1 cadence remain OPEN.
+add_library(cteas_p7_original_comp_rise_hourly STATIC src/original_comp_rise_hourly.cpp)
+target_include_directories(cteas_p7_original_comp_rise_hourly PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_comp_rise_hourly PUBLIC cteas_p7_original_comp_rise)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_rise_hourly PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_rise_hourly PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7_original_comp_rise_hourly_tests tests/original_comp_rise_hourly_tests.cpp)
+target_link_libraries(cteas_p7_original_comp_rise_hourly_tests PRIVATE cteas_p7_original_comp_rise_hourly)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_rise_hourly_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_rise_hourly_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+foreach(HOURS IN ITEMS 1 6 143)
+  add_test(NAME cteas_p7_native_rise_comp_pg_multipuff_${HOURS}h
+           COMMAND cteas_p7_original_comp_rise_hourly_tests ${HOURS})
+endforeach()
