@@ -62,8 +62,7 @@ from engine.core.paths import (
 from engine.core.runtime_names import MET_DAT, MET_INP, MET_LST, PUFF_CON, PUFF_LST
 from engine.gui_g5.app import create_case, list_case_summaries, load_case_yaml
 from engine.gui_g5.pipeline import stage_readiness, validate_case
-from engine.gui_g5.case_setup import write_case_grid
-from engine.run_met.common import lon_lat_to_utm_km, parse_grid_cmn
+from engine.gui_g5.case_setup import write_case_grid, projected_stack_utm_km
 from engine.preprocess.grid.center_location_to_utm import convert_lon_lat
 from engine.postprocessing._core import index_time_records, parse_calmet_grid
 
@@ -1745,14 +1744,11 @@ class MainWindow(QMainWindow):
 
         lon = float(self.point_widgets["lon"].text().strip())
         lat = float(self.point_widgets["lat"].text().strip())
-        # The source must use the *case grid's* UTM zone, including when
-        # the stack's nominal zone differs from the grid centre's zone.
-        grid_def = parse_grid_cmn(self.current_case,
-            path=case_dir(self.current_case) / "grid" / "grid.cmn")
-        x_km, y_km = lon_lat_to_utm_km(lon, lat, grid_def.iutmzn,
-                                        grid_def.lsohem == "N")
+        # Use the EDITED case centre's zone, not the previous saved
+        # grid.cmn (which may belong to a different region/UTM zone).
         _set_path(data, "preprocess.stack.longitude", lon)
         _set_path(data, "preprocess.stack.latitude", lat)
+        x_km, y_km = projected_stack_utm_km(data)
         emission = float(self.point_widgets["emission_bq_s"].text().strip())
         source = {
             "name": "P1",
