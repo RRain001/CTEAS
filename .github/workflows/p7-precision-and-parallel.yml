@@ -358,6 +358,7 @@ jobs:
             --audit-record native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm-audit.json \
             --report "$build/P7_ORIGINAL_ORDER_DGM_AUDIT.json"
           python3 native_cpp/modules/p7_calpuff/reference/audit_vendor_wrout1_output.py \
+            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
             --control project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
             --original-con project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
             --report "$build/P7_ORIGINAL_WROUT1_INVENTORY.json"
