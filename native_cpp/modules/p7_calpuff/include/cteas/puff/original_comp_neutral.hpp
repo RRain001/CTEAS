@@ -38,6 +38,9 @@ struct NeutralCompControls {
     float source_period_s=3600.0F;
     float met_spacing_m=100.0F;
     float max_sample_distance_cells=1.0F;
+    // Original CALPUFF COMP WSCALM, distinct from CALMET's ICALM.
+    // Frozen Hefei puff.inp explicitly selects 0.5 m/s.
+    float calm_threshold_ms=0.5F;
     int max_sampling_steps=1;
     int release_number=1;
     SigmaUpdateInputs dispersion;
