@@ -59,5 +59,11 @@ jobs:
           for i,s in assignments[:100]:
               for k in range(max(0,i-4),min(len(lines),i+3)):
                   print(f'[{k+1:05d}] {lines[k]}')
+          print('P7_VENDOR_BLOCK_DATA_TIME_SCALES_START')
+          for i,line in enumerate(lines):
+              if 1999<=i+1<=2424 and re.search(r'tyidr|tzidr|tzisdr|ayt',line,re.I):
+                  for k in range(max(0,i-3),min(len(lines),i+4)):
+                      print(f'[{k+1:05d}] {lines[k]}')
+          print('P7_VENDOR_BLOCK_DATA_TIME_SCALES_END')
           print('P7_VENDOR_CALM_PARAMETER_SOURCE_END')
           PY
