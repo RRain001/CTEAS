@@ -165,6 +165,7 @@ jobs:
             --work "$RUNNER_TEMP/p6f-native-p7-original" \
             --report "$RUNNER_TEMP/p6f-original-calpuff-native-header-report.json"
       - name: Original CALPUFF concentrations unchanged after independent OUTHD replacement
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail
