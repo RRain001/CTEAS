@@ -17,14 +17,21 @@ on:
 jobs:
   build-test:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 10
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Select self-hosted C++20 and Fortran tools
+        with:
+          persist-credentials: false
+      - name: Select isolated C++20 and Fortran tools on GitHub-hosted Ubuntu
         uses: ./.github/actions/cteas-linux-toolchain
+      - name: Record GitHub-hosted execution context
+        shell: bash
+        run: |
+          echo 'CTEAS_CI_SELF_HOSTED=0' >> "$GITHUB_ENV"
+          echo "CTEAS_INPUT_CONTRACT_HOSTED_RUNNER=$RUNNER_NAME"
       - name: Reset self-hosted scratch directories
         shell: bash
         run: |
