@@ -1184,6 +1184,15 @@ add_executable(cteas_p7_original_comp_mxsam99_unsplit_tests
   tests/original_comp_mxsam99_unsplit_tests.cpp)
 # Restricted native CALCPF gridded point-source bridge: PFSCRN/PFSAMP/VCOUP.
 # This is NOT a replacement for full original receptor-specific PUFRECS.
+# Standalone original-vs-native PFSCRN REAL4 bit comparison probe.
+add_executable(cteas_p7_original_pfscrn_probe src/original_pfscrn_probe.cpp)
+target_link_libraries(cteas_p7_original_pfscrn_probe PRIVATE cteas_p7_receptors)
+if(MSVC)
+  target_compile_options(cteas_p7_original_pfscrn_probe PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_pfscrn_probe PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
 add_library(cteas_p7_original_flat_calcpf STATIC src/original_flat_calcpf.cpp)
 target_include_directories(cteas_p7_original_flat_calcpf PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
