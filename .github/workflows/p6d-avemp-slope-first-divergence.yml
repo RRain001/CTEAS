@@ -1,9 +1,7 @@
 name: P6D SLOPE AVETMP first-divergence 143h forensic
+# Historical write-only AVETMP probe, superseded by full-grid source parity.
+# Manual forensic reproduction only; not part of PR acceptance.
 on:
-  pull_request:
-    paths:
-      - scripts/p6d_forensic_avetmp_first_divergence.py
-      - .github/workflows/p6d-avemp-slope-first-divergence.yml
   workflow_dispatch:
 permissions:
   contents: read
