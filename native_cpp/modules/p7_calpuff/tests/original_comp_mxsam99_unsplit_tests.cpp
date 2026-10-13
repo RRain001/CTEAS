@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 using namespace cteas::puff;
 namespace {
@@ -267,6 +268,10 @@ void test(){
     const auto birth_steps=adaptive.puff_steps(1);
     need(adaptive.canonical_ids().size()==1 && adaptive.canonical_ids()[0]==1,
          "first-hour source puff ID missing from persistent inventory");
+    // An in-memory copy captures the entire authoritative hour-boundary
+    // checkpoint. A 143h job may be partitioned ONLY if this complete
+    // multi-puff state follows it, never by replaying independent hours.
+    std::optional<OriginalCompRiseMultiPuffHours> checkpoint;
     std::size_t old_advance_steps=0;
     for(int h=1;h<143;++h){
         auto nextmet=met;
@@ -344,7 +349,43 @@ void test(){
                        : after.x_cells<before.x_cells,
              "old puff ignored the next hour's native wind");
         old_advance_steps+=no_release.steps.size();
+        if(h==71)checkpoint=adaptive; // 72h state retained through resume
     }
+    need(checkpoint.has_value() && checkpoint->completed_hours()==72,
+         "72h checkpoint did not retain old puff states");
+    for(int h=72;h<143;++h){
+        auto nextmet=met;
+        const float wind=h%2 ? -1.2F : 1.2F;
+        std::fill(nextmet.u.begin(),nextmet.u.end(),wind);
+        (void)checkpoint->advance_hour_existing_mxsam99_adaptive(
+            nextmet,geo,ctl,pg,false);
+    }
+    const auto resumed_motion=checkpoint->motion(1);
+    const auto resumed_vertical=checkpoint->vertical(1);
+    const auto live_motion=adaptive.motion(1);
+    const auto live_vertical=adaptive.vertical(1);
+    need(checkpoint->completed_hours()==143 &&
+         checkpoint->canonical_ids()==adaptive.canonical_ids() &&
+         checkpoint->puff_steps(1)==adaptive.puff_steps(1) &&
+         resumed_motion.x_cells==live_motion.x_cells &&
+         resumed_motion.y_cells==live_motion.y_cells &&
+         resumed_motion.z_m==live_motion.z_m &&
+         resumed_motion.total_distance_m==live_motion.total_distance_m &&
+         resumed_motion.travel_time_s==live_motion.travel_time_s &&
+         resumed_vertical.puff_code==live_vertical.puff_code &&
+         resumed_vertical.sigma_y_m==live_vertical.sigma_y_m &&
+         resumed_vertical.sigma_z_m==live_vertical.sigma_z_m &&
+         resumed_vertical.ziold_m==live_vertical.ziold_m &&
+         resumed_vertical.zimax_m==live_vertical.zimax_m &&
+         resumed_vertical.mass_mixed==live_vertical.mass_mixed &&
+         resumed_vertical.mass_above==live_vertical.mass_above &&
+         resumed_vertical.completed_substeps==live_vertical.completed_substeps &&
+         resumed_vertical.committed_lid_steps==live_vertical.committed_lid_steps,
+         "72h full-state checkpoint -> 143h resume differs from continuous execution");
+    std::cout<<"P7_NATIVE_72H_CHECKPOINT_RESUME_143H=PASS"
+             <<" XY_Z=BITWISE_EQUAL SIGMA=BITWISE_EQUAL"
+             <<" QM_QU=BITWISE_EQUAL ZIOLD_ZIMAX=BITWISE_EQUAL"
+             <<" RESTART_FILE_IO=NOT_YET_IMPLEMENTED\\n";
     need(adaptive.completed_hours()==143 && adaptive.active_count()==1 &&
          adaptive.canonical_ids().size()==1 &&
          adaptive.puff_steps(1)==birth_steps+old_advance_steps &&
