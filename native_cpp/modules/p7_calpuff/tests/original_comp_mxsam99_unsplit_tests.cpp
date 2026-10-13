@@ -556,7 +556,6 @@ void test(){
     // (metres / sampling-grid spacing), whereas CALCPF's denominator needs
     // the same receptor sigma in METRES. Full PUFRECS/VCBAR is NOT here.
     OriginalCompRiseMultiPuffHours sampled_driver;
-    std::vector<float> sampled_deltas;
     const RiseCompSamplingKernel kernel=[&](const RiseCompSamplingState& step) {
         need(step.after_setpuf_before_lid.vmass_pending &&
              step.after_setpuf_before_lid.completed_substeps==
@@ -583,16 +582,18 @@ void test(){
         });
         const float v=static_cast<float>(inc);
         need(std::isfinite(v) && v>0.0F,"native CALCPF contributed no finite receptor value");
-        sampled_deltas.push_back(v);
         return std::vector<float>{v};
     };
     const auto sampled=sampled_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
         met,geo,ctl,pg,false,fast,wide_domain,1,1,kernel);
     float recomputed=0;
-    for(float v:sampled_deltas)recomputed+=v;
+    for(const auto& part:sampled.steps){
+        need(part.step.receptor_increments.size()==1,
+             "native CALCPF substep increment not retained");
+        recomputed+=part.step.receptor_increments.at(0);
+    }
     need(sampled.receptor_concentrations.size()==1 &&
          sampled.receptor_concentrations[0]==recomputed &&
-         sampled_deltas.size()==sampled.steps.size() &&
          sampled.steps.size()>1 &&
          sampled_driver.completed_hours()==1,
          "CALCPF sampling did not accumulate each actual FSTEP substep");
@@ -611,7 +612,7 @@ void test(){
          "CALCPF callback failure partially committed puff/source hour");
     std::cout<<"P7_CALCPF_NATIVE_SUBSTEP_HOOK=PASS"
              <<" AFTER_SETPUF_BEFORE_LID=YES"
-             <<" FSTEP_SAMPLES="<<sampled_deltas.size()
+             <<" FSTEP_SAMPLES="<<sampled.steps.size()
              <<" PFSAMP_GRID_UNITS=YES"
              <<" HOUR_ATOMIC=YES"
              <<" FULL_PUFRECS_VCBAR=NOT_YET_ACCEPTED\\n";
