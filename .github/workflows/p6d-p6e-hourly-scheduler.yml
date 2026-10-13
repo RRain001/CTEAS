@@ -29,7 +29,8 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             native_cpp/modules/p6_calmet/include
-            native_cpp/modules/p6_calmet/tests/p6_hourly_comp_scheduler_tests.cpp
+            native_cpp/modules/p6_calmet/tests
+            scripts/run_p6_end_to_end.py
       - name: Compile actual C++20 scheduler, strict
         shell: bash
         run: |
@@ -43,6 +44,18 @@ jobs:
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/p6-hourly-comp-scheduler-contract"
+      - name: Compile legacy forensic CLI and assert strict acceptance rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/run_p6_end_to_end.py
+          if python3 scripts/run_p6_end_to_end.py --require-native-single-pass \
+              > "${RUNNER_TEMP}/native-reject.log" 2>&1; then
+            echo "::error::Legacy forensic script falsely certified native one-pass"
+            exit 1
+          fi
+          grep -q 'cannot certify an independently native single-pass' \
+            "${RUNNER_TEMP}/native-reject.log"
       - name: Explicit scientific boundary
         shell: bash
         run: |
