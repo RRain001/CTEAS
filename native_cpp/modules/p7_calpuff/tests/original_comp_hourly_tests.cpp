@@ -60,7 +60,7 @@ void test(int hours) {
         if(hour==0)newp.push_back(source(1,5.0));
         if(hour==6)newp.push_back(source(2,6.0));
         if(hour==70)newp.push_back(source(3,7.0));
-        const auto before_steps=scheduler.puff_steps(1) ;
+        const auto before_steps=hour==0?0U:scheduler.puff_steps(1);
         if(hour==2) {
             // The later, newly admitted puff is out-of-grid. The first
             // puff would have moved, but the whole 2-puff hour rolls back.
