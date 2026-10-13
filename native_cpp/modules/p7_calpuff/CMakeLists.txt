@@ -1067,3 +1067,17 @@ foreach(HOURS IN ITEMS 1 6 143)
   add_test(NAME cteas_p7_native_rise_comp_pg_multipuff_${HOURS}h
            COMMAND cteas_p7_original_comp_rise_hourly_tests ${HOURS})
 endforeach()
+
+# Native POINTS1 cadence applied to existing rising-puff hourly scheduler.
+# Real RLSMET WSNEW still requires independently source-ported input.
+add_executable(cteas_p7_original_point_hourly_cadence_tests tests/original_point_hourly_cadence_tests.cpp)
+target_link_libraries(cteas_p7_original_point_hourly_cadence_tests PRIVATE cteas_p7_original_comp_rise_hourly)
+if(MSVC)
+  target_compile_options(cteas_p7_original_point_hourly_cadence_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_point_hourly_cadence_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+foreach(HOURS IN ITEMS 1 6 143)
+  add_test(NAME cteas_p7_point_hourly_cadence_${HOURS}h
+           COMMAND cteas_p7_original_point_hourly_cadence_tests ${HOURS})
+endforeach()

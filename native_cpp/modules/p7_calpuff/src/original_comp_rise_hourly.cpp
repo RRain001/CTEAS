@@ -1,5 +1,7 @@
 #include "cteas/puff/original_comp_rise_hourly.hpp"
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -33,6 +35,76 @@ RiseCompHour OriginalCompRiseMultiPuffHours::advance_hour(
     puffs_=std::move(trial);
     active_ids_=std::move(ids);
     last_id_=last;
+    ++hours_;
+    return result;
+}
+
+RiseCadencedHour OriginalCompRiseMultiPuffHours::advance_hour_point_cadence(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalPointHourSource& source) {
+    if(!std::isfinite(controls.seconds) || controls.seconds<=0.0F ||
+       controls.max_sampling_steps!=1 || controls.release_number!=1 ||
+       !std::isfinite(source.cadence.hour_seconds) ||
+       static_cast<float>(source.cadence.hour_seconds)!=controls.seconds ||
+       source.point.source_type!=1 ||
+       source.mass.step_index!=0 || source.mass.species_count<1 ||
+       last_id_>std::numeric_limits<int>::max()-source.cadence.max_puffs)
+       throw std::invalid_argument("POINTS1 cadence requires one finite full hour / point-puff path");
+
+    // POINTS1 L15975-16002, itself independently compared to ORIGINAL.
+    const ReleaseCadence cadence=release_cadence(source.cadence);
+    const float dt=static_cast<float>(cadence.emission_duration_s);
+    if(!std::isfinite(dt) || dt<=0.0F ||
+       cadence.puff_count<1 || cadence.new_puffs!=cadence.puff_count)
+       throw std::invalid_argument("invalid native REAL4 POINTS1 emission duration");
+
+    // Copy all active puffs; the entire hour is one atomic transaction.
+    auto trial=puffs_;
+    auto ids=active_ids_;
+    int next_id=last_id_;
+    RiseCadencedHour result;
+    result.hour_index=hours_;
+    result.cadence=cadence;
+    result.new_puffs=static_cast<std::size_t>(cadence.puff_count);
+    const std::size_t old_count=ids.size();
+    result.steps.reserve(old_count+
+                         static_cast<std::size_t>(cadence.puff_count)*
+                         static_cast<std::size_t>(cadence.puff_count+1)/2U);
+
+    // Existing puffs get their full hour. The original may divide old
+    // puff trajectories further for MXSAM>1; explicitly refuse that here.
+    for(const int id:ids){
+        const auto sub=trial.step_pg_rise(
+            id,met,statics,controls,pg,urban);
+        result.steps.push_back({id,0,1,sub});
+    }
+
+    for(int j=1;j<=cadence.puff_count;++j) {
+        const int id=++next_id;
+        auto point=source.point;
+        auto mass=source.mass;
+        point.release_index=j;
+        point.emission_duration_s=dt;   // TEMIT0 / DT, original REAL*4
+        mass.emission_duration_s=dt;    // INJECT: QM+QU = Q*DT
+        trial.admit(id,point,mass);
+        ids.push_back(id);
+        auto partial=controls;
+        partial.seconds=dt;
+        partial.source_period_s=dt;
+        // CALPUFF new puff releases start on slot IPNO (not the beginning
+        // of the hour). The initial remaining age after this hour is
+        // (NPUFFS-J+1)*DT; every substep is native GRISE+PG+VMASS.
+        for(int k=j;k<=cadence.puff_count;++k) {
+            const auto sub=trial.step_pg_rise(
+                id,met,statics,partial,pg,urban);
+            result.steps.push_back({id,j,k,sub});
+        }
+    }
+    result.active_after=ids.size();
+    puffs_=std::move(trial);
+    active_ids_=std::move(ids);
+    last_id_=next_id;
     ++hours_;
     return result;
 }
