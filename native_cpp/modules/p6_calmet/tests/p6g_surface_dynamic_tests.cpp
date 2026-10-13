@@ -140,6 +140,10 @@ int main() {
         try{(void)read_surface_dynamic(file,{},5,1);}
         catch(const std::runtime_error&){failed=true;}
         check(failed,"SURF max station allocation not enforced");
+        failed=false;
+        try{(void)read_surface_dynamic(file,{},5,2,9);}
+        catch(const std::runtime_error&){failed=true;}
+        check(failed,"SURF combined 5 hour x 2 station budget ignored");
         std::remove(file.c_str());
         std::cout<<"PASS P6G_MULTISTATION_MULTIYEAR_SURF_FORMAT_AND_143H_FROZEN_FIELDS\n";
         return 0;
