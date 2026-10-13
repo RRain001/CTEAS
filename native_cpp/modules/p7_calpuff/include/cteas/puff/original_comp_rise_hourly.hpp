@@ -132,6 +132,15 @@ public:
         const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban,const OriginalPointHourSource& source);
+    // Continue already-released puffs through a non-emitting hour. The
+    // preceding hour's native XY/Z, SIGY/SIGZ, QM/QU, ZIOLD/ZIMAX and
+    // accumulated travel time remain authoritative. This intentionally does
+    // NOT call POINTS1/INJECT or create a new source episode.
+    // All old-puff adaptive MXSAM=99 substeps commit as one hour or roll back.
+    [[nodiscard]] OriginalCompMxsamHour advance_hour_existing_mxsam99_adaptive(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban);
     [[nodiscard]] OriginalPuffMotionState motion(int id)const;
     [[nodiscard]] NativeVerticalPuffState vertical(int id)const;
     [[nodiscard]] std::size_t puff_steps(int id)const;
@@ -150,6 +159,10 @@ private:
         const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban,const OriginalPointHourSource& source,bool adaptive);
+    [[nodiscard]] OriginalCompMxsamHour advance_hour_mxsam99_core(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource* source,bool adaptive);
     OriginalCompRisePointDriver puffs_;
     std::vector<int> active_ids_;
     std::size_t hours_=0;
