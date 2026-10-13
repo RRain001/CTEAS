@@ -71,13 +71,23 @@ def write_case_grid(root: Path, data: dict) -> None:
     xref = round(x_m / 1000 - length / 2, 3)
     yref = round(y_m / 1000 - width / 2, 3)
     hemi = "N" if float(center["latitude"]) >= 0 else "S"
-    faces = (0, *DEFAULT_FACES[1:])
+    nz = int(grid["nz"])
+    if nz <= 0:
+        raise ValueError("G5 NZ must be positive")
+    vertical = [float(v) for v in grid.get("vertical_levels_m", [])]
+    if len(vertical) != nz:
+        raise ValueError("G5 vertical_levels_m length must equal NZ")
+    if any(not math.isfinite(z) or z <= 0 for z in vertical):
+        raise ValueError("G5 model vertical faces must be finite and positive")
+    if any(a >= b for a, b in zip(vertical, vertical[1:])):
+        raise ValueError("G5 vertical faces must strictly increase")
+    faces = (0.0, *vertical)
     lines = [
         "! IMAP = UTM !", f"! IUTMZN = {zone} !",
         f"! LSOHEM = {hemi} !", "! DATUM = WGS-84 !",
         f"! XREFKM = {xref:.3f} !", f"! YREFKM = {yref:.3f} !",
         f"! DGRIDKM = {spacing:g} !", f"! NX = {nx} !", f"! NY = {ny} !",
-        f"! NZ = {grid['nz']} !",
+        f"! NZ = {nz} !",
         *(f"! ZFACE = {z:g} !" for z in faces),
     ]
     out = root / "grid"
