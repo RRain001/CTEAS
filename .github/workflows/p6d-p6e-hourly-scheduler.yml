@@ -7,6 +7,7 @@ on:
     paths:
       - native_cpp/modules/p6_calmet/include/cteas/p6/hourly_comp_scheduler.hpp
       - native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/native_hourly_comp_steps.hpp
+      - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
       - native_cpp/modules/p6_calmet/tests/p6_hourly_native_comp_integration_tests.cpp
       - native_cpp/modules/p6_calmet/tests/p6_hourly_comp_scheduler_tests.cpp
       - .github/workflows/p6d-p6e-hourly-scheduler.yml
@@ -14,6 +15,7 @@ on:
     paths:
       - native_cpp/modules/p6_calmet/include/cteas/p6/hourly_comp_scheduler.hpp
       - native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/native_hourly_comp_steps.hpp
+      - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
       - native_cpp/modules/p6_calmet/tests/p6_hourly_native_comp_integration_tests.cpp
       - native_cpp/modules/p6_calmet/tests/p6_hourly_comp_scheduler_tests.cpp
       - .github/workflows/p6d-p6e-hourly-scheduler.yml
@@ -79,6 +81,59 @@ jobs:
         shell: bash
         run: |
           echo "SCHEDULER_CONTRACT: compiler/test evidence only"
-          echo "P6D_P6E_REAL_NATIVE_KERNEL_ADAPTER: NOT_IMPLEMENTED"
+          echo "P6E_COMP_KERNEL_STEP_ADAPTER: IMPLEMENTED"
+          echo "P6D_DIAGNO_STEP_ADAPTER: NOT_IMPLEMENTED"
           echo "P6D_FULL_UVW: NOT_PASS"
           echo "P6G_45_FIELDS: NOT_PASS"
+
+  p6e-realcase-143h-regression:
+    name: Build real P6E executable and replay frozen 143h original-wind E42 gate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            native_cpp/modules/p6_calmet/include
+            native_cpp/modules/p6_calmet/p6e
+      - uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          path: frozen_original_checkout
+          filter: blob:none
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
+      - name: Verify pinned original frozen reference and stage case path
+        shell: bash
+        run: |
+          set -euo pipefail
+          case_dir="$GITHUB_WORKSPACE/frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011"
+          printf '%s  %s\n' b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 "$case_dir/run/met/met.dat" | sha256sum -c -
+          echo "CTEAS_P6E_REAL_CASE=$case_dir" >> "$GITHUB_ENV"
+      - name: Compile ACTUAL production P6E emit-realcase (not just header adapter)
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_dir="$RUNNER_TEMP/p6e-realcase-143h"
+          cmake -S native_cpp/modules/p6_calmet/p6e -B "$build_dir" \
+                -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=g++-12
+          cmake --build "$build_dir" --target p6e_calmet_dat21 p6e_p6c_hourly_bridge --parallel 2
+      - name: Preserve old E42 143h strict 18-field scientific control
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_dir="$RUNNER_TEMP/p6e-realcase-143h"
+          python3 native_cpp/modules/p6_calmet/p6e/tests/verify_real_2022_full_field_reference.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --tool "$build_dir/p6e_calmet_dat21" \
+            --bridge "$build_dir/p6e_p6c_hourly_bridge" \
+            --work "$RUNNER_TEMP/p6e-e42-143h-baseline"
+      - name: Archive strict reference evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6e-143h-original-wind-regression
+          path: ${{ runner.temp }}/p6e-e42-143h-baseline/
+          if-no-files-found: warn
+          retention-days: 7
