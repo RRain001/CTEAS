@@ -188,7 +188,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     end_state.x_m=r4(before.total_distance_m+distance,"RISE x end");
     const float end_height=r4(
         gradual_plume_height(end_state).height_m,"native GRISE ZE");
-    const auto moved=m.advance(id,{
+    auto moved=m.advance(id,{
         .uadv_ms=u,.vadv_ms=w,.ws_ms=ws,
         .tsamp_s=r4(substep.step_s,"rise TSAMP"),
         .met_spacing_m=control.met_spacing_m,
