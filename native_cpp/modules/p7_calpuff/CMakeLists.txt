@@ -1349,6 +1349,21 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7_HEFEI_POINT_INP}")
       "${P7G_LOCKED_CASE_MET}" "${P7_HEFEI_POINT_INP}")
 endif()
 
+# Production native COMP post-rise calm IDOPT=1 opt-in,
+# original TURBSET minima, transaction and unsupported branch rollback.
+add_executable(cteas_p7_original_comp_calm_integrated_tests
+  tests/original_comp_calm_integrated_tests.cpp)
+target_link_libraries(cteas_p7_original_comp_calm_integrated_tests PRIVATE
+  cteas_p7_original_comp_rise_hourly)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_calm_integrated_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_calm_integrated_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_native_comp_calm_idopt1_transaction
+  COMMAND cteas_p7_original_comp_calm_integrated_tests)
+
 # Original COMP post-RISEWIND WSCALM=0.5, UCALM=0.001,
 # and strict rejection of missing calm IDOPTYS/IDOPTZS=1 dispersion.
 # Exercises actual two-hour state/rollback, not only a pure math helper.
