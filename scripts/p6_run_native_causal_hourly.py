@@ -140,6 +140,10 @@ def main():
                     raise RuntimeError(f"missing original stage input in native C++ output: {original_plane}")
                 # Keep the source stage physically unchanged (read-only forensic copy).
                 shutil.copyfile(original_plane,stage_root/original_plane.name)
+            neutral_profile=d/f"wind1_neutral_profile_{label}.f32"
+            if not neutral_profile.is_file() or neutral_profile.stat().st_size!=18*4:
+                raise RuntimeError(f"missing WIND1 neutral REAL4 forensic profile: {neutral_profile}")
+            shutil.copyfile(neutral_profile,stage_root/neutral_profile.name)
             stage_lines=(d/"station_inter2_layer1.csv").read_text().splitlines()
             if len(stage_lines)!=2:raise RuntimeError("single-hour INTER2 station trace malformed")
             if not stage_rows:stage_rows.append(stage_lines[0])
