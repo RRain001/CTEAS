@@ -92,6 +92,9 @@ OriginalPointPrfinResult original_point_prfin_metfm1(
     result.stack_tip_downwash_m=tip;
     result.x_final_m=static_cast<float>(final.x_final_m);
     result.final_rise_m=static_cast<float>(partial.final_rise_m);
+    // CALPUFF POINTS1 15599-15600: BIDSQ_B=(RISE_B/3.5)**2, REAL*4.
+    const float bid_ratio=result.final_rise_m/3.5F;
+    result.buoyancy_variance_m2=bid_ratio*bid_ratio;
     result.effective_height_m=heff;
     result.mixed_fraction=static_cast<float>(partial.mass_fraction_mixed);
     result.max_layer_height_m=static_cast<float>(partial.max_height_m);
