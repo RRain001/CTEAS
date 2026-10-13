@@ -1081,3 +1081,30 @@ foreach(HOURS IN ITEMS 1 6 143)
   add_test(NAME cteas_p7_point_hourly_cadence_${HOURS}h
            COMMAND cteas_p7_original_point_hourly_cadence_tests ${HOURS})
 endforeach()
+
+# Source-pinned RLSMET -> WINDSET: selected METFM1 release WSNEW only.
+# Original full RLSMET PTLAPS/dispersion/PRFIN still independent.
+add_library(cteas_p7_original_release_wind STATIC src/original_release_wind.cpp)
+target_include_directories(cteas_p7_original_release_wind PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_release_wind PUBLIC
+  cteas_p7_original_met_cell cteas_p7_release cteas_p7_calmet21)
+if(MSVC)
+  target_compile_options(cteas_p7_original_release_wind PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_release_wind PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7_original_release_wind_tests tests/original_release_wind_tests.cpp)
+target_link_libraries(cteas_p7_original_release_wind_tests PRIVATE cteas_p7_original_release_wind)
+if(MSVC)
+  target_compile_options(cteas_p7_original_release_wind_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_release_wind_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_native_windset_release_synthetic
+         COMMAND cteas_p7_original_release_wind_tests)
+set(P7_RLSMET_REAL_DGM "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7_RLSMET_REAL_DGM}")
+  add_test(NAME cteas_p7_native_windset_rlsmet_2022_first_hour
+           COMMAND cteas_p7_original_release_wind_tests
+           "${P7G_LOCKED_CASE_MET}" "${P7_RLSMET_REAL_DGM}")
+endif()
