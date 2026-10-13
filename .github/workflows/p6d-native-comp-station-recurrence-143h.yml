@@ -5,6 +5,7 @@ on:
     branches: [audit/p6d-source-slope-drivers-143h-20261012]
     paths:
       - 'scripts/p6d_compare_native_comp_station_143h.py'
+      - 'scripts/p6d_trace_original_inter2_first_layer_143h.py'
       - 'scripts/p6d_bisect_original_diagno_stage_boundaries.py'
       - 'scripts/p6d_compare_original_comp_dptt_143h.py'
       - 'scripts/run_p6_end_to_end.py'
@@ -35,6 +36,7 @@ jobs:
             .github/actions/cteas-linux-toolchain
             native_cpp/modules/p6_calmet
             native_cpp/modules/p7_calpuff/reference
+            engine/vendor/src/CALMET_v6.5.0_L150223
             scripts
       - uses: actions/checkout@v4
         with:
@@ -105,6 +107,7 @@ jobs:
             --comp-state-prefix "$root/base/A/native_comp" \
             --out "$root/coupled"
           test "$(wc -l < "$root/coupled/station_mixhtst.csv")" -eq 144
+          test "$(wc -l < "$root/coupled/station_inter2_layer1.csv")" -eq 144
       - name: Source-pinned six-hour DIAGNO first-divergence diagnosis (WIND1, SLOPE, final U/V/W)
         shell: bash
         run: |
@@ -114,6 +117,18 @@ jobs:
             --source native_cpp/modules/p6_calmet/reference/dgm_p6d_requests_2022/dgm_fields_hours.bin \
             --candidate "$root/coupled" \
             --out "$root/diango_stages_six_source_hours.json"
+      - name: Original CALMET write-only first-layer INTER2 station and grid trace for hour-12 divergence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-native-comp-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          case_dir="frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011"
+          python3 scripts/p6d_trace_original_inter2_first_layer_143h.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --case "$case_dir" --candidate "$root/coupled" \
+            --compiler gfortran-11 \
+            --out "$root/inter2_first_layer_143h.json"
+          test -s "$root/inter2_first_layer_143h.json"
       - name: Independently compare 143h reconstructed 3D U V W records with frozen original
         shell: bash
         run: |
@@ -160,6 +175,8 @@ jobs:
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/native_comp_station_143h.json
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/comp_dptt_143h.json
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/diango_stages_six_source_hours.json
+            ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/inter2_first_layer_143h.json
+            ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/coupled/station_inter2_layer1.csv
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/coupled_uvw_reference.json
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/coupled_wind_output.json
             ${{ runner.temp }}/p6d-native-comp-${{ github.run_id }}-${{ github.run_attempt }}/coupled/station_mixhtst.csv
