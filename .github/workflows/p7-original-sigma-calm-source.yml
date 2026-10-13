@@ -107,5 +107,20 @@ jobs:
               print(f'[{start+n+1:05d}] {src[n]}')
               old=n
           print('P7_ORIGINAL_TURBSET_SOURCE_END')
+          print('P7_ORIGINAL_COMP_ILW_MAPPING_START')
+          for lo,hi in [(9700,11200),(18000,18580),(52000,52190)]:
+              sub=lines[lo-1:hi]
+              found=[i for i,s in enumerate(sub)
+                     if re.search(r'\\bilw\\b|\\bwater\\b|landu|iwat',s,re.I)
+                     and not s.lstrip().lower().startswith('c')]
+              keys=set()
+              for i in found[:60]:
+                  keys.update(range(max(0,i-4),min(len(sub),i+7)))
+              old=-10
+              for i in sorted(keys):
+                  if i>old+1: print('... omitted ...')
+                  print(f'[{lo+i:05d}] {sub[i]}')
+                  old=i
+          print('P7_ORIGINAL_COMP_ILW_MAPPING_END')
           print('P7_VENDOR_CALM_PARAMETER_SOURCE_END')
           PY
