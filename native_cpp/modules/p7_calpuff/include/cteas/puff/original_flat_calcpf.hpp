@@ -30,7 +30,7 @@ using OriginalMctadj2TerrainLookup=std::function<
 // source-ported PFSCRN -> PFSAMP -> VCOUP -> CALCPF horizontal kernel.
 // It is valid ONLY for gridded ground-level receptors, MESHDN=1,
 // MCTADJ=0, no plume PDF, no receptor-specific PUFRECS adjustment,
-// no settling/PRIME and M(CHEM,WET,DRY)=0. Unsupported modes must
+// no settling/PRIME and M(CHEM,WET,DRY)=0 in legacy flat modes. Unsupported modes must
 // not be labeled full 2022 CALPUFF parity. The receptor_pg_vcoup
 // mode source-ports per-receptor SIGTY/SIGTZ, GRISE and VCOUP but does
 // not complete MCTADJ=2 terrain, dry-removal or full case parity.
@@ -43,6 +43,7 @@ using OriginalMctadj2TerrainLookup=std::function<
     float averaging_period_s, float impact_sigma_multiple = 3.0F,
     OriginalFlatVerticalMethod vertical_method =
         OriginalFlatVerticalMethod::midpoint_vcoup,
-    OriginalMctadj2TerrainLookup terrain_lookup={});
+    OriginalMctadj2TerrainLookup terrain_lookup={},
+    bool selected_h3_from_multispecies=false);
 
 } // namespace cteas::puff
