@@ -102,6 +102,11 @@ def main():
         files.append(f)
         # One hour at a time, NEVER run full-period P6E before P6D.
     manifest.write_text("\n".join(map(str,files))+"\n")
+    merged=work/"native_causal_calmet.dat"
+    run([a.p6e,"merge-native-hours","--manifest",manifest,"--out",merged],
+        work/"writer.log")
+    if not merged.is_file() or merged.stat().st_size<1000000:
+        raise RuntimeError("native 45-field CALMET.DAT format candidate absent")
     report={
         "status":"PASS_NATIVE_CAUSAL_DIAGNO_COMP_EXECUTION",
         "hours_completed":a.hours,
@@ -112,7 +117,9 @@ def main():
         "frozen_original_met_dat_role":"CASE_CONTROL_HEADER_ONLY",
         "unmodified_original_wind_27_field_parity":"NOT_PASS_UNCHECKED",
         "full_45_field_reference_parity":"NOT_PASS_UNCHECKED",
-        "complete_45_field_writer":"PENDING_MERGE_HOURLY_AND_STRICT_SOURCE_CHECK",
+        "complete_45_field_writer":"PASS_FORMAT_ONLY_NOT_REFERENCE_PARITY",
+        "native_calmet_dat":str(merged),
+        "native_calmet_dat_sha256":digest(merged),
         "first_hour":str(files[0]),
         "last_hour":str(files[-1]),
         "hour_files_manifest":str(manifest),
