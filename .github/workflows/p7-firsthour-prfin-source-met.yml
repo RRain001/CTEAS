@@ -58,4 +58,4 @@ jobs:
           cmake -S native_cpp/modules/p7_calpuff -B "$build" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$build" --parallel 2 --target cteas_p7_original_hefei_source_met_bridge_tests
           ctest --test-dir "$build" -R '^cteas_p7_hefei_source_met_stack_bridge$' --output-on-failure -V
-          echo 'P7_FIRST_HOUR_REAL_MET_STACK_DIAGNOSTIC=PASS PRFIN_PARITY=NOT_YET_ACCEPTED'
+          echo 'P7_FIRST_HOUR_NATIVE_PRFIN_DGM=PASS SOURCE_REAL4=BITWISE COMPLETE_COMP=NOT_YET_ACCEPTED'
