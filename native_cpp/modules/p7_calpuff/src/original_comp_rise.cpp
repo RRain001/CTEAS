@@ -1,6 +1,7 @@
 #include "cteas/puff/original_comp_rise.hpp"
 #include "cteas/puff/original_comp_calm.hpp"
 #include "cteas/puff/original_calm_sigma.hpp"
+#include "cteas/puff/original_ptlaps.hpp"
 #include "cteas/puff/coupling.hpp"
 #include <algorithm>
 #include <cmath>
@@ -396,7 +397,35 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         terrain_inputs.y_end_cells=moved.state.y_cells;
         terrain_inputs.z_begin_m=before.z_m;
         terrain_inputs.wind_speed_ms=ws;
-        terrain_inputs.brunt_vaisala_s=control.mctadj2->brunt_vaisala_s;
+        float bvf=control.mctadj2->brunt_vaisala_s;
+        if(control.mctadj2->derive_bvf_from_metfm1){
+            // Vendor COMP L10893-10896: PTLAPS is evaluated for the
+            // current *midpoint* meteorological cell and full puff
+            // extent. Do not reuse PRFIN source-cell lapse or a frozen
+            // hour-constant Brunt-Vaisala frequency.
+            const auto mid=original_met_cell(
+                0.5F*(before.x_cells+moved.state.x_cells),
+                0.5F*(before.y_cells+moved.state.y_cells),met.nx,met.ny);
+            const auto nz=static_cast<std::size_t>(met.nz);
+            const auto xy=static_cast<std::size_t>(met.nx)*
+                          static_cast<std::size_t>(met.ny);
+            require(nz>=2 && statics.cell_face_m.size()==nz+1U &&
+                    met.t.size()==nz*xy,
+                    "native PTLAPS requires actual complete CALMET ZFACE/TMET");
+            std::vector<float> zgpt,tprofile;
+            zgpt.reserve(nz);tprofile.reserve(nz);
+            for(std::size_t k=0;k<nz;++k){
+                zgpt.push_back(0.5F*(statics.cell_face_m[k]+
+                                     statics.cell_face_m[k+1U]));
+                tprofile.push_back(met.t[k*xy+mid.offset_0based]);
+            }
+            bvf=original_comp_bvf_metfm1(
+                zgpt,tprofile,
+                r4(sampled.extent.z_bottom_m,"COMP PTLAPS ZBOT"),
+                r4(sampled.extent.z_top_m,"COMP PTLAPS ZTOP"),
+                control.mctadj2->minimum_pt_gradient_k_per_m);
+        }
+        terrain_inputs.brunt_vaisala_s=bvf;
         terrain_inputs.met_spacing_m=control.met_spacing_m;
         selected_terrain=&terrain_inputs;
     }
