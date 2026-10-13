@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   independent-upstream-static-source:
-    name: Original GEO.DAT and met.inp => original CALMET static provenance
+    name: "P6F: independently GEO.DAT/deck sourced statics"
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
@@ -29,16 +29,13 @@ jobs:
             project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/geo.dat
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
-      - name: Pin reference object; reference never used to calculate static inputs
+      - name: Verify pinned frozen binary used only as target
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s  %s\n' \
-            b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 \
+          printf '%s  %s\n' b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 \
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat | sha256sum -c -
-          test -s project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/geo.dat
-          test -s project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp
-      - name: Build P6F independent-source statics validator (GCC 12 -Werror)
+      - name: Build source-statics audit (GCC12 Werror)
         shell: bash
         run: |
           set -euo pipefail
@@ -47,13 +44,13 @@ jobs:
             -DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_BUILD_TYPE=Release
           cmake --build "$RUNNER_TEMP/p6f-source-build" \
             --target cteas_p6f_geo_static_provenance --parallel 2
-      - name: Source-only static grid, ZFACE and stations against frozen source output
+      - name: Check source-derived static values against frozen envelope
         shell: bash
         run: |
           set -euo pipefail
           ctest --test-dir "$RUNNER_TEMP/p6f-source-build" --output-on-failure \
-            -R '^p6f_calmet_dat21_independent_geo_statics
-      - name: Rebuild static records entirely from GEO and deck and preserve envelope bytes
+            -R '^p6f_calmet_dat21_independent_geo_statics$' --no-tests=error
+      - name: Rebuild source statics byte-exactly and reject modified met.inp
         shell: bash
         run: |
           set -euo pipefail
@@ -64,61 +61,15 @@ jobs:
             --candidate "$case_root/run/met/met.dat" \
             --emit-source-statics "$RUNNER_TEMP/p6f-rebuilt-source-statics-calmet.dat" \
             | tee "$RUNNER_TEMP/p6f-static-source-report.json"
-          cmp "$RUNNER_TEMP/p6f-rebuilt-source-statics-calmet.dat" \
-            "$case_root/run/met/met.dat"
+          cmp "$RUNNER_TEMP/p6f-rebuilt-source-statics-calmet.dat" "$case_root/run/met/met.dat"
           sha256sum "$RUNNER_TEMP/p6f-rebuilt-source-statics-calmet.dat"
-          # Negative proof: changes in the upstream deck must be detected.
           python3 - <<'PY'
           import os, pathlib
-          original=pathlib.Path('project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp').read_text()
-          old='! ZFACE = 0,20,40,80,160,320,640,1200,2000,3000 !'
-          assert original.count(old)==1
-          new=original.replace(old,'! ZFACE = 0,21,40,80,160,320,640,1200,2000,3000 !')
-          (pathlib.Path(os.environ['RUNNER_TEMP'])/'p6f-mutated-deck.inp').write_text(new)
-          PY
-          if "$RUNNER_TEMP/p6f-source-build/cteas_p6f_geo_static_provenance" \
-             --geo "$case_root/geo/makegeo/geo.dat" \
-             --deck "$RUNNER_TEMP/p6f-mutated-deck.inp" \
-             --candidate "$case_root/run/met/met.dat" \
-             > "$RUNNER_TEMP/p6f-negative.out" 2>&1; then
-            echo "FAIL_P6F_MUTATED_SOURCE_DECK_ACCEPTED"
-            exit 1
-          fi
-          grep -q 'P6F_SRC_STATIC_NOT_PASS: ZFACE/met.inp' "$RUNNER_TEMP/p6f-negative.out"
-          echo "PASS_P6F_GEO_SOURCE_STATIC_RECONSTRUCTION_AND_MUTATION_REJECTION"
-      - name: Archive source static reconstruction evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: p6f-geo-deck-independent-static-source
-          path: |
-            ${{ runner.temp }}/p6f-static-source-report.json
-            ${{ runner.temp }}/p6f-negative.out
-          if-no-files-found: warn
-          retention-days: 14
- --no-tests=error
-      - name: Rebuild static records entirely from GEO and deck and preserve envelope bytes
-        shell: bash
-        run: |
-          set -euo pipefail
-          case_root=project/cases/hefei5km_2022_reference_case_20261011
-          "$RUNNER_TEMP/p6f-source-build/cteas_p6f_geo_static_provenance" \
-            --geo "$case_root/geo/makegeo/geo.dat" \
-            --deck "$case_root/run/met/met.inp" \
-            --candidate "$case_root/run/met/met.dat" \
-            --emit-source-statics "$RUNNER_TEMP/p6f-rebuilt-source-statics-calmet.dat" \
-            | tee "$RUNNER_TEMP/p6f-static-source-report.json"
-          cmp "$RUNNER_TEMP/p6f-rebuilt-source-statics-calmet.dat" \
-            "$case_root/run/met/met.dat"
-          sha256sum "$RUNNER_TEMP/p6f-rebuilt-source-statics-calmet.dat"
-          # Negative proof: changes in the upstream deck must be detected.
-          python3 - <<'PY'
-          import os, pathlib
-          original=pathlib.Path('project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp').read_text()
-          old='! ZFACE = 0,20,40,80,160,320,640,1200,2000,3000 !'
-          assert original.count(old)==1
-          new=original.replace(old,'! ZFACE = 0,21,40,80,160,320,640,1200,2000,3000 !')
-          (pathlib.Path(os.environ['RUNNER_TEMP'])/'p6f-mutated-deck.inp').write_text(new)
+          source=pathlib.Path('project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp').read_text()
+          original='! ZFACE = 0,20,40,80,160,320,640,1200,2000,3000 !'
+          assert source.count(original)==1
+          modified=source.replace(original,'! ZFACE = 0,21,40,80,160,320,640,1200,2000,3000 !')
+          (pathlib.Path(os.environ['RUNNER_TEMP'])/'p6f-mutated-deck.inp').write_text(modified)
           PY
           if "$RUNNER_TEMP/p6f-source-build/cteas_p6f_geo_static_provenance" \
              --geo "$case_root/geo/makegeo/geo.dat" \
