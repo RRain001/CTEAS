@@ -1133,6 +1133,30 @@ if(EXISTS "${P7_DGM_FULL_143H}")
     COMMAND cteas_p7_original_comp_cadence_trace "${P7_DGM_FULL_143H}" 143)
 endif()
 
+# Original CALPUFF DGM is read only: native controller must reconstruct
+# every FSTEP/TSAMP/TLEFT and label-500 same-KSAM reentry from the original
+# measured pre-FSTEP WS, NSAM and REFTSAMP, never from original TSAMP.
+add_executable(cteas_p7_original_fstep_trace tests/original_comp_fstep_trace.cpp)
+target_link_libraries(cteas_p7_original_fstep_trace PRIVATE cteas_p7_step_integration)
+if(MSVC)
+  target_compile_options(cteas_p7_original_fstep_trace PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_fstep_trace PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(EXISTS "${P7_DGM_HOUR0}")
+  add_test(NAME cteas_p7_original_first_hour_fstep_controller
+    COMMAND cteas_p7_original_fstep_trace "${P7_DGM_HOUR0}" 1)
+endif()
+if(EXISTS "${P7_DGM_FIRST_SIX_HOURS}")
+  add_test(NAME cteas_p7_original_six_hour_fstep_controller
+    COMMAND cteas_p7_original_fstep_trace "${P7_DGM_FIRST_SIX_HOURS}" 6)
+endif()
+if(EXISTS "${P7_DGM_FULL_143H}")
+  add_test(NAME cteas_p7_original_143_hour_fstep_controller
+    COMMAND cteas_p7_original_fstep_trace "${P7_DGM_FULL_143H}" 143)
+endif()
+
 # Selected REAL4 COMP old/new MXSAM=99 outer-hour execution and native
 # METFM1/GRISE/RISEWIND/PG/VMASS inner substeps, no FSTEP dynamic split.
 add_executable(cteas_p7_original_comp_mxsam99_unsplit_tests
