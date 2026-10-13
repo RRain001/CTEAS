@@ -3,6 +3,7 @@
 // File-backed process adapters must later become in-memory native step calls.
 // A successful invocation does NOT imply 45-field original scientific parity.
 #include "cteas/p6f/sha256.hpp"
+#include "cteas/p6/native_comp_history.hpp"
 #include <cerrno>
 #include <cstddef>
 #include <filesystem>
@@ -22,7 +23,6 @@
 namespace fs=std::filesystem;
 namespace {
 constexpr const char* kMetHash="b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30";
-constexpr std::uintmax_t kStateBytes=50U*50U*sizeof(float);
 struct Options {
     fs::path source, p6d, p6e, cgamma, bridge, work;
     int hours=6;
@@ -111,25 +111,6 @@ std::vector<std::string> lines(const std::string& text) {
 std::string join(const std::vector<std::string>& list){
     std::string out;for(const auto& s:list)out+=s+"\n";return out;
 }
-void append_state(const fs::path& in,const fs::path& out,int hour) {
-    require(in);
-    if(fs::file_size(in)!=kStateBytes)throw std::runtime_error("wrong native state float32 size: "+str(in));
-    std::ifstream input(in,std::ios::binary);
-    std::ofstream target(out,std::ios::binary|std::ios::app);
-    target<<input.rdbuf();target.flush();
-    if(!target||fs::file_size(out)!=static_cast<std::uintmax_t>(hour+1)*kStateBytes)
-        throw std::runtime_error("hourly state append failed: "+str(out));
-}
-void check_state_metadata(const fs::path& path,int hour) {
-    const auto data=read(path);
-    const std::regex hour_re("\"first_hour_zero_based\"\\s*:\\s*"+
-        std::to_string(hour)+"\\s*[,}]");
-    const std::regex shape_re("\"shape\"\\s*:\\s*\\[\\s*1\\s*,\\s*50\\s*,\\s*50\\s*\\]");
-    if(!std::regex_search(data,hour_re)||!std::regex_search(data,shape_re)||
-       data.find("p6e_calmet_dat21 emit-realcase")==std::string::npos||
-       data.find("\"dptt\"")==std::string::npos)
-        throw std::runtime_error("missing native COMP provenance/hour: "+str(path));
-}
 std::string hour_dir(int hour){
     return "hour_"+(hour<10?std::string("00"):hour<100?std::string("0"):std::string(""))+
         std::to_string(hour);
@@ -150,7 +131,7 @@ int main(int argc,char** argv){
         run({str(o.bridge),str(surf),str(upper),"58424",str(observations)},o.work/"bridge.log");
         require(observations);
         const auto history=o.work/"history/comp";
-        fs::create_directories(history.parent_path());
+        cteas::calmet::p6::NativeCompHistory history_owner(history);
         std::vector<std::string> hourly_files,station_lines,stage_rows;
         const fs::path stage_root=o.work/"native_source_stage_143h";
         if(o.emit_source_stage_trace)fs::create_directories(stage_root);
@@ -191,12 +172,8 @@ int main(int argc,char** argv){
                 e.push_back(str(o.work/hour_dir(hour-1)/"comp"));
             }
             run(e,dir/"p6e.log");
-            const fs::path meta=str(comp)+".state.json";
-            check_state_metadata(meta,hour);
-            for(const char* state:{"zi","ziconv","dptt"})
-                append_state(str(comp)+"."+state+".f32",str(history)+"."+state+".f32",hour);
-            fs::copy_file(meta,str(history)+".state.json",
-                          fs::copy_options::overwrite_existing);
+            // Do not expose a new COMP hour until the complete hour's
+            // output and optional diagnostic traces have been verified.
             require(hour_met);
             hourly_files.push_back(str(hour_met));
             if(o.emit_source_stage_trace){
@@ -219,6 +196,7 @@ int main(int argc,char** argv){
                     throw std::runtime_error("station INTER2 header changed");
                 stage_rows.push_back(row[1]);
             }
+            history_owner.commit(static_cast<std::size_t>(hour),comp);
         }
         const auto station=o.work/"native_station_flux.csv";
         write(station,join(station_lines));
@@ -238,6 +216,7 @@ int main(int argc,char** argv){
             "  \"native_wind\": true,\n  \"native_previous_hour_comp_state\": true,\n"
             "  \"original_met_role\": \"CASE_CONTROL_HEADER_ONLY\",\n"
             "  \"in_process_kernel_adapter\": false,\n"
+            "  \"comp_history_owner\": \"NativeCompHistory\",\n"
             "  \"scientific_45_field_pass\": false,\n"
             "  \"native_calmet_dat_sha256\": \""+digest+"\"\n}\n";
         write(o.work/"native_cpp_hourly_manifest.json",report);
