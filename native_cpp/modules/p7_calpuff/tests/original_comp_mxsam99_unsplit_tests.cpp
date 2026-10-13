@@ -558,6 +558,94 @@ void test(){
              <<" FAILED_ADMISSION=ATOMIC"
              <<" WET_CALCPF_OUTPUT=NOT_YET_INTEGRATED\\n";
 
+    // Full source-ordered DRY for a TRUE native Gaussian point puff:
+    // native METFM1+VDCOMP→SETPUF VCBAR→DRY QM→CALCPF→late lid.
+    // Synthetic MET fields below are explicit test forcing; this DOES
+    // NOT establish frozen 2022 per-puff dry-removal numerical parity.
+    auto dry_met=met;
+    dry_met.ustar.assign(n,0.3F);
+    dry_met.el.assign(n,-80.0F);
+    dry_met.tempk.assign(n,288.0F);
+    dry_met.qsw.assign(n,300.0F);
+    dry_met.wstar.assign(n,0.5F);
+    auto dry_geo=geo;
+    dry_geo.land_use.assign(n,10);
+    dry_geo.leaf_area_index.assign(n,2.0F);
+    const std::string dry_control_text=R"DRY(
+! MDRY = 1 !
+! NZ = 3 !
+! ZFACE = 0,100,200,300 !
+! CSPEC = H-3 !
+! CSPEC = HE-3 !
+! RCUTR = 30 !
+! RGR = 10 !
+! REACTR = 8 !
+! NINT = 9 !
+! IVEG = 1 !
+INPUT GROUP: 3a, 3b -- Species list
+Subgroup (3a)
+! H-3 = 1,1,1,0 !
+! HE-3 = 1,0,0,0 !
+!END!
+INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
+! H-3 = .1509,1.0,8.0,.0,.04 !
+!END!
+)DRY";
+    auto dry_controls=ctl;
+    dry_controls.gaussian_dry=NativeGaussianDryControls{
+        dry_deposition_setup_from_control(dry_control_text),1.0F};
+    std::size_t physically_dried_steps=0;
+    std::size_t gaussian_depleted_steps=0;
+    const RiseCompSamplingKernel dry_sample=[&](
+        const RiseCompSamplingState& state){
+        need(state.after_setpuf_before_lid.mass_mixed==
+                 state.vmass.mass_mixed &&
+             state.vmass.mass_mixed.size()==2,
+             "native CALCPF received stale pre-DRY QM or wrong species");
+        ++physically_dried_steps;
+        return std::vector<float>{0.0F};
+    };
+    OriginalCompRiseMultiPuffHours dry_native;
+    const auto dry_hour=
+        dry_native.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+            dry_met,dry_geo,dry_controls,pg,false,fast,wide_domain,1,1,
+            dry_sample);
+    for(const auto& part:dry_hour.steps){
+        need(part.step.dry.has_value() &&
+             part.step.dry->mixed_mass_after.size()==2 &&
+             part.step.dry->removed_mass.size()==2 &&
+             part.step.dry->removed_mass[1]==0.0F &&
+             part.step.vmass.mass_mixed==
+                 part.step.dry->mixed_mass_after,
+             "native DRY did not apply H3-only removal before CALCPF");
+        if(part.step.dry->removed_mass[0]>0.0F)
+            ++gaussian_depleted_steps;
+    }
+    need(dry_hour.steps.size()>1 &&
+         dry_hour.steps.size()==physically_dried_steps &&
+         gaussian_depleted_steps>0 &&
+         dry_native.completed_hours()==1,
+         "native Gaussian DRY failed source ordered one-hour mass depletion");
+    OriginalCompRiseMultiPuffHours no_dry_native;
+    const auto no_dry_hour=
+        no_dry_native.advance_hour_point_mxsam99_adaptive_bounded_capacity(
+            dry_met,dry_geo,ctl,pg,false,fast,wide_domain,1);
+    need(no_dry_hour.steps.size()==dry_hour.steps.size() &&
+         dry_native.vertical(1).mass_mixed.at(0)<
+             no_dry_native.vertical(1).mass_mixed.at(0) &&
+         dry_native.vertical(1).mass_mixed.at(1)==
+             no_dry_native.vertical(1).mass_mixed.at(1) &&
+         dry_native.vertical(1).mass_above==
+             no_dry_native.vertical(1).mass_above,
+         "DRY deposition corrupted H3/HE3 QM/QU conservation semantics");
+    std::cout<<"P7_NATIVE_DRY_GAUSSIAN_SETPUF_TO_CALCPF_1H=PASS"
+             <<" SUBSTEPS="<<physically_dried_steps
+             <<" H3_DEPLETED_STEPS="<<gaussian_depleted_steps
+             <<" HE3_QM_UNCHANGED=YES QU_UNCHANGED=YES"
+             <<" REAL_H3_VDCOMP=YES REAL4_VCBAR=YES"
+             <<" SYNTHETIC_MET_ONLY=YES"
+             <<" FROZEN_HEFEI_DRY=NOT_YET_ACCEPTED\\n";
+
     // Source-ordered CALCPF seam: use source-ported PFSAMP + source-ported
     // gridded CALCPF horizontal mass weighting at a receptor positioned on
     // each substep trajectory. PFSAMP expects sigma in SAMPLING GRID UNITS
