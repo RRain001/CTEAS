@@ -374,6 +374,12 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     dispersion.step.puff_code=mass.puff_code;
     dispersion.step.sigma_y_start_m=vs.sigma_y_m;
     dispersion.step.sigma_z_start_m=vs.sigma_z_m;
+    // Original SETPUF L48641-L48666: source POINTS1 BIDFNL and SY0
+    // affect the begin/mid/end sampling sigmas in /CURRENT/ only.
+    // They MUST come from the persisted physical puff (not test control
+    // defaults) and MUST NOT be mistaken for stored SIGYB/SIGZB.
+    dispersion.final_rise_variance_m2=state.buoyancy_variance_m2;
+    dispersion.initial_sigma_y_squared_m2=state.initial_sigma_y_squared_m2;
     dispersion.step.puff_height_m=before.z_m;
     dispersion.step.mid_time_s=bookkeeping.mid_time_s;
     dispersion.step.mid_distance_km=bookkeeping.mid_distance_km;
