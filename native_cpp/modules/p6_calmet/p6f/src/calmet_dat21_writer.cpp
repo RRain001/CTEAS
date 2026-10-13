@@ -780,7 +780,7 @@ std::vector<std::uint8_t> serialize_calmet_dat21(const Calmet21File& file) {
 
 // ------------------------------------------------------------------ parsing
 Calmet21File parse_calmet_dat21(const std::vector<std::uint8_t>& bytes,
-                                  bool native_one_hour_transport=false) {
+                                  bool native_one_hour_transport) {
     Calmet21File file;
     Calmet21Header& header = file.header;
     Calmet21Statics& statics = file.statics;
@@ -975,6 +975,11 @@ Calmet21File parse_calmet_dat21(const std::vector<std::uint8_t>& bytes,
     }
     validate_calmet_dat21(file);
     return file;
+}
+
+Calmet21File parse_calmet_dat21(const std::vector<std::uint8_t>& bytes) {
+    // Keep the original public strict parser API unchanged.
+    return parse_calmet_dat21(bytes,false);
 }
 
 Calmet21File read_calmet_dat21(const std::string& path) {
