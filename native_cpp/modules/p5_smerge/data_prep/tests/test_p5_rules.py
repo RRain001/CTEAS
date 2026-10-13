@@ -29,7 +29,16 @@ class P5SelectionTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         (self.root / "center").write_text("latitude: 31.94\nlongitude: 117.14\n")
-        (self.root / "grid").write_text("! DGRIDKM = 0.1 !\n! NX = 50 !\n! NY = 50 !\n")
+        # Same published SW corner as the frozen 2022 case; no inferred lat/lon box.
+        grid_lines = [
+            "! IMAP = UTM !", "! IUTMZN = 50 !", "! LSOHEM = N !",
+            "! DATUM = WGS-84 !", "! XREFKM = 510.885 !",
+            "! YREFKM = 3531.269 !", "! DGRIDKM = 0.1 !",
+            "! NX = 50 !", "! NY = 50 !", "! NZ = 9 !",
+        ]
+        grid_lines.extend(f"! ZFACE = {z} !" for z in
+                          (0, 20, 40, 80, 160, 320, 640, 1200, 2000, 3000))
+        (self.root / "grid").write_text("\n".join(grid_lines) + "\n")
         (self.root / "research_time").write_text("BEGIN: 20220101-000000\nEND: 20221231-230000\n")
         self.raw = self.root / "raw"
 
@@ -72,6 +81,52 @@ class P5SelectionTests(unittest.TestCase):
         result = {year: json.loads((self.raw / f"station_selection_{year}.json").read_text())
                   for year in years}
         return result[years[0]] if len(years) == 1 else result
+
+    def test_published_utm_edges_and_corners(self):
+        grid = d.load_utm_grid(self.root / "grid")
+        xmin, xmax, ymin, ymax = d.utm_bounds_km(grid)
+        self.assertEqual((xmin, xmax, ymin, ymax),
+                         (510.885, 515.885, 3531.269, 3536.269))
+        for x, y in ((xmin, ymin), (xmin, ymax), (xmax, ymin),
+                     (xmax, ymax), ((xmin+xmax)/2, (ymin+ymax)/2)):
+            self.assertTrue(d.contains_projected_utm_km(x, y, grid))
+        # 1 millimetre outside each outer edge must be rejected.
+        for x, y in ((xmin-1e-6, ymin), (xmax+1e-6, ymax),
+                     (xmin, ymin-1e-6), (xmax, ymax+1e-6)):
+            self.assertFalse(d.contains_projected_utm_km(x, y, grid))
+        self.assertFalse(d.contains_projected_utm_km(float("nan"), ymin, grid))
+
+    def test_source_station_uses_configured_utm_zone(self):
+        grid = d.load_utm_grid(self.root / "grid")
+        physical = station("58321099999", 31.939774444, 117.141610855)
+        self.assertTrue(d.station_in_utm_grid(physical, grid))
+        with patch.object(d, "lon_lat_to_utm_km",
+                          return_value=(grid.xrefkm-0.001, grid.yrefkm)) as projection:
+            self.assertFalse(d.station_in_utm_grid(physical, grid))
+            projection.assert_called_once_with(
+                physical.lon, physical.lat, 50, True)
+
+    def test_selection_never_uses_geographic_centre_bbox(self):
+        # A shifted display/metadata centre must not move the numerical grid.
+        (self.root / "center").write_text(
+            "latitude: 31.90\\nlongitude: 117.10\\n")
+        st = [station("58321099999", 31.939774444, 117.141610855)]
+        result = self.execute(st, {"58321099999": 8000})
+        self.assertEqual(result["mode"], "OBSERVED")
+        self.assertEqual(result["selection_geometry"],
+                         "STRICT_WGS84_UTM_GRID_CMN_SW_CORNER_CLOSED_EDGES")
+
+    def test_invalid_grid_crs_and_dimensions_rejected(self):
+        path = self.root / "grid"
+        original = path.read_text()
+        for bad in (original.replace("IUTMZN = 50", "IUTMZN = 0"),
+                    original.replace("IMAP = UTM", "IMAP = LCC"),
+                    original.replace("DATUM = WGS-84", "DATUM = NAD27"),
+                    original.replace("DGRIDKM = 0.1", "DGRIDKM = 0")):
+            path.write_text(bad)
+            with self.assertRaises(ValueError):
+                d.load_utm_grid(path)
+        path.write_text(original)
 
     def test_all_in_domain_and_real_positions(self):
         st = [station("58321099999", 31.94, 117.14),
