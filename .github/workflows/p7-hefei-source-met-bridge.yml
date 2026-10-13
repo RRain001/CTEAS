@@ -8,8 +8,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: p7-hefei-source-met-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  group: p7-hefei-source-met-${{ github.sha }}
+  cancel-in-progress: false
 jobs:
   real-source-stack-wind:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
