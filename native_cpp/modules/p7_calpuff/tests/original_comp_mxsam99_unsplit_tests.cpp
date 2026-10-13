@@ -326,8 +326,13 @@ void test(){
                     "old puff sigma history was reset");
         check_state(va.sigma_y_m>=vb.sigma_y_m,
                     "old puff sigma-y shrank");
-        check_state(va.sigma_z_m>=vb.sigma_z_m,
-                    "old puff sigma-z shrank");
+        // Source SIGADJ: even/non-Gaussian ICODE deliberately stores
+        // SIGZB=0.0 after uniform/upper-layer conversion. Requiring
+        // monotonic sigma-z is incorrect and first fails at hour 18.
+        // The historical puff code/ZIOLD/ZIMAX and conserved mass must
+        // still persist and remain self-consistent across that transition.
+        check_state(std::isfinite(va.sigma_z_m) && va.sigma_z_m>=0.0F,
+                    "old puff stored invalid sigma-z");
         check_state(va.ziold_m>=0.0F && va.zimax_m>=va.ziold_m,
                     "old puff historical mixing lid invalid");
         need(va.mass_mixed.size()==2 && va.mass_above.size()==2 &&
