@@ -694,6 +694,50 @@ void test(){
          known_cells[2499]==0.0F,
          "flat source-ported VCOUP/PFSAMP receptor result was not localized/positive");
 
+
+    // New opt-in, source-ported VCBAR stage: independently verify the
+    // begin/mid/end SIGTZ/GRISE height coupling against P7H VCBAR, while
+    // retaining the existing nonzero 6h VCOUP output regression untouched.
+    known.sigmas.adjust.sigma_z_begin_m=25.0;
+    known.sigmas.adjust.sigma_z_mid_m=30.0;
+    known.sigmas.adjust.sigma_z_end_m=35.0;
+    const auto vbar_kernel=make_original_flat_calcpf_sampler(
+        flat_grid,100.0F,3600.0F,3.0F,
+        OriginalFlatVerticalMethod::substep_vcbar);
+    const auto bar_cells=vbar_kernel(known);
+    constexpr std::size_t receptor=5+5*50;
+    VcbarInputs expected;
+    expected.state.puff_code=1;
+    expected.state.z_begin1=10.0;
+    expected.state.z_end1=10.0;
+    expected.state.sigma_z_begin1=25.0;
+    expected.state.sigma_z_mid=30.0;
+    expected.state.sigma_z_end1=35.0;
+    expected.lid_height_m=100.0;
+    const float fbar=static_cast<float>(vertical_coupling_bar(expected));
+    const float fmid=static_cast<float>(vertical_coupling({
+        1,0.0,10.0,30.0,100.0,100.0}));
+    need(bar_cells.size()==2500 && bar_cells[receptor]>0.0F &&
+         fmid>0.0F && fbar>0.0F &&
+         std::abs(static_cast<double>(bar_cells[receptor])/known_cells[receptor] -
+                  static_cast<double>(fbar)/fmid)<5.0e-5,
+         "native VCBAR field disagrees with independently evaluated P7H VCBAR");
+    const auto bar_unchanged=bar_cells;
+    known.sigmas.adjust.sigma_z_end_m=-1.0;
+    bool refused_bad_sigma=false;
+    try{(void)vbar_kernel(known);}
+    catch(const std::invalid_argument&){refused_bad_sigma=true;}
+    need(refused_bad_sigma,
+         "native VCBAR silently accepted an invalid adjusted end SIGTZ");
+    known.sigmas.adjust.sigma_z_end_m=35.0;
+    need(vbar_kernel(known)==bar_unchanged,
+         "native VCBAR was non-deterministic after failure/refusal");
+    std::cout<<"P7_NATIVE_FLAT_VCBAR_INTEGRATION=PASS"
+             <<" SETPUF_SIGTZ_BEGIN_MID_END=YES"
+             <<" GRISE_BEGIN_END_HEIGHT=YES"
+             <<" TERRAIN_PUFRECS_SIGMA_RECEPTOR_SPECIFIC=OPEN"
+             <<" FROZEN_2022_PARITY=NOT_YET_ACCEPTED\\n";
+
     const auto binary_path=std::filesystem::temp_directory_path() /
         ("cteas-p7-flat6h-"+std::to_string(
             std::chrono::steady_clock::now().time_since_epoch().count())+".con");
