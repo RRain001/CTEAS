@@ -27,6 +27,7 @@ struct Options {
     fs::path source, p6d, p6e, cgamma, bridge, work, p6f_writer, p6e_source_builder;
     int hours=6;
     bool emit_source_stage_trace=false;
+    bool p6f_direct_hourly=false;
 };
 std::string str(const fs::path& p){return p.string();}
 void require(const fs::path& p) {
@@ -45,6 +46,7 @@ Options parse(int argc,char** argv) {
     for(int i=1;i<argc;++i) {
         const std::string flag=argv[i];
         if(flag=="--emit-source-stage-trace"){o.emit_source_stage_trace=true;continue;}
+        if(flag=="--p6f-direct-hourly"){o.p6f_direct_hourly=true;continue;}
         if(++i==argc)throw std::invalid_argument("missing argument "+flag);
         const std::string v=argv[i];
         if(flag=="--case")o.source=v;
@@ -77,6 +79,10 @@ Options parse(int argc,char** argv) {
     }
     if(!o.p6e_source_builder.empty())
         o.p6e_source_builder=fs::absolute(o.p6e_source_builder).lexically_normal();
+    if(o.p6f_direct_hourly &&
+       (o.p6f_writer.empty()||o.p6e_source_builder.empty()))
+        throw std::invalid_argument("--p6f-direct-hourly requires "
+             "--p6f-writer and --p6e-source-builder (GEO/deck only)");
     if(fs::exists(o.work)&&!fs::is_empty(o.work))
         throw std::invalid_argument("work directory not empty: "+str(o.work));
     return o;
@@ -260,10 +266,17 @@ int main(int argc,char** argv){
         std::string header_digest;
         if(native_header) {
             const auto independent=o.work/"native_causal_independent_header_calmet.dat";
-            run({str(o.p6f_writer),"--geo",str(geo),
-                 "--deck",str(o.source/"run/met/met.inp"),
-                 "--candidate",str(output),"--emit-native-header",
-                 str(independent)},o.work/"p6f-native-header.log");
+            std::vector<std::string> writer={
+                str(o.p6f_writer),"--geo",str(geo),
+                "--deck",str(o.source/"run/met/met.inp")};
+            if(o.p6f_direct_hourly) {
+                writer.insert(writer.end(),{"--source-metadata",str(p6e_metadata),
+                                            "--hour-manifest",str(manifest)});
+            } else {
+                writer.insert(writer.end(),{"--candidate",str(output)});
+            }
+            writer.insert(writer.end(),{"--emit-native-header",str(independent)});
+            run(writer,o.work/"p6f-native-header.log");
             require(independent);
             if(fs::file_size(independent)<1000000U)
                 throw std::runtime_error("independent P6F native header output incomplete");
@@ -282,6 +295,8 @@ int main(int argc,char** argv){
             "  \"in_process_kernel_adapter\": false,\n"
             "  \"comp_history_owner\": \"NativeCompHistory\",\n"
             "  \"independent_p6f_source_header_written\": "+std::string(native_header?"true":"false")+",\n"
+            "  \"p6f_header_from_native_hour_manifest\": "+
+                 std::string(o.p6f_direct_hourly?"true":"false")+",\n"
             "  \"independent_p6f_header_sha256\": \""+header_digest+"\",\n"
             "  \"scientific_45_field_pass\": false,\n"
             "  \"native_calmet_dat_sha256\": \""+digest+"\"\n}\n";
