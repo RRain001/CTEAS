@@ -307,6 +307,7 @@ jobs:
             /engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con
+            /project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
       - name: Require pinned original source and first-hour puff state
         shell: bash
         run: |
@@ -362,6 +363,7 @@ jobs:
             --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
             --control project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
             --original-con project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
+            --original-met project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
             --report "$build/P7_ORIGINAL_WROUT1_INVENTORY.json"
           echo "P7_ORDER_ORIGINAL_AND_CPP_INITIAL=PASS"
       - uses: actions/upload-artifact@v4

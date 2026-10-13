@@ -29,7 +29,8 @@ def one(deck: str, key: str) -> float:
     return float(matches[0].strip().replace("D","E").replace("d","e"))
 
 
-def audit(control: Path, original: Path, report: Path | None) -> dict:
+def audit(control: Path, original: Path, report: Path | None,
+          original_met: Path | None = None) -> dict:
     deck=control.read_text(encoding="latin-1")
     if int(one(deck,"MWET"))!=0 or int(one(deck,"METFM"))!=1:
         raise ValueError("selected dry original 2022 output only")
@@ -110,6 +111,50 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
     }
     print("P7_WROUT1_ECHO_INPUT_PROVENANCE="+json.dumps(
         echo_diagnostics,ensure_ascii=True))
+    if original_met:
+        met_bytes=original_met.read_bytes()
+        expected_met="b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30"
+        if hashlib.sha256(met_bytes).hexdigest()!=expected_met:
+            raise AssertionError("frozen MET.DAT SHA256 drift")
+        met_echo=[]
+        offset=0
+        met_record_count=0
+        # Source header is a sequence of Fortran unformatted records; avoid
+        # scanning hourly wind arrays by limiting to the first 8 MB.
+        while offset+8<=len(met_bytes) and offset<8_000_000:
+            size=struct.unpack_from("<i",met_bytes,offset)[0]
+            if size<0 or offset+size+8>len(met_bytes):
+                raise ValueError("MET.DAT record marker mismatch")
+            if struct.unpack_from("<i",met_bytes,offset+4+size)[0]!=size:
+                raise ValueError("MET.DAT record trailer mismatch")
+            if size==132:
+                met_echo.append(met_bytes[offset+4:offset+4+size]
+                                .decode("latin-1").rstrip())
+            offset+=size+8
+            met_record_count+=1
+        extra=echo[2+len(deck_lines):]
+        if len(extra)!=1118:
+            raise AssertionError("original CALPUFF control vs MET suffix changed")
+        in_met=sum(line in set(met_echo) for line in extra)
+        sseq=SequenceMatcher(None,met_echo,extra,autojunk=True)
+        blocks=sseq.get_matching_blocks()
+        longest=max(blocks,key=lambda item:item.size)
+        match={
+            "met_header_record_count_scanned":met_record_count,
+            "met_132_byte_records":len(met_echo),
+            "post_puff_control_extra_lines":len(extra),
+            "extra_lines_equal_to_met_comment":in_met,
+            "met_echo_sequence_ratio":round(sseq.ratio(),6),
+            "longest_met_match":{
+                "length":longest.size,
+                "met_comment_index":longest.a,
+                "puff_con_extra_index":longest.b},
+            "met_first_132_lines":met_echo[:5],
+            "extra_first_lines":extra[:8]
+        }
+        echo_diagnostics["met_header_echo_provenance"]=match
+        print("P7_WROUT1_CALMET_COMMENT_MATCH="+
+              json.dumps(match,ensure_ascii=True))
     comment_examples=[]
     for pos_comment,size_comment in comment_records[:5]:
         raw=data[pos_comment+4:pos_comment+4+size_comment]
@@ -248,10 +293,11 @@ def main() -> int:
     p.add_argument("--control",type=Path,required=True)
     p.add_argument("--original-con",type=Path,required=True)
     p.add_argument("--vendor",type=Path)
+    p.add_argument("--original-met",type=Path)
     p.add_argument("--report",type=Path)
     args=p.parse_args()
     try:
-        audit(args.control,args.original_con,args.report)
+        audit(args.control,args.original_con,args.report,args.original_met)
         if args.vendor is not None:
             source_wrou1_writes(args.vendor)
         return 0
