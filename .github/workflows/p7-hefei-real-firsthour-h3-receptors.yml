@@ -36,7 +36,7 @@ jobs:
           raw=path.read_bytes()
           assert hashlib.sha256(raw).hexdigest()=='da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568'
           lines=raw.decode('latin-1').splitlines()
-                    terms=('QOLD','QNEW','Q01DRY','QM(','QU(','FRACT','TFRACT','CALCPF','PFSAMP','PUFRECS','DRY','VCOUP','MTRANS','MDRY','VDPVD','FRACDRY','SFC')
+          terms=('QOLD','QNEW','Q01DRY','QM(','QU(','FRACT','TFRACT','CALCPF','PFSAMP','PUFRECS','DRY','VCOUP','MTRANS','MDRY','VDPVD','FRACDRY','SFC')
           for lo,hi in ((4165,4325),(11045,11230)):
               for idx in range(lo-1,hi):
                   if not any(term in lines[idx].upper() for term in terms):continue
