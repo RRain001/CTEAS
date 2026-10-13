@@ -98,8 +98,36 @@ int main(int argc,char** argv){
                 demand(std::isfinite(x)&&std::isfinite(y)&&
                        std::abs(x-25.0F)<0.001F&&std::abs(y-25.0F)<0.001F,
                        "original source / CALMET origin grid mismatch");
-                if(hours==0){source_x_cells=x;source_y_cells=y;}
-                else demand(x==source_x_cells&&y==source_y_cells,
+                if(hours==0){
+                    source_x_cells=x;source_y_cells=y;
+                    const auto n=static_cast<std::size_t>(header.nx)*header.ny;
+                    const auto cell=cteas::puff::original_met_cell(
+                        x,y,header.nx,header.ny).offset_0based;
+                    demand(hour.tempk.size()==n&&hour.zi.size()==n&&
+                           hour.ipgt.size()==n&&hour.el.size()==n&&
+                           hour.t.size()==n*static_cast<std::size_t>(header.nz),
+                           "first original MET hour lacks stack temperature or stability");
+                    const auto layer=cteas::puff::original_release_wind_metfm1(
+                        hour,statics,{.x_cells=x,.y_cells=y,
+                            .release_height_m=source.row[2],
+                            .calm_threshold_ms=0.5F}).layer_1based;
+                    const auto column=(static_cast<std::size_t>(layer)-1U)*n+cell;
+                    std::cout<<"P7_FIRST_HOUR_RELEASE_MET"
+                             <<" YEAR="<<hour.begin.year
+                             <<" JULIAN="<<hour.begin.julian_day
+                             <<" HOUR="<<hour.begin.hour
+                             <<" CELL="<<cell
+                             <<" STACK_LAYER="<<layer
+                             <<" PGT="<<hour.ipgt[cell]
+                             <<" TEMP2D_K="<<hour.tempk[cell]
+                             <<" TEMP3D_STACK_K="<<hour.t[column]
+                             <<" DPBL_M="<<hour.zi[cell]
+                             <<" EL_M="<<hour.el[cell]
+                             <<" ROUGHNESS_M="<<statics.roughness_m[cell]
+                             <<" DIAMETER_M="<<source.row[4]
+                             <<" EXIT_MS="<<source.row[5]
+                             <<" STACK_K="<<source.row[6]<<"\\n";
+                }else demand(x==source_x_cells&&y==source_y_cells,
                             "source shifted between hourly MET snapshots");
                 const auto stack=cteas::puff::original_release_wind_metfm1(
                     hour,statics,{
