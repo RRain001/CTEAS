@@ -1,0 +1,42 @@
+name: P7 frozen Hefei first-hour native H-3 receptors
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p7_calpuff/**'
+      - '.github/workflows/p7-hefei-real-firsthour-h3-receptors.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p7-real-hefei-h3-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  native-2022-firsthour-h3:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /native_cpp/modules/p7_calpuff/**
+            /project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con
+      - name: Verify immutable original inputs, compile independent native solver and compare
+        shell: bash
+        run: |
+          set -euo pipefail
+          met=project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
+          con=project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con
+          inp=project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+          test -s "$met" && test -s "$con" && test -s "$inp"
+          echo 'b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30  '${met} | sha256sum -c -
+          echo '0d51bdb68ff1a5798048bc41067107d3ffe10dc6222f25336df856bcbf48ba10  '${con} | sha256sum -c -
+          build="${RUNNER_TEMP}/p7-frozen-h3-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cmake -S native_cpp/modules/p7_calpuff -B "$build" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$build" --parallel 2 --target cteas_p7_hefei_firsthour_native_h3_receptors_tests
+          ctest --test-dir "$build" -R '^cteas_p7_hefei_real_firsthour_h3_receptor_diagnostic$' --output-on-failure -V
+          echo 'P7_2022_H3_NATIVE_RECEPTOR_DIAGNOSTIC_RAN=YES P7_ORIGINAL_NUMERIC_PARITY=NOT_CLAIMED'
