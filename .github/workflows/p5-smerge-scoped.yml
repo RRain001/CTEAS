@@ -12,7 +12,7 @@ on:
 jobs:
   unit:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 8
     permissions:
       contents: read
@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: p5_scoped_checkout
-      - name: Require checked-out P5 source on self-hosted runner
+      - name: Require checked-out P5 source
         shell: bash
         run: |
           set -euo pipefail
@@ -31,9 +31,9 @@ jobs:
           git ls-files --error-unmatch native_cpp/modules/p5_smerge/CMakeLists.txt
           test -s native_cpp/modules/p5_smerge/CMakeLists.txt
           test -s native_cpp/modules/p5_smerge/data_prep/download_isd_by_grid.py
-      - name: Select self-hosted C++20 and Fortran tools
+      - name: Select Linux C++20 and Fortran tools
         uses: ./p5_scoped_checkout/.github/actions/cteas-linux-toolchain
-      - name: Reset self-hosted scratch directories
+      - name: Reset job-local build directories
         shell: bash
         run: |
           rm -rf ${{ runner.temp }}/cteas-p5-build ${{ runner.temp }}/cteas-p5-release
