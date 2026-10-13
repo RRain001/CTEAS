@@ -7,6 +7,7 @@ on:
       - native_cpp/modules/p6_calmet/p6f/CMakeLists.txt
       - native_cpp/modules/p6_calmet/p6f/src/p6f_geo_static_provenance_main.cpp
       - native_cpp/modules/p6_calmet/p6f/tests/verify_independent_native_header_original_calpuff.py
+      - native_cpp/modules/p6_calmet/p6f/tests/verify_original_calpuff_native_independent_header.py
       - native_cpp/modules/p6_calmet/include/cteas/p6/read_geo.hpp
   workflow_dispatch:
 
@@ -163,6 +164,18 @@ jobs:
             --native-met "$RUNNER_TEMP/p6f-native-independent-header.dat" \
             --work "$RUNNER_TEMP/p6f-native-p7-original" \
             --report "$RUNNER_TEMP/p6f-original-calpuff-native-header-report.json"
+      - name: Original CALPUFF concentrations unchanged after independent OUTHD replacement
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/p6f/tests/verify_original_calpuff_native_independent_header.py \
+            --native-weather "$RUNNER_TEMP/p6f-native-case/native_causal_calmet.dat" \
+            --independent-header-weather "$RUNNER_TEMP/p6f-native-independent-header.dat" \
+            --vendor "$GITHUB_WORKSPACE/engine/vendor/src/CALPUFF_v7.2.1_L150618" \
+            --puff-control "$GITHUB_WORKSPACE/project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp" \
+            --work "$RUNNER_TEMP/p6f-original-calpuff-pair" \
+            --report "$RUNNER_TEMP/p6f-original-calpuff-header-parity.json" \
+            --fortran gfortran-11 --max-seconds 600
       - name: Archive source static reconstruction evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -177,5 +190,6 @@ jobs:
             ${{ runner.temp }}/p6f-independent-header-45field-verdict.json
             ${{ runner.temp }}/p6f-independent-header-p7-decoder.json
             ${{ runner.temp }}/p6f-original-calpuff-native-header-report.json
+            ${{ runner.temp }}/p6f-original-calpuff-header-parity.json
           if-no-files-found: warn
           retention-days: 14
