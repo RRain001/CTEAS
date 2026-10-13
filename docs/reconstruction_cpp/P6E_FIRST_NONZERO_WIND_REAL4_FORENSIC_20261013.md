@@ -81,3 +81,12 @@ and same-wind internal-stage A/B controls substantiate it.
 
 **Hold:** PR #53 remains Draft and source scientific P6 G4 is FAIL
 until all three native-driven P6E fields meet original fixed tolerances.
+
+## Negative controlled experiment: isolated SIMILT precision rewrite
+
+- [Commit cad1ce0b](https://github.com/RRain001/CTEAS/commit/cad1ce0b7bc6f8950aa8ea324b303310f8d4c2c7) changed selected SIMILT intermediate values from C++ double to Fortran implicit REAL*4 and adjusted the REAL*4-to-REAL*8 PSIUD promotion, without altering source formulae or accepted tolerances.
+- [Actions #38365989475](https://github.com/RRain001/CTEAS/actions/runs/38365989475): independent original SIMILT kernel parity PASS; first 6-hour causal test PASS.
+- Crucially, [Actions #38365989371](https://github.com/RRain001/CTEAS/actions/runs/38365989371): full 143h strict source comparison showed **exactly the same** remaining USTAR **1,935**, EL **236**, WSTAR **38** = **2,209** exceedances as the previous source-radians-only fix; P6D still 27/27 PASS. Therefore this precision hypothesis did **not** improve the actual case and should not be described as a causal fix.
+- The experiment was reverted in [commit 248a66b](https://github.com/RRain001/CTEAS/commit/248a66b25892b63f064e6111126a78ca16876d2a), retaining only the measured beneficial PREPDI surface-direction radians fix. If future experiments revisit SIMILT, change one cause at a time and use the first nonzero original WIND1 trace as the tighter intermediate acceptance gate.
+
+Keep this negative result frozen as scientific evidence, not as an open recommendation to apply the same change again.
