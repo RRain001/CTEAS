@@ -164,8 +164,7 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             // six-hour nonzero/bitwise-readback regression as a control.
             vfactor=static_cast<float>(vertical_coupling({
                 s.vmass.puff_code,0.0,midz,sz,lid,max_lid}));
-        } else if(vertical_method==OriginalFlatVerticalMethod::substep_vcbar ||
-                  vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup) {
+        } else if(vertical_method==OriginalFlatVerticalMethod::substep_vcbar) {
             // Source-ported CALPUFF VCBAR: use the *native* post-SETPUF
             // begin/mid/end vertical distribution, not a fabricated sigma
             // sampled at the midpoint. Strictly flat, MTILT=0, non-slug,
@@ -194,6 +193,11 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             c.terrain_adjustment=0;
             c.plume_tilt=0;
             vfactor=static_cast<float>(vertical_coupling_bar(c));
+        } else if(vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup) {
+            // CALCPF L4234–4275: the Gaussian receptor vertical factor
+            // is determined *inside* the receptor loop after PUFRECS,
+            // not from the substep-averaged VCBAR.
+            vfactor=1.0F;
         } else {
             throw std::invalid_argument("unsupported CALCPF vertical mode");
         }

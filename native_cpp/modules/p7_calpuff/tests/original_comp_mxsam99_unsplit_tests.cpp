@@ -760,8 +760,8 @@ void test(){
     const auto midpoint_control=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F,3.0F,
         OriginalFlatVerticalMethod::substep_vcbar);
-    std::size_t vcbar_native_substeps=0;
-    std::size_t vcbar_changed_receptor_increments=0;
+    std::size_t pufrecs_native_substeps=0;
+    std::size_t receptor_changed_increments=0;
     std::size_t sample_diagnostic_count=0;
     std::size_t nonzero_lower_mass_steps=0;
     std::size_t positive_concentration_steps=0;
@@ -801,13 +801,13 @@ void test(){
         need(midpoint.size()==concentrations.size() &&
              concentrations.size()==2500U,
              "native VCBAR live field diverged in receptor dimensions");
-        ++vcbar_native_substeps;
+        ++pufrecs_native_substeps;
         for(std::size_t i=0;i<concentrations.size();++i) {
             need(std::isfinite(concentrations[i]) && concentrations[i]>=0.0F,
                  "native VCBAR live returned nonfinite/negative concentration");
             if(std::bit_cast<std::uint32_t>(concentrations[i])!=
                std::bit_cast<std::uint32_t>(midpoint[i]))
-                ++vcbar_changed_receptor_increments;
+                ++receptor_changed_increments;
         }
         const auto present=std::count_if(concentrations.begin(),concentrations.end(),
                                         [](float v){return v>0.0F;});
@@ -870,9 +870,9 @@ void test(){
     need(geometry_bridge_substeps==sample_diagnostic_count &&
          geometry_bridge_substeps>0,
          "PUFRECS native geometry was not checked at every CALCPF substep");
-    need(vcbar_native_substeps==sample_diagnostic_count &&
-         vcbar_native_substeps>0,
-         "VCBAR was not evaluated on every native COMP substep");
+    need(pufrecs_native_substeps==sample_diagnostic_count &&
+         pufrecs_native_substeps>0,
+         "PUFRECS receiver PG+VCOUP was not executed on every COMP substep");
     std::cout<<"P7_NATIVE_COMP_PUFRECS_RECEIVER_FRAME=PASS"
              <<" SUBSTEPS="<<geometry_bridge_substeps
              <<" REAL4_CENTER_MAPPING=YES"
@@ -895,8 +895,8 @@ void test(){
     std::filesystem::remove(binary_path);
     std::cout<<"P7_NATIVE_PUFRECS_PG_VCOUP_CALCPF_OUTPUT_6H=PASS"
              <<" HOURS=6 RECORDS=18 RECEIVERS=2500"
-             <<" VCBAR_REAL_NATIVE_SUBSTEPS="<<vcbar_native_substeps
-             <<" PUFRECS_PG_VCOUP_CHANGED_INCREMENTS="<<vcbar_changed_receptor_increments
+             <<" PUFRECS_PG_VCOUP_NATIVE_SUBSTEPS="<<pufrecs_native_substeps
+             <<" PUFRECS_PG_VCOUP_CHANGED_INCREMENTS="<<receptor_changed_increments
              <<" PERSISTENT_NATIVE_PUFFS=YES"
              <<" NONZERO_RECEPTOR_VALUES="<<meaningful_cells
              <<" CONCENTRATION_REAL4=BITWISE_READBACK"
