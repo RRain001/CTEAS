@@ -25,8 +25,6 @@ from pathlib import Path
 from urllib import error, request
 
 from engine.core.paths import current_project_path, engine_path
-from engine.run_met.station_grid import (load_strict_utm_grid, utm_bounds_km,
-                                         lon_lat_in_utm_grid)
 
 CASE_ROOT = current_project_path()
 
@@ -57,6 +55,21 @@ def parse_center(path: Path) -> tuple[float, float]:
     if not m_lon or not m_lat:
         raise ValueError(f"Cannot parse longitude/latitude from: {path}")
     return float(m_lon.group(1)), float(m_lat.group(1))
+
+
+def parse_grid(path: Path) -> tuple[float, int, int]:
+    text = path.read_text(encoding="utf-8", errors="ignore")
+
+    def find_num(key: str) -> str:
+        m = re.search(rf"!\s*{re.escape(key)}\s*=\s*([^\s!]+)", text, flags=re.IGNORECASE)
+        if not m:
+            raise ValueError(f"Cannot find {key} in {path}")
+        return m.group(1)
+
+    dgrid_km = float(find_num("DGRIDKM"))
+    nx = int(float(find_num("NX")))
+    ny = int(float(find_num("NY")))
+    return dgrid_km, nx, ny
 
 
 def parse_history_txt(path: Path) -> list[Station]:
@@ -144,12 +157,35 @@ def parse_research_time(path: Path) -> tuple[datetime, datetime]:
     return begin, end
 
 
+def build_bbox(center_lon: float, center_lat: float, dgrid_km: float, nx: int, ny: int) -> tuple[float, float, float, float]:
+    # Treat center_location as center of study area.
+    half_w_km = dgrid_km * nx / 2.0
+    half_h_km = dgrid_km * ny / 2.0
+
+    dlat = half_h_km / 111.32
+    cos_lat = math.cos(math.radians(center_lat))
+    if abs(cos_lat) < 1e-8:
+        dlon = 180.0
+    else:
+        dlon = half_w_km / (111.32 * cos_lat)
+
+    min_lon = center_lon - dlon
+    max_lon = center_lon + dlon
+    min_lat = center_lat - dlat
+    max_lat = center_lat + dlat
+    return min_lon, max_lon, min_lat, max_lat
+
+
 def in_year_range(begin: str, end: str, year: int) -> bool:
     if not (re.fullmatch(r"\d{8}", begin or "") and re.fullmatch(r"\d{8}", end or "")):
         return False
     y_start = int(begin[:4])
     y_end = int(end[:4])
     return y_start <= year <= y_end
+
+
+def inside_bbox(st: Station, min_lon: float, max_lon: float, min_lat: float, max_lat: float) -> bool:
+    return min_lon <= st.lon <= max_lon and min_lat <= st.lat <= max_lat
 
 
 def station_url(year: int, sid: str) -> str:
@@ -244,13 +280,13 @@ def main() -> int:
         years = list(range(begin_dt.year, end_dt.year + 1))
 
     center_lon, center_lat = parse_center(args.center_file)
-    grid = load_strict_utm_grid(args.grid_file, context="P5_LEGACY_GUI")
-    xmin, xmax, ymin, ymax = utm_bounds_km(grid)
+    dgrid_km, nx, ny = parse_grid(args.grid_file)
+    min_lon, max_lon, min_lat, max_lat = build_bbox(center_lon, center_lat, dgrid_km, nx, ny)
 
     stations = parse_history_txt(args.history_file)
     print(f"中心点识别: 经度: {center_lon} E, 纬度: {center_lat} N")
-    print(f"严格UTM网格: zone={grid.iutmzn}{grid.lsohem}; grid={grid.nx}x{grid.ny}; spacing={grid.dgridkm:g} km")
-    print(f"UTM坐标范围(km): x=[{xmin:.3f},{xmax:.3f}], y=[{ymin:.3f},{ymax:.3f}]")
+    print(f"网格分辨率(km): {dgrid_km:g}; X方向网格数量: {nx}, Y方向网格数量: {ny}")
+    print(f"研究空间范围: 经度范围: [{min_lon:.4f}, {max_lon:.4f}] 纬度范围: [{min_lat:.4f}, {max_lat:.4f}]")
     print(f"研究时间范围: 起始时间: {begin_dt}, 结束时间: {end_dt}, 目标年份: {years}")
 
     target_dir = args.out_dir
@@ -260,7 +296,7 @@ def main() -> int:
     for year in years:
         in_scope = [
             s for s in stations
-            if lon_lat_in_utm_grid(s.lon, s.lat, grid) and in_year_range(s.begin, s.end, year)
+            if inside_bbox(s, min_lon, max_lon, min_lat, max_lat) and in_year_range(s.begin, s.end, year)
         ]
         # SMERGE/SURF.DAT/CALMET 的站点编号是整数(平台站号取 isd-history 的 6 位 USAF),
         # 因此 USAF 含字母的站点无法进入后续流程,在此显式排除并记录,避免整套预处理后失败。
