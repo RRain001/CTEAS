@@ -757,6 +757,17 @@ int main(int argc,char** argv){
             observed.u_ms.assign(first.ug_mps.begin(),first.ug_mps.begin()+2500);
             observed.v_ms.assign(first.vg_mps.begin(),first.vg_mps.begin()+2500);
             observed.dgrid_m=grid_m;observed.mnmdav=1;observed.hafang_deg=30.f;
+            // Original SURFVAR L12842-12871 performs wt*T/wt even for one
+            // station. Skipping this is mathematically harmless but differs
+            // by REAL*4 ULPs at some cells; stable ELUSTR amplifies them.
+            // Coordinates and interpolation controls belong to the case,
+            // never the fixed 50x50 geometry.
+            observed.preserve_single_station_weight_rounding=true;
+            observed.station_x_m=surface_x_m;
+            observed.station_y_m=surface_y_m;
+            observed.tradkm=required_deck_scalar(controls,"TRADKM");
+            observed.irad=deck_int(controls,"IRAD",1);
+            observed.numts=deck_int(controls,"NUMTS",5);
             if(!(std::isfinite(observed.station_temp_k)&&
                  observed.station_temp_k>0.f))
                 throw std::runtime_error(
