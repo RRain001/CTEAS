@@ -122,3 +122,56 @@ jobs:
             ${{ runner.temp }}/p6-native-causal-143h/writer.log
           retention-days: 7
           if-no-files-found: warn
+
+  strict-original-45-field-parity:
+    name: SCIENCE G3/G4 original 143h 45-field parity (expected FAIL until fixed)
+    needs: real-hefei-causal-143-hours
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            native_cpp/modules/p6_calmet/include
+            native_cpp/modules/p6_calmet/p6e
+      - uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          path: original_locked_case
+          filter: blob:none
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
+      - uses: actions/download-artifact@v4
+        with:
+          name: p6-causal-original-case-143h
+          path: ${{ runner.temp }}/p6-native-143h-candidate
+      - name: Compile unchanged-tolerance original-source numeric comparator
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet/p6e \
+            -B "$RUNNER_TEMP/p6e-comparator" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++-12
+          cmake --build "$RUNNER_TEMP/p6e-comparator" \
+            --target p6e_calmet_dat21 --parallel 2
+      - name: Strict original numeric parity on every 45-field hourly value
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/p6-native-143h-candidate/native_causal_calmet.dat"
+          original="$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat"
+          test -s "$candidate"
+          printf '%s  %s\n' b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 "$original" | sha256sum -c -
+          "$RUNNER_TEMP/p6e-comparator/p6e_calmet_dat21" compare \
+            --reference "$original" --candidate "$candidate" \
+            --out "$RUNNER_TEMP/p6-native-143h-candidate/original_45_field_numeric_verdict.json"
+          # A nonzero comparator status is REAL SCIENTIFIC FAIL, not a skip.
+      - name: Archive strict 143h scientific verdict even on mismatch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6-native-143h-scientific-original-verdict
+          path: ${{ runner.temp }}/p6-native-143h-candidate/original_45_field_numeric_verdict.json
+          if-no-files-found: warn
+          retention-days: 14
