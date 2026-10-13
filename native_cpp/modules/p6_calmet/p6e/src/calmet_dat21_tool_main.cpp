@@ -1063,6 +1063,23 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                         field.integer_values[k]=stability[k];
             } else {
                 field.real_values.assign(cells,calmet21_missing);
+                // Native single-hour DIAGNO owns exactly 27 wind records,
+                // including WFACE at the top face of each vertical cell.
+                // The original met.dat supplies CASE METADATA ONLY here.
+                if(!native_p6d_dir.empty()&&wind &&
+                   (label.rfind("U-LEV",0)==0||
+                    label.rfind("V-LEV",0)==0||
+                    label.rfind("WFACE",0)==0)) {
+                    const auto lev=static_cast<std::size_t>(
+                        std::stoi(label.substr(5U))-1);
+                    for(std::size_t k=0;k<cells;++k) {
+                        const auto index=hour*cells+k;
+                        field.real_values[k]=label.rfind("U-LEV",0)==0?
+                            wind->u[lev][index]:
+                            (label.rfind("V-LEV",0)==0?
+                              wind->v[lev][index]:wind->w[lev][index]);
+                    }
+                }
                 if(surface_temperature||layer_one)
                     for(std::size_t k=0;k<cells;++k)
                         field.real_values[k]=surface.temp2d_k[k];
