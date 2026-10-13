@@ -126,3 +126,18 @@ accumulation order and compiler-level floating-point contraction, **without
 changing P6E physics**. This is an evidence-driven narrowing step, not yet
 proof that correcting WIND1 weights alone will eliminate all 2,209 residual
 P6E exceedances. Strict native-wind P6E science status remains FAIL.
+
+## READCF effective BIAS root cause and remaining P6E hold
+
+Original CALMET calmet.for L26579-L26593 (READCF) resets BIAS(1)=-1 when IEXTRP<0 and NOOBS!=2, even when met.inp states BIAS(1)=0. The frozen case uses IEXTRP=-4 and active surface observations. Previously C++ WIND1 consumed the raw BIAS=0. This was an actual preprocessing reconstruction defect.
+
+- Source/native WIND1 neutral SIMILT station profile 143h x 9 levels U/V bit-exact: Actions #38367919692.
+- Initial WIND1 two-station RSQWT 2500 cells bit-exact: Actions #38368765844.
+- Pre-fix after-BIAS VVW differed on all 2500 cells (original surface/upper first-cell 1/0; C++ approximately 0.500201/0.499799). A shortcut forcing VVW=1 was reverted as non-source-exact and ineffective.
+- Production C++ real-case READCF normalization fixed in commit 35930faa97d66cebb70dd5ecfd6cef5c17ce432e; generic WIND1 kernel unchanged.
+- Post-fix original-vs-native first-hour RSQWT, before/after-missing VVW 2500 cells bit-identical, 0 ULP differences: Actions #38371413791.
+- Post-fix 143h strict G3/G4: P6D U/V/W 27/27 PASS. P6E still FAIL: USTAR 1,919, EL 237, WSTAR 38; total 2,194 exceedances (previous radians-only baseline 2,209). Actions #38371224052. No science tolerance change.
+
+READCF was a genuine WIND1 reconstruction defect but fixing it reduces P6E failures only by 15 points, not by 2,209. The remaining P6E root is NOT proven to be WIND1. Next target: first-failing EL and WSTAR hour 9, USTAR hour 14; compare source/native AVETMP, SURFVAR, ELUSTR stability iterations/convergence, QH/RHO/TEMP2D, MIXHT, AVEMIX, WSTARR using native P6D drive. Keep PR #53 Draft.
+
+References: https://github.com/RRain001/CTEAS/actions/runs/38371413791 ; https://github.com/RRain001/CTEAS/actions/runs/38371224052 ; https://github.com/RRain001/CTEAS/commit/35930faa97d66cebb70dd5ecfd6cef5c17ce432e
