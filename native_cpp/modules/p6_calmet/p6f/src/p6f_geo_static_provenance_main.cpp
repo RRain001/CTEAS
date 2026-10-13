@@ -272,7 +272,7 @@ int main(int argc,char** argv) {
                     std::istringstream lines(deck);
                     std::string line;
                     while(std::getline(lines,line)) {
-                        if(!line.empty()&&line.back()=='\\r')line.pop_back();
+                        if(!line.empty()&&line.back()==static_cast<char>(13))line.pop_back();
                         require(line.size()<=132,
                             "source control line exceeds CALMET 132-column comment width");
                         head.comments.push_back(line);
