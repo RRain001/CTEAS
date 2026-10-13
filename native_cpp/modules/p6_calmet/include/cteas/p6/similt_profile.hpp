@@ -60,9 +60,9 @@ struct SimiltProfileOutput {
 
 inline SimiltProfileOutput original_similt_profile(const SimiltProfileInput& in) {
     // Table 2 of Van Ulden & Holtslag (1985) as coded at L30188-L30197.
-    constexpr std::array<double,9> eltbli{-0.03333333,-0.01,-0.0027027,0.0,
+    constexpr std::array<float,9> eltbli{-0.03333333,-0.01,-0.0027027,0.0,
         0.002857,0.007692,0.0166667,0.05,0.1111111};
-    constexpr std::array<double,9> dhtbl2{12.,10.,9.,12.,18.,28.,35.,38.,39.};
+    constexpr std::array<float,9> dhtbl2{12.,10.,9.,12.,18.,28.,35.,38.,39.};
     constexpr float factor=57.2957795f;
     constexpr float deg2rad=0.0174533f;
     constexpr float d1=1.58f,d2=1.f,ztbl2=200.f;
@@ -97,15 +97,20 @@ inline SimiltProfileOutput original_similt_profile(const SimiltProfileInput& in)
     float eladj=in.obukhov_length_m;
     if(std::abs(eladj)<5.f*in.roughness_m)
         eladj=eladj<0.f?-5.f*in.roughness_m:5.f*in.roughness_m;
-    const double elinv=std::abs(eladj)>=10000.f?0.0:1.0/double(eladj);
+    // Source SIMILT: ELINV is implicitly REAL*4, not REAL*8.
+    const float elinv=std::abs(eladj)>=10000.f?0.f:1.f/eladj;
     const float base_log=std::log(in.anemometer_height_m/in.roughness_m);
     if(!finite(base_log)||base_log<=0.f)
         throw std::invalid_argument("SIMILT: singular log-profile");
-    const double psim1=std::abs(elinv)<0.00005
-        ?0.0:original_psiud(double(in.anemometer_height_m)/double(eladj));
+    // Original R8 is REAL*8, but the division zzanem/eladj occurs
+    // in REAL*4 before assignment. PSIM1 is implicitly REAL*4.
+    const float psim1=std::abs(elinv)<0.00005f
+        ?0.f:static_cast<float>(original_psiud(
+              static_cast<double>(in.anemometer_height_m/eladj)));
     // L30279-L30307: turning angle from Table 2 at z = 200 m.
-    double dh200=dhtbl2[3];
-    if(std::abs(elinv)>=0.00005){
+    // DH200 and the two interpolation tables are REAL*4 in calmet.for.
+    float dh200=dhtbl2[3];
+    if(std::abs(elinv)>=0.00005f){
         dh200=dhtbl2[8];
         for(std::size_t i=0;i<9;++i){
             if(eltbli[i]>=elinv){
@@ -116,7 +121,7 @@ inline SimiltProfileOutput original_similt_profile(const SimiltProfileInput& in)
             }
         }
     }
-    const float dzan=static_cast<float>(dh200)*d1*
+    const float dzan=dh200*d1*
         (1.f-std::exp(-d2*in.anemometer_height_m/ztbl2));
     const float cutoff=std::max(in.mixing_height_m+0.001f,
                                 in.minimum_mixing_height_m);
@@ -129,11 +134,13 @@ inline SimiltProfileOutput original_similt_profile(const SimiltProfileInput& in)
         if(!(in.zface_m[k-1]<=cutoff))break;
         const float mid=0.5f*(in.zface_m[k-2]+in.zface_m[k-1]);
         const float xlnzz0=std::log(mid/in.roughness_m);
-        const double psim=std::abs(elinv)<0.00005
-            ?0.0:original_psiud(double(mid)/double(eladj));
-        const float ws=speed*static_cast<float>(xlnzz0-psim)/
-                       static_cast<float>(base_log-psim1);
-        const float dwd=static_cast<float>(dh200)*d1*
+        // Source R8=ZMID/ELADJ rounds as REAL*4 first; PSIUD is
+        // REAL*8 but the returned value is assigned to REAL*4 PSIM.
+        const float psim=std::abs(elinv)<0.00005f
+            ?0.f:static_cast<float>(original_psiud(
+                static_cast<double>(mid/eladj)));
+        const float ws=speed*(xlnzz0-psim)/(base_log-psim1);
+        const float dwd=dh200*d1*
             (1.f-std::exp(-d2*mid/ztbl2));
         float wd;
         if(in.station_lat_deg>0.f){          // northern: winds veer
