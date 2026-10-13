@@ -1,6 +1,7 @@
 #include "cteas/puff/original_comp_rise_hourly.hpp"
 #include "cteas/puff/receptors.hpp"
 #include "cteas/puff/original_flat_calcpf.hpp"
+#include "cteas/puff/original_pufrecs_geometry.hpp"
 #include "cteas/puff/hourly_conc.hpp"
 #include <algorithm>
 #include <bit>
@@ -754,7 +755,37 @@ void test(){
     std::size_t sample_diagnostic_count=0;
     std::size_t nonzero_lower_mass_steps=0;
     std::size_t positive_concentration_steps=0;
+    std::size_t geometry_bridge_substeps=0;
     const RiseCompSamplingKernel sampled_plume=[&](const RiseCompSamplingState& state) {
+        // Probe the *actual* native substep's MET-cell -> original PUFRECS
+        // REAL4 receptor center mapping, without treating this projection as
+        // the still-unimplemented receptor-specific SIGTY/SIGTZ or GRISE.
+        const float travel=state.after.total_distance_m -
+                           state.before.total_distance_m;
+        need(travel>0.0F && state.step_seconds>0.0F,
+             "PUFRECS native FSTEP probe requires noncalm travel");
+        OriginalPufrecsGridStepInputs g;
+        g.x_begin_cells=state.before.x_cells;
+        g.y_begin_cells=state.before.y_cells;
+        g.x_end_cells=state.after.x_cells;
+        g.y_end_cells=state.after.y_cells;
+        g.sigma_y_begin_m=static_cast<float>(
+            state.sigmas.adjust.sigma_y_begin_m);
+        g.sigma_y_end_m=static_cast<float>(
+            state.sigmas.adjust.sigma_y_end_m);
+        g.distance_begin_m=state.before.total_distance_m;
+        g.mean_wind_ms=travel/state.step_seconds;
+        g.met_spacing_m=100.0F;
+        g.ibsamp=1;g.jbsamp=1;g.sampling_nx=50;g.sampling_ny=50;
+        g.fclip=3.0F;g.clip=true;
+        const auto geom=original_pufrecs_grid_receptor_geometry(g,5+5*50);
+        need(std::isfinite(geom.fraction) &&
+             std::isfinite(geom.distance_to_receptor_m) &&
+             std::isfinite(geom.time_to_receptor_s) &&
+             geom.distance_to_receptor_m>=0.0F &&
+             geom.time_to_receptor_s>=0.0F,
+             "PUFRECS native receptor frame returned invalid geometry");
+        ++geometry_bridge_substeps;
         auto concentrations=plume_sampler(state);
         const auto present=std::count_if(concentrations.begin(),concentrations.end(),
                                         [](float v){return v>0.0F;});
@@ -814,6 +845,13 @@ void test(){
                  <<" grid_origin_cells=("<<plume_grid.ibsamp<<","<<plume_grid.jbsamp<<")\\n";
     need(meaningful_cells>0,
          "flat CALCPF six-hour output passed on an entirely zero concentration field");
+    need(geometry_bridge_substeps==sample_diagnostic_count &&
+         geometry_bridge_substeps>0,
+         "PUFRECS native geometry was not checked at every CALCPF substep");
+    std::cout<<"P7_NATIVE_COMP_PUFRECS_RECEIVER_FRAME=PASS"
+             <<" SUBSTEPS="<<geometry_bridge_substeps
+             <<" REAL4_CENTER_MAPPING=YES"
+             <<" REAL_2022_PUFRECS_SIGMA=NOT_YET_ACCEPTED\\n";
     const auto observed=read_conc_species_fields(binary_path.string(),50,50);
     const auto periods=read_conc_periods(binary_path.string());
     need(observed.size()==6 && periods.size()==6,
