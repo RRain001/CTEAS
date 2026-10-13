@@ -1,4 +1,5 @@
 #include "cteas/puff/original_comp_rise_hourly.hpp"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
