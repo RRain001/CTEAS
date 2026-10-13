@@ -191,6 +191,60 @@ def main():
         if stat["compared"] != NH * CELLS:
             raise RuntimeError(f"incomplete source input coverage: {name}")
         stat["rms"] = math.sqrt(stat.pop("sum_sq") / stat["compared"])
+    # For native causal runs, attribute each QH-only discrepancy to the
+    # exact original post-FRADJ, pre-SLOPE U/V (also the ELUSTR U1/V1
+    # inputs). The frozen original DGM point 8 is independent of the
+    # additional write-only QH/TEMP2D trace added above.
+    qh_wind_attribution = None
+    if causal_layout:
+        dump = args.original_dir / "case/run/met/dgm_fields.bin"
+        audit_dump = audit.get("dumps", {}).get("dgm_fields.bin", {})
+        if (not dump.is_file() or sha(dump) != audit_dump.get("sha256")):
+            raise RuntimeError("missing or non-immutable original pre-SLOPE wind trace")
+        records = dgm._walk_dump(dump)
+        if len(records) != 4 * NH or [r["kpt"] for r in records] != [7, 8, 9, 10] * NH:
+            raise RuntimeError("original kpt8 pre-SLOPE source wind records incomplete")
+        issues = sorted(violating["QH"])
+        by_hour = {}
+        for h, idx in issues:
+            by_hour.setdefault(h, []).append(idx)
+        compared = nonidentical = 0
+        max_u = max_v = 0.0
+        details = []
+        with dump.open("rb") as original_stream:
+            for h, indices in by_hour.items():
+                rec = records[4 * h + 1]  # point 8: post-FRADJ pre-SLOPE U1/V1
+                if (rec["nx"], rec["ny"], rec["nz"], rec["seconds"]) != (NX, NY, 9, 0):
+                    raise RuntimeError(f"original pre-SLOPE wind metadata mismatch hour={h}")
+                original_stream.seek(rec["offset"] + 32)
+                original_u = struct.unpack(f"<{CELLS}f", original_stream.read(CELLS * 4))
+                original_stream.seek(rec["offset"] + 32 + CELLS * 9 * 4)
+                original_v = struct.unpack(f"<{CELLS}f", original_stream.read(CELLS * 4))
+                p = args.candidate / f"hour_{h:03d}" / "diagno"
+                native_u = read_native(p / f"fradj_corrected_u_{labels[h]}.f32")
+                native_v = read_native(p / f"fradj_corrected_v_{labels[h]}.f32")
+                for idx in indices:
+                    du = abs(original_u[idx] - native_u[idx])
+                    dv = abs(original_v[idx] - native_v[idx])
+                    compared += 1
+                    if du > 0 or dv > 0:
+                        nonidentical += 1
+                    max_u, max_v = max(max_u, du), max(max_v, dv)
+                    if len(details) < 16:
+                        details.append({"hour_end": labels[h], "i": idx % NX + 1,
+                                        "j": idx // NX + 1,
+                                        "orig_u": original_u[idx], "native_u": native_u[idx],
+                                        "orig_v": original_v[idx], "native_v": native_v[idx],
+                                        "abs_diff_u": du, "abs_diff_v": dv})
+        qh_wind_attribution = {
+            "original_source_stage": "DGM_kpt8_post_FRADJ_pre_SLOPE",
+            "native_source_stage": "native_causal_hourly_diagno_fradj_corrected",
+            "qh_exceedance_points_checked": compared,
+            "qh_points_with_nonidentical_pre_slope_u_or_v": nonidentical,
+            "max_abs_pre_slope_u_diff_mps": max_u,
+            "max_abs_pre_slope_v_diff_mps": max_v,
+            "samples": details,
+        }
     verdict = ("PASS_SLOPE_DRIVER_INPUT_PARITY" if
                all(s["exceedances"] == 0 for s in stats.values()) else
                "FAIL_SLOPE_DRIVER_INPUT_PARITY")
@@ -210,6 +264,7 @@ def main():
                          "stand-alone P6D, without per-hour native GAMMA/history"),
         "candidate_layout": "causal_143h" if causal_layout else "standalone_143h",
         "exceedance_by_hour": violating_hours,
+        "QH_pre_slope_UV_attribution": qh_wind_attribution,
         "QH_TEMP2D_exceedance_overlap": {
             "same_hour_and_cell": len(violating["QH"] & violating["TEMP2D"]),
             "QH_only": len(violating["QH"] - violating["TEMP2D"]),
@@ -220,6 +275,10 @@ def main():
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2) + "\n")
+    if qh_wind_attribution:
+        print("QH_PRE_SLOPE_UV_ATTRIBUTION", json.dumps({
+            k: v for k, v in qh_wind_attribution.items() if k != "samples"
+        }, sort_keys=True))
     print(json.dumps({"trace_status": report["trace_status"],
                       "scientific_verdict": verdict,
                       "summary": {k: {"exceedances": v["exceedances"],
