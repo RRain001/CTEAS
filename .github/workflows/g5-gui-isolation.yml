@@ -35,3 +35,27 @@ jobs:
           assert all(stage in BLOCKED for stage in ('preprocess', 'upperair', 'met', 'puff', 'all'))
           print("G5_NATIVE_ONLY_NO_FORTRAN_FALLBACK=PASS")
           PY
+
+  g5-offscreen-smoke:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PySide6 and YAML
+        run: python3 -m pip install --disable-pip-version-check PySide6 PyYAML
+      - name: Instantiate independent G5 GUI (headless Qt)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          timeout 120 python3 - <<'PY'
+          from PySide6.QtWidgets import QApplication
+          from engine.gui_g5.workbench import MainWindow, SOFTWARE_TITLE
+          app = QApplication([])
+          window = MainWindow()
+          assert "G5" in window.windowTitle()
+          assert SOFTWARE_TITLE == window.windowTitle()
+          assert window.stage_cards, "G5 stage cards absent"
+          print("G5_SEPARATE_PYSIDE_WORKBENCH_STARTUP=PASS", len(window.stage_cards))
+          window.close()
+          app.quit()
+          PY
