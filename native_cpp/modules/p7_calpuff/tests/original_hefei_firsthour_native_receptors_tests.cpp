@@ -163,7 +163,7 @@ int main(int argc,char** argv) {
             driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
                 met,static_met,controls,pg,false,source,bounds,
                 4096U,2500U,receptor_sampler);
-        need(hour.steps.size()==1275U && hour.new_puffs==54U &&
+        need(hour.steps.size()==1275U && hour.release.puff_count==54 &&
              hour.receptor_concentrations.size()==2500U &&
              driver.completed_hours()==1U,
              "real first-hour native 1275-step/2500-receptor integration failed");
