@@ -120,7 +120,7 @@ jobs:
             --p6e "$RUNNER_TEMP/native-p6e/p6e_calmet_dat21" \
             --bridge "$RUNNER_TEMP/native-p6e/p6e_p6c_hourly_bridge" \
             --cgamma "$RUNNER_TEMP/native-p6d/cteas_p6_native_cgamma_grid_143h" \
-            --work "$RUNNER_TEMP/p6-native-causal-143h" --hours 143
+            --work "$RUNNER_TEMP/p6-native-causal-143h" --hours 143 --emit-source-stage-trace
       - name: Original-wind P6E three-field control with SAME native station flux
         shell: bash
         run: |
@@ -142,6 +142,7 @@ jobs:
             ${{ runner.temp }}/p6-native-causal-143h/native_causal_calmet.dat
             ${{ runner.temp }}/p6-native-causal-143h/writer.log
             ${{ runner.temp }}/p6-native-causal-143h/three_field_control/p6e_three_field_wind_control.json
+            ${{ runner.temp }}/p6-native-causal-143h/native_source_stage_143h/
           retention-days: 7
           if-no-files-found: warn
 
@@ -345,5 +346,58 @@ jobs:
           path: |
             ${{ runner.temp }}/p6d-arithmetic/precision_verdict.json
             ${{ runner.temp }}/p6d-arithmetic/native_hourly_manifest.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  audit-unmodified-original-source-stage-micro-deltas:
+    name: Diagnose original Fortran vs C++ FRADJ-SLOPE-INTER2 micro-residuals all 143h
+    needs: real-hefei-causal-143-hours
+    runs-on: ubuntu-22.04
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            engine/vendor/src/CALMET_v6.5.0_L150223
+            native_cpp/modules/p6_calmet/reference
+            scripts/p6d_trace_original_inter2_first_layer_143h.py
+      - uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          path: original_locked_case
+          filter: blob:none
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
+      - uses: actions/download-artifact@v4
+        with:
+          name: p6-causal-original-case-143h
+          path: ${{ runner.temp }}/p6-firstlayer-stage-trace
+      - name: Pin unmodified Fortran vendor hash, compiler and original stage timestamps
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v gfortran-11
+          test -s engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for
+          test -s "$RUNNER_TEMP/p6-firstlayer-stage-trace/native_source_stage_143h/station_inter2_layer1.csv"
+      - name: Re-run pinned original 143h write-only FRADJ SLOPE INTER2 stage trace
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/p6d_trace_original_inter2_first_layer_143h.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --case "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
+            --candidate "$RUNNER_TEMP/p6-firstlayer-stage-trace/native_source_stage_143h" \
+            --compiler gfortran-11 \
+            --out "$RUNNER_TEMP/p6-firstlayer-stage-trace/original_stage_micro_delta_143h.json"
+          # Existing original source gate's tolerances are NOT increased.
+          # Inspect actual max abs and source stage of first micro-residuals,
+          # not just its coarse pass/fail classification.
+      - name: Archive independent original-source micro-residual comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6-original-firstlayer-stage-microdelta-143h
+          path: ${{ runner.temp }}/p6-firstlayer-stage-trace/original_stage_micro_delta_143h.json
           if-no-files-found: warn
           retention-days: 14
