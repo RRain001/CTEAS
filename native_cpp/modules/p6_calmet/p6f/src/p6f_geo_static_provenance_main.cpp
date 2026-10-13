@@ -281,7 +281,7 @@ int main(int argc,char** argv) {
                 // Recover the source projection date from GEO.DAT v2.1,
                 // not from an existing CALMET.DAT header.
                 const std::string geo_text=input_text(argv[2]);
-                const std::regex datum_date("WGS-84\\\\s+([0-9]{2}-[0-9]{2}-[0-9]{4})");
+                const std::regex datum_date("WGS-84[[:space:]]+([0-9]{2}-[0-9]{2}-[0-9]{4})");
                 std::smatch date_match;
                 require(std::regex_search(geo_text,date_match,datum_date),
                         "no WGS-84 coordinate datum date in GEO.DAT");
