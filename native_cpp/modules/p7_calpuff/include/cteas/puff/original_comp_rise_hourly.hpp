@@ -4,7 +4,9 @@
 #include "cteas/puff/original_comp_exit.hpp"
 #include "cteas/puff/original_release_wind.hpp"
 #include "cteas/puff/original_rolldn.hpp"
+#include "cteas/puff/original_capacity_inventory.hpp"
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 namespace cteas::puff {
@@ -77,6 +79,11 @@ struct OriginalCompMxsamHour {
     std::size_t fstep_shortened_steps=0; // physical FSTEP > 1
     std::size_t fstep_reentries=0; // original L11475-11486 goto 500
     std::vector<OriginalCompPuffRetirement> retired;
+    // Populated by opt-in original POINTS1 capacity-controlled mode only.
+    bool capacity_rolldn_triggered=false;
+    std::size_t capacity_rolldn_removed=0;
+    std::size_t occupied_slots_after=0;
+    std::size_t inactive_slots_after=0;
 };
 class OriginalCompRiseMultiPuffHours {
 public:
@@ -172,6 +179,19 @@ public:
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban,const OriginalPointHourSource& source,
         const OriginalCompPuffBounds& bounds);
+    // Source POINTS1 capacity semantics: retain inactive ICODE=99 slots
+    // across hours and call ROLLDN only if NP+NEWPUF > supplied MXPUFF.
+    // Cannot be interleaved with legacy eager-compaction or unbounded APIs.
+    [[nodiscard]] OriginalCompMxsamHour advance_hour_point_mxsam99_adaptive_bounded_capacity(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource& source,
+        const OriginalCompPuffBounds& bounds,std::size_t mxpuff);
+    [[nodiscard]] OriginalCompMxsamHour advance_hour_existing_mxsam99_adaptive_bounded_capacity(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalCompPuffBounds& bounds,std::size_t mxpuff);
+    [[nodiscard]] const OriginalPuffCapacityInventory& capacity_inventory()const;
     [[nodiscard]] OriginalPuffMotionState motion(int id)const;
     [[nodiscard]] NativeVerticalPuffState vertical(int id)const;
     [[nodiscard]] std::size_t puff_steps(int id)const;
@@ -194,10 +214,17 @@ private:
         const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban,const OriginalPointHourSource* source,bool adaptive,
-        const OriginalCompPuffBounds* bounds=nullptr);
+        const OriginalCompPuffBounds* bounds=nullptr,
+        bool deferred_original_rolldn=false);
+    [[nodiscard]] OriginalCompMxsamHour advance_hour_capacity(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource* source,
+        const OriginalCompPuffBounds& bounds,std::size_t mxpuff);
     OriginalCompRisePointDriver puffs_;
     std::vector<int> active_ids_;
     std::size_t hours_=0;
     int last_id_=0;
+    std::optional<OriginalPuffCapacityInventory> capacity_slots_;
 };
 } // namespace cteas::puff

@@ -484,6 +484,71 @@ void test(){
              <<" BOUNDARY_FROM_CALPUFF=YES"
              <<" SOURCE_ROLLDN_CALL_TIMING=NOT_YET_ACCEPTED\\n";
 
+    // Source-authentic POINTS1 L15990 capacity pressure, not a cleanup at
+    // every bounded hour. Every new puff leaves the narrow domain, leaving
+    // ICODE=99 holes retained across two distinct emission hours.
+    OriginalCompRiseMultiPuffHours slots_driver;
+    const OriginalCompPuffBounds slot_domain{
+        .xb=0.0F,.xe=5.0F,.yb=0.0F,.ye=119.0F};
+    const auto capacity1=slots_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity(
+        met,geo,ctl,pg,false,fast,slot_domain,2);
+    need(capacity1.release.puff_count==1 &&
+         capacity1.retired.size()==1 &&
+         capacity1.active_puffs==0 &&
+         capacity1.occupied_slots_after==1 &&
+         capacity1.inactive_slots_after==1 &&
+         !capacity1.capacity_rolldn_triggered &&
+         slots_driver.capacity_inventory().slots().front().puff_code==99,
+         "COMP eagerly compacted an unpressured ICODE=99 slot");
+    const auto capacity2=slots_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity(
+        met,geo,ctl,pg,false,fast,slot_domain,2);
+    need(capacity2.release.puff_count==1 &&
+         capacity2.retired.size()==1 &&
+         capacity2.occupied_slots_after==2 &&
+         capacity2.inactive_slots_after==2 &&
+         !capacity2.capacity_rolldn_triggered &&
+         slots_driver.active_count()==0,
+         "POINTS1 compacted before MXPUFF capacity pressure");
+    const auto capacity3=slots_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity(
+        met,geo,ctl,pg,false,fast,slot_domain,2);
+    need(capacity3.capacity_rolldn_triggered &&
+         capacity3.capacity_rolldn_removed==2 &&
+         capacity3.occupied_slots_after==1 &&
+         capacity3.inactive_slots_after==1 &&
+         slots_driver.completed_hours()==3 &&
+         slots_driver.canonical_ids().empty(),
+         "POINTS1 did not compact original old ICODE=99 slots on overflow");
+    const auto cap_idle=slots_driver.advance_hour_existing_mxsam99_adaptive_bounded_capacity(
+        met,geo,ctl,pg,false,slot_domain,2);
+    need(cap_idle.steps.empty() && cap_idle.occupied_slots_after==1 &&
+         cap_idle.inactive_slots_after==1 && !cap_idle.capacity_rolldn_triggered &&
+         slots_driver.completed_hours()==4,
+         "zero-source hour erroneously compacted historical puff slots");
+    // Capacity exhausted with ACTIVE puffs: ROLLDN cannot reclaim them,
+    // so rejection must not advance the hour or drop any historical state.
+    OriginalCompRiseMultiPuffHours full_driver;
+    const OriginalCompPuffBounds wide_domain{
+        .xb=0.0F,.xe=119.0F,.yb=0.0F,.ye=119.0F};
+    const auto full1=full_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity(
+        met,geo,ctl,pg,false,fast,wide_domain,1);
+    need(full1.active_puffs==1 && full1.occupied_slots_after==1,
+         "capacity setup should admit exactly one live puff");
+    const auto full_state=full_driver.motion(1);
+    bool capacity_refused=false;
+    try{(void)full_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity(
+        met,geo,ctl,pg,false,fast,wide_domain,1);}
+    catch(const std::overflow_error&){capacity_refused=true;}
+    need(capacity_refused && full_driver.completed_hours()==1 &&
+         full_driver.active_count()==1 &&
+         full_driver.capacity_inventory().occupied()==1 &&
+         full_driver.motion(1).travel_time_s==full_state.travel_time_s,
+         "insufficient MXPUFF capacity corrupted hour-atomic puff state");
+    std::cout<<"P7_SOURCE_CAPACITY_ROLLDN=PASS"
+             <<" FIRST_99_HOLE_RETAINED=YES"
+             <<" CAPACITY_PRESSURE_ROLLDN=YES"
+             <<" FAILED_ADMISSION=ATOMIC"
+             <<" WET_CALCPF_OUTPUT=NOT_YET_INTEGRATED\\n";
+
     const auto state=driver.motion(1);
     const auto count=driver.completed_hours();
     auto bad=source;bad.point.source_x_km=130;

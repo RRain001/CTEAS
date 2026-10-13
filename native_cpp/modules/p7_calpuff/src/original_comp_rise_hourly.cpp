@@ -250,7 +250,11 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& controls,const DispersionSetup& pg,
     bool urban,const OriginalPointHourSource* source,bool adaptive,
-    const OriginalCompPuffBounds* bounds) {
+    const OriginalCompPuffBounds* bounds,bool deferred_original_rolldn) {
+    if(capacity_slots_ && !deferred_original_rolldn)
+        throw std::logic_error("capacity-controlled COMP cannot mix legacy schedulers");
+    if(deferred_original_rolldn && !capacity_slots_)
+        throw std::logic_error("capacity-controlled COMP requires admission inventory");
     if(controls.max_sampling_steps!=99 || controls.release_number!=1 ||
        !std::isfinite(controls.met_spacing_m) ||
        controls.met_spacing_m<=0.0F ||
@@ -415,7 +419,15 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
             throw std::invalid_argument("native POINTS1/COMP NEW NSAM drift");
         execute(id,j,plan);
     }
-    if(bounds && !result.retired.empty()){
+    if(bounds && deferred_original_rolldn && !result.retired.empty()){
+        // Vendor COMP writes ICODE=99 and SKIPS it until a later POINTS1
+        // MXPUFF capacity trigger. Release physical states, but retain
+        // those inactive historical ARRAY SLOTS in capacity_slots_.
+        for(const auto& item:result.retired)trial.retire(item.puff_id);
+        ids.erase(std::remove_if(ids.begin(),ids.end(),
+            [&](int id){return std::any_of(result.retired.begin(),result.retired.end(),
+                [id](const auto& item){return item.puff_id==id;});}),ids.end());
+    } else if(bounds && !result.retired.empty()){
         // Source-ported ROLLDN slot COPY, not std::swap, with immutable
         // physical episode IDs. The original invokes ROLLDN conditionally
         // on MXPUFF pressure; this opt-in eager compact is NOT that full
@@ -473,6 +485,76 @@ std::size_t OriginalCompRiseMultiPuffHours::compact_original_inactive(
     puffs_=std::move(trial);
     active_ids_=std::move(reordered);
     return plan.retired_old;
+}
+OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_adaptive_bounded_capacity(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalPointHourSource& source,
+    const OriginalCompPuffBounds& bounds,std::size_t mxpuff) {
+    return advance_hour_capacity(
+        met,statics,controls,pg,urban,&source,bounds,mxpuff);
+}
+OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_existing_mxsam99_adaptive_bounded_capacity(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalCompPuffBounds& bounds,std::size_t mxpuff) {
+    return advance_hour_capacity(
+        met,statics,controls,pg,urban,nullptr,bounds,mxpuff);
+}
+const OriginalPuffCapacityInventory&
+OriginalCompRiseMultiPuffHours::capacity_inventory()const {
+    if(!capacity_slots_)throw std::logic_error("capacity mode not initialized");
+    return *capacity_slots_;
+}
+OriginalCompMxsamHour OriginalCompRiseMultiPuffHours::advance_hour_capacity(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalPointHourSource* source,
+    const OriginalCompPuffBounds& bounds,std::size_t mxpuff) {
+    // The inventory, source, physical puffs, ages and hour counter all
+    // roll back if capacity, meteorology or substep physics fail.
+    auto trial=*this;
+    if(!trial.capacity_slots_) {
+        if(trial.hours_!=0||!trial.active_ids_.empty())
+            throw std::logic_error("capacity mode must start from first COMP hour");
+        trial.capacity_slots_.emplace(mxpuff);
+    }
+    if(trial.capacity_slots_->limit()!=mxpuff)
+        throw std::invalid_argument("MXPUFF cannot change during a run");
+    const auto new_release=source?release_cadence(source->cadence):
+                           ReleaseCadence{};
+    const std::size_t incoming=static_cast<std::size_t>(new_release.puff_count);
+    const auto decision=trial.capacity_slots_->prepare_release(incoming);
+    const auto live=trial.capacity_slots_->active_ids();
+    if(live.size()!=trial.active_ids_.size())
+        throw std::logic_error("COMP puff state / capacity slots disagree");
+    // Original ROLLDN changes mutable Fortran slots before POINTS1 emits,
+    // preserving the physical episode state keyed by its stable ID.
+    trial.active_ids_=live;
+    const int old_last=trial.last_id_;
+    auto result=trial.advance_hour_mxsam99_core(
+        met,statics,controls,pg,urban,source,true,&bounds,true);
+    if(source && static_cast<std::size_t>(trial.last_id_-old_last)!=incoming)
+        throw std::logic_error("POINTS1 new releases differ from capacity admission");
+    for(int id=old_last+1;id<=trial.last_id_;++id) {
+        const auto retired=std::any_of(result.retired.begin(),result.retired.end(),
+            [id](const auto& r){return r.puff_id==id;});
+        trial.capacity_slots_->append(id,retired?1:trial.puffs_.vertical(id).puff_code);
+    }
+    for(const auto& r:result.retired)trial.capacity_slots_->retire(r.puff_id);
+    // Persist latest active ICODE values for a later vendor ROLLDN.
+    for(const int id:trial.active_ids_)
+        trial.capacity_slots_->update_code(id,trial.puffs_.vertical(id).puff_code);
+    if(trial.capacity_slots_->active_ids()!=trial.active_ids_)
+        throw std::logic_error("original active slot order and native puff state drift");
+    result.capacity_rolldn_triggered=decision.rolled_down;
+    result.capacity_rolldn_removed=decision.removed_inactive;
+    result.occupied_slots_after=trial.capacity_slots_->occupied();
+    result.inactive_slots_after=trial.capacity_slots_->inactive();
+    *this=std::move(trial);
+    return result;
 }
 OriginalPuffMotionState OriginalCompRiseMultiPuffHours::motion(int id)const {
     return puffs_.motion(id);
