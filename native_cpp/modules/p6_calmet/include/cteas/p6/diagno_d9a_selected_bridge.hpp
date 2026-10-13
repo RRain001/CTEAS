@@ -64,8 +64,12 @@ struct DiagnoD9SelectedInput {
     std::vector<float> corrected_first_guess_u_mps,corrected_first_guess_v_mps;
     // Original L6092 gate: HTFAC>0 performs a SECOND WINDBC(U,V) after
     // INTER2, overwriting the earlier L5748 UG/VG snapshot.
-    // The frozen 2022 GEO.DAT has HTFAC=1.
-    float htfac=1.f;
+    // The frozen 2022 GEO.DAT has HTFAC=1. The isolated D9A Fortran
+    // synthetic fixture enters at SMOOTH with caller-supplied pre-INTER2
+    // boundaries and DOES NOT include L6092-L6101. Default=0 preserves
+    // the deliberately segmented oracle. Production must explicitly
+    // pass the real GEO HTFAC=1; never infer that from the D9A default.
+    float htfac=0.f;
     bool lake_breeze=false;
     // Original IKINE=1 pre-blend kinematic route: W zeroed [L5615-5616],
     // TOPOF2 [L5621-5622], then MINIM(UG,VG,W,UB,VB,DIV,NITER,DIVLIM)
