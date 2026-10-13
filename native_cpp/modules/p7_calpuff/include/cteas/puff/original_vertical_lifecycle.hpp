@@ -66,7 +66,8 @@ public:
     // Requires completed VMASS; failures leave old sigma unchanged.
     [[nodiscard]] SigmaUpdateResult commit_sigma(
         int puff_id, const SigmaUpdateInputs& inputs,
-        const SigmaYCurve& sigma_y, const SigmaZCurve& sigma_z);
+        const SigmaYCurve& sigma_y, const SigmaZCurve& sigma_z,
+        const OriginalTerrainSigmaInputs* terrain=nullptr);
     // COMP calpuff.for 11391-11398, AFTER SETPUF and any VMASS operation:
     //   IPUFCD(II)=ICODE; ZIMAX=AMAX1(ZIMAX,HLID); ZIOLD=HLID.
     // HLID / adjusted puff code MUST be calculated by the native upstream

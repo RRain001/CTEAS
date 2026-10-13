@@ -84,6 +84,19 @@ OriginalPostWindResult OriginalPuffMotionLifecycle::advance(int puff_id,
     it->second=after;
     return {after, static_cast<float>(position.distance_m)};
 }
+void OriginalPuffMotionLifecycle::commit_setpuf_terrain_height(
+    int id,float expected_height,float terrain_height) {
+    const auto it=puffs_.find(id);
+    if(it==puffs_.end())throw std::out_of_range("SETPUF terrain on absent puff");
+    require(std::isfinite(expected_height)&&std::isfinite(terrain_height),
+            "CTADJ2 REAL4 height must be finite");
+    require(it->second.z_m==expected_height,
+            "SETPUF CTADJ2 attempted to overwrite stale puff height");
+    auto after=it->second;
+    after.z_m=terrain_height;
+    check_state(after);
+    it->second=after;
+}
 void OriginalPuffMotionLifecycle::retire(int id) {
     if (puffs_.erase(id)!=1U) throw std::out_of_range("retire unknown puff");
 }

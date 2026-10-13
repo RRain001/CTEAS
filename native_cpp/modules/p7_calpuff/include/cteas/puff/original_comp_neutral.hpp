@@ -6,6 +6,7 @@
 #include "cteas/puff/step.hpp"
 #include "cteas/puff/dispersion.hpp"
 #include "cteas/puff/vendor_order.hpp"
+#include <optional>
 
 namespace cteas::puff {
 
@@ -17,6 +18,13 @@ namespace cteas::puff {
 // settling, buildings, terrain/PRIME, deposition or receptors. The frozen
 // Hefei source is NOT rise-neutral; this is an integration stepping stone,
 // never the original 143h case acceptance.
+// Production MCTADJ2 requires the genuine TRELIEF/GETELEV native grid
+// functions and a source-computed BVF. Synthetic callbacks are permitted
+// only in labelled regression cases, never silently substituted on Hefei.
+struct NativeMctadj2Controls {
+    TerrainLookup terrain;
+    float brunt_vaisala_s=0.0F;  // from independently resolved CALPUFF met
+};
 struct NeutralCompControls {
     float seconds=3600.0F;
     float source_period_s=3600.0F;
@@ -25,6 +33,7 @@ struct NeutralCompControls {
     int max_sampling_steps=1;
     int release_number=1;
     SigmaUpdateInputs dispersion;
+    std::optional<NativeMctadj2Controls> mctadj2;
 };
 struct NeutralCompResult {
     OriginalPuffMotionState before;

@@ -50,6 +50,12 @@ public:
     [[nodiscard]] bool contains(int puff_id) const noexcept;
     [[nodiscard]] OriginalPuffMotionState state(int puff_id) const;
     [[nodiscard]] OriginalPostWindResult advance(int puff_id, OriginalPostWindInputs inputs);
+    // SETPUF original L48628-48631 CTADJ2 adjusts ZPB *after* provisional
+    // GRISE/ADVECT, prior to CALCPF and next step. Modify only the trusted
+    // still-local transaction, verifying no intermediate overwrite.
+    void commit_setpuf_terrain_height(int puff_id,
+                                     float expected_pre_terrain_height_m,
+                                     float source_terrain_height_m);
     void retire(int puff_id);
     [[nodiscard]] std::size_t active_count() const noexcept;
 private:

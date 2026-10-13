@@ -233,7 +233,44 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     dispersion.step.puff_height_m=before.z_m;
     dispersion.step.mid_time_s=bookkeeping.mid_time_s;
     dispersion.step.mid_distance_km=bookkeeping.mid_distance_km;
-    const auto sigma=v.commit_sigma(id,dispersion,sigma_y,sigma_z);
+    OriginalTerrainSigmaInputs terrain_inputs;
+    const OriginalTerrainSigmaInputs* selected_terrain=nullptr;
+    if(control.mctadj2){
+        // SETPUF L48616-48631 owns the authoritative CTADJ2 state.
+        // This must use the same *native* x/y/height and RISEWIND WS
+        // as the step being committed; no historical DGM inputs.
+        terrain_inputs.lookup=&control.mctadj2->terrain;
+        terrain_inputs.x_begin_cells=before.x_cells;
+        terrain_inputs.y_begin_cells=before.y_cells;
+        terrain_inputs.x_end_cells=moved.state.x_cells;
+        terrain_inputs.y_end_cells=moved.state.y_cells;
+        terrain_inputs.z_begin_m=before.z_m;
+        terrain_inputs.wind_speed_ms=ws;
+        terrain_inputs.brunt_vaisala_s=control.mctadj2->brunt_vaisala_s;
+        terrain_inputs.met_spacing_m=control.met_spacing_m;
+        selected_terrain=&terrain_inputs;
+    }
+    const auto sigma=v.commit_sigma(
+        id,dispersion,sigma_y,sigma_z,selected_terrain);
+    std::optional<OriginalPuffct2Step> ctadj2_step;
+    if(sigma.terrain){
+        // SETPUF L487xx persists CTADJ2's corrected ZPE for the
+        // *next* native puff step, then CALCPF consumes FRACZ1/LUP1.
+        const auto terrain_height=sigma.terrain->z_end_m;
+        ctadj2_step=OriginalPuffct2Step{
+            .x_begin_m=before.x_cells*control.met_spacing_m,
+            .y_begin_m=before.y_cells*control.met_spacing_m,
+            .z_begin_m=before.z_m,
+            .x_end_m=moved.state.x_cells*control.met_spacing_m,
+            .y_end_m=moved.state.y_cells*control.met_spacing_m,
+            .z_end_m=terrain_height,
+            .terrain_fraction=sigma.terrain->fracz_end,
+            .upslope=sigma.terrain->upslope_end
+        };
+        m.commit_setpuf_terrain_height(
+            id,moved.state.z_m,terrain_height);
+        moved.state=m.state(id);
+    }
     order.completed(VendorSubstepPhase::CommitSetpuf);
     // Native receptor accumulation belongs AFTER SETPUF but BEFORE COMP
     // L11391-11398. A pure sampling callback returns staged increments;
@@ -247,7 +284,8 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             curves.environment(),state.physics,state.x_final_m,
             state.buoyancy_variance_m2,
             state.initial_sigma_y_squared_m2,
-            state.minimum_sigma_y_m,state.minimum_sigma_z_m
+            state.minimum_sigma_y_m,state.minimum_sigma_z_m,
+            ctadj2_step
         };
         receptor_increments=sampling_kernel(at_receptor);
         for(float increment:receptor_increments){

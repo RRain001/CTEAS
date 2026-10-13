@@ -2,8 +2,10 @@
 
 #include "cteas/puff/original_comp_neutral.hpp"
 #include "cteas/puff/original_rise_met.hpp"
+#include "cteas/puff/original_puffct2.hpp"
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -37,6 +39,9 @@ struct RiseCompSamplingState {
     float receptor_initial_sigma_y_squared_m2=0.0F;
     float receptor_minimum_sigma_y_m=0.0F;
     float receptor_minimum_sigma_z_m=0.0F;
+    // Native SETPUF's *end* CTADJ2 call, never defaulted. This is
+    // the state read by original PUFFCT2 at each receptor fraction.
+    std::optional<OriginalPuffct2Step> original_ctadj2_step;
 };
 using RiseCompSamplingKernel=std::function<std::vector<float>(
     const RiseCompSamplingState&)>;

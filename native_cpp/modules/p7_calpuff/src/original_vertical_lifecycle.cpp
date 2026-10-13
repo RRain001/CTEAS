@@ -106,7 +106,8 @@ NativeVerticalWind OriginalVerticalLifecycle::sample(
 }
 SigmaUpdateResult OriginalVerticalLifecycle::commit_sigma(
     int id,const SigmaUpdateInputs& inputs,
-    const SigmaYCurve& yc,const SigmaZCurve& zc) {
+    const SigmaYCurve& yc,const SigmaZCurve& zc,
+    const OriginalTerrainSigmaInputs* terrain) {
     const auto it=puffs_.find(id);
     if(it==puffs_.end())throw std::out_of_range("unknown vertical puff");
     const auto& previous=it->second;
@@ -117,7 +118,7 @@ SigmaUpdateResult OriginalVerticalLifecycle::commit_sigma(
             real4(inputs.step.sigma_z_start_m,"sigma-z begin")==previous.sigma_z_m &&
             inputs.step.puff_code==previous.puff_code,
             "stale or incorrect sigma update state");
-    auto next=sigma_update(inputs,yc,zc);
+    auto next=sigma_update(inputs,yc,zc,terrain);
     const float sy=real4(next.adjust.stored_sigma_y_m,"sigma-y result");
     const float sz=real4(next.adjust.stored_sigma_z_m,"sigma-z result");
     require(sy>=0 && sz>=0,"negative stored native dispersion sigma");
