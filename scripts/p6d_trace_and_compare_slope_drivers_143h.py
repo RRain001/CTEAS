@@ -152,13 +152,25 @@ def main():
 
     labels = [(dt.datetime(2022,1,1) + dt.timedelta(hours=h+1)).strftime("%Y-%m-%d_%H")
               for h in range(NH)]
-    if (args.candidate / "produced_hours.txt").read_text().split() != labels:
+    # The accepted per-hour coordinator writes each P6D result beneath
+    # hour_NNN/diagno, while the forensic stand-alone producer writes a flat
+    # 143h directory. Accept both without substituting any reference values.
+    causal_layout = (args.candidate / "hour_000" / "diagno").is_dir()
+    if causal_layout:
+        for h, label in enumerate(labels):
+            current = args.candidate / f"hour_{h:03d}" / "diagno"
+            if not current.is_dir() or (current / "produced_hours.txt").read_text().split() != [label]:
+                raise RuntimeError(f"causal P6D hour/provenance mismatch: {h} {label}")
+    elif (args.candidate / "produced_hours.txt").read_text().split() != labels:
         raise RuntimeError("native and original hourly labels differ")
+    violating = {name: set() for name in NATIVE}
+    violating_hours = {name: {} for name in NATIVE}
     stats = {name: {"compared": 0, "exceedances": 0, "max_abs": 0.0,
                     "sum_sq": 0.0, "worst": None} for name in NATIVE}
     for h, source in enumerate(read_source(stream)):
         for name, pattern in NATIVE.items():
-            cand = read_native(args.candidate / pattern.format(label=labels[h]))
+            source_dir = (args.candidate / f"hour_{h:03d}" / "diagno") if causal_layout else args.candidate
+            cand = read_native(source_dir / pattern.format(label=labels[h]))
             stat = stats[name]
             for idx, (reference, actual) in enumerate(zip(source[name], cand)):
                 delta = abs(reference - actual)
@@ -166,6 +178,8 @@ def main():
                 stat["sum_sq"] += delta * delta
                 if delta > TOL[name]:
                     stat["exceedances"] += 1
+                    violating[name].add((h, idx))
+                    violating_hours[name][labels[h]] = violating_hours[name].get(labels[h], 0) + 1
                 if delta > stat["max_abs"]:
                     stat["max_abs"] = delta
                     stat["worst"] = {
@@ -191,7 +205,16 @@ def main():
         "extra_run_met_sha256": run["met_dat_sha256"],
         "instrumentation": "DIAGNO after SLOPE, before UG/VG addition; QH, TEMP2D, HMAX, HMIN, DISTHMAX, DISTHMIN, HTOPO",
         "reference_scope": "REAL*4 original source, no oracle input fed to C++; no U/V/W acceptance",
-        "native_scope": "autonomous per-hour QH/TEMP2D and TERSET arrays, preexisting C++ producer",
+        "native_scope": ("causal native P6D->P6E hour-by-hour gamma/history inputs"
+                         if causal_layout else
+                         "stand-alone P6D, without per-hour native GAMMA/history"),
+        "candidate_layout": "causal_143h" if causal_layout else "standalone_143h",
+        "exceedance_by_hour": violating_hours,
+        "QH_TEMP2D_exceedance_overlap": {
+            "same_hour_and_cell": len(violating["QH"] & violating["TEMP2D"]),
+            "QH_only": len(violating["QH"] - violating["TEMP2D"]),
+            "TEMP2D_only": len(violating["TEMP2D"] - violating["QH"]),
+        },
         "absolute_tolerance": TOL, "fields": stats,
         "total_compared": NH * CELLS * len(NATIVE),
     }
