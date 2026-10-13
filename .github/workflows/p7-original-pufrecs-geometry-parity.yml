@@ -35,6 +35,6 @@ jobs:
             --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
             --probe "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_pufrecs_geometry_probe"
           ctest --test-dir "$RUNNER_TEMP/p7-pufrecs" -R '^cteas_p7_original_puffct2_source_contract$' --output-on-failure
-          python3 native_cpp/modules/p7_calpuff/reference/compare_original_puffct2.py \\
-            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \\
+          python3 native_cpp/modules/p7_calpuff/reference/compare_original_puffct2.py \
+            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
             --probe "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_puffct2_probe"
