@@ -88,6 +88,41 @@ void test(){
     }
     need(old_steps==44U*44U,
          "old puff multi-step COMP execution omitted slots");
+    // Integrated POINTS1 -> original RLSMET WINDSET at stack AND HEFF ->
+    // MXSAM=99 COMP. The caller's deliberately incorrect WSNEW must not be
+    // used. Stack level 1.5 m/s dominates final-rise level 1.2 m/s;
+    // original POINTS1 uses INT(1.5*36)+1 = 55 releases, not 44 or 1.
+    OriginalCompRiseMultiPuffHours native_wind_driver;
+    auto native_wind_met=met;
+    for(std::size_t cell=0;cell<n;++cell)
+        native_wind_met.u[cell]=1.5F;  // HTSTAK=50 m, layer 1
+    auto native_wind_source=source;
+    native_wind_source.cadence.wind_speed_ms=0.001;
+    const auto native_wind_hour=
+        native_wind_driver.advance_hour_point_mxsam99_native_wsnew_unsplit(
+            native_wind_met,geo,ctl,pg,false,native_wind_source,0.5F);
+    need(native_wind_hour.release.puff_count==55 &&
+         native_wind_hour.active_puffs==55 &&
+         native_wind_hour.steps.size()==55U*56U/2U &&
+         native_wind_driver.completed_hours()==1,
+         "native RLSMET stack/HEFF max not connected to MXSAM99 release");
+    for(const auto& step:native_wind_hour.steps)
+        need(step.original_plan.sampling_steps==55 &&
+             step.release_number>=1 &&
+             step.ksam>=step.release_number,
+             "MXSAM99 native WSNEW did not reach original NSAM selection");
+    // Missing original meteorology must fail before any hour is committed.
+    auto invalid_met=native_wind_met;
+    invalid_met.u.clear();
+    bool rejected=false;
+    try {
+        (void)native_wind_driver.advance_hour_point_mxsam99_native_wsnew_unsplit(
+            invalid_met,geo,ctl,pg,false,native_wind_source,0.5F);
+    } catch(const std::exception&) { rejected=true; }
+    need(rejected && native_wind_driver.completed_hours()==1 &&
+         native_wind_driver.active_count()==55,
+         "native WSNEW failure partially committed a COMP hour");
+
     const auto state=driver.motion(1);
     const auto count=driver.completed_hours();
     auto bad=source;bad.point.source_x_km=130;
@@ -101,6 +136,7 @@ void test(){
              <<" NEW_FIRST_HOUR_STEPS="<<a.steps.size()
              <<" OLD_SECOND_HOUR_STEPS="<<old_steps
              <<" SOURCE_VMASS=YES"
+             <<" NATIVE_RLSMET_WSNEW_MXSAM99=YES"
              <<" FSTEP_SPLIT=NOT_YET_IMPLEMENTED"
              <<" ORIGINAL_HEFEI_143H=NOT_YET_ACCEPTED\n";
 }
