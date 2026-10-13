@@ -164,7 +164,7 @@ int main(int argc,char** argv) {
         }
         std::cout<<"{\"status\":\"PASS_P6F_INDEPENDENT_SOURCE_STATIC_VALUES\","
                  <<"\"compared_static_values\":"<<compared<<","
-                 <<"\"grid\":[\""<<hdr.nx<<","<<hdr.ny<<","<<hdr.nz<<"],"
+                 <<"\"grid\":["<<hdr.nx<<","<<hdr.ny<<","<<hdr.nz<<"],"
                  <<"\"source\":\"GEO.DAT+met.inp; never derived from original CALMET.DAT\","
                  <<"\"header_comments_independent\":false,"
                  <<"\"all_stations_independent\":false,"
