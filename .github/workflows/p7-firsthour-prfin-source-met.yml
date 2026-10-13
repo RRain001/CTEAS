@@ -72,6 +72,25 @@ jobs:
                     f'xynew=({f[38]:.9g},{f[39]:.9g}) sigin=({f[21]:.9g},{f[22]:.9g})')
           print('P7_ORIGINAL_ADMISSION_SOURCE_REVIEW=PASS NATIVE_ADMISSIONS=NOT_YET_ACCEPTED')
           PY
+      - name: Trace original first-hour pre-SETPUF SIGZB vertical adjustment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,re
+          src=pathlib.Path('engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for').read_bytes().decode('latin-1').splitlines()
+          shown=set()
+          tokens=re.compile(r'\b(?:SIGZB|VDIV|DIV|WZ|WADV|WINDW|WDIV|FZD|SIGZ|VERTICAL|SHEAR|DW|DWDZ)\b',re.I)
+          for start,stop in ((10000,10960),(48500,48695)):
+              for i in range(start-1,stop):
+                  if not tokens.search(src[i]):continue
+                  if src[i].lstrip().lower().startswith('c '):continue
+                  for j in range(max(start-1,i-3),min(stop,i+5)):
+                      if j not in shown:
+                          print(f'P7_VENDOR_SIGZ_PRE_SETPUF {j+1:6d} {src[j]}')
+                          shown.add(j)
+          print('P7_VENDOR_SIGZ_FIRST_DIVERGENCE_AUDIT=PASS NATIVE_PRESETUP_SIGZ_PARITY=OPEN')
+          PY
       - name: Execute real Hefei source and 54 puff admission gates
         shell: bash
         run: |
