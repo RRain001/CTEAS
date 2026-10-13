@@ -82,11 +82,11 @@ jobs:
           import json,sys
           r=json.load(open(sys.argv[1]))
           assert r["candidate_layout"]=="standalone_143h"
-          assert all(r["summary"][x]["exceedances"]==0 for x in
+          assert all(r["fields"][x]["exceedances"]==0 for x in
                      ("QH","HMAX","HMIN","DISTHMAX","DISTHMIN"))
           print("STANDALONE_NONCAUSAL_NOT_SCIENTIFIC_ACCEPTANCE",
                 r["scientific_verdict"],
-                {x:r["summary"][x]["exceedances"] for x in r["summary"]})
+                {x:r["fields"][x]["exceedances"] for x in r["fields"]})
           PY
       - name: Archive original source hash proof and forensic numerical differences
         if: always()
