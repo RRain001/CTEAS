@@ -14,6 +14,7 @@ import yaml
 
 from engine.core.paths import CASES_ROOT
 from engine.preprocess.grid.configure_grid_cmn import lon_lat_to_utm
+from engine.run_met.common import lon_lat_to_utm_km
 
 DEFAULT_LON = 117.0
 DEFAULT_LAT = 32.0
@@ -56,6 +57,19 @@ def initial_config(case_name: str) -> dict:
         "puff": {"options": {"source_mode": "case_yaml", "nspec": 2, "nse": 1},
                  "point_sources": []},
     }
+
+
+
+def projected_stack_utm_km(data: dict) -> tuple[float, float]:
+    """Project the source with the EDITED grid-centre UTM zone, not stale grid.cmn."""
+    pre = data["preprocess"]
+    center = pre["grid"]["center"]
+    source = pre["stack"]
+    zone, _, _ = lon_lat_to_utm(
+        float(center["longitude"]), float(center["latitude"]))
+    return lon_lat_to_utm_km(
+        float(source["longitude"]), float(source["latitude"]), zone,
+        float(center["latitude"]) >= 0)
 
 
 def write_case_grid(root: Path, data: dict) -> None:
