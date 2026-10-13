@@ -179,12 +179,45 @@ OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_native_wsnew_unsplit_
 }
 
 OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_native_wsnew_adaptive(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalPointHourSource& source,
+    float calm_threshold_ms) {
+    auto native=source;
+    native.cadence.wind_speed_ms=native_point_wsnew(
+        met,statics,source,calm_threshold_ms);
+    return advance_hour_point_mxsam99_adaptive(
+        met,statics,controls,pg,urban,native);
+}
+
+OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_adaptive(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalPointHourSource& source) {
+    return advance_hour_mxsam99_source_order(
+        met,statics,controls,pg,urban,source,true);
+}
+
+OriginalCompMxsamHour
 OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_unsplit(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& controls,const DispersionSetup& pg,
     bool urban,const OriginalPointHourSource& source) {
+    return advance_hour_mxsam99_source_order(
+        met,statics,controls,pg,urban,source,false);
+}
+
+OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_source_order(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalPointHourSource& source,bool adaptive) {
     if(controls.max_sampling_steps!=99 || controls.release_number!=1 ||
+       !std::isfinite(controls.met_spacing_m) ||
        controls.met_spacing_m<=0.0F ||
+       !std::isfinite(controls.max_sample_distance_cells) ||
        controls.max_sample_distance_cells<=0.0F ||
        controls.seconds!=3600.0F ||
        source.cadence.hour_seconds!=3600.0 ||
@@ -192,41 +225,79 @@ OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_unsplit(
        source.mass.step_index!=0 ||
        source.cadence.max_puffs>99 ||
        last_id_>std::numeric_limits<int>::max()-99)
-        throw std::invalid_argument("original COMP MXSAM99 unsplit point-puff scope invalid");
+        throw std::invalid_argument(
+            "original COMP MXSAM99 point-puff scope invalid");
     const ReleaseCadence release=release_cadence(source.cadence);
     const float dt=static_cast<float>(release.emission_duration_s);
     if(!std::isfinite(dt)||dt<=0 || release.puff_count<1)
         throw std::invalid_argument("invalid source-ported NPUFFS/DT");
+
+    // Entire hour is a single transaction, including all old puff states,
+    // newly admitted POINTS1 puffs, every re-entry and vertical mass/lid.
     auto trial=puffs_;
     auto ids=active_ids_;
     int next_id=last_id_;
     OriginalCompMxsamHour result;
     result.hour_index=hours_;
     result.release=release;
-    const auto execute=[&](int id,int rel,int k,
-                           const SamplingCadence& plan){
-        auto ctrl=controls;
-        ctrl.seconds=static_cast<float>(plan.sampling_step_s);
-        ctrl.source_period_s=ctrl.seconds;
-        ctrl.release_number=1;
-        ctrl.max_sampling_steps=1; // already selected outer original KSAM
-        const auto physics=trial.step_pg_rise(
-            id,met,statics,ctrl,pg,urban);
-        // We do not silently approximate the vendor L10556-10578
-        // FSTEP shortening and a renewed RISEWIND at changed TSAMP.
-        const auto constrained=substep_length({
-            .sampling_step_s=plan.sampling_step_s,
-            .wind_speed_ms=physics.rise.adjusted.wind_speed_ms,
-            .puff=true,.free_slug=false,.subsampling=plan.subsampling,
-            .grid_spacing_m=controls.met_spacing_m,
-            .x_sam_len=controls.max_sample_distance_cells,
-            .substep_index=k,.sampling_steps=plan.sampling_steps
-        });
-        if(constrained.split ||
-           static_cast<float>(constrained.step_s)!=ctrl.seconds)
-            throw std::invalid_argument(
-                "COMP source requires FSTEP split and RISEWIND resampling");
-        result.steps.push_back({id,rel,k,plan,physics});
+    const auto execute=[&](int id,int rel,const SamplingCadence& plan){
+        const float reference=static_cast<float>(plan.reference_step_s);
+        if(!std::isfinite(reference) || reference<=0.0F ||
+           plan.start_substep<1 || plan.sampling_steps<plan.start_substep ||
+           plan.sampling_steps>99)
+            throw std::invalid_argument("COMP invalid source sampling plan");
+        float tleft=0.0F; // source L10348
+        for(int k=plan.start_substep;k<=plan.sampling_steps;++k){
+            // Original L10430-10433: excess time carries to next KSAM.
+            float tsamp=static_cast<float>(reference+tleft);
+            tleft=tsamp;
+            unsigned reentries=0;
+            for(;;){ // original L10445 label 500
+                if(!std::isfinite(tsamp)||tsamp<=0.0F ||
+                   ++reentries>8192U)
+                    throw std::invalid_argument(
+                        "COMP FSTEP nonprogress or unbounded re-entry");
+                auto ctrl=controls;
+                ctrl.seconds=tsamp;
+                ctrl.source_period_s=tsamp;
+                ctrl.release_number=1;
+                ctrl.max_sampling_steps=1;
+                const auto physics=trial.step_pg_rise(
+                    id,met,statics,ctrl,pg,urban,
+                    {.ksam=k,.nsam=plan.sampling_steps,
+                     .lsubsam=adaptive && plan.subsampling});
+                const float used=static_cast<float>(physics.substep.step_s);
+                if(!(used>0.0F && used<=tsamp && std::isfinite(used)))
+                    throw std::logic_error("invalid native COMP effective TSAMP");
+                if(!adaptive){
+                    // Keep the historical restricted unsplit contract and
+                    // fail atomically if the real source would shorten it.
+                    const auto would_split=substep_length({
+                        .sampling_step_s=tsamp,
+                        .wind_speed_ms=physics.rise.adjusted.wind_speed_ms,
+                        .puff=true,.free_slug=false,
+                        .subsampling=plan.subsampling,
+                        .grid_spacing_m=controls.met_spacing_m,
+                        .x_sam_len=controls.max_sample_distance_cells,
+                        .substep_index=k,.sampling_steps=plan.sampling_steps
+                    });
+                    if(would_split.split ||
+                       static_cast<float>(would_split.step_s)!=tsamp)
+                        throw std::invalid_argument(
+                            "COMP requires FSTEP split: use adaptive scheduler");
+                }
+                if(physics.substep.split)++result.fstep_shortened_steps;
+                result.steps.push_back({id,rel,k,plan,physics});
+                // Original L10581 and L11475-11492, in REAL*4 order.
+                tleft=static_cast<float>(tleft-used);
+                const bool repeat=adaptive && plan.subsampling &&
+                    ((tleft>=1.0F && k==plan.sampling_steps) ||
+                     (tleft>used));
+                if(!repeat)break;
+                tsamp=tleft;
+                ++result.fstep_reentries;
+            }
+        }
     };
     for(const int id:ids){
         const auto native=trial.pre_cadence_wind(id,met,statics);
@@ -243,8 +314,7 @@ OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_unsplit(
             .grid_spacing_m=controls.met_spacing_m,
             .max_sampling_steps=99
         });
-        for(int k=plan.start_substep;k<=plan.sampling_steps;++k)
-            execute(id,0,k,plan);
+        execute(id,0,plan);
     }
     for(int j=1;j<=release.puff_count;++j){
         auto point=source.point;
@@ -266,8 +336,7 @@ OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_unsplit(
         });
         if(plan.sampling_steps!=release.puff_count)
             throw std::invalid_argument("native POINTS1/COMP NEW NSAM drift");
-        for(int k=plan.start_substep;k<=plan.sampling_steps;++k)
-            execute(id,j,k,plan);
+        execute(id,j,plan);
     }
     result.active_puffs=ids.size();
     puffs_=std::move(trial);
@@ -276,6 +345,7 @@ OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_unsplit(
     ++hours_;
     return result;
 }
+
 std::size_t OriginalCompRiseMultiPuffHours::compact_original_inactive(
     const std::vector<int>& dead_ids){
     if(dead_ids.empty())return 0;
