@@ -200,7 +200,7 @@ std::vector<std::string> original_wrout1_embedded_comments(
     std::istringstream control(active_puff_control);
     std::string line;
     while(std::getline(control,line)) {
-        if(!line.empty() && line.back()=='\\r')line.pop_back();
+        if(!line.empty() && line.back()=='\r')line.pop_back();
         require_true(line.size()<=132U,"WROUT1 raw control line too wide");
         comments.push_back(line);
     }
