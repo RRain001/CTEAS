@@ -3,6 +3,7 @@
 #include "cteas/puff/original_comp_rise.hpp"
 #include "cteas/puff/original_comp_exit.hpp"
 #include "cteas/puff/original_release_wind.hpp"
+#include "cteas/puff/original_point_prfin.hpp"
 #include "cteas/puff/original_rolldn.hpp"
 #include "cteas/puff/original_capacity_inventory.hpp"
 #include <cstddef>
@@ -38,6 +39,21 @@ struct OriginalPointHourSource {
     InjectionInputs mass;
     ReleaseCadenceInputs cadence;
 };
+// Genuine POINTS1 release-state factory. Physical PRFIN/RLSMET is native,
+// not read from the DGM; source-specific initial sigmas, elevation and
+// emission rates are supplied explicitly from original puff.inp. Works
+// with any MET grid-relative XY, not a hard-coded Hefei source location.
+struct OriginalPointNativeSourceParameters {
+    float base_elevation_m=0.0F;
+    float initial_sigma_y_m=0.0F;  // original MAX(SYMIN,SYIPT1)
+    float initial_sigma_z_m=0.0F;  // original MAX(SZMIN,SZIPT1)
+    std::vector<double> emission_rates;
+};
+[[nodiscard]] OriginalPointHourSource original_point_hour_from_prfin(
+    const OriginalPointPrfinRequest& request,
+    const OriginalPointPrfinResult& rise,
+    const OriginalPointNativeSourceParameters& source);
+
 struct RiseCadencedSubstep {
     int puff_id=0;
     int original_release_number=0; // J=1..NPUFFS, 0 for old puff
