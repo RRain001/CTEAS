@@ -295,7 +295,7 @@ struct NativeStationFlux {
     float qh=0.f,ustar=0.f,el=0.f,rho=0.f;
 };
 std::vector<NativeStationFlux> read_native_station_flux_csv(
-        const std::string& path,std::size_t hours) {
+        const std::string& path,std::size_t hours,std::size_t first_hour=0) {
     if(path.empty())return {};
     std::ifstream in(path);
     if(!in)throw std::invalid_argument("native P6D station flux input missing");
@@ -316,7 +316,7 @@ std::vector<NativeStationFlux> read_native_station_flux_csv(
             throw std::invalid_argument("native ELUSTR2 flux row malformed");
         // 143 consecutive hour-end labels, beginning 2022-01-01 01 UTC.
         auto clock=std::chrono::sys_days{std::chrono::year{2022}/1/1}+
-                   std::chrono::hours{static_cast<int>(i+1)};
+                   std::chrono::hours{static_cast<int>(first_hour+i+1)};
         const auto d=std::chrono::floor<std::chrono::days>(clock);
         const std::chrono::year_month_day ymd{d};
         const int hour=static_cast<int>(
@@ -581,11 +581,33 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    bool skip_avemix,int imixh,int dptt_refresh,
                    const std::string& trace_path,
                    const std::string& station_flux_path,
-                   bool native_hour_comp) {
+                   bool native_hour_comp,int first_hour,int selected_hours,
+                   const std::string& native_p6d_dir,
+                   const std::string& previous_comp_prefix) {
     const auto reference=read_calmet_dat21(reference_path);
+    if(first_hour<0||selected_hours<0||
+       static_cast<std::size_t>(first_hour)>=reference.intervals||
+       (selected_hours>0 &&
+        static_cast<std::size_t>(selected_hours)>reference.intervals-
+                                      static_cast<std::size_t>(first_hour)))
+        throw std::invalid_argument("invalid one-pass COMP hour selection");
+    const auto first=static_cast<std::size_t>(first_hour);
+    const auto count=selected_hours==0?reference.intervals-first:
+                    static_cast<std::size_t>(selected_hours);
+    const auto end=first+count;
+    if(!native_p6d_dir.empty() &&
+       (!native_hour_comp||!wind_path.empty()||count!=1U))
+        throw std::invalid_argument(
+            "native P6D wind requires native-hour-comp, one hour and NO original wind file");
+    if(!previous_comp_prefix.empty()&&(!native_hour_comp||count!=1U))
+        throw std::invalid_argument("previous COMP state only valid for one native hour");
+    if(!native_p6d_dir.empty()&&first>0U&&previous_comp_prefix.empty())
+        throw std::invalid_argument("native P6D hour n>0 requires preceding COMP state");
     // Optional wind source: the frozen original U/V/W for the same intervals.
     std::optional<WindLevels> wind;
-    if(!wind_path.empty())wind=read_wind_levels(wind_path,reference);
+    if(!native_p6d_dir.empty())
+        wind=read_p6d_one_hour_native_wind(native_p6d_dir,reference,first);
+    else if(!wind_path.empty())wind=read_wind_levels(wind_path,reference);
     std::optional<GeoLandUse> geo;
     if(!geo_path.empty()) {
         geo=read_geo_landuse(geo_path,reference.header.nx,reference.header.ny);
@@ -596,7 +618,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             throw std::invalid_argument("GEO.DAT water range does not match the reference");
     }
     const auto observations=read_bridge_csv(observations_path);
-    const auto native_station_flux=read_native_station_flux_csv(station_flux_path,reference.intervals);
+    const auto native_station_flux=read_native_station_flux_csv(station_flux_path,count,first);
     if(native_hour_comp && native_station_flux.empty())
         throw std::invalid_argument("native-hour-comp requires native P6D --station-flux-csv, no surrogate DPTT refresh");
     const auto& h=reference.header;
@@ -623,7 +645,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     candidate_header.comments={"P6E partial CALMET.DAT 2.1 candidate for the real 2022 case",
         "Geometry, station coordinates and time labels are copied run inputs",
         "Only TEMPK, IRH and T-LEV1 are produced; every other field is 9999. missing"};
-    candidate_header.run_hours=static_cast<int>(reference.intervals);
+    candidate_header.run_hours=static_cast<int>(count);
     const auto labels=calmet21_hourly_labels(h.nz,h.irtype,h.lcalgrd,h.npsta);
     const int base_timezone=timezone_hours_from_axtz(h.timezone);
     // Grid solar geometry through the documented interface
@@ -639,6 +661,12 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     cteas::calmet::p6::NativeGridMemory shared_comp_state{
         std::vector<float>(cells,0.f), std::vector<float>(cells,0.f),
         std::vector<float>(cells,0.f)};
+    if(!previous_comp_prefix.empty()) {
+        shared_comp_state=read_previous_comp_hour(previous_comp_prefix,first-1U,cells);
+        previous_zi=shared_comp_state.zi_m;
+        previous_ziconv=shared_comp_state.ziconv_m;
+        previous_dptt=shared_comp_state.dptt_k;
+    }
     // Exported chain state (hour-major, i-fastest) when --state-prefix is set.
     std::vector<float> exported_ziconv,exported_zi;
     std::vector<float> exported_pre_ziconv,exported_pre_zi;
@@ -659,7 +687,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    "dptt_in,gamma_used,dpttp1_k,ziconv_m,zi_m,dptt_out,tht_k,"
                    "thtp_k,tave_k,bvf,hmech_m,mean_k\n";
     }
-    for(std::size_t hour=0;hour<reference.intervals;++hour) {
+    for(std::size_t hour=first;hour<end;++hour) {
         // Experimental real P6E single-pass COMP stepping: DIAGNO wind is
         // still read from --wind-file, therefore FULL P6D→P6E G2=NOT_PASS.
         cteas::calmet::p6::NativeHourFrame comp_frame{
@@ -851,7 +879,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    trace_j>=static_cast<std::size_t>(h.ny))
                     throw std::invalid_argument("native station outside P6E COMP grid");
                 const std::size_t tk=trace_j*static_cast<std::size_t>(h.nx)+trace_i;
-                const auto& station=native_station_flux[hour];
+                const auto& station=native_station_flux[hour-first];
                 cteas::calmet::p6::StationMixhtstInput m;
                 m.previous.zi_m=previous_zi[tk];
                 m.previous.ziconv_m=previous_ziconv[tk];
