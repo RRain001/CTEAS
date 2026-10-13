@@ -23,11 +23,11 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /native_cpp/modules/p7_calpuff/**
-      - name: Strict native POINTS1 REAL4 release schedule with PG and rise
+      - name: Native POINTS1 cadence, native RLSMET WSNEW and native PG rise
         shell: bash
         run: |
           set -euo pipefail
-          echo "P7_RELEASE_RUNNER=${RUNNER_NAME} HOST=$(hostname)"
+          echo "P7_RELEASE_ENVIRONMENT=${RUNNER_ENVIRONMENT} HOST=$(hostname)"
           if command -v g++-12 >/dev/null 2>&1; then cpp=$(command -v g++-12);
           elif command -v g++-11 >/dev/null 2>&1; then cpp=$(command -v g++-11);
           else cpp=$(command -v c++); fi
@@ -35,10 +35,7 @@ jobs:
           cmake -S native_cpp/modules/p7_calpuff -B "$build" \
             -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$build" --parallel 2 --target cteas_p7_original_point_hourly_cadence_tests
-          ctest --test-dir "$build" -R '^cteas_p7_point_hourly_cadence_((1|6|143)h|native_rlsmet) --output-on-failure
+          ctest --test-dir "$build" -R '^cteas_p7_point_hourly_cadence_((1|6|143)h|native_rlsmet)$' --output-on-failure
           echo 'P7_NATIVE_POINTS1_CADENCE_143H=PASS'
           echo 'P7_NATIVE_POINTS1_WINDSET_WSNEW=PASS'
-          echo 'P7_FROZEN_2022_RLSMET_WROUT1=NOT_YET_ACCEPTED'
- --output-on-failure
-          echo 'P7_NATIVE_POINTS1_CADENCE_143H=PASS'
-          echo 'P7_FROZEN_2022_RLSMET_WROUT1=NOT_YET_ACCEPTED'
+          echo 'P7_FROZEN_2022_COMPLETE_RLSMET_WROUT1=NOT_YET_ACCEPTED'
