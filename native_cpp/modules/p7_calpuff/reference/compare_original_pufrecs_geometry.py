@@ -28,7 +28,9 @@ def main():
      &                xttb1,uavg,lclip,frac,xr1,xtt1,trec,
      &                rhoa,rhoc,sfrac,xbe1,rxbe1)
       logical lclip
-      call slgfrac(x,y,x1,y1,x2,y2,rhoa,rhoc,frac,xbe1,rxbe1)
+      call slgfrac(x,y,x1,y1,x2,y2,xr1,yr1,frac,xbe1,rxbe1)
+      rhoa=xr1
+      rhoc=yr1
       sfrac=frac
 """ + geom + """
       return
