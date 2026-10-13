@@ -154,6 +154,20 @@ jobs:
             --candidate "$root/causal" \
             --compiler gfortran-11 --require-numeric-parity \
             --out "$root/p6d_slope_causal_driver_143h.json"
+      - name: Forensic source-stage QH bisection HEATFX vs ELUSTR (not acceptance)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-slope-causal-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if test -d "$root/causal" && test -s "$root/original/dgm-audit.json"; then
+            python3 scripts/p6d_qh_heatfx_elustr_source_audit.py \
+              --original-dir "$root/original" \
+              --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+              --case project/cases/hefei5km_2022_reference_case_20261011 \
+              --candidate "$root/causal" --compiler gfortran-11 \
+              --out "$root/qh_heatfx_elustr_143h.json"
+          fi
       - name: Archive strict causal SLOPE driver evidence even when mismatched
         if: always()
         uses: actions/upload-artifact@v4
@@ -161,6 +175,7 @@ jobs:
           name: p6d-slope-causal-original-143h
           path: |
             ${{ runner.temp }}/p6d-slope-causal-${{ github.run_id }}-${{ github.run_attempt }}/p6d_slope_causal_driver_143h.json
+            ${{ runner.temp }}/p6d-slope-causal-${{ github.run_id }}-${{ github.run_attempt }}/qh_heatfx_elustr_143h.json
             ${{ runner.temp }}/p6d-slope-causal-${{ github.run_id }}-${{ github.run_attempt }}/original/dgm-audit.json
           if-no-files-found: warn
           retention-days: 14
