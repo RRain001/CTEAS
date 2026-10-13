@@ -9,7 +9,8 @@
 namespace cteas::puff {
 RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     const ReceptorSet& receptors,float met_spacing_m,
-    float averaging_period_s,float impact_sigma_multiple) {
+    float averaging_period_s,float impact_sigma_multiple,
+    OriginalFlatVerticalMethod vertical_method) {
     if(!receptors.gridded || !receptors.discrete.empty() ||
        receptors.mesh_down!=1 || receptors.sampling_nx<=0 ||
        receptors.sampling_ny<=0 || receptors.ibsamp<1 ||
@@ -30,7 +31,7 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     const float grid_x=static_cast<float>(receptors.ibsamp)-0.5F;
     const float grid_y=static_cast<float>(receptors.jbsamp)-0.5F;
     return [nrecs,nx,grid_x,grid_y,met_spacing_m,averaging_period_s,
-            impact_sigma_multiple](const RiseCompSamplingState& s) {
+            impact_sigma_multiple,vertical_method](const RiseCompSamplingState& s) {
         if(s.after_setpuf_before_lid.puff_code!=s.vmass.puff_code ||
            !s.after_setpuf_before_lid.vmass_pending ||
            s.vmass.mass_mixed.empty() ||
@@ -57,8 +58,44 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
         const float yn=(s.after.y_cells-grid_y)+1.0F;
         const float midz=0.5F*(s.before.z_m+s.after.z_m);
         const float max_lid=std::max(lid,s.after_setpuf_before_lid.zimax_m);
-        const float vfactor=static_cast<float>(vertical_coupling({
-            s.vmass.puff_code,0.0,midz,sz,lid,max_lid}));
+        float vfactor=0.0F;
+        if(vertical_method==OriginalFlatVerticalMethod::midpoint_vcoup) {
+            // Legacy restricted kernel, retained to preserve its accepted
+            // six-hour nonzero/bitwise-readback regression as a control.
+            vfactor=static_cast<float>(vertical_coupling({
+                s.vmass.puff_code,0.0,midz,sz,lid,max_lid}));
+        } else if(vertical_method==OriginalFlatVerticalMethod::substep_vcbar) {
+            // Source-ported CALPUFF VCBAR: use the *native* post-SETPUF
+            // begin/mid/end vertical distribution, not a fabricated sigma
+            // sampled at the midpoint. Strictly flat, MTILT=0, non-slug,
+            // MCTADJ=0; terrain-specific PUFRECS is a separate gate.
+            const auto& a=s.sigmas.adjust;
+            for(double v:{a.sigma_z_begin_m,a.sigma_z_mid_m,
+                          a.sigma_z_end_m}) {
+                if(!std::isfinite(v) || v<0.0)
+                    throw std::invalid_argument(
+                        "flat VCBAR requires native adjusted begin/mid/end SIGTZ");
+            }
+            VcbarInputs c;
+            c.state.puff_code=s.vmass.puff_code;
+            c.state.x_begin1=s.before.x_cells;
+            c.state.y_begin1=s.before.y_cells;
+            c.state.z_begin1=s.before.z_m;
+            c.state.sigma_z_begin1=a.sigma_z_begin_m;
+            c.state.sigma_z_mid=a.sigma_z_mid_m;
+            c.state.x_end1=s.after.x_cells;
+            c.state.y_end1=s.after.y_cells;
+            c.state.z_end1=s.after.z_m;
+            c.state.sigma_z_end1=a.sigma_z_end_m;
+            c.lid_height_m=lid;
+            c.calm=false;
+            c.slug=false;
+            c.terrain_adjustment=0;
+            c.plume_tilt=0;
+            vfactor=static_cast<float>(vertical_coupling_bar(c));
+        } else {
+            throw std::invalid_argument("unsupported CALCPF vertical mode");
+        }
         if(!std::isfinite(vfactor) || vfactor<0.0F)
             throw std::invalid_argument("flat CALCPF invalid original VCOUP factor");
         std::vector<float> values(nrecs,0.0F);
