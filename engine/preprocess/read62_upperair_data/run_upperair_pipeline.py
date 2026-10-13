@@ -113,16 +113,18 @@ def main() -> int:
                     f"{year} 下载IGRA",
                     module_cmd(py, "read62_upperair_data/download_igra.py", "--year", str(year), "--auto-select-all", "--yes"),
                 )
-                # Auto-selection is intentionally recomputed in each year;
-                # do not pin the prior year's IGRA station to future years.
+                selected_station_id = read_selected_station_id(year)
+                if selected_station_id:
+                    print(f"后续年份将复用站点: {selected_station_id}")
             else:
                 print("警告: auto_select_all=false 且未配置 station_id，自动回退为 auto_select_all=true")
                 run_step(
                     f"{year} 下载IGRA",
                     module_cmd(py, "read62_upperair_data/download_igra.py", "--year", str(year), "--auto-select-all", "--yes"),
                 )
-                # Auto-selection is intentionally recomputed in each year;
-                # do not pin the prior year's IGRA station to future years.
+                selected_station_id = read_selected_station_id(year)
+                if selected_station_id:
+                    print(f"后续年份将复用站点: {selected_station_id}")
 
         run_step(
             f"{year} 解析IGRA到CSV",
