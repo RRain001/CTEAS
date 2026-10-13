@@ -17,6 +17,9 @@ def main():
         ("COMP_SUBSTEP_STATE",10600,10765),
         ("COMP_STEPUF_PHASE",10895,10980),
         ("COMP_HOUR_END",11340,11480),
+        ("COMP_PUFF_OFFGRID_AND_CLEANUP",11400,11558),
+        ("POINTS1_ROLLDN_SWAP_CALLS",15978,16036),
+        ("VENDOR_ROLLDN_AND_SWAP",19095,19354),
     ]:
         print(f"P7_ORIGINAL_{name} BEGIN L{lo}-L{hi}")
         for i in range(lo-1,hi):
