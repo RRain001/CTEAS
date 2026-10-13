@@ -22,9 +22,29 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /native_cpp/modules/p7_calpuff/**
+            /engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
             /project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con
+      - name: Audit original source CALL CALCPF and DRY mass timeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,re,hashlib
+          path=pathlib.Path('engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for')
+          raw=path.read_bytes()
+          assert hashlib.sha256(raw).hexdigest()=='da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568'
+          lines=raw.decode('latin-1').splitlines()
+          patterns=re.compile(r'\\b(?:QOLD|QNEW|Q01DRY|QM\\(|QU\\(|FRACT|TFRACT|CALCPF|PFSAMP|PUFRECS|DRY|VCOUP|MTRANS|MDRY|VDPVD|FRACDRY|SFC)\\b',re.I)
+          for lo,hi in ((4165,4325),(11045,11230)):
+              for idx in range(lo-1,hi):
+                  if not patterns.search(lines[idx]):continue
+                  a=max(lo-1,idx-1);b=min(hi,idx+3)
+                  for j in range(a,b):
+                      print(f'P7_VENDOR_H3_RECEIVER {j+1:6d} {lines[j]}')
+          print('P7_VENDOR_H3_RECEIVER_SOURCE_PIN=PASS')
+          PY
       - name: Verify immutable original inputs, compile independent native solver and compare
         shell: bash
         run: |
