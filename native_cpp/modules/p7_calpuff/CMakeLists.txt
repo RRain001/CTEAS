@@ -1020,3 +1020,28 @@ foreach(HOURS IN ITEMS 1 6 143)
   add_test(NAME cteas_p7_native_comp_pg_multipuff_${HOURS}h
            COMMAND cteas_p7_original_comp_hourly_tests ${HOURS})
 endforeach()
+
+# Native restricted *rising* point puff chain: METFM1 -> PUFFDZ -> 
+# GRISE/RISEWIND -> location -> REAL4 PG SIGTY/SIGTZ -> VMASS/COMP.
+add_library(cteas_p7_original_comp_rise STATIC src/original_comp_rise.cpp)
+target_include_directories(cteas_p7_original_comp_rise PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_comp_rise PUBLIC
+  cteas_p7_original_vertical cteas_p7_original_motion
+  cteas_p7_original_rise_met cteas_p7_step_integration
+  cteas_p7_step cteas_p7_dispersion)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_rise PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_rise PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7_original_comp_rise_tests tests/original_comp_rise_tests.cpp)
+target_link_libraries(cteas_p7_original_comp_rise_tests PRIVATE cteas_p7_original_comp_rise)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_rise_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_rise_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+foreach(HOURS IN ITEMS 1 6 143)
+  add_test(NAME cteas_p7_native_rise_comp_pg_${HOURS}h
+           COMMAND cteas_p7_original_comp_rise_tests ${HOURS})
+endforeach()
