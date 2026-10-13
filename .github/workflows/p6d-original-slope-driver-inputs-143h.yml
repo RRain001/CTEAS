@@ -95,6 +95,16 @@ jobs:
             scripts
             engine/vendor/src/CALMET_v6.5.0_L150223
       - uses: ./.github/actions/cteas-linux-toolchain
+      # The current checkout's --mode grid restores scientific grid inputs,
+      # but the coordinator also validates the frozen CALMET.DAT envelope.
+      # Supply it from the immutable accepted Hefei case, never invent it.
+      - uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          filter: blob:none
+          path: original_locked_case
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
       - name: Restore immutable source case
         run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
       - name: Prove unmodified original source and freeze original MET.DAT
@@ -123,7 +133,7 @@ jobs:
           set -euo pipefail
           root="$RUNNER_TEMP/p6d-slope-causal-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           "$root/p6d/cteas_p6_native_hourly_driver" \
-            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --case "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
             --p6d "$root/p6d/cteas_p6_realcase_wind_field" \
             --p6e "$root/p6e/p6e_calmet_dat21" \
             --bridge "$root/p6e/p6e_p6c_hourly_bridge" \
