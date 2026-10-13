@@ -847,6 +847,59 @@ void test(){
              <<" TERRAIN_SYNTHETIC_ONLY=YES"
              <<" ORIGINAL_HEFEI_MCTADJ2=NOT_YET_ACCEPTED\\n";
 
+    // Exercise NONZERO native terrain strain: flat ELEV tests prove wiring,
+    // not that active CTADJ2 changes the physical puff height or CALCPF.
+    // Gradient is deliberately synthetic, NEVER a frozen-case oracle.
+    auto grade_geo=geo_for_terrain;
+    for(int j=0;j<50;++j)for(int i=0;i<50;++i)
+        grade_geo.elevation_m[static_cast<std::size_t>(j*50+i)]=
+            10.0F+static_cast<float>(i);
+    const auto grade_grid=OriginalNativeTerrain::from_calmet(
+        grade_geo,50,50,100.0F);
+    auto grade_ctl=terrain_ctl;
+    grade_ctl.mctadj2->brunt_vaisala_s=0.10F;
+    grade_ctl.mctadj2->terrain=grade_grid.constraint_lookup();
+    const auto grade_sampler=make_original_flat_calcpf_sampler(
+        plume_grid,100.0F,3600.0F,3.0F,
+        OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2,
+        [&grade_grid](const RiseCompSamplingState& state,
+                      std::size_t receiver,const OriginalPuffct2Result& position){
+            const float ws=(state.after.total_distance_m-
+                state.before.total_distance_m)/state.step_seconds;
+            return grade_grid.receptor(
+                receiver,1,1,50,50,position,0.10F,ws);
+        });
+    std::size_t terrain_height_changed=0;
+    std::size_t terrain_gaussian_substeps=0;
+    const RiseCompSamplingKernel grade_checked=[&](
+        const RiseCompSamplingState& state){
+        need(state.original_ctadj2_step.has_value() &&
+             std::isfinite(state.original_ctadj2_step->terrain_fraction),
+             "sloped original SETPUF lost authoritative CTADJ2 data");
+        if(state.original_ctadj2_step->upslope &&
+           state.after.z_m<state.before.z_m)
+            ++terrain_height_changed;
+        ++terrain_gaussian_substeps;
+        return grade_sampler(state);
+    };
+    OriginalCompRiseMultiPuffHours grade_driver;
+    const auto grade_hour=
+        grade_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+            met_for_terrain,grade_geo,grade_ctl,pg,false,single_mass,
+            wide_domain,99,2500,grade_checked);
+    need(terrain_gaussian_substeps==grade_hour.steps.size() &&
+         terrain_gaussian_substeps>1 &&
+         terrain_height_changed>0 &&
+         grade_hour.receptor_concentrations.size()==2500 &&
+         grade_driver.completed_hours()==1,
+         "nonflat native CTADJ2 never modified actual end-step puff height");
+    std::cout<<"P7_NATIVE_MCTADJ2_NONFLAT_1H=PASS"
+             <<" PHYSICAL_SUBSTEPS="<<terrain_gaussian_substeps
+             <<" UPSLOPE_Z_CHANGED="<<terrain_height_changed
+             <<" CTADJ2_SETPUF_PUFRECS_VCOUP=SOURCE_ORDERED"
+             <<" TERRAIN_SYNTHETIC_ONLY=YES"
+             <<" FROZEN_HEFEI_PARITY=NOT_ACCEPTED\\n";
+
     const auto plume_sampler=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F,3.0F,
         OriginalFlatVerticalMethod::receptor_pg_vcoup);
