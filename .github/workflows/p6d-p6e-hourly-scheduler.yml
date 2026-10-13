@@ -43,6 +43,9 @@ jobs:
             native_cpp/modules/p6_calmet/include
             native_cpp/modules/p6_calmet/p6e/include
             native_cpp/modules/p6_calmet/tests
+            native_cpp/modules/p6_calmet/src/native_hourly_driver_main.cpp
+            native_cpp/modules/p6_calmet/p6f/src/sha256.cpp
+            native_cpp/modules/p6_calmet/p6f/include
             scripts/run_p6_end_to_end.py
       - name: Compile actual C++20 scheduler, strict
         shell: bash
@@ -71,6 +74,24 @@ jobs:
         run: |
           set -euo pipefail
           "${RUNNER_TEMP}/p6-hourly-native-comp-integration"
+      - name: Compile transitional C++ process coordinator with -Werror; reject missing case
+        shell: bash
+        run: |
+          set -euo pipefail
+          g++ -std=c++20 -O2 -Wall -Wextra -Wpedantic -Werror \
+            -I native_cpp/modules/p6_calmet/p6f/include \
+            native_cpp/modules/p6_calmet/src/native_hourly_driver_main.cpp \
+            native_cpp/modules/p6_calmet/p6f/src/sha256.cpp \
+            -o "$RUNNER_TEMP/p6-native-cpp-coordinator"
+          if "$RUNNER_TEMP/p6-native-cpp-coordinator" \
+              --case does-not-exist --p6d does-not-exist \
+              --p6e does-not-exist --bridge does-not-exist \
+              --cgamma does-not-exist --work "$RUNNER_TEMP/bad-case" \
+              > "$RUNNER_TEMP/native-cpp-reject.log" 2>&1; then
+            echo "::error::Native C++ coordinator accepted invalid source"
+            exit 1
+          fi
+          grep -q "FAIL_CPP_HOURLY_COORDINATOR" "$RUNNER_TEMP/native-cpp-reject.log"
       - name: Compile legacy forensic CLI and assert strict acceptance rejection
         shell: bash
         run: |
