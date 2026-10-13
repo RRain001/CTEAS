@@ -107,6 +107,25 @@ jobs:
                       print(f'P7_VENDOR_WDIV {j+1:6d} {src[j]}')
                       shown.add(j)
           PY
+      - name: Audit vendor CTADJ2 BVF and SIGTZ dependence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,re
+          src=pathlib.Path('engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for').read_bytes().decode('latin-1').splitlines()
+          shown=set()
+          for a,b in ((9350,9450),(10400,11100),(15580,15625),(18320,18380),(20450,20860)):
+              for i in range(a-1,b):
+                  line=src[i]
+                  if line.lstrip().lower().startswith('c '): continue
+                  if re.search(r'\bbvf\b|\bctadj2\b|\bstrain\b|\bszb1\b|\bszm1\b|\bsze1\b|\bsigr?tz\b|\bptgrad\b',line,re.I):
+                      for j in range(max(a-1,i-2),min(b,i+4)):
+                          if j not in shown:
+                              print(f'P7_ORIGINAL_CTADJ2_CONTEXT {j+1:6d} {src[j]}')
+                              shown.add(j)
+          print('P7_MCTADJ2_BVF_VENDOR_SOURCE_AUDIT=PASS REAL_HEFEI_SIGMA_PARITY=OPEN')
+          PY
       - name: Execute real Hefei source and 54 puff admission gates
         shell: bash
         run: |
