@@ -111,6 +111,25 @@ void test(){
              step.release_number>=1 &&
              step.ksam>=step.release_number,
              "MXSAM99 native WSNEW did not reach original NSAM selection");
+    // The second hour selects a fresh release speed from its OWN MET
+    // profile (stack 1.0 m/s, HEFF 1.2 m/s), while independently
+    // advancing the 55 persisted old native puffs from hour one.
+    auto second_native_met=native_wind_met;
+    for(std::size_t cell=0;cell<n;++cell)
+        second_native_met.u[cell]=1.0F;
+    const auto second_native_hour=
+        native_wind_driver.advance_hour_point_mxsam99_native_wsnew_unsplit(
+            second_native_met,geo,ctl,pg,false,native_wind_source,0.5F);
+    need(second_native_hour.release.puff_count==44 &&
+         second_native_hour.active_puffs==99 &&
+         native_wind_driver.completed_hours()==2,
+         "hour-two fresh native WSNEW or cross-hour puff state diverged");
+    std::size_t carried_old_steps=0;
+    for(const auto& s:second_native_hour.steps)
+        if(s.release_number==0)++carried_old_steps;
+    need(carried_old_steps>=55U,
+         "hour-two native WSNEW path dropped persisted old puff substeps");
+
     // Missing original meteorology must fail before any hour is committed.
     auto invalid_met=native_wind_met;
     invalid_met.u.clear();
@@ -119,8 +138,8 @@ void test(){
         (void)native_wind_driver.advance_hour_point_mxsam99_native_wsnew_unsplit(
             invalid_met,geo,ctl,pg,false,native_wind_source,0.5F);
     } catch(const std::exception&) { rejected=true; }
-    need(rejected && native_wind_driver.completed_hours()==1 &&
-         native_wind_driver.active_count()==55,
+    need(rejected && native_wind_driver.completed_hours()==2 &&
+         native_wind_driver.active_count()==99,
          "native WSNEW failure partially committed a COMP hour");
 
     const auto state=driver.motion(1);
