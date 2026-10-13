@@ -23,7 +23,7 @@ enum class OriginalFlatVerticalMethod {
 // It is valid ONLY for gridded ground-level receptors, MESHDN=1,
 // MCTADJ=0, no plume PDF, no receptor-specific PUFRECS adjustment,
 // no settling/PRIME and M(CHEM,WET,DRY)=0. Unsupported modes must
-// not be labeled full 2022 CALPUFF parity. The receptor_pg_vcbar
+// not be labeled full 2022 CALPUFF parity. The receptor_pg_vcoup
 // mode source-ports per-receptor SIGTY/SIGTZ, GRISE and VCOUP but does
 // not complete MCTADJ=2 terrain, dry-removal or full case parity.
 //
