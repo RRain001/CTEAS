@@ -189,6 +189,11 @@ int main(int argc,char** argv){
                         throw std::runtime_error("wrong stage-trace float32 shape: "+str(source));
                     fs::copy_file(source,stage_root/source.filename());
                 }
+                const auto station_profile=diagno/("wind1_neutral_profile_"+label+".f32");
+                require(station_profile);
+                if(fs::file_size(station_profile)!=18U*sizeof(float))
+                    throw std::runtime_error("wrong WIND1 neutral profile REAL4 shape");
+                fs::copy_file(station_profile,stage_root/station_profile.filename());
                 const auto row=lines(read(diagno/"station_inter2_layer1.csv"));
                 if(row.size()!=2)throw std::runtime_error("station INTER2 row malformed");
                 if(stage_rows.empty())stage_rows.push_back(row[0]);

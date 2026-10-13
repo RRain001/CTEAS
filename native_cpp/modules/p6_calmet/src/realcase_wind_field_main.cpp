@@ -591,6 +591,15 @@ int main(int argc,char** argv){
                 10000.f,10000.f,10000.f,0,
                 {0.f,20.f,40.f,80.f,160.f,320.f,640.f,1200.f,2000.f,3000.f}};
             const auto profile=original_similt_profile(neutral);
+            // Write-only REAL*4 neutral station column before WIND1 spatial
+            // weighting. This is forensic data, never read back as a model
+            // input and never substituted for the original station profile.
+            std::vector<float> wind1_neutral_values;
+            wind1_neutral_values.reserve(18);
+            for(const float value:profile.u_mps)wind1_neutral_values.push_back(value);
+            for(const float value:profile.v_mps)wind1_neutral_values.push_back(value);
+            write_f32(args.out()/("wind1_neutral_profile_"+
+                      hour_label(clock)+".f32"),wind1_neutral_values);
             for(std::size_t k=0;k<9;++k)
                 station.surface_neutral_profile[k]=
                     LayerWind{profile.u_mps[k],profile.v_mps[k]};
