@@ -293,16 +293,43 @@ void test(){
              no_release.steps.front().step.before.y_cells==before.y_cells &&
              no_release.steps.front().step.before.travel_time_s==before.travel_time_s,
              "old puff did not start exactly from previous native hour end");
-        need(after.travel_time_s>before.travel_time_s &&
-             std::abs((after.travel_time_s-before.travel_time_s)-3600.0F)<1.0F &&
-             adaptive.puff_steps(1)==steps_before+no_release.steps.size() &&
-             va.committed_lid_steps==va.completed_substeps &&
-             va.committed_lid_steps==adaptive.puff_steps(1) &&
-             va.completed_substeps>vb.completed_substeps &&
-             va.sigma_y_m>=vb.sigma_y_m &&
-             va.sigma_z_m>=vb.sigma_z_m &&
-             va.ziold_m>=0.0F && va.zimax_m>=va.ziold_m,
-             "native old puff motion/sigma/VMASS/lid history not continuous");
+        const auto check_state=[&](bool ok,const char* label){
+            if(!ok){
+                std::cerr<<"P7_HISTORY_DIAG HOUR="<<h+1
+                         <<" FIELD="<<label
+                         <<" DT="<<after.travel_time_s-before.travel_time_s
+                         <<" STEPS="<<adaptive.puff_steps(1)
+                         <<" EXPECT_STEPS="<<steps_before+no_release.steps.size()
+                         <<" SIGY_BEFORE="<<vb.sigma_y_m
+                         <<" SIGY_AFTER="<<va.sigma_y_m
+                         <<" SIGZ_BEFORE="<<vb.sigma_z_m
+                         <<" SIGZ_AFTER="<<va.sigma_z_m
+                         <<" ZIOLD="<<va.ziold_m
+                         <<" ZIMAX="<<va.zimax_m
+                         <<" LID_STEPS="<<va.committed_lid_steps
+                         <<" SIGMA_STEPS="<<va.completed_substeps
+                         <<" X="<<after.x_cells<<"\\n";
+            }
+            need(ok,label);
+        };
+        check_state(after.travel_time_s>before.travel_time_s,
+                    "old puff travel time did not advance");
+        check_state(std::abs((after.travel_time_s-before.travel_time_s)-3600.0F)<1.0F,
+                    "old puff lost one hour of physical sampling time");
+        check_state(adaptive.puff_steps(1)==steps_before+no_release.steps.size(),
+                    "old puff native step count reset");
+        check_state(va.committed_lid_steps==va.completed_substeps,
+                    "old puff VMASS/lid and sigma steps diverged");
+        check_state(va.committed_lid_steps==adaptive.puff_steps(1),
+                    "old puff vertical and horizontal clock diverged");
+        check_state(va.completed_substeps>vb.completed_substeps,
+                    "old puff sigma history was reset");
+        check_state(va.sigma_y_m>=vb.sigma_y_m,
+                    "old puff sigma-y shrank");
+        check_state(va.sigma_z_m>=vb.sigma_z_m,
+                    "old puff sigma-z shrank");
+        check_state(va.ziold_m>=0.0F && va.zimax_m>=va.ziold_m,
+                    "old puff historical mixing lid invalid");
         need(va.mass_mixed.size()==2 && va.mass_above.size()==2 &&
              std::abs(va.mass_mixed[0]+va.mass_above[0]-7200.0F)<0.25F &&
              std::abs(va.mass_mixed[1]+va.mass_above[1]-10800.0F)<0.25F,
