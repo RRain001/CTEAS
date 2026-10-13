@@ -147,14 +147,6 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
                     throw std::invalid_argument("WIND1 no valid upper observation at layer");
                 vsurface=vsurface/(1.f-vupper);
                 vupper=0.f;
-                // The frozen actual Hefei case has missing upper-air
-                // observations specifically at k=0. Original WIND1 writes
-                // VVW(1,surface)=1.0f at every one of its 2500 grid cells
-                // (independent write-only source trace #38369314729).
-                // Enforce that source-observed REAL4 selected-case invariant.
-                // Other missing levels MUST retain the original division:
-                // synthetic source oracle exercises different BIAS profiles.
-                if(k==0) vsurface=1.f;
             }
             if(k==0) {
                 out.vvw_surface1[cell]=vsurface;
