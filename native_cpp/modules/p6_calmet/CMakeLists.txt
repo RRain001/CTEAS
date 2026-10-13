@@ -426,6 +426,29 @@ else()
   target_compile_options(cteas_p6_realcase_wind_field PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+# Native C++ single-clock, fail-closed P6D->P6E hourly *process adapter*.
+# This transitional executable uses existing verified physics programs,
+# carries no new physical formulas, and is NOT the final in-process adapter.
+# Reuse P6F's independently tested SHA256 implementation to pin the frozen
+# Fortran case rather than weakening the existing Python coordinator checks.
+if(UNIX)
+  add_executable(cteas_p6_native_hourly_driver
+    src/native_hourly_driver_main.cpp p6f/src/sha256.cpp)
+  target_include_directories(cteas_p6_native_hourly_driver PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/p6f/include)
+  target_compile_options(cteas_p6_native_hourly_driver PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  add_test(NAME p6_native_cpp_hourly_driver_fail_closed_missing_case
+    COMMAND cteas_p6_native_hourly_driver
+      --case does-not-exist-native-hourly-case
+      --p6d $<TARGET_FILE:cteas_p6_realcase_wind_field>
+      --p6e does-not-exist-p6e
+      --bridge does-not-exist-bridge --cgamma does-not-exist-cgamma
+      --work ${CMAKE_CURRENT_BINARY_DIR}/missing-hourly-case)
+  set_tests_properties(p6_native_cpp_hourly_driver_fail_closed_missing_case
+    PROPERTIES WILL_FAIL TRUE)
+endif()
+
 # Fail-closed contract run of the real-case producer on the frozen 5 km case
 # tree (read-only inputs; outputs go to the build tree). The producer throws on
 # any missing or invalid case input, so exit status plus the emitted hour count
