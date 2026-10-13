@@ -770,12 +770,22 @@ void test(){
          "MCTADJ2 CALCPF fabricated missing receptor TRELIEF/GETELEV");
     // Build physical ELEV, GETELEV, TRELIEF, and VWIDTH from the same
     // Calmet21Static contract that the frozen real MET.DAT reader supplies.
-    // The elevations here remain a SYNTHETIC 120x120 fixture.
+    // The elevations here remain a SYNTHETIC 50x50 fixture, matching
+    // the spatial extent of the locked Hefei receptor grid. Use a
+    // consistently cropped meteorological array for this test's first
+    // hour, rather than invoking global 120x120 TRELIEF/VWIDTH.
+    auto met_for_terrain=met;
+    constexpr std::size_t terrain_n=50U*50U;
+    met_for_terrain.nx=50;met_for_terrain.ny=50;
+    met_for_terrain.zi.assign(terrain_n,250.0F);
+    met_for_terrain.ipgt.assign(terrain_n,4);
+    met_for_terrain.u.assign(terrain_n*3U,1.2F);
+    met_for_terrain.v.assign(terrain_n*3U,0.0F);
     auto geo_for_terrain=geo;
     geo_for_terrain.present=true;
-    geo_for_terrain.elevation_m.assign(n,10.0F);
+    geo_for_terrain.elevation_m.assign(terrain_n,10.0F);
     const auto native_terrain_grid=OriginalNativeTerrain::from_calmet(
-        geo_for_terrain,120,120,100.0F);
+        geo_for_terrain,50,50,100.0F);
     const auto source_terrain_sampler=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F,3.0F,
         OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2,
@@ -820,8 +830,8 @@ void test(){
     OriginalCompRiseMultiPuffHours integrated_terrain_driver;
     const auto terrain_hour=
         integrated_terrain_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
-            met,geo_for_terrain,terrain_ctl,pg,false,single_mass,
-            wide_domain,99,2500,integrated_terrain);
+            met_for_terrain,geo_for_terrain,terrain_ctl,pg,false,
+            single_mass,wide_domain,99,2500,integrated_terrain);
     need(terrain_hour.steps.size()>1 &&
          terrain_hour.receptor_concentrations.size()==2500 &&
          native_ctadj2_substeps==terrain_hour.steps.size() &&
