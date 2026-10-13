@@ -42,6 +42,16 @@ target_link_libraries(cteas_p6f_geo_static_provenance PRIVATE p6f_calmet_dat21)
 target_include_directories(cteas_p6f_geo_static_provenance PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/../include")
 
+# Optional P6E reference-independent metadata input builder. This selected-case
+# baseline consumes GEO.DAT + met.inp exclusively, not a reference CALMET.DAT.
+# All 143h hourly payload fields are deliberately original-missing sentinels,
+# so only native P6D wind + native P6E physics can provide computed values.
+add_executable(cteas_p6f_p6e_source_metadata
+  src/p6f_p6e_source_metadata_main.cpp)
+target_link_libraries(cteas_p6f_p6e_source_metadata PRIVATE p6f_calmet_dat21)
+target_include_directories(cteas_p6f_p6e_source_metadata PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+
 add_executable(p6f_calmet_dat21_writer_tests tests/calmet_dat21_writer_tests.cpp)
 target_link_libraries(p6f_calmet_dat21_writer_tests PRIVATE p6f_calmet_dat21)
 
@@ -58,6 +68,7 @@ target_include_directories(p6f_calmet_dat21_e22_cross_read_tests PRIVATE ${P6F_E
 
 foreach(target p6f_calmet_dat21 p6f_p6d_fields cteas_p6f_calmet_dat21_writer
         cteas_p6f_calmet_dat21_perturb cteas_p6f_geo_static_provenance
+        cteas_p6f_p6e_source_metadata
         p6f_calmet_dat21_writer_tests
         p6f_calmet_dat21_e22_cross_read_tests)
   if(MSVC)
