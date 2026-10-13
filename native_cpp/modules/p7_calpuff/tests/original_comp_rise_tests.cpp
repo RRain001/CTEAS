@@ -31,6 +31,10 @@ struct Fixture {
         for(std::size_t k=2*n;k<3*n;++k)hour.u[k]=0.010F;
         statics.cell_face_m={0,100,200,300};
         control.max_sampling_steps=1;
+        // Synthetic tiny-wind PG lifecycle fixture only: explicitly keep these
+        // 0.002-0.010 m/s winds NONCALM by choosing WSCALM=0.001.
+        // The frozen Hefei puff.inp independently uses WSCALM=0.5.
+        control.calm_threshold_ms=0.001F;
         pg.mdisp=3;
         pg.averaging_factor=1.0;
         pg.sigma_y_heffter_m=550;
