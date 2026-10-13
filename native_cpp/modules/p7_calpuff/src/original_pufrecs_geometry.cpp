@@ -59,4 +59,38 @@ OriginalPufrecsGeometry original_pufrecs_geometry(
     return {frac,along,xtt1,xtt1/in.mean_wind_ms,
             frac!=p.fraction};
 }
+OriginalPufrecsGeometry original_pufrecs_grid_receptor_geometry(
+    const OriginalPufrecsGridStepInputs& in,
+    std::size_t receptor_index) {
+    if(in.ibsamp<1 || in.jbsamp<1 || in.sampling_nx<=0 ||
+       in.sampling_ny<=0 || !std::isfinite(in.met_spacing_m) ||
+       in.met_spacing_m<=0.0F)
+        throw std::invalid_argument("PUFRECS invalid MET/sampling-grid frame");
+    const auto nx=static_cast<std::size_t>(in.sampling_nx);
+    const auto ny=static_cast<std::size_t>(in.sampling_ny);
+    if(receptor_index>=nx*ny)
+        throw std::out_of_range("PUFRECS receptor index outside native grid");
+    // CALCPF/PFSAMP uses XOLD=XPB-(IBSAMP-.5)+1 and receptor I=1..NX.
+    // In the original MET-cell frame receptor 0 is therefore IBSAMP-.5,
+    // NOT IBSAMP, and every subsequent grid receiver is one cell apart.
+    // Keep each conversion/multiply at the original REAL*4 boundary.
+    const float xrec_cells=(static_cast<float>(in.ibsamp)-0.5F)+
+                           static_cast<float>(receptor_index%nx);
+    const float yrec_cells=(static_cast<float>(in.jbsamp)-0.5F)+
+                           static_cast<float>(receptor_index/nx);
+    return original_pufrecs_geometry({
+        .x_receptor_m=xrec_cells*in.met_spacing_m,
+        .y_receptor_m=yrec_cells*in.met_spacing_m,
+        .x_begin_m=in.x_begin_cells*in.met_spacing_m,
+        .y_begin_m=in.y_begin_cells*in.met_spacing_m,
+        .x_end_m=in.x_end_cells*in.met_spacing_m,
+        .y_end_m=in.y_end_cells*in.met_spacing_m,
+        .sigma_y_begin_m=in.sigma_y_begin_m,
+        .sigma_y_end_m=in.sigma_y_end_m,
+        .fclip=in.fclip,
+        .travel_distance_begin_m=in.distance_begin_m,
+        .mean_wind_ms=in.mean_wind_ms,
+        .clip=in.clip
+    });
+}
 } // namespace cteas::puff
