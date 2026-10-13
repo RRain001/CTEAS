@@ -56,6 +56,20 @@ else()
 endif()
 add_test(NAME p6g_multistation_surface_upper_hourly_input_contract COMMAND cteas_p6g_observation_input_tests)
 
+# G8: 10 km multi-SURF/multi-UP cross-year and full 8784h leap-year
+# source-selected INTER2/SIMILT/VERTAV/PREPDI computational integration only.
+# This is NOT full CALMET WIND1/DIAGNO physical equivalence.
+add_executable(cteas_p6g_g8_10km_year_tests tests/p6g_g8_10km_year_stress_tests.cpp)
+target_link_libraries(cteas_p6g_g8_10km_year_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g8_10km_year_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g8_10km_year_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g8_multisite_10km_8784h_selected_source_bridge COMMAND cteas_p6g_g8_10km_year_tests)
+set_tests_properties(p6g_g8_multisite_10km_8784h_selected_source_bridge PROPERTIES TIMEOUT 900)
+
+
 
 
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
