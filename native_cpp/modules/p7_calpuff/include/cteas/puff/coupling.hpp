@@ -46,7 +46,7 @@ struct PuffSampleState {
     double final_height_m = 0.0;       // ZFINAL(ip)
 };
 
-using TerrainLookup = std::function<double(double x_km, double y_km)>;
+using CouplingTerrainLookup = std::function<double(double x_km, double y_km)>;
 
 struct VcbarInputs {
     PuffSampleState state;
@@ -59,7 +59,7 @@ struct VcbarInputs {
     double grid_spacing_m = 0.0;       // DGRIDI (MCTADJ 1/3 only)
     double stack_height_m = 0.0;       // HT0(ip)
     double stack_base_elevation_m = 0.0; // ELBASE(ip)
-    TerrainLookup terrain;             // GETELEV equivalent (MCTADJ 1/3 only)
+    CouplingTerrainLookup terrain;     // GETELEV equivalent (MCTADJ 1/3 only)
 };
 
 // VCBAR equivalent, in 1/m.
