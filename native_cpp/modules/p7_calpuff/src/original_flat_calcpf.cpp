@@ -165,7 +165,7 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             vfactor=static_cast<float>(vertical_coupling({
                 s.vmass.puff_code,0.0,midz,sz,lid,max_lid}));
         } else if(vertical_method==OriginalFlatVerticalMethod::substep_vcbar ||
-                  vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcbar) {
+                  vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup) {
             // Source-ported CALPUFF VCBAR: use the *native* post-SETPUF
             // begin/mid/end vertical distribution, not a fabricated sigma
             // sampled at the midpoint. Strictly flat, MTILT=0, non-slug,
@@ -200,7 +200,13 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
         if(!std::isfinite(vfactor) || vfactor<0.0F)
             throw std::invalid_argument("flat CALCPF invalid original VCOUP factor");
         std::vector<float> values(nrecs,0.0F);
-        if(vfactor==0.0F || s.vmass.mass_mixed[0]<=0.0F)
+        const bool per_receptor_vertical=
+            vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup;
+        // Original CALCPF Gaussian path evaluates VCOUP using the result
+        // of each receptor-specific PUFRECS. Global VCBAR=0 cannot be
+        // used to discard that receptor's possible concentration.
+        if((vfactor==0.0F && !per_receptor_vertical) ||
+           s.vmass.mass_mixed[0]<=0.0F)
             return values;
         const float radius=impact_sigma_multiple*end_sy/met_spacing_m;
         const float at_rec=sy/met_spacing_m;
@@ -210,7 +216,7 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
         const float rec_radius=impact_sigma_multiple*at_rec;
         const float frac=s.step_seconds/averaging_period_s;
         const bool pg_receiver=
-            vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcbar;
+            vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup;
         // Source-ported SETCSIG uses the meteorology already selected by
         // native COMP for this substep; never use a frozen DGM class/wind.
         const auto curves=pg_receiver ?
@@ -245,11 +251,23 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                static_cast<float>(screen.closest_distance_squared)>rec_radius*rec_radius)
                 continue;
             float receptor_sigma_y=sy;
+            float receptor_vertical=vfactor;
             if(pg_receiver) {
                 const auto geometry=original_pufrecs_grid_receptor_geometry(
                     grid_step,i);
                 const auto pufrecs=receptor_pg_sigma(s,geometry,*curves);
                 receptor_sigma_y=pufrecs.y;
+                // Vendor CALCPF L4275: PUFRECS supplies SZREC and ZPR,
+                // then VCOUP uses receptor pole height (ground=0 here).
+                receptor_vertical=static_cast<float>(vertical_coupling({
+                    s.vmass.puff_code,0.0,pufrecs.grise_height_m,
+                    pufrecs.z,lid,max_lid
+                }));
+                if(!std::isfinite(receptor_vertical) ||
+                   receptor_vertical<0.0F)
+                    throw std::invalid_argument(
+                        "CALCPF receptor-specific VCOUP invalid");
+                if(receptor_vertical==0.0F)continue;
             }
             const auto ints=puff_sampling_integrals(
                 xo,yo,xn,yn,xr,yr,receptor_sigma_y/met_spacing_m,
@@ -259,7 +277,7 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                 .mass_new=s.vmass.mass_mixed[0],
                 .sigma_y_at_receptor_m=receptor_sigma_y,
                 .closest_approach_squared_km2=screen.closest_distance_squared,
-                .vertical_factor=vfactor,
+                .vertical_factor=receptor_vertical,
                 .time_fraction=frac,
                 .deposition_ratio=1.0,.area_source_factor=1.0
             });

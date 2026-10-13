@@ -11,10 +11,10 @@ namespace cteas::puff {
 enum class OriginalFlatVerticalMethod {
     midpoint_vcoup,
     substep_vcbar,
-    // Original PUFRECS L5152-5272 receptor-position PG virtual sigma
-    // and no-building GRISE/BID, with source-ported VCBAR on each step.
-    // Vertical receptor-specific CTADJ/terrain still separate.
-    receptor_pg_vcbar
+    // Original CALCPF L4234-4275 uses PUFRECS's receptor-specific
+    // SIGTY/SIGTZ, no-building GRISE and VCOUP, NOT a global VCBAR.
+    // Still restricted to MCTADJ=0/MTILT=0/LPDF=F/MDRY=0.
+    receptor_pg_vcoup
 };
 
 // Restricted, deliberately non-oracle flat-grid CALCPF integration.
@@ -24,8 +24,8 @@ enum class OriginalFlatVerticalMethod {
 // MCTADJ=0, no plume PDF, no receptor-specific PUFRECS adjustment,
 // no settling/PRIME and M(CHEM,WET,DRY)=0. Unsupported modes must
 // not be labeled full 2022 CALPUFF parity. The receptor_pg_vcbar
-// mode source-ports per-receptor SIGTY/SIGTZ and GRISE but does not
-// complete receptor-specific terrain, dry-removal, or full case parity.
+// mode source-ports per-receptor SIGTY/SIGTZ, GRISE and VCOUP but does
+// not complete MCTADJ=2 terrain, dry-removal or full case parity.
 //
 // The vendor uses sampling-grid XY indices for PFSAMP, but METRES for
 // 1/(2*pi*sigma_y^2). The returned callback is pure: results are
