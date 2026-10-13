@@ -705,6 +705,12 @@ int main(int argc,char** argv){
         const auto first=wind1_firstguess_selected(station,settings);
         write_f32(args.out()/("wind1_u_"+hour_label(clock)+".f32"),first.ug_mps);
         write_f32(args.out()/("wind1_v_"+hour_label(clock)+".f32"),first.vg_mps);
+        // Diagnostic-only normalized WIND1 weights. They are never consumed
+        // by P6D/P6E, and cannot modify any physical result.
+        write_f32(args.out()/("wind1_rsqwt_surface_"+hour_label(clock)+".f32"),
+                  first.rsq_surface);
+        write_f32(args.out()/("wind1_rsqwt_upper_"+hour_label(clock)+".f32"),
+                  first.rsq_upper);
         // Original INTER2 two-component blend on the step-one field, with the
         // case's own controls: WO=1.0 everywhere because IPROG=0 and the deck
         // supplies no WT.DAT (RDWT fills 1.0 for IPROG=0/2/4/14), RVARY off,

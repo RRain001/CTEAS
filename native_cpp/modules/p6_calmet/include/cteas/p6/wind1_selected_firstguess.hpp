@@ -34,6 +34,8 @@ struct Wind1FirstGuessSelectedFields {
     int nx{},ny{},nz{};
     // Flat k-major, j-major, i-fastest; original UG(i,j,k)/VG(i,j,k).
     std::vector<float> ug_mps,vg_mps;
+    // Write-only diagnostic: actual normalized WIND1 two-station RSQWT per gridpoint.
+    std::vector<float> rsq_surface,rsq_upper;
 };
 inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
     const Wind1SelectedStationHour& station,
@@ -88,6 +90,8 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
     const std::size_t cells=static_cast<std::size_t>(c.nx)*static_cast<std::size_t>(c.ny);
     out.ug_mps.assign(cells*9,0.f);
     out.vg_mps.assign(cells*9,0.f);
+    out.rsq_surface.assign(cells,0.f);
+    out.rsq_upper.assign(cells,0.f);
 
     // Original WIND1: DGRIDI=1./DGRID; XC=FLOAT(I)-0.5, YC likewise.
     const float dgridi=1.f/c.grid_spacing_m;
@@ -109,6 +113,10 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
         if(!(std::isfinite(rsq_surface)&&std::isfinite(rsq_upper)&&
              rsq_surface>0.f&&rsq_upper>0.f))
             throw std::invalid_argument("WIND1 invalid inverse distance weights");
+        const auto cell=static_cast<std::size_t>(j-1)*static_cast<std::size_t>(c.nx)+
+                        static_cast<std::size_t>(i-1);
+        out.rsq_surface[cell]=rsq_surface;
+        out.rsq_upper[cell]=rsq_upper;
 
         for(std::size_t k=0;k<9;k++){
             const float bias=c.vertical_bias[k];
