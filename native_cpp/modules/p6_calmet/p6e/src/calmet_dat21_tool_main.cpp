@@ -27,6 +27,7 @@
 #include "cteas/p6e/heatfx.hpp"
 #include "cteas/p6e/mixht_observed_mc.hpp"
 #include "cteas/p6/station_mixhtst.hpp"
+#include "cteas/p6e/native_hourly_comp_steps.hpp"
 #include "cteas/p6e/wstarr.hpp"
 #include "cteas/p6e/pgtstb.hpp"
 #include "cteas/p6e/solar.hpp"
@@ -497,7 +498,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    const std::string& state_prefix,float fcoriol,
                    bool skip_avemix,int imixh,int dptt_refresh,
                    const std::string& trace_path,
-                   const std::string& station_flux_path) {
+                   const std::string& station_flux_path,
+                   bool native_hour_comp) {
     const auto reference=read_calmet_dat21(reference_path);
     // Optional wind source: the frozen original U/V/W for the same intervals.
     std::optional<WindLevels> wind;
@@ -513,6 +515,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     }
     const auto observations=read_bridge_csv(observations_path);
     const auto native_station_flux=read_native_station_flux_csv(station_flux_path,reference.intervals);
+    if(native_hour_comp && native_station_flux.empty())
+        throw std::invalid_argument("native-hour-comp requires native P6D --station-flux-csv, no surrogate DPTT refresh");
     const auto& h=reference.header;
     if(observations.size()!=reference.intervals)
         throw std::invalid_argument("observation hours do not match the reference intervals");
@@ -550,6 +554,9 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     // Previous-hour MIXHT state for the ZICONV/DPTT memory (starts at zero,
     // the original SETUP initialisation for land cells).
     std::vector<float> previous_ziconv(cells,0.f),previous_dptt(cells,0.f),previous_zi(cells,0.f);
+    cteas::calmet::p6::NativeGridMemory shared_comp_state{
+        std::vector<float>(cells,0.f), std::vector<float>(cells,0.f),
+        std::vector<float>(cells,0.f)};
     // Exported chain state (hour-major, i-fastest) when --state-prefix is set.
     std::vector<float> exported_ziconv,exported_zi;
     std::vector<float> exported_pre_ziconv,exported_pre_zi;
@@ -571,6 +578,11 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    "thtp_k,tave_k,bvf,hmech_m,mean_k\n";
     }
     for(std::size_t hour=0;hour<reference.intervals;++hour) {
+        // Experimental real P6E single-pass COMP stepping: DIAGNO wind is
+        // still read from --wind-file, therefore FULL P6D→P6E G2=NOT_PASS.
+        cteas::calmet::p6::NativeHourFrame comp_frame{
+            {hour,1,std::to_string(hour)},shared_comp_state,shared_comp_state,{}};
+        cteas::calmet::p6::NativeCompHourControls native_controls;
         const auto& observation=observations[hour];
         surf.stations[0].temp_k=static_cast<float>(observation.air_temperature_k);
         surf.stations[0].rh_pct=observation.humidity_pct>=9999.0
@@ -777,12 +789,24 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                     observation.aa:observation.bb;
                 const auto local=cteas::calmet::p6::station_mixhtst(m);
                 mh.initial_dptt[tk]=local.dptt_for_comp_k;
+                if(native_hour_comp)
+                    comp_frame.next.dptt_k[tk]=local.dptt_for_comp_k;
                 mh.dptt_refresh=0;
             }
             if(!state_prefix.empty())
                 exported_pre_mixht_dptt.insert(exported_pre_mixht_dptt.end(),
                     mh.initial_dptt.begin(),mh.initial_dptt.end());
-            const auto mixing=mixht_observed_mc(mh);
+            const auto mixing=[&]() -> MixhtObservedMcResult {
+                if(!native_hour_comp)return mixht_observed_mc(mh);
+                native_controls.mixing=mh;
+                native_controls.station_cell=trace_j*static_cast<std::size_t>(h.nx)+trace_i;
+                comp_frame.fields.qh_wm2=heat_flux;
+                comp_frame.fields.ustar_mps=ustar;
+                comp_frame.fields.el_m=el;
+                native_comp_grid_mixht(comp_frame,native_controls);
+                return {comp_frame.next.zi_m,comp_frame.next.ziconv_m,
+                        comp_frame.next.dptt_k};
+            }();
             if(!trace_path.empty()) {
                 const auto tk=trace_j*static_cast<std::size_t>(h.nx)+trace_i;
                 trace_out<<(hour+1)<<','<<trace_i<<','<<trace_j<<','<<trace_row.branch
@@ -815,13 +839,24 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                     av.u_ms[k]=wind->u[0][hour*cells+k];
                     av.v_ms[k]=wind->v[0][hour*cells+k];
                 }
-                const auto mixed=avemix(av,zi_height,ziconv);
+                const auto mixed=[&]() -> AvemixResult {
+                    if(!native_hour_comp)return avemix(av,zi_height,ziconv);
+                    native_controls.averaging=av;
+                    comp_frame.fields.u_mps=av.u_ms;
+                    comp_frame.fields.v_mps=av.v_ms;
+                    comp_frame.next.zi_m=zi_height;
+                    comp_frame.next.ziconv_m=ziconv;
+                    native_comp_avemix(comp_frame,native_controls);
+                    return {comp_frame.next.zi_m,comp_frame.next.ziconv_m};
+                }();
                 zi_height=mixed.zi_m;
                 ziconv=mixed.ziconv_m;
             }
-            previous_ziconv=ziconv;
-            previous_zi=zi_height;
-            previous_dptt=mixing.dptt;
+            if(!native_hour_comp) {
+                previous_ziconv=ziconv;
+                previous_zi=zi_height;
+                previous_dptt=mixing.dptt;
+            }
             if(!state_prefix.empty())
                 exported_dptt.insert(exported_dptt.end(),
                                      mixing.dptt.begin(),mixing.dptt.end());
@@ -854,7 +889,11 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             sw.rho_kgm3=density;
             sw.initial_wstar_ms.assign(cells,0.f);
             sw.landuse=reference.statics.ilandu;
-            wstar_field=wstarr(sw);
+            if(native_hour_comp) {
+                native_controls.convective_scale=sw;
+                native_comp_wstarr(comp_frame,native_controls);
+                wstar_field=comp_frame.fields.wstar_mps;
+            } else wstar_field=wstarr(sw);
             // WSTAR is produced after the state export point, so it is
             // recorded here (hour-major, i fastest, same as the others).
             if(!state_prefix.empty())
@@ -879,8 +918,16 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             t3.convective_zi_m=ziconv;
             t3.past_seconds={observation.past_seconds};
             t3.to_go_seconds={observation.to_go_seconds};
-            const auto columns3d=temp3d_observed_land(t3);
-            three_d_temperature=columns3d;
+            if(native_hour_comp) {
+                native_controls.temperature=t3;
+                native_comp_temp3d(comp_frame,native_controls);
+                three_d_temperature=comp_frame.fields.temperature_k;
+                // Commit after all same-hour P6E kernels have succeeded.
+                shared_comp_state=std::move(comp_frame.next);
+                previous_zi=shared_comp_state.zi_m;
+                previous_ziconv=shared_comp_state.ziconv_m;
+                previous_dptt=shared_comp_state.dptt_k;
+            } else three_d_temperature=temp3d_observed_land(t3);
         }
         std::vector<float> shortwave(cells,0.f);
         if(heatfx_shortwave_field.empty())
@@ -1367,7 +1414,8 @@ int main(int argc,char** argv) {
                           std::stoi(argument(argc,argv,"--imixh","1")),
                           std::stoi(argument(argc,argv,"--dptt-refresh","1")),
                           argument(argc,argv,"--mixht-trace"),
-                          argument(argc,argv,"--station-flux-csv"));
+                          argument(argc,argv,"--station-flux-csv"),
+                          std::stoi(argument(argc,argv,"--native-hour-comp","0"))!=0);
             return 0;
         }
         if(mode=="dump-field") {
