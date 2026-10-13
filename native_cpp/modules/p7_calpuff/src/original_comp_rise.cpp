@@ -151,12 +151,13 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         std::max(0.0,sampled.extent.z_top_m-before.z_m),"DZB");
     inputs.rise_iterations=2;
     inputs.plume=state.physics;
-    // SETPUF zeroes XFINAL after a calm step. On later steps there is no
-    // remaining transitional rise: ADVECT's current vertical puff wind is
-    // authoritative. Passing XFINAL=0 to RISEWIND is not a valid physical
-    // rise request (and used to stop the next native calm substep).
+    // Directly verified original COMP calpuff.for L10503-L10519:
+    // RISEWIND executes ONLY when (MOD(ICODE,2)==1) and XTOTB<XFINAL.
+    // This covers both naturally completed plume rise and calm SETPUF
+    // cancellation (XFINAL=0), without inventing another velocity profile.
+    // Gaussian POINTS1/INJECT and VMASS are separately enforced here.
     OriginalRiseMetResult rise;
-    if(state.x_final_m>0.0F){
+    if((vs.puff_code%2)==1 && before.total_distance_m<state.x_final_m){
         rise=original_rise_wind_met(met,statics,inputs);
     }else{
         const float raw_u=r4(sampled.wind.u_ms,"post-calm ADVECT U");
