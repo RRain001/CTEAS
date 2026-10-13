@@ -89,6 +89,9 @@ int main(int argc,char** argv){
                "independently computed real PRFIN source drifted");
         const auto cell=original_met_cell(
             req.x_cells,req.y_cells,met.nx,met.ny).offset_0based;
+        demand(cell==1275U && met.ipgt.at(cell)==4 &&
+               met.tempk.at(cell)==279.15F,
+               "original source-cell 2D meteorology changed");
         OriginalPointNativeSourceParameters args;
         args.base_elevation_m=static_cast<float>(stack[3]);
         args.met_spacing_m=header.dx_m;
