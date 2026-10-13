@@ -29,8 +29,8 @@ jobs:
           python3 -m compileall -q engine/run_met/station_grid.py \
             native_cpp/modules/p4_read62/data_prep/download_igra.py \
             native_cpp/modules/p5_smerge/data_prep/download_isd_by_grid.py
-      - name: P4 annual station and strict UTM geometry tests
-        run: python3 -m unittest native_cpp.modules.p4_read62.data_prep.tests.test_p4_data_prep -v
+      - name: P4 annual station selection, integration and strict UTM tests
+        run: python3 -m unittest discover -s native_cpp/modules/p4_read62/data_prep/tests -p 'test_*.py' -v
       - name: P5 strict UTM grid boundary and source policy tests
         run: python3 -m unittest native_cpp.modules.p5_smerge.data_prep.tests.test_p5_rules -v
       - name: Confirm selection does not use geographic-bbox approximation
