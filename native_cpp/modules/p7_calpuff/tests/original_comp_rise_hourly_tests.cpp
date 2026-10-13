@@ -128,11 +128,12 @@ void run(int total_hours){
     check(total_hours<143 || final_rise,
           "full rise profile never reached final plume height");
     if(total_hours>6){
-        scheduler.retire(2);
-        check(scheduler.active_count()==(total_hours>70?2U:1U),
-              "native rising puff retirement disturbed neighbors");
+        const auto lost=scheduler.compact_original_inactive({2});
+        check(lost==1U &&
+              scheduler.active_count()==(total_hours>70?2U:1U),
+              "original ROLLDN old-puff compaction disturbed neighbors");
         rejects([&]{(void)scheduler.motion(2);},
-                "retired rising puff remains active");
+                "ROLDN retired rising puff remains active");
     }
     std::cout<<"P7_NATIVE_RISING_COMP_MULTIPUFF=PASS HOURS="<<total_hours
              <<" ACTIVE_RELEASES=0,6,70"

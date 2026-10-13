@@ -2,6 +2,7 @@
 
 #include "cteas/puff/original_comp_rise.hpp"
 #include "cteas/puff/original_release_wind.hpp"
+#include "cteas/puff/original_rolldn.hpp"
 #include <cstddef>
 #include <vector>
 
@@ -103,6 +104,12 @@ public:
     [[nodiscard]] std::size_t active_count()const noexcept;
     [[nodiscard]] const std::vector<int>& canonical_ids()const noexcept;
     void retire(int id);
+    // Fortran ROLLDN/SWAP slot compaction with native puff state retained
+    // under stable episode IDs. Caller supplies codes marked inactive by
+    // native off-grid, zero-mass or retirement checks; this does NOT yet
+    // perform original autonomous 143h exit detection.
+    [[nodiscard]] std::size_t compact_original_inactive(
+        const std::vector<int>& inactive_state_ids);
 private:
     OriginalCompRisePointDriver puffs_;
     std::vector<int> active_ids_;

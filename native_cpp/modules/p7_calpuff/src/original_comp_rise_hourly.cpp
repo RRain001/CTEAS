@@ -231,6 +231,37 @@ OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_unsplit(
     ++hours_;
     return result;
 }
+std::size_t OriginalCompRiseMultiPuffHours::compact_original_inactive(
+    const std::vector<int>& dead_ids){
+    if(dead_ids.empty())return 0;
+    std::vector<OriginalPuffSlot> slots;
+    slots.reserve(active_ids_.size());
+    for(const int id:active_ids_){
+        const auto state=puffs_.vertical(id);
+        const bool dead=std::find(dead_ids.begin(),dead_ids.end(),id)!=dead_ids.end();
+        slots.push_back({id,dead?99:state.puff_code});
+    }
+    // Reject phantom/duplicate dead IDs before changing physical state.
+    for(const int id:dead_ids){
+        const auto it=std::find(active_ids_.begin(),active_ids_.end(),id);
+        if(it==active_ids_.end() ||
+           std::count(dead_ids.begin(),dead_ids.end(),id)!=1)
+            throw std::invalid_argument("ROLDN inactive puff ID invalid");
+    }
+    const auto plan=original_rolldn_slots(slots,slots.size());
+    std::vector<int> reordered;
+    reordered.reserve(plan.slots.size());
+    for(const auto& slot:plan.slots)
+        reordered.push_back(slot.state_id);
+    auto trial=puffs_;
+    for(const int id:active_ids_)
+        if(std::find(reordered.begin(),reordered.end(),id)==reordered.end())
+            trial.retire(id);
+    // Full atomic update across all motion and vertical stores.
+    puffs_=std::move(trial);
+    active_ids_=std::move(reordered);
+    return plan.retired_old;
+}
 OriginalPuffMotionState OriginalCompRiseMultiPuffHours::motion(int id)const {
     return puffs_.motion(id);
 }

@@ -1147,3 +1147,23 @@ else()
 endif()
 add_test(NAME cteas_p7_native_comp_mxsam99_unsplit
          COMMAND cteas_p7_original_comp_mxsam99_unsplit_tests)
+
+# Original Fortran CALPUFF v7.2.1 ROLLDN L19110-19215 slot ordering.
+# State itself stays in native motion/rise/vertical stores under episode IDs.
+add_library(cteas_p7_original_rolldn STATIC src/original_rolldn.cpp)
+target_include_directories(cteas_p7_original_rolldn PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_original_rolldn PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_rolldn PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+target_link_libraries(cteas_p7_original_comp_rise_hourly PUBLIC cteas_p7_original_rolldn)
+add_executable(cteas_p7_original_rolldn_tests tests/original_rolldn_tests.cpp)
+target_link_libraries(cteas_p7_original_rolldn_tests PRIVATE cteas_p7_original_rolldn)
+if(MSVC)
+  target_compile_options(cteas_p7_original_rolldn_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_rolldn_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_original_rolldn_slot_order
+         COMMAND cteas_p7_original_rolldn_tests)
