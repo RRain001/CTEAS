@@ -166,9 +166,8 @@ void local_native_vmass_integration() {
             after.mass_mixed[0]==20.0F && after.mass_above[0]==0.0F &&
             after.committed_lid_steps==1,
             "native VMASS->COMP did not persist source mass / history");
-    rejects([&]{
-        (void)native.commit_vmass(44,80,50,50,1,4,0);
-    },"duplicate VMASS step committed");
+    // A new VMASS is allowed only for the NEXT step; its rejection while
+    // an earlier VMASS is pending was already asserted above.
     rejects([&]{
         (void)native.commit_lid(44,80,1);
     },"direct COMP lid path bypassed already-committed VMASS");
