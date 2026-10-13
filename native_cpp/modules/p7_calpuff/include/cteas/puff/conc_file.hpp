@@ -107,6 +107,14 @@ struct ConcGridDescriptor {
 // IBCOMP,IECOMP,JBCOMP,JECOMP,IBSAMP,JBSAMP,IESAMP,JESAMP,MESHDN,
 // NSRCTYPE,MSOURCE,NREC,NRGRP,NCTREC,LSAMP,NSPOUT,LCOMPRS,I2DMET,IUTMZN];
 // projection=[FEAST,FNORTH,RNLAT0,RELON0,XLAT1,XLAT2].
+// Source-derived CALPUFF WROUT1 comment stream (L57135-57174):
+// 2 vendor provenance lines; original puff.inp raw text lines;
+// 3 separator lines + MET.DAT's own version record; then MET.DAT's
+// 132-byte original embedded header comments. No output oracle input.
+[[nodiscard]] std::vector<std::string> original_wrout1_embedded_comments(
+    const std::string& active_puff_control,
+    const std::string& calmet_dat_path);
+
 struct OriginalWrout1GeneralHeader {
     std::string model="CALPUFF";
     std::string model_version="7.2.1";

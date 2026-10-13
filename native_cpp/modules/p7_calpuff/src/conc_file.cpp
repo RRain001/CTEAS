@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -185,6 +186,49 @@ void ConcFileWriter::write_source_descriptor(const ConcSourceDescriptor& source)
     require_true(payload.size()==32U,"OUTPUT source descriptor must be 32 bytes");
     write_framed(impl_->stream,payload);
     ++records_written_;
+}
+
+std::vector<std::string> original_wrout1_embedded_comments(
+    const std::string& active_puff_control,
+    const std::string& calmet_dat_path) {
+    if(active_puff_control.empty())
+        throw std::invalid_argument("WROUT1 embedded controls cannot be empty");
+    std::vector<std::string> comments;
+    comments.emplace_back("Produced by CALPUFF Version: 7.2.1  Level: 150618");
+    comments.emplace_back(
+        "Internal Coordinate Transformations  ---  COORDLIB   Version: 1.99   Level: 070921");
+    std::istringstream control(active_puff_control);
+    std::string line;
+    while(std::getline(control,line)) {
+        if(!line.empty() && line.back()=='\\r')line.pop_back();
+        require_true(line.size()<=132U,"WROUT1 raw control line too wide");
+        comments.push_back(line);
+    }
+    FortranRecordReader met(calmet_dat_path,4,RecordByteOrder::LittleEndian);
+    std::vector<std::uint8_t> raw;
+    require_true(met.next(raw) && raw.size()==96U &&
+                 std::string(reinterpret_cast<const char*>(raw.data()),10U)
+                     =="CALMET.DAT",
+                 "WROUT1 requires CALMET.DAT version record from source MET");
+    std::string met_header(reinterpret_cast<const char*>(raw.data()),raw.size());
+    met_header.erase(met_header.find_last_not_of(' ')+1);
+    require_true(met.next(raw) && raw.size()==4U,
+                 "WROUT1 expected MET.DAT embedded comment-count record");
+    std::int32_t ncomments=0;
+    std::memcpy(&ncomments,raw.data(),sizeof(ncomments));
+    require_true(ncomments>0 && ncomments<100000,
+                 "WROUT1 MET.DAT embedded comment count invalid");
+    comments.emplace_back("");
+    comments.emplace_back(132,'.');
+    comments.emplace_back("");
+    comments.emplace_back(std::move(met_header));
+    for(std::int32_t i=0;i<ncomments;++i) {
+        require_true(met.next(raw) && raw.size()==132U,
+                     "WROUT1 MET.DAT embedded comment payload width drift");
+        comments.emplace_back(reinterpret_cast<const char*>(raw.data()),
+                              raw.size());
+    }
+    return comments;
 }
 
 void ConcFileWriter::write_original_wrout1_general_header(

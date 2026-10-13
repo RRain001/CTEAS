@@ -239,10 +239,12 @@ endif()
 add_test(NAME cteas_p7e_native_143h_hourly_data_writer_contract
          COMMAND cteas_p7_hourly_conc_tests)
 set(P7E_LOCKED_CASE_CONC "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con")
-if(EXISTS "${P7E_LOCKED_CASE_CONC}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
-  add_test(NAME cteas_p7e_original_wrout1_version_six_metadata
+if(EXISTS "${P7E_LOCKED_CASE_CONC}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}"
+   AND EXISTS "${P7G_LOCKED_CASE_MET}")
+  add_test(NAME cteas_p7e_original_wrout1_full_native_header
     COMMAND cteas_p7_hourly_conc_tests
-      --frozen "${P7E_LOCKED_CASE_CONC}" "${P7F_LOCKED_CASE_CONTROL}")
+      --frozen "${P7E_LOCKED_CASE_CONC}" "${P7F_LOCKED_CASE_CONTROL}"
+               "${P7G_LOCKED_CASE_MET}")
 endif()
 if(EXISTS "${P7E_LOCKED_CASE_CONC}")
   # P7H: vertical coupling coefficients (VCOUP/VCBAR/CTADJ) of the concentration path.
