@@ -29,8 +29,9 @@ int main(){
             .x_receptor_m=200,.x_begin_m=0,.x_end_m=100,
             .sigma_y_begin_m=10,.sigma_y_end_m=20,.fclip=1,
             .travel_distance_begin_m=100,.mean_wind_ms=2,.clip=true});
-        check(clip.fraction==1.2F && clip.along_m==120 &&
-              clip.time_to_receptor_s==110 && clip.clipped,
+        check(std::abs(clip.fraction-1.2F)<1.0e-6F &&
+              std::abs(clip.along_m-120.0F)<1.0e-4F &&
+              std::abs(clip.time_to_receptor_s-110.0F)<1.0e-4F && clip.clipped,
               "original PUFRECS FCLIP extension failed");
         auto upstream=original_pufrecs_geometry({
             .x_receptor_m=-500,.x_begin_m=0,.x_end_m=100,
