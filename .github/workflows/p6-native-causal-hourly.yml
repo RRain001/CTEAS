@@ -7,6 +7,7 @@ on:
       - .github/workflows/p6-native-causal-hourly.yml
       - scripts/p6_run_native_causal_hourly.py
       - scripts/p6_diagnose_p6e_three_fields.py
+      - scripts/p6_diagnose_wind_quantization.py
       - native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp
       - native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
       - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
@@ -16,6 +17,7 @@ on:
       - .github/workflows/p6-native-causal-hourly.yml
       - scripts/p6_run_native_causal_hourly.py
       - scripts/p6_diagnose_p6e_three_fields.py
+      - scripts/p6_diagnose_wind_quantization.py
       - native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp
       - native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
       - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
@@ -193,5 +195,56 @@ jobs:
         with:
           name: p6-native-143h-scientific-original-verdict
           path: ${{ runner.temp }}/p6-native-143h-candidate/original_45_field_numeric_verdict.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  analyze-first-level-wind-quantization:
+    name: Diagnose AVETMP source INT displacement vs USTAR EL WSTAR residual
+    needs: real-hefei-causal-143-hours
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            native_cpp/modules/p6_calmet/include
+            native_cpp/modules/p6_calmet/p6e
+            scripts/p6_diagnose_wind_quantization.py
+      - uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          path: original_locked_case
+          filter: blob:none
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
+      - uses: actions/download-artifact@v4
+        with:
+          name: p6-causal-original-case-143h
+          path: ${{ runner.temp }}/p6-wind-quantization
+      - name: Build source-tolerance-aware C++ CALMET.DAT field extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet/p6e \
+            -B "$RUNNER_TEMP/p6e-quant-tools" \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
+          cmake --build "$RUNNER_TEMP/p6e-quant-tools" \
+            --target p6e_calmet_dat21 --parallel 2
+      - name: Test native-vs-original U/V INT displacement branch changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/p6_diagnose_wind_quantization.py \
+            --tool "$RUNNER_TEMP/p6e-quant-tools/p6e_calmet_dat21" \
+            --original "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat" \
+            --native "$RUNNER_TEMP/p6-wind-quantization/native_causal_calmet.dat" \
+            --work "$RUNNER_TEMP/p6-wind-quantization/forensic"
+      - name: Archive exact micro-wind and ELUSTR sensitivity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6-source-wind-quantization-forensic
+          path: ${{ runner.temp }}/p6-wind-quantization/forensic/p6e_source_quantization_diagnostic.json
           if-no-files-found: warn
           retention-days: 14
