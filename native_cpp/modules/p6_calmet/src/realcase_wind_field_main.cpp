@@ -715,6 +715,10 @@ int main(int argc,char** argv){
                   first.vvw_surface1);
         write_f32(args.out()/("wind1_vvw_upper1_"+hour_label(clock)+".f32"),
                   first.vvw_upper1);
+        write_f32(args.out()/("wind1_vvw_before_surface1_"+hour_label(clock)+".f32"),
+                  first.vvw_surface_before1);
+        write_f32(args.out()/("wind1_vvw_before_upper1_"+hour_label(clock)+".f32"),
+                  first.vvw_upper_before1);
         // Original INTER2 two-component blend on the step-one field, with the
         // case's own controls: WO=1.0 everywhere because IPROG=0 and the deck
         // supplies no WT.DAT (RDWT fills 1.0 for IPROG=0/2/4/14), RVARY off,

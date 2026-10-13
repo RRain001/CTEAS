@@ -25,7 +25,9 @@ REC_BYTES=struct.calcsize(RECORD)
 FIELDS={"surface":"wind1_rsqwt_surface_2022-01-01_01.f32",
         "upper":"wind1_rsqwt_upper_2022-01-01_01.f32",
         "vvw_surface1":"wind1_vvw_surface1_2022-01-01_01.f32",
-        "vvw_upper1":"wind1_vvw_upper1_2022-01-01_01.f32"}
+        "vvw_upper1":"wind1_vvw_upper1_2022-01-01_01.f32",
+        "vvw_before_surface1":"wind1_vvw_before_surface1_2022-01-01_01.f32",
+        "vvw_before_upper1":"wind1_vvw_before_upper1_2022-01-01_01.f32"}
 SOURCE_ROUTINE=r"""
 c --- Write-only first-hour WIND1 normalized station weights, 50x50x2.
 c --- No assignments to any source CALMET physical model variables.
@@ -75,6 +77,29 @@ c --- reallocation, before barrier and wind accumulation.
       endif
       return
       end
+c --- Stage probe directly before original upper-missing VVW redistribution.
+      subroutine p6e_vvw_before_first(i,j,nstat,vvw)
+      include 'params.met'
+      include 'grid.met'
+      integer i,j,nstat
+      real vvw(mxnz,mxwnd)
+      logical done,opened
+      save done,opened
+      data done/.false./,opened/.false./
+      if(done)return
+      if(nstat.ne.2)stop 'P6E_FORENSIC_BAD_PREVVW_NSTAT'
+      if(.not.opened)then
+        open(98,file='p6e_wind1_vvw_before_first.bin',
+     1       form='unformatted',access='stream',status='replace')
+        opened=.true.
+      endif
+      write(98) i,j,vvw(1,1),vvw(1,2)
+      if(i.eq.nx.and.j.eq.ny)then
+        close(98)
+        done=.true.
+      endif
+      return
+      end
 """
 
 def checksum(path:Path)->str:
@@ -89,8 +114,11 @@ def patched(original:Path,target:Path):
         raise ValueError("WIND1 source RSQWT normalization anchor changed")
     if lines[36347].strip().replace(" ","").lower()!="if(nbar.le.0)goto91":
         raise ValueError("original WIND1 VVW redistribution anchor changed")
-    # Reverse source order avoids moving the second source anchor.
+    # In descending original source order: pre-VVW then post-VVW, then RSQWT.
+    if "do 222 k=1,nz" not in lines[36325].strip().lower():
+        raise ValueError("original upper missing-data redistribution anchor changed")
     lines.insert(36347,"      call p6e_vvw_first(i,j,nstat,vvw)\n")
+    lines.insert(36325,"      call p6e_vvw_before_first(i,j,nstat,vvw)\n")
     lines.insert(36251,"      call p6e_rsquwt_first(i,j,nstat,rsqwt)\n")
     target.write_text("".join(lines)+SOURCE_ROUTINE)
 
@@ -124,7 +152,9 @@ def compare(source,candidate:Path):
             for field,col,phase in (("surface",0,"rsqwt"),
                                     ("upper",1,"rsqwt"),
                                     ("vvw_surface1",0,"vvw"),
-                                    ("vvw_upper1",1,"vvw")):
+                                    ("vvw_upper1",1,"vvw"),
+                                    ("vvw_before_surface1",0,"vvw_before"),
+                                    ("vvw_before_upper1",1,"vvw_before")):
                 ref=source[phase][(i,j)][col];test=native[field][index]
                 if not(math.isfinite(ref) and math.isfinite(test)):
                     raise ValueError("nonfinite WIND1 source/native normalized weights")
@@ -171,14 +201,22 @@ def main():
         raise ValueError("forensic insert changed frozen original CALMET.DAT")
     source=run_dir/"p6e_wind1_rsqwt_first.bin"
     vvw=run_dir/"p6e_wind1_vvw_first.bin"
+    pre_vvw=run_dir/"p6e_wind1_vvw_before_first.bin"
     if not source.is_file():raise FileNotFoundError(source)
     if not vvw.is_file():raise FileNotFoundError(vvw)
-    fields=compare({"rsqwt":original_weights(source),"vvw":original_weights(vvw)},
+    if not pre_vvw.is_file():raise FileNotFoundError(pre_vvw)
+    fields=compare({"rsqwt":original_weights(source),
+                    "vvw":original_weights(vvw),
+                    "vvw_before":original_weights(pre_vvw)},
                    args.native_diagno.resolve())
     if all(v["nonzero"]==0 for v in fields.values()):
         status="MATCH_ALL_WEIGHT_BITS"
     elif fields["surface"]["nonzero"]==0 and fields["upper"]["nonzero"]==0:
-        status="MATCH_RSQWT_BUT_VVW_DRIFT"
+        status=("MATCH_BEFORE_MISSING_REBALANCE_BUT_FINAL_VVW_DRIFT" if
+                not fields["vvw_before_surface1"]["nonzero"] and
+                not fields["vvw_before_upper1"]["nonzero"]
+                else "VVW_PRE_REBALANCE_DRIFT")
+
     else:
         status="REAL4_RSQWT_DRIFT"
     report={
@@ -189,6 +227,7 @@ def main():
         "source_modified_sha256":checksum(edited),
         "source_weight_trace_sha256":checksum(source),
         "source_reweighted_vvw_trace_sha256":checksum(vvw),
+        "source_before_reweight_vvw_trace_sha256":checksum(pre_vvw),
         "frozen_met_sha256":source_run["met_dat_sha256"],
         "weight_was_never_read_back_into_native":True,
         "full_p6e_science":"NOT_CLAIMED"
