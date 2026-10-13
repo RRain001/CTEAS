@@ -1,4 +1,5 @@
 #include "cteas/puff/original_comp_rise.hpp"
+#include "cteas/puff/original_comp_calm.hpp"
 #include "cteas/puff/coupling.hpp"
 #include <algorithm>
 #include <cmath>
@@ -153,8 +154,21 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     float u=r4(rise.adjusted.u_ms,"RISEWIND U");
     float w=r4(rise.adjusted.v_ms,"RISEWIND V");
     float ws=r4(rise.adjusted.wind_speed_ms,"RISEWIND WS");
-    require(ws>=static_cast<float>(kRiseWindCalmSpeedMs),
-            "rise COMP refuses calm-advection treatment");
+    // Source-ordered COMP applies its own WSCALM only AFTER RISEWIND.
+    // Never conflate this with the CALMET station/diagnostic calm policy.
+    // The source-verified transport guard is available, but P7D currently
+    // only ports SIGTY/SIGTZ for IDOPT=3. Original calm SETPUF changes both
+    // IDOPTY and IDOPTZ to 1. Refuse those cases rather than silently using
+    // ordinary PG dispersion coefficients and claiming false parity.
+    const auto wind_calm=original_comp_calm_transport(
+        u,w,ws,control.calm_threshold_ms);
+    if(wind_calm.calm)
+        throw std::invalid_argument(
+            "native COMP detected original WSCALM branch: "
+            "IDOPTY=1/IDOPTZ=1 SIGTY/SIGTZ not yet implemented");
+    u=wind_calm.u_ms;
+    w=wind_calm.v_ms;
+    ws=wind_calm.wind_speed_ms;
     order.completed(VendorSubstepPhase::ApplyRiseWindAndCalm);
 
     const Substep substep=substep_length({
@@ -176,8 +190,17 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             u=r4(rise.adjusted.u_ms,"resampled RISEWIND U");
             w=r4(rise.adjusted.v_ms,"resampled RISEWIND V");
             ws=r4(rise.adjusted.wind_speed_ms,"resampled RISEWIND WS");
-            require(ws>=static_cast<float>(kRiseWindCalmSpeedMs),
-                    "resampled COMP requires original calm branch");
+            // FSTEP may resample RISEWIND at a different effective TSAMP.
+            // Classify THAT wind too; the provisional branch may differ.
+            const auto resampled_calm=original_comp_calm_transport(
+                u,w,ws,control.calm_threshold_ms);
+            if(resampled_calm.calm)
+                throw std::invalid_argument(
+                    "resampled native COMP detected original WSCALM branch: "
+                    "IDOPTY=1/IDOPTZ=1 SIGTY/SIGTZ not yet implemented");
+            u=resampled_calm.u_ms;
+            w=resampled_calm.v_ms;
+            ws=resampled_calm.wind_speed_ms;
         }
     } else if(r4(substep.step_s,"native rise TSAMP")!=control.seconds){
         throw std::logic_error("COMP unexpectedly shortened unsplit step");
