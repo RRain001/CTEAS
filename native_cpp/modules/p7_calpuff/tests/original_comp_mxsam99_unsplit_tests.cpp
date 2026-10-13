@@ -1048,7 +1048,16 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
     auto h3_dry_setup=dry_controls.gaussian_dry->setup;
     need(!h3_dry_setup.species.empty(),
          "selected H-3 gas dry controls missing");
-    h3_dry_setup.species.resize(1); // one-species PUFRECS H-3 source
+    // DRYI caches *all* per-species vectors, not just group 3a rows.
+    // Keep the immutable H-3 species-0 coefficients while narrowing the
+    // synthetic one-species receptor fixture; never mismatch vector sizes.
+    h3_dry_setup.species.resize(1);
+    h3_dry_setup.diffusivity_m2_s.resize(1);
+    h3_dry_setup.mesophyll_resistance_s_m.resize(1);
+    h3_dry_setup.cuticle_resistance_s_m.resize(1);
+    h3_dry_setup.ground_resistance_s_m.resize(1);
+    h3_dry_setup.water_ground_term_s_m.resize(1);
+    h3_dry_setup.deposition_layer_term.resize(1);
     coupled_ctl.gaussian_dry=NativeGaussianDryControls{
         h3_dry_setup,1.0F};
     std::size_t coupled_samples=0;
