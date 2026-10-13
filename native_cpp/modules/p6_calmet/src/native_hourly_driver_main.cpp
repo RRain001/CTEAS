@@ -24,7 +24,7 @@ namespace fs=std::filesystem;
 namespace {
 constexpr const char* kMetHash="b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30";
 struct Options {
-    fs::path source, p6d, p6e, cgamma, bridge, work;
+    fs::path source, p6d, p6e, cgamma, bridge, work, p6f_writer;
     int hours=6;
     bool emit_source_stage_trace=false;
 };
@@ -53,6 +53,7 @@ Options parse(int argc,char** argv) {
         else if(flag=="--cgamma")o.cgamma=v;
         else if(flag=="--bridge")o.bridge=v;
         else if(flag=="--work")o.work=v;
+        else if(flag=="--p6f-writer")o.p6f_writer=v;
         else if(flag=="--hours")o.hours=std::stoi(v);
         else throw std::invalid_argument("unknown argument "+flag);
     }
@@ -68,6 +69,11 @@ Options parse(int argc,char** argv) {
     o.cgamma=fs::absolute(o.cgamma).lexically_normal();
     o.bridge=fs::absolute(o.bridge).lexically_normal();
     o.work=fs::absolute(o.work).lexically_normal();
+    if(!o.p6f_writer.empty()) {
+        if(o.hours!=143)
+            throw std::invalid_argument("independent P6F native header requires complete 143h source run");
+        o.p6f_writer=fs::absolute(o.p6f_writer).lexically_normal();
+    }
     if(fs::exists(o.work)&&!fs::is_empty(o.work))
         throw std::invalid_argument("work directory not empty: "+str(o.work));
     return o;
@@ -124,6 +130,10 @@ int main(int argc,char** argv){
         const auto upper=o.source/"met/upperair/final/up_58424.dat";
         const auto geo=o.source/"geo/makegeo/geo.dat";
         for(const auto& f:{met,surf,upper,geo,o.p6d,o.p6e,o.bridge,o.cgamma})require(f);
+        if(!o.p6f_writer.empty()) {
+            require(o.p6f_writer);
+            require(o.source/"run/met/met.inp");
+        }
         if(cteas::p6f::sha256_hex_file(str(met))!=kMetHash)
             throw std::runtime_error("locked original CALMET.DAT SHA256 mismatch");
         fs::create_directories(o.work);
@@ -215,6 +225,26 @@ int main(int argc,char** argv){
         require(output);
         if(fs::file_size(output)<1000000U)
             throw std::runtime_error("merged native 45-field file incomplete");
+        // Optional selected-case P6F production handoff. Preserve the frozen
+        // "native_causal_calmet.dat" output byte for byte for the G3/G4 and
+        // Python-vs-C++ gates. Independently rebuild the OUTHD header and all
+        // GEO/deck-derived statics; carry *only* this native hourly payload
+        // into the second output (never substitute original meteorology).
+        // Upstream P6E still uses a pinned original met.dat envelope and is
+        // not yet reference-independent. These are distinct acceptance gates.
+        const bool native_header=!o.p6f_writer.empty();
+        std::string header_digest;
+        if(native_header) {
+            const auto independent=o.work/"native_causal_independent_header_calmet.dat";
+            run({str(o.p6f_writer),"--geo",str(geo),
+                 "--deck",str(o.source/"run/met/met.inp"),
+                 "--candidate",str(output),"--emit-native-header",
+                 str(independent)},o.work/"p6f-native-header.log");
+            require(independent);
+            if(fs::file_size(independent)<1000000U)
+                throw std::runtime_error("independent P6F native header output incomplete");
+            header_digest=cteas::p6f::sha256_hex_file(str(independent));
+        }
         const auto digest=cteas::p6f::sha256_hex_file(str(output));
         std::string report="{\n  \"status\": \"PASS_CPP_PROCESS_COORDINATOR_EXECUTION\",\n"
             "  \"hours_completed\": "+std::to_string(o.hours)+",\n"
@@ -222,6 +252,8 @@ int main(int argc,char** argv){
             "  \"original_met_role\": \"CASE_CONTROL_HEADER_ONLY\",\n"
             "  \"in_process_kernel_adapter\": false,\n"
             "  \"comp_history_owner\": \"NativeCompHistory\",\n"
+            "  \"independent_p6f_source_header_written\": "+std::string(native_header?"true":"false")+",\n"
+            "  \"independent_p6f_header_sha256\": \""+header_digest+"\",\n"
             "  \"scientific_45_field_pass\": false,\n"
             "  \"native_calmet_dat_sha256\": \""+digest+"\"\n}\n";
         write(o.work/"native_cpp_hourly_manifest.json",report);
