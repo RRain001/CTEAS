@@ -35,7 +35,7 @@ jobs:
       - name: Download verified original-case native 6h C++ evidence after RSQWT capture
         uses: actions/download-artifact@v4
         with:
-          run-id: 38370545869
+          run-id: 38371224052
           github-token: ${{ github.token }}
           name: p6-causal-original-case-6h
           path: ${{ runner.temp }}/p6e-weights/native-six
@@ -76,6 +76,12 @@ jobs:
               print(name,"nonzero",v["nonzero"],"max_ulps",v["max_ulps"],
                     "first_nonzero",v["first_nonzero"])
           print("WIND1_VVW_STAGE_DIAGNOSTIC",report["status"])
+          for name in ("surface","upper","vvw_before_surface1",
+                       "vvw_before_upper1","vvw_surface1","vvw_upper1"):
+              if report["fields"][name]["nonzero"]!=0:
+                  raise SystemExit(f"FAIL_ORIGINAL_WIND1_REAL4_BITS: {name}, "+
+                                   str(report["fields"][name]))
+          print("PASS_SOURCE_REAL4_WIND1_EFFECTIVE_READCF_BIAS_2500_CELLS")
           PY
       - name: Persist original/native REAL4 source evidence
         if: always()
