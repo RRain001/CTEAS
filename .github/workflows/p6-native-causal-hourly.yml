@@ -8,6 +8,8 @@ on:
       - scripts/p6_run_native_causal_hourly.py
       - native_cpp/modules/p6_calmet/src/native_hourly_driver_main.cpp
       - native_cpp/modules/p6_calmet/CMakeLists.txt
+      - native_cpp/modules/p6_calmet/include/cteas/p6/native_comp_history.hpp
+      - native_cpp/modules/p6_calmet/tests/p6_native_comp_history_tests.cpp
       - scripts/p6_diagnose_p6e_three_fields.py
       - scripts/p6_diagnose_wind_quantization.py
       - native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp
@@ -20,6 +22,8 @@ on:
       - scripts/p6_run_native_causal_hourly.py
       - native_cpp/modules/p6_calmet/src/native_hourly_driver_main.cpp
       - native_cpp/modules/p6_calmet/CMakeLists.txt
+      - native_cpp/modules/p6_calmet/include/cteas/p6/native_comp_history.hpp
+      - native_cpp/modules/p6_calmet/tests/p6_native_comp_history_tests.cpp
       - scripts/p6_diagnose_p6e_three_fields.py
       - scripts/p6_diagnose_wind_quantization.py
       - native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp
@@ -57,11 +61,209 @@ jobs:
           cmake -S native_cpp/modules/p6_calmet \
              -B "$RUNNER_TEMP/native-p6d" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
           cmake --build "$RUNNER_TEMP/native-p6d" \
-             --target cteas_p6_realcase_wind_field cteas_p6_native_cgamma_grid_143h cteas_p6_native_hourly_driver --parallel 2
+             --target cteas_p6_realcase_wind_field cteas_p6_native_cgamma_grid_143h cteas_p6_native_hourly_driver cteas_p6_native_comp_history_tests --parallel 2
           cmake -S native_cpp/modules/p6_calmet/p6e \
              -B "$RUNNER_TEMP/native-p6e" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
           cmake --build "$RUNNER_TEMP/native-p6e" \
              --target p6e_calmet_dat21 p6e_p6c_hourly_bridge --parallel 2
+      - name: Verify fail-closed C++ history owner and input rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          ctest --test-dir "$RUNNER_TEMP/native-p6d" --output-on-failure \
+            -R '^p6_native_cpp_(hourly_driver_fail_closed_missing_case|comp_history_state_and_rollback)
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/native-p6d/cteas_p6_native_hourly_driver" \
+            --case "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
+            --p6d "$RUNNER_TEMP/native-p6d/cteas_p6_realcase_wind_field" \
+            --p6e "$RUNNER_TEMP/native-p6e/p6e_calmet_dat21" \
+            --bridge "$RUNNER_TEMP/native-p6e/p6e_p6c_hourly_bridge" \
+            --cgamma "$RUNNER_TEMP/native-p6d/cteas_p6_native_cgamma_grid_143h" \
+            --work "$RUNNER_TEMP/p6-native-causal-6h" --hours 6
+      - name: Archive actual P6D/P6E hour-by-hour evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6-causal-original-case-6h
+          path: ${{ runner.temp }}/p6-native-causal-6h/
+          retention-days: 7
+          if-no-files-found: warn
+
+  real-hefei-causal-143-hours:
+    needs: real-hefei-causal-six-hours
+    name: Hefei 143 native hourly P6D→P6E production run and 45-field candidate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 95
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            native_cpp/modules/p6_calmet
+            scripts/p6_run_native_causal_hourly.py
+            scripts/p6_diagnose_p6e_three_fields.py
+      - uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          filter: blob:none
+          path: original_locked_case
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
+      - name: Build actual C++ P6D and P6E executables (GCC 12)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet \
+             -B "$RUNNER_TEMP/native-p6d" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
+          cmake --build "$RUNNER_TEMP/native-p6d" \
+             --target cteas_p6_realcase_wind_field cteas_p6_native_cgamma_grid_143h cteas_p6_native_hourly_driver cteas_p6_native_comp_history_tests --parallel 2
+          cmake -S native_cpp/modules/p6_calmet/p6e \
+             -B "$RUNNER_TEMP/native-p6e" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
+          cmake --build "$RUNNER_TEMP/native-p6e" \
+             --target p6e_calmet_dat21 p6e_p6c_hourly_bridge --parallel 2
+      - name: Execute all 143 real hours in original one-pass causal order
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/native-p6d/cteas_p6_native_hourly_driver" \
+            --case "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
+            --p6d "$RUNNER_TEMP/native-p6d/cteas_p6_realcase_wind_field" \
+            --p6e "$RUNNER_TEMP/native-p6e/p6e_calmet_dat21" \
+            --bridge "$RUNNER_TEMP/native-p6e/p6e_p6c_hourly_bridge" \
+            --cgamma "$RUNNER_TEMP/native-p6d/cteas_p6_native_cgamma_grid_143h" \
+            --work "$RUNNER_TEMP/p6-native-causal-143h" --hours 143 --emit-source-stage-trace
+      - name: Original-wind P6E three-field control with SAME native station flux
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/p6_diagnose_p6e_three_fields.py \
+            --case "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
+            --p6e "$RUNNER_TEMP/native-p6e/p6e_calmet_dat21" \
+            --native "$RUNNER_TEMP/p6-native-causal-143h/native_causal_calmet.dat" \
+            --observations "$RUNNER_TEMP/p6-native-causal-143h/observations.csv" \
+            --station-flux "$RUNNER_TEMP/p6-native-causal-143h/native_station_flux.csv" \
+            --work "$RUNNER_TEMP/p6-native-causal-143h/three_field_control"
+      - name: Archive actual P6D/P6E hour-by-hour evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6-causal-original-case-143h
+          path: |
+            ${{ runner.temp }}/p6-native-causal-143h/native_cpp_hourly_manifest.json
+            ${{ runner.temp }}/p6-native-causal-143h/native_causal_calmet.dat
+            ${{ runner.temp }}/p6-native-causal-143h/writer.log
+            ${{ runner.temp }}/p6-native-causal-143h/three_field_control/p6e_three_field_wind_control.json
+            ${{ runner.temp }}/p6-native-causal-143h/native_source_stage_143h/
+          retention-days: 7
+          if-no-files-found: warn
+
+  strict-original-45-field-parity:
+    name: SCIENCE G3/G4 original 143h 45-field parity (expected FAIL until fixed)
+    needs: real-hefei-causal-143-hours
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            native_cpp/modules/p6_calmet/include
+            native_cpp/modules/p6_calmet/p6e
+      - uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          path: original_locked_case
+          filter: blob:none
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
+      - uses: actions/download-artifact@v4
+        with:
+          name: p6-causal-original-case-143h
+          path: ${{ runner.temp }}/p6-native-143h-candidate
+      - name: Compile unchanged-tolerance original-source numeric comparator
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet/p6e \
+            -B "$RUNNER_TEMP/p6e-comparator" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++-12
+          cmake --build "$RUNNER_TEMP/p6e-comparator" \
+            --target p6e_calmet_dat21 --parallel 2
+      - name: Strict original numeric parity on every 45-field hourly value
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/p6-native-143h-candidate/native_causal_calmet.dat"
+          original="$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat"
+          test -s "$candidate"
+          printf '%s  %s\n' b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 "$original" | sha256sum -c -
+          "$RUNNER_TEMP/p6e-comparator/p6e_calmet_dat21" compare \
+            --reference "$original" --candidate "$candidate" \
+            --out "$RUNNER_TEMP/p6-native-143h-candidate/original_45_field_numeric_verdict.json"
+          # A nonzero comparator status is REAL SCIENTIFIC FAIL, not a skip.
+      - name: Archive strict 143h scientific verdict even on mismatch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6-native-143h-scientific-original-verdict
+          path: ${{ runner.temp }}/p6-native-143h-candidate/original_45_field_numeric_verdict.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  analyze-first-level-wind-quantization:
+    name: Diagnose AVETMP source INT displacement vs USTAR EL WSTAR residual
+    needs: real-hefei-causal-143-hours
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            native_cpp/modules/p6_calmet/include
+            native_cpp/modules/p6_calmet/p6e
+            scripts/p6_diagnose_wind_quantization.py
+      - uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          path: original_locked_case
+          filter: blob:none
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
+      - uses: actions/download-artifact@v4
+        with:
+          name: p6-causal-original-case-143h
+          path: ${{ runner.temp }}/p6-wind-quantization
+      - name: Build source-tolerance-aware C++ CALMET.DAT field extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet/p6e \
+            -B "$RUNNER_TEMP/p6e-quant-tools" \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
+          cmake --build "$RUNNER_TEMP/p6e-quant-tools" \
+            --target p6e_calmet_dat21 --parallel 2
+      - name: Test native-vs-original U/V INT displacement branch changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/p6_diagnose_wind_quantization.py \
+            --tool "$RUNNER_TEMP/p6e-quant-tools/p6e_calmet_dat21" \
+            --original "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat" \
+            --native "$RUNNER_TEMP/p6-wind-quantization/native_causal_calmet.dat" \
+            --work "$RUNNER_TEMP/p6-wind-quantization/forensic"
+      - name: Archive exact micro-wind and ELUSTR sensitivity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6-source-wind-quantization-forensic
+          path: ${{ runner.temp }}/p6-wind-quantization/forensic/p6e_source_quantization_diagnostic.json
+          if-no-files-found: warn
+          retention-days: 14
+
+
       - name: Execute 6 real hours in original one-pass causal order
         shell: bash
         run: |
@@ -109,7 +311,7 @@ jobs:
           cmake -S native_cpp/modules/p6_calmet \
              -B "$RUNNER_TEMP/native-p6d" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
           cmake --build "$RUNNER_TEMP/native-p6d" \
-             --target cteas_p6_realcase_wind_field cteas_p6_native_cgamma_grid_143h cteas_p6_native_hourly_driver --parallel 2
+             --target cteas_p6_realcase_wind_field cteas_p6_native_cgamma_grid_143h cteas_p6_native_hourly_driver cteas_p6_native_comp_history_tests --parallel 2
           cmake -S native_cpp/modules/p6_calmet/p6e \
              -B "$RUNNER_TEMP/native-p6e" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
           cmake --build "$RUNNER_TEMP/native-p6e" \
