@@ -1114,3 +1114,21 @@ endif()
 target_link_libraries(cteas_p7_original_comp_rise_hourly PUBLIC cteas_p7_original_release_wind)
 add_test(NAME cteas_p7_point_hourly_cadence_native_rlsmet
          COMMAND cteas_p7_original_point_hourly_cadence_tests rlsmet)
+
+# Strict original 2022 COMP NEW-puff cadence comparison, REAL4.
+# Old-puff NSAM needs the original pre-RISEWIND wind (not DGM postwind WS).
+add_executable(cteas_p7_original_comp_cadence_trace
+  tests/original_comp_cadence_trace.cpp)
+target_link_libraries(cteas_p7_original_comp_cadence_trace PRIVATE
+  cteas_p7_step_integration cteas_p7_release)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_cadence_trace PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_cadence_trace PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_comp_new_cadence_original_first_hour
+  COMMAND cteas_p7_original_comp_cadence_trace "${P7_DGM_HOUR0}" 1)
+if(EXISTS "${P7_DGM_FULL_143H}")
+  add_test(NAME cteas_p7_comp_new_cadence_original_143h
+    COMMAND cteas_p7_original_comp_cadence_trace "${P7_DGM_FULL_143H}" 143)
+endif()

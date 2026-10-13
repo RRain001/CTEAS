@@ -452,7 +452,7 @@ jobs:
           fi
           cmake -S native_cpp/modules/p7_calpuff -B "$base/cpp" \
             -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Debug
-          cmake --build "$base/cpp" --parallel 2 --target cteas_p7_first_hour_lifecycle_tests cteas_p7_original_met_cell_trace cteas_p7_puffdz_state_trace cteas_p7_original_release_wind_tests
+          cmake --build "$base/cpp" --parallel 2 --target cteas_p7_first_hour_lifecycle_tests cteas_p7_original_met_cell_trace cteas_p7_puffdz_state_trace cteas_p7_original_release_wind_tests cteas_p7_original_comp_cadence_trace
           name=cteas_p7_first_six_hour_state_persistence_real4
           ctest --test-dir "$base/cpp" -N -R "^${name}$" |
             grep -Eq "Test[[:space:]]*#[0-9]+: ${name}$" || {
@@ -493,6 +493,12 @@ jobs:
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
             "$base/oracle/case/run/puff/dgm_puffstep.bin" 143
           echo "P7_143H_NATIVE_RELEASE_WIND_ORIGINAL_HEIGHT_FED=PASS"
+          # Source-ported C++ POINTS1 / COMP NEW NSAM, NSSTR, REFTSAMP
+          # from native release_cadence(WSVAR) for 11,985 original releases.
+          # Original DGM is READ-ONLY and never solver input.
+          "$base/cpp/cteas_p7_original_comp_cadence_trace" \
+            "$base/oracle/case/run/puff/dgm_puffstep.bin" 143
+          echo "P7_143H_NATIVE_COMP_NEW_CADENCE=PASS OLD_MXSAM99_INTEGRATION=NOT_YET_ACCEPTED"
 
       - uses: actions/upload-artifact@v4
         if: always()
