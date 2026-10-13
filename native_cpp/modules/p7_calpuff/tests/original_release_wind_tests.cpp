@@ -111,12 +111,113 @@ void real_first_hour(const std::string& met_path,const std::string& dgm_path){
              <<" FROZEN_FIRST_HOUR_POINT_COUNT=54"
              <<" ORIGINAL_143H_FULL_RLSMET=NOT_YET_ACCEPTED\n";
 }
+void full_original_release_wind_143h(
+    const std::string& met_path,const std::string& dgm_path){
+    // DGM is a read-only independent vendor Fortran oracle. Extract its
+    // initial height and first new-puff WSVAR per hour, then derive WSNEW
+    // independently from hourly CALMET with selected native WINDSET.
+    // Original release heights remain oracle-fed here (PRFIN is NOT closed).
+    std::ifstream binary(dgm_path,std::ios::binary);
+    require(static_cast<bool>(binary),"original 143h DGM unavailable");
+    DgmFirst rec{};
+    bool available=static_cast<bool>(
+        binary.read(reinterpret_cast<char*>(&rec),sizeof(rec)));
+    require(available,"empty original 143h DGM");
+    std::size_t completed=0,wind_errors=0,count_errors=0,total_puffs=0;
+    double max_wind_error=0.0;
+    const auto summary=OriginalMetHourlyReader::read(met_path,
+      [&](const Calmet21Header& header,const Calmet21Static& statics,
+          const OriginalMetHour& hour){
+        if(completed>=143)return;
+        const int packed=hour.begin.year*100000+
+                         hour.begin.julian_day*100+hour.begin.hour;
+        require(header.nx==50 && header.ny==50 && header.nz==9,
+                "original 2022 143h wind met dimensions drifted");
+        require(hour.begin.year==2022 &&
+                static_cast<int>(completed)==
+                   (hour.begin.julian_day-1)*24+hour.begin.hour,
+                "143h original MET time ordering changed");
+        require(available && rec.ints[1]==packed,
+                "missing original DGM puff records at MET hour");
+        bool found_new=false;
+        DgmFirst first_new{};
+        while(available && rec.ints[1]==packed){
+            if(!found_new && rec.ints[12]==0){
+                first_new=rec;
+                found_new=true;
+            }
+            available=static_cast<bool>(
+                binary.read(reinterpret_cast<char*>(&rec),sizeof(rec)));
+        }
+        require(found_new,"no original POINTS1 new puff in DGM hour");
+        const float orig=first_new.floats[18];
+        const OriginalReleaseWindRequest location{
+            .x_cells=first_new.floats[0],
+            .y_cells=first_new.floats[1],
+            .release_height_m=first_new.floats[2],
+            .calm_threshold_ms=0.5F
+        };
+        const auto native=original_release_wind_metfm1(
+            hour,statics,location);
+        const double delta=std::abs(static_cast<double>(orig)-
+                                    static_cast<double>(native.wind_speed_ms));
+        max_wind_error=std::max(max_wind_error,delta);
+        if(delta>2e-5){
+            if(wind_errors==0)
+                std::cerr<<"P7_143H_NATIVE_RLSMET_FIRST_WIND_DIFFERENCE"
+                         <<" HOUR="<<completed
+                         <<" PACKED="<<packed
+                         <<" X="<<location.x_cells
+                         <<" Y="<<location.y_cells
+                         <<" ORIGINAL_HEIGHT="<<location.release_height_m
+                         <<" ORIGINAL_WS="<<orig
+                         <<" NATIVE_WS="<<native.wind_speed_ms
+                         <<" DELTA="<<delta<<"\n";
+            ++wind_errors;
+        }
+        ReleaseCadenceInputs q;
+        q.max_puffs=99;
+        q.hour_seconds=3600.0;
+        q.emission_interval=3600.0/header.dx_m;
+        const auto predicted=original_points1_cadence_from_release_wind(
+            hour,statics,location,q);
+        const int originally_scheduled=first_new.ints[10]; // new NSAM
+        if(predicted.puff_count!=originally_scheduled){
+            if(count_errors==0)
+                std::cerr<<"P7_143H_POINT_RELEASE_FIRST_COUNT_DIFFERENCE"
+                         <<" HOUR="<<completed
+                         <<" PACKED="<<packed
+                         <<" NATIVE_NPUFFS="<<predicted.puff_count
+                         <<" ORIGINAL_NEW_NSAM="<<originally_scheduled
+                         <<" ORIGINAL_WS="<<orig<<"\n";
+            ++count_errors;
+        }
+        total_puffs+=static_cast<std::size_t>(predicted.puff_count);
+        ++completed;
+    },true);
+    require(summary.intervals==143 && completed==143,
+            "native 143h RLSMET selected release-hour count incomplete");
+    std::cout<<"P7_143H_NATIVE_WINDSET_RLSMET_ORIGINAL_HEIGHT_FED"
+             <<" HOURS="<<completed
+             <<" WSVAR_MISMATCH="<<wind_errors
+             <<" NEW_NSAM_MISMATCH="<<count_errors
+             <<" NATIVE_RELEASE_PUFFS="<<total_puffs
+             <<" MAX_WS_ERROR="<<max_wind_error
+             <<" ORIGINAL_PRFIN_HEIGHT_FED=YES"
+             <<" AUTONOMOUS_FROZEN_COMP=NOT_YET_VALIDATED\n";
+    require(wind_errors==0,"143h original release WSVAR mismatch");
+    require(count_errors==0,"143h original new-puff cadence mismatch");
+    require(total_puffs==11985U,
+            "143h independent release count not equal original 11985");
+}
 }
 int main(int argc,char** argv){
     try{
         synthetic();
         if(argc==3) real_first_hour(argv[1],argv[2]);
-        else if(argc!=1)throw std::invalid_argument("expected [met.dat first-dgm.bin]");
+        else if(argc==4 && std::string(argv[3])=="143")
+            full_original_release_wind_143h(argv[1],argv[2]);
+        else if(argc!=1)throw std::invalid_argument("expected [met.dat dgm.bin [143]]");
         std::cout<<"P7_NATIVE_WINDSET_METFM1=PASS SOURCE_SELECTED=YES\n";
         return 0;
     }catch(const std::exception& e){
