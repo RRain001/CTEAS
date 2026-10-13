@@ -148,6 +148,27 @@ add_test(NAME cteas_p7d_sigma_source_parity
           --probe "$<TARGET_FILE:cteas_p7d_sigma_probe>"
           --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 
+# P7: Original turbulence-based IDOPT=1 CALPUFF calm subset, EL<=0.
+# Original compiled Fortran parity is a separate mandatory acceptance gate.
+add_executable(cteas_p7_calm_sigma_probe src/original_calm_sigma_probe.cpp)
+add_executable(cteas_p7_calm_sigma_tests tests/original_calm_sigma_tests.cpp)
+target_include_directories(cteas_p7_calm_sigma_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(cteas_p7_calm_sigma_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(MSVC)
+  target_compile_options(cteas_p7_calm_sigma_probe PRIVATE /W4 /WX)
+  target_compile_options(cteas_p7_calm_sigma_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_calm_sigma_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_compile_options(cteas_p7_calm_sigma_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_calm_idopt1_native_subset
+  COMMAND cteas_p7_calm_sigma_tests)
+add_test(NAME cteas_p7_calm_idopt1_original_fortran_subset
+  COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/calm_sigma_fortran_parity_tests.py"
+    --probe "$<TARGET_FILE:cteas_p7_calm_sigma_probe>"
+    --repo-root "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+
 # P7F: CALPUFF 7.2.1 MDRY=1 dry deposition for the selected real-case species
 # methods (H-3 computed gas, HE-3 no removal).
 add_library(cteas_p7_dry_deposition STATIC src/dry_deposition.cpp)
