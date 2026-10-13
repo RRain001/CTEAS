@@ -17,7 +17,7 @@ on:
 jobs:
   build-test:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
       contents: read

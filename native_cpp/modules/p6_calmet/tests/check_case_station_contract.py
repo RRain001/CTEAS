@@ -8,6 +8,7 @@ to replace SS1/US1 during the P6 computation.
 from __future__ import annotations
 
 import csv
+import json
 import re
 import sys
 from pathlib import Path
@@ -15,6 +16,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 from engine.run_met.common import lon_lat_to_utm_km
+from native_cpp.modules.p5_smerge.data_prep.download_isd_by_grid import (
+    Station, load_utm_grid, station_in_utm_grid,
+)
 
 
 def annotated(text: str, key: str) -> str:
@@ -84,6 +88,43 @@ def main(case: Path) -> None:
         # prepare_met publishes UTM kilometres with THREE decimal places.
         assert f"{x:.3f}" == f"{easting:.3f}", (key, x, easting)
         assert f"{y:.3f}" == f"{northing:.3f}", (key, y, northing)
+
+    # Source-effective provenance is the contract, not the site name alone.
+    # P4 may use one virtual station relocated to the release location.
+    with (case / "met/upperair/2022/upperair_station_used_list.txt").open(
+            encoding="utf-8", newline="") as f:
+        p4_rows = list(csv.DictReader(f))
+    p4_final = single_csv(case / "met/upperair/final/stations.csv")
+    p4_matches = [row for row in p4_rows
+                  if row["id"].endswith(p4_final["station_id"])]
+    assert len(p4_matches) == 1, "P4 annual effective-station metadata mismatch"
+    for axis in ("lat", "lon"):
+        assert abs(float(p4_matches[0][axis]) - float(p4_final[axis])) < 1e-9, (
+            "P4 effective position lost before US1", axis)
+
+    # P5's original NOAA source location must be classified against the
+    # published UTM grid, while SS1 uses the effective (possibly relocated)
+    # coordinates written by P5. This detects legacy lon/lat-bbox leakage.
+    p5 = json.loads((case / "met/surface/isd_raw/station_selection_2022.json").read_text())
+    p5_final = single_csv(case / "met/surface/final/stations.csv")
+    assert len(p5["stations"]) == 1, "frozen P5 study has one effective station"
+    p5_row = p5["stations"][0]
+    assert p5_row["ifstn"] == p5_final["station_id"]
+    assert p5_row["sid"] == p5["primary_sid"]
+    for axis in ("lat", "lon"):
+        assert abs(float(p5_row[axis]) - float(p5_final[axis])) < 1e-9, (
+            "P5 effective position lost before SS1", axis)
+    p5_source = Station(
+        p5_row["sid"], float(p5_row["source_lat"]), float(p5_row["source_lon"]),
+        float(p5_row["source_elev"]), p5_row["name"], p5_row["country"],
+        p5_row["begin"], p5_row["end"])
+    strict_inside = station_in_utm_grid(p5_source, load_utm_grid(case / "grid/grid.cmn"))
+    assert strict_inside != bool(p5_row["relocated"]), (
+        "P5 strict UTM inside/outside classification contradicts frozen provenance")
+    if p5_row["relocated"]:
+        assert p5["mode"] == "VIRTUAL_RELOCATED"
+    else:
+        assert p5["mode"] == "OBSERVED"
 
     # SURF.DAT formatted station ID record, independent of CSV identity.
     with (case / "met/surface/final/surf.dat").open(encoding="utf-8") as f:

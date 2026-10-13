@@ -19,7 +19,7 @@ concurrency:
 jobs:
   original-readcf:
     name: Original Fortran READCF and isolated C++ station geometry
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     defaults:
       run:
@@ -68,7 +68,7 @@ jobs:
 
   first-hour-wind1-source:
     name: Real-case hour 1 original Fortran WIND1 first guess
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     defaults:
       run:
@@ -112,7 +112,7 @@ jobs:
 
   grid-and-station-contract:
     name: Grid generator to P1-P5 to CALMET inputs
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     defaults:
       run:
@@ -145,7 +145,7 @@ jobs:
 
   full-143h:
     name: 143-hour original U/V/W and P6F-P6E coupling
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     defaults:
       run:

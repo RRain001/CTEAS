@@ -1,4 +1,4 @@
-name: CTEAS self-hosted Linux CI smoke
+name: CTEAS GitHub-hosted Linux CI smoke
 on:
   pull_request:
     paths:
@@ -11,9 +11,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
-  self-hosted-p6-cmake-ctest:
+  github-hosted-p6-cmake-ctest:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
       - name: GitHub HTTPS network preflight for self-hosted checkout
