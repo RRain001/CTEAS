@@ -90,3 +90,41 @@ be conflated with full physical trajectory equivalence.
 
 P7 development remains on **PR #41 (Draft)**; do not merge on the strength
 of this synthetic continuity gate, and do not change P6 as part of it.
+
+
+## 2026-10-13 extension: opt-in autonomous loss/exit detection
+
+Production scoped interfaces:
+- `original_comp_before_step_exit(QM, QU)` mirrors original COMP
+  `calpuff.for` L10450–10457: accumulate total species mass in source
+  REAL*4 add order; if `QALL<=0`, retire before accessing meteorology.
+- `original_comp_after_step_exit(xnew,ynew,bounds)` mirrors original
+  COMP L11400–11413: **after** physical transport, a puff center is dead
+  iff `xnew<XB || xnew>XE || ynew<YB || ynew>YE`; exact bounds are
+  inclusive. Slug-endpoint testing is not implemented.
+- `advance_hour_point_mxsam99_adaptive_bounded` and
+  `advance_hour_existing_mxsam99_adaptive_bounded` enable these checks
+  transactionally. Removed puffs' stable episode IDs, final positions,
+  mixed-layer and above-layer per-species mass vectors are returned in
+  `OriginalCompMxsamHour::retired`, permitting later source-faithful
+  `MBALSUM(OUT/OBC)` accounting.
+- Production physical stores must never accept original DGM coordinates
+  or mass as input. Bounds are **explicit CALPUFF XB/XE/YB/YE**, not
+  synthesized from a CALMET `NX/NY` header.
+- The optional wrapper currently compacts its dead slots eagerly using
+  source-ported `original_rolldn_slots`. The original `POINTS1` invokes
+  `ROLLDN` only on `NPUFFS+NEWPUF > MXPUFF`; reproducing all code-99
+  tombstone timing, capacity checks, new-puff SWAP ordering and mass balance
+  output is an **OPEN** full original-case integration requirement.
+
+**Verified** on [GitHub-hosted Actions #38358279681](https://github.com/RRain001/CTEAS/actions/runs/38358279681):
+`cteas_p7_original_comp_exit_source_contract` PASS;
+`cteas_p7_native_comp_mxsam99_unsplit` with bounded autonomous exit and
+zero-mass/no-ghost-state/OUT-ledger gates PASS, and the previous stateful
+143h synthetic continuity + checkpoint tests remain PASS.
+
+Do **not** interpret this as full original Hefei 143h lifecycle or
+`puff.con` numerical equivalence: the actual original 2022 XB/XE/YB/YE
+derivation, conditional vendor `ROLLDN` timing, all emitted old-puff
+histories, deposition/chemistry and receiver concentration accumulation
+remain unaccepted.
