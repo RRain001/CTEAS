@@ -3,6 +3,8 @@
 #include "cteas/puff/control.hpp"
 #include "cteas/puff/original_comp_rise_hourly.hpp"
 #include "cteas/puff/original_met_hours.hpp"
+#include "cteas/puff/original_native_terrain.hpp"
+#include "cteas/puff/original_ptlaps.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -41,6 +43,8 @@ int main(int argc,char** argv){
  try{
     demand(argc==4,"usage: firsthour_point_comp MET.DAT puff.inp DGM.bin");
     const auto deck=ControlFile::read_file(argv[2]);
+    demand(deck.required_int("MCTADJ")==2,
+           "frozen 2022 case requires active source terrain MCTADJ=2");
     demand(deck.required_int("METFM")==1 && deck.required_int("MGAUSS")==1&&
            deck.required_int("NPT1")==1 && deck.required_int("MRISE")==1 &&
            deck.required_int("MTIP")==1 && deck.required_int("MSHEAR")==0&&
@@ -165,6 +169,36 @@ int main(int argc,char** argv){
         ctrl.max_sample_distance_cells=static_cast<float>(sample[0]);
         ctrl.calm_threshold_ms=0.5F;
         ctrl.max_sampling_steps=99;
+        // Frozen MCTADJ=2 must use the original REAL4 ELEV grid and
+        // current-puff PTLAPS every substep. A synthetic constant-BVF
+        // control generated the old diagnostic, not physical Hefei.
+        const auto real_terrain=OriginalNativeTerrain::from_calmet(
+            geo,met.nx,met.ny,header.dx_m);
+        NativeMctadj2Controls real_ctadj2;
+        real_ctadj2.terrain=real_terrain.constraint_lookup();
+        real_ctadj2.derive_bvf_from_metfm1=true;
+        real_ctadj2.minimum_pt_gradient_k_per_m=0.005F;
+        ctrl.mctadj2=std::move(real_ctadj2);
+        // Exercise the exact direct/long-span PTLAPS branches separately
+        // before comparing real consecutive puff substeps.
+        const auto direct=original_ptlaps_metfm1(
+            {50.0F,150.0F,250.0F},{300.0F,300.0F,300.0F},
+            60.0F,0.005F,10.0F);
+        demand(direct.gradient_k_per_m==0.0098F &&
+               direct.temperature_base_k==300.0F,
+               "source PTLAPS adjacent level REAL4 branch drift");
+        const auto wide=original_ptlaps_metfm1(
+            {50.0F,150.0F,250.0F,350.0F},
+            {300.0F,298.0F,296.0F,294.0F},
+            80.0F,0.005F,220.0F);
+        demand(std::isfinite(wide.gradient_k_per_m) &&
+               wide.gradient_k_per_m>=0.005F &&
+               wide.temperature_base_k>0.0F,
+               "source PTLAPS interpolated REAL4 branch invalid");
+        std::cout<<"P7_HEFEI_MCTADJ2_METFM1_INPUT=PASS"
+                 <<" STATIC_TERRAIN=REAL_MET"
+                 <<" BVF=LIVE_PTLAPS_PER_SUBSTEP"
+                 <<" ORIGINAL_CASE_SIGZ_PARITY=UNDER_TEST\\n";
         const auto cdiv=deck.required_float_list("CDIV");
         demand(cdiv.size()==2 && cdiv[0]==0.0 && cdiv[1]==0.0,
                "frozen 2022 CDIV thresholds were silently substituted");
@@ -189,6 +223,7 @@ int main(int argc,char** argv){
                          <<" ORIG_FIRST_SIGZ_OUT="<<original.front().f[43]
                          <<" NAT_FIRST_SIGZ_OUT="<<hour.steps.front().step.vertical_after.sigma_z_m
                          <<" VERTICAL_DIVERGENCE=SOURCE_PORTED"
+                         <<" MCTADJ2=REAL_HEFEI_ELEV_PTLAPS"
                          <<" REAL4_NUMERICAL_PARITY=UNDER_TEST\\n";
             }
             std::size_t compare=std::min(hour.steps.size(),original.size());
