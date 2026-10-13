@@ -60,12 +60,13 @@ from engine.core.paths import (
     tutorial_path,
 )
 from engine.core.runtime_names import MET_DAT, MET_INP, MET_LST, PUFF_CON, PUFF_LST
-from engine.gui.app import create_case, list_case_summaries, load_case_yaml
+from engine.gui_g5.app import create_case, list_case_summaries, load_case_yaml
+from engine.gui_g5.pipeline import stage_readiness
 from engine.preprocess.grid.center_location_to_utm import convert_lon_lat
 from engine.postprocessing._core import index_time_records, parse_calmet_grid
 
 
-SOFTWARE_TITLE = "多形态氚辐射环境评价系统CTEAS v1.0"
+SOFTWARE_TITLE = "CTEAS G5 — 原生 P1–P7 重构版（独立试验）"
 DATE_FMT = "%Y%m%d-%H%M%S"
 STAGE_DISPLAY = {
     "all": "全部",
@@ -115,7 +116,7 @@ STAGES: list[StageSpec] = [
     StageSpec(
         name="地面气象",
         stage="surface",
-        desc="执行地面气象数据流程（预处理子流程）。",
+        desc="P5 原生 C++ SURF.DAT（需明确配置原生可执行程序）。",
         deps=[],
         inputs=["preprocess.research_time", "独立执行 stage=surface"],
         outputs=["met/surface/final/surf.dat"],
@@ -124,7 +125,7 @@ STAGES: list[StageSpec] = [
     StageSpec(
         name="高空气象",
         stage="upperair",
-        desc="执行高空气象数据流程（预处理子流程）。",
+        desc="P4 READ62 原生链；完整跨年 UP.DAT 自动集成尚未验收。",
         deps=[],
         inputs=["preprocess.research_time", "独立执行 stage=upperair"],
         outputs=["met/upperair/final/UP.DAT"],
@@ -133,7 +134,7 @@ STAGES: list[StageSpec] = [
     StageSpec(
         name="地形处理",
         stage="preprocess",
-        desc="网格、地形、地类与可选气象预处理。",
+        desc="P1/P2/P3 原生地形/地类/GEO；通用配置尚未验收。",
         deps=[],
         inputs=["preprocess.grid", "preprocess.research_time"],
         outputs=["geo/makegeo/geo.dat", "(可选) met/upperair/final/UP.DAT", "(可选) met/surface/final/surf.dat"],
@@ -142,7 +143,7 @@ STAGES: list[StageSpec] = [
     StageSpec(
         name="诊断风场",
         stage="met",
-        desc="执行诊断风场并生成中间气象场。",
+        desc="P6 原生 CALMET：目前仅冻结合肥案例通过，任意场景禁止直接启动。",
         deps=["preprocess"],
         inputs=["geo/makegeo/geo.dat", "met/surface/final/surf.dat", "met/upperair/final/UP.DAT"],
         outputs=[f"run/met/{MET_DAT}", f"run/met/{MET_LST}"],
@@ -151,7 +152,7 @@ STAGES: list[StageSpec] = [
     StageSpec(
         name="烟团模型",
         stage="puff",
-        desc="执行烟团模型扩散计算。",
+        desc="P7 原生 CALPUFF：通用真实案例验收尚未完成。",
         deps=["met"],
         inputs=[f"run/met/{MET_DAT}", f"run/met/{MET_LST}"],
         outputs=[f"run/puff/{PUFF_CON}", f"run/puff/{PUFF_LST}"],
@@ -2759,13 +2760,10 @@ class MainWindow(QMainWindow):
             return False, "配置检查未通过，请先修复错误"
 
         croot = case_dir(self.current_case)
-        if stage in {"preprocess", "all"}:
-            terrel_inp = croot / "geo" / "terrel" / "terrel.inp"
-            if not terrel_inp.exists():
-                return False, f"缺少输入文件: {terrel_inp}"
-        if stage == "puff" and not self._stage_complete(croot, "met"):
-            return False, "运行烟团模型前必须先有诊断风场产物"
-        return True, ""
+        # G5 must never fall back to the legacy Fortran/Python orchestrator.
+        # A stage is runnable only when the explicitly registered native path
+        # is supported for this case and its dependencies are ready.
+        return stage_readiness(stage, self.case_data, self.current_case, resume=False)
 
     def _make_run_dir(self, case_name: str, stage: str) -> Path:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -2784,7 +2782,7 @@ class MainWindow(QMainWindow):
             return
 
         run_dir = self._make_run_dir(self.current_case, stage)
-        cmd = [sys.executable, "-u", "-m", "engine.orchestrator.cli", "run", "--case", self.current_case, "--stage", stage]
+        cmd = [sys.executable, "-u", "-m", "engine.gui_g5.pipeline", "run", "--case", self.current_case, "--stage", stage]
         if resume:
             cmd.append("--resume")
 
