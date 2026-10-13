@@ -221,8 +221,19 @@ def main():
                 original_stream.seek(rec["offset"] + 32 + CELLS * 9 * 4)
                 original_v = struct.unpack(f"<{CELLS}f", original_stream.read(CELLS * 4))
                 p = args.candidate / f"hour_{h:03d}" / "diagno"
-                native_u = read_native(p / f"fradj_corrected_u_{labels[h]}.f32")
-                native_v = read_native(p / f"fradj_corrected_v_{labels[h]}.f32")
+                # FRADJ corrected winds are k-major 3-D 50x50x9 arrays.
+                # ELUSTR consumes exactly k=1; do not pass these through
+                # read_native(), which validates strictly 50x50 2-D fields.
+                def native_first_level(name):
+                    raw = (p / name).read_bytes()
+                    if len(raw) != CELLS * 9 * 4:
+                        raise RuntimeError(f"native FRADJ 3-D wind byte count: {p / name}")
+                    field = struct.unpack_from(f"<{CELLS}f", raw, 0)
+                    if not all(math.isfinite(v) and abs(v) < 999998 for v in field):
+                        raise RuntimeError(f"native FRADJ first-level wind invalid: {p / name}")
+                    return field
+                native_u = native_first_level(f"fradj_corrected_u_{labels[h]}.f32")
+                native_v = native_first_level(f"fradj_corrected_v_{labels[h]}.f32")
                 for idx in indices:
                     du = abs(original_u[idx] - native_u[idx])
                     dv = abs(original_v[idx] - native_v[idx])
