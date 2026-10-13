@@ -74,7 +74,8 @@ void OriginalCompRisePointDriver::admit(
 }
 RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     int id,const OriginalMetHour& met,const Calmet21Static& statics,
-    const NeutralCompControls& control,const DispersionSetup& pg,bool urban) {
+    const NeutralCompControls& control,const DispersionSetup& pg,bool urban,
+    RiseCompSourceSampling source_sampling) {
     const auto found=rise_.find(id);
     if(found==rise_.end())throw std::out_of_range("unknown rise puff");
     require(pg.mdisp==3 && !pg.heffter_sigma_z &&
@@ -88,6 +89,10 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             control.max_sampling_steps==1 && control.release_number==1,
             "native rising COMP only supports MDISP3 single noncalm point step");
 
+    require(source_sampling.ksam>=1 &&
+            source_sampling.nsam>=source_sampling.ksam &&
+            source_sampling.nsam<=99,
+            "invalid original COMP KSAM/NSAM source sampling context");
     // Full state copy: failed wind, GRISE, PG, SETPUF or VMASS must not
     // leave a partial trajectory, mass partition or sampling clock.
     auto m=motion_;
@@ -137,10 +142,10 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         std::max(0.0,sampled.extent.z_top_m-before.z_m),"DZB");
     inputs.rise_iterations=2;
     inputs.plume=state.physics;
-    const auto rise=original_rise_wind_met(met,statics,inputs);
-    const float u=r4(rise.adjusted.u_ms,"RISEWIND U");
-    const float w=r4(rise.adjusted.v_ms,"RISEWIND V");
-    const float ws=r4(rise.adjusted.wind_speed_ms,"RISEWIND WS");
+    auto rise=original_rise_wind_met(met,statics,inputs);
+    float u=r4(rise.adjusted.u_ms,"RISEWIND U");
+    float w=r4(rise.adjusted.v_ms,"RISEWIND V");
+    float ws=r4(rise.adjusted.wind_speed_ms,"RISEWIND WS");
     require(ws>=static_cast<float>(kRiseWindCalmSpeedMs),
             "rise COMP refuses calm-advection treatment");
     order.completed(VendorSubstepPhase::ApplyRiseWindAndCalm);
@@ -148,14 +153,28 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     const Substep substep=substep_length({
         .sampling_step_s=cadence.sampling_step_s,
         .wind_speed_ms=ws,.puff=true,.free_slug=false,
-        .subsampling=cadence.subsampling,
+        .subsampling=source_sampling.lsubsam,
         .grid_spacing_m=control.met_spacing_m,
         .x_sam_len=control.max_sample_distance_cells,
-        .substep_index=1,.sampling_steps=1
+        .substep_index=source_sampling.ksam,
+        .sampling_steps=source_sampling.nsam
     });
-    require(!substep.split &&
-            r4(substep.step_s,"native rise TSAMP")==control.seconds,
-            "rise COMP cannot silently shorten a sampling step");
+    if(substep.split){
+        // Unmodified CALPUFF COMP L10571-10578: a shortened TSAMP must
+        // resample RISEWIND while the puff is still rising. DO NOT reuse
+        // the provisional pre-FSTEP wind in the transport or SETPUF state.
+        if(before.total_distance_m<state.x_final_m){
+            inputs.step_seconds=r4(substep.step_s,"shortened rise TSAMP");
+            rise=original_rise_wind_met(met,statics,inputs);
+            u=r4(rise.adjusted.u_ms,"resampled RISEWIND U");
+            w=r4(rise.adjusted.v_ms,"resampled RISEWIND V");
+            ws=r4(rise.adjusted.wind_speed_ms,"resampled RISEWIND WS");
+            require(ws>=static_cast<float>(kRiseWindCalmSpeedMs),
+                    "resampled COMP requires original calm branch");
+        }
+    } else if(r4(substep.step_s,"native rise TSAMP")!=control.seconds){
+        throw std::logic_error("COMP unexpectedly shortened unsplit step");
+    }
     order.completed(VendorSubstepPhase::ChooseSubstepLength);
 
     const float distance=r4(ws*r4(substep.step_s,"time"),"rise distance");
