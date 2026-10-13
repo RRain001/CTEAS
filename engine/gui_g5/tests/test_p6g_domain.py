@@ -51,6 +51,32 @@ class G6DomainTests(unittest.TestCase):
             for s in self.stations:
                 self.assertTrue(lon_lat_in_utm_grid(s.lon,s.lat,grid),s.id)
 
+    def test_explicit_10km_annual_multisite_test_grid_without_touching_baseline(self):
+        plan=fit_domain(self.config,self.stations,margin_km=6,
+                        max_horizontal_cells=100,
+                        fixed_spacing_km=10.0)
+        grid=plan["recommended"]
+        self.assertEqual(grid["spacing_km"],10.0)
+        self.assertEqual(plan["requested_spacing_km"],10.0)
+        self.assertLessEqual(grid["horizontal_cells"],100)
+        self.assertEqual(plan["station_counts"],{"surface":2,"upper":2})
+        self.assertEqual(self.config["preprocess"]["grid"]["resolution_km"],0.1)
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            write_case_grid(root,plan["proposed_config"])
+            published=load_strict_utm_grid(root/"grid"/"grid.cmn")
+            self.assertEqual(published.dgridkm,10.0)
+            self.assertEqual((published.nx,published.ny),(grid["nx"],grid["ny"]))
+            for station in self.stations:
+                self.assertTrue(lon_lat_in_utm_grid(station.lon,station.lat,published))
+
+    def test_reject_10km_grid_when_station_envelope_exceeds_budget(self):
+        with self.assertRaisesRegex(ValueError,"Cannot fit"):
+            fit_domain(self.config,self.stations,margin_km=10,
+                       max_horizontal_cells=1,fixed_spacing_km=10.0)
+        with self.assertRaisesRegex(ValueError,"cannot refine"):
+            fit_domain(self.config,self.stations,fixed_spacing_km=0.05)
+
     def test_short_envelope_no_forced_coarsening(self):
         near=[Station("S","surface",117.14,31.94),
               Station("U","upper",117.1402,31.9401)]
