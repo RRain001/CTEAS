@@ -900,9 +900,14 @@ int main(int argc,char** argv){
             corrected_u=adjusted.u;corrected_v=adjusted.v;
             fradj_applied=true;
         }
-        if(fradj_applied)
+        if(fradj_applied) {
+            // Preserve BOTH original REAL*4 diagnostic wind components.
+            // This only adds a forensic trace, it changes no physical arrays.
             write_f32(args.out()/("fradj_corrected_u_"+hour_label(clock)+".f32"),
                       corrected_u);
+            write_f32(args.out()/("fradj_corrected_v_"+hour_label(clock)+".f32"),
+                      corrected_v);
+        }
         // CALMET DIAGNO L5686-5711: HEATFX/ELUSTR belong AFTER FRADJ.
         // QH is input to SLOPE, so this is not just a cosmetic move.
         std::vector<float> heat_flux;
