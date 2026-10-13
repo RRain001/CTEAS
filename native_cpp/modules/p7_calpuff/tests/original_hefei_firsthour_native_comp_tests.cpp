@@ -182,6 +182,35 @@ int main(int argc,char** argv){
             for(std::size_t i=0;i<compare;++i){
                 const auto& a=hour.steps[i];
                 const auto& b=original[i];
+                // First original divergence at row 8 needs an upstream
+                // layer-by-layer audit, not a fitted receptor tolerance.
+                if(i<12){
+                    const auto& n=a.step;
+                    std::cout<<"P7_HEFEI_FIRSTHOUR_SUBSTEP_TRACE"
+                             <<" ROW="<<i+1<<" ID="<<a.puff_id
+                             <<" KSAM="<<a.ksam
+                             <<" ORIG_OLD_XY="<<b.f[0]<<","<<b.f[1]
+                             <<" NAT_OLD_XY="<<n.before.x_cells<<","<<n.before.y_cells
+                             <<" ORIG_SIGZ_IN="<<b.f[22]
+                             <<" NAT_SIGZ_IN="<<n.sigma.step.sigma_z_begin_m
+                             <<" ORIG_ZBOT_ZTOP="<<b.f[8]<<","<<b.f[7]
+                             <<" NAT_ZBOT_ZTOP="<<n.initial_met.extent.z_bottom_m
+                                                    <<","<<n.initial_met.extent.z_top_m
+                             <<" ORIG_PRE_UV="<<b.f[9]<<","<<b.f[10]
+                             <<" NAT_PRE_UV="<<n.initial_met.wind.u_ms<<","
+                                             <<n.initial_met.wind.v_ms
+                             <<" ORIG_ADV_UV="<<b.f[12]<<","<<b.f[13]
+                             <<" NAT_ADV_UV="<<n.rise.adjusted.u_ms<<","
+                                             <<n.rise.adjusted.v_ms
+                             <<" ORIG_END_XY="<<b.f[38]<<","<<b.f[39]
+                             <<" NAT_END_XY="<<n.after.x_cells<<","<<n.after.y_cells
+                             <<" ORIG_XTOT="<<b.f[40]
+                             <<" NAT_XTOT="<<n.after.total_distance_m
+                             <<" ORIG_SIGZ_OUT="<<b.f[43]
+                             <<" NAT_SIGZ_OUT="<<n.vertical_after.sigma_z_m
+                             <<"\n";
+                }
+
                 if(a.puff_id!=b.i[3]||a.ksam!=b.i[16]||
                    a.step.after.x_cells!=b.f[38]||
                    a.step.after.y_cells!=b.f[39]){
