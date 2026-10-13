@@ -61,7 +61,9 @@ from engine.core.paths import (
 )
 from engine.core.runtime_names import MET_DAT, MET_INP, MET_LST, PUFF_CON, PUFF_LST
 from engine.gui_g5.app import create_case, list_case_summaries, load_case_yaml
-from engine.gui_g5.pipeline import stage_readiness
+from engine.gui_g5.pipeline import stage_readiness, validate_case
+from engine.gui_g5.case_setup import write_case_grid
+from engine.run_met.common import lon_lat_to_utm_km, parse_grid_cmn
 from engine.preprocess.grid.center_location_to_utm import convert_lon_lat
 from engine.postprocessing._core import index_time_records, parse_calmet_grid
 
@@ -1707,8 +1709,10 @@ class MainWindow(QMainWindow):
 
         points = _get_path(self.case_data, "puff.point_sources", [])
         src = points[0] if isinstance(points, list) and points and isinstance(points[0], dict) else DEFAULT_POINT_SOURCE
-        lon = float(_get_path(self.case_data, "preprocess.grid.center.longitude", 117.0) or 117.0)
-        lat = float(_get_path(self.case_data, "preprocess.grid.center.latitude", 32.0) or 32.0)
+        lon = float(_get_path(self.case_data, "preprocess.stack.longitude",
+                              _get_path(self.case_data, "preprocess.grid.center.longitude", 117.0)))
+        lat = float(_get_path(self.case_data, "preprocess.stack.latitude",
+                              _get_path(self.case_data, "preprocess.grid.center.latitude", 32.0)))
         self.point_widgets["lon"].setText(str(lon))
         self.point_widgets["lat"].setText(str(lat))
         self.point_widgets["stack_height_m"].setText(str(src.get("stack_height_m", 70.0)))
@@ -1741,12 +1745,19 @@ class MainWindow(QMainWindow):
 
         lon = float(self.point_widgets["lon"].text().strip())
         lat = float(self.point_widgets["lat"].text().strip())
-        utm = convert_lon_lat(lon, lat)
+        # The source must use the *case grid's* UTM zone, including when
+        # the stack's nominal zone differs from the grid centre's zone.
+        grid_def = parse_grid_cmn(self.current_case,
+            path=case_dir(self.current_case) / "grid" / "grid.cmn")
+        x_km, y_km = lon_lat_to_utm_km(lon, lat, grid_def.iutmzn,
+                                        grid_def.lsohem == "N")
+        _set_path(data, "preprocess.stack.longitude", lon)
+        _set_path(data, "preprocess.stack.latitude", lat)
         emission = float(self.point_widgets["emission_bq_s"].text().strip())
         source = {
             "name": "P1",
-            "x_km": round(float(utm["x_km"]), 3),
-            "y_km": round(float(utm["y_km"]), 3),
+            "x_km": round(x_km, 3),
+            "y_km": round(y_km, 3),
             "stack_height_m": float(self.point_widgets["stack_height_m"].text().strip()),
             "base_elev_m": float(self.point_widgets["base_elev_m"].text().strip()),
             "stack_diameter_m": float(self.point_widgets["stack_diameter_m"].text().strip()),
@@ -1762,12 +1773,9 @@ class MainWindow(QMainWindow):
         _set_path(data, "puff.options.nspec", 2)
         _set_path(data, "puff.options.nse", 1)
 
-        # Simplify preprocess config: keep upperair only with pstop_hpa/auto_select_all.
-        _set_path(data, "preprocess.upperair.auto_select_all", True)
-        _del_path(data, "preprocess.pipeline")
-        _del_path(data, "preprocess.surface")
-        _del_path(data, "preprocess.upperair.skip_download")
-        _del_path(data, "preprocess.upperair.station_id")
+        # Do not remove station-selection/source-coverage configuration from
+        # the new GUI: P4/P5 must re-evaluate year by year using these controls.
+        _set_path(data, "preprocess.grid.vertical_levels_m", list(self.vertical_levels))
         return data
 
     def _ensure_vertical_levels_length(self, nz: int) -> None:
@@ -1847,6 +1855,8 @@ class MainWindow(QMainWindow):
                 self.validate_config_and_show()
                 return
             data = self._collect_form_data()
+            validate_case(data)
+            write_case_grid(case_dir(self.current_case), data)
             path = case_yaml_path(self.current_case)
             text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
             text = _format_emissions_inline(text)
