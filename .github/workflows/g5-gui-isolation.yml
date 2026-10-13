@@ -58,8 +58,9 @@ jobs:
           window = MainWindow()
           assert "G5" in window.windowTitle()
           assert SOFTWARE_TITLE == window.windowTitle()
-          assert window.stage_cards, "G5 stage cards absent"
-          print("G5_SEPARATE_PYSIDE_WORKBENCH_STARTUP=PASS", len(window.stage_cards))
+          assert window.pages.count() >= 3, "G5 workflow pages absent"
+          assert window.field_widgets, "G5 editable case form absent"
+          print("G5_SEPARATE_PYSIDE_WORKBENCH_STARTUP=PASS", window.pages.count())
           window.close()
           app.quit()
           PY
