@@ -135,7 +135,8 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
             project/cases/hefei5km_2022_reference_case_20261011
           cmake -S native_cpp/modules/p6_calmet/p6f \
-            -B "$RUNNER_TEMP/native-p6f" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
+            -B "$RUNNER_TEMP/native-p6f" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12 \
+            -DP6F_REPO_ROOT="$GITHUB_WORKSPACE/original_locked_case"
           cmake --build "$RUNNER_TEMP/native-p6f" \
             --target cteas_p6f_geo_static_provenance --parallel 2
       - name: Execute all 143 real hours in original one-pass causal order

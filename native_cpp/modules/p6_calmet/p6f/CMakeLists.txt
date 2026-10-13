@@ -83,7 +83,8 @@ add_test(NAME p6f_calmet_dat21_synthetic_cli_roundtrip
 # The frozen real 2022 reference case and the independent P7 decoder are the
 # writer's ground truth: the gate is FAIL-closed when either is missing rather
 # than silently skipping the byte-identity proof.
-set(P6F_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
+set(P6F_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." CACHE PATH
+  "Case root for P6F pinned source provenance CTests (may be external checkout)")
 set(P6F_REAL_MET_DAT
   "${P6F_REPO_ROOT}/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat")
 set(P6F_REAL_MET_SHA256
