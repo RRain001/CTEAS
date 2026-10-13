@@ -6,6 +6,25 @@
 #include <utility>
 
 namespace cteas::puff {
+namespace {
+float native_point_wsnew(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const OriginalPointHourSource& source,float calm_threshold_ms) {
+    OriginalReleaseWindRequest position{
+        .x_cells=static_cast<float>(source.point.source_x_km),
+        .y_cells=static_cast<float>(source.point.source_y_km),
+        .release_height_m=static_cast<float>(source.point.effective_height_m),
+        .calm_threshold_ms=calm_threshold_ms
+    };
+    const auto final=original_release_wind_metfm1(met,statics,position);
+    position.release_height_m=static_cast<float>(source.point.stack_height_m);
+    const auto stack=original_release_wind_metfm1(met,statics,position);
+    // POINTS1 original: WSNEW = AMAX1(WS at HTSTAK, WS at HEFF).
+    // Both WINDSET samples use original CALMET REAL*4, not caller WSNEW.
+    return std::max(stack.wind_speed_ms,final.wind_speed_ms);
+}
+} // namespace
+
 RiseCompHour OriginalCompRiseMultiPuffHours::advance_hour(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& controls,const DispersionSetup& pg,
@@ -47,18 +66,9 @@ RiseCadencedHour OriginalCompRiseMultiPuffHours::advance_hour_point_native_wsnew
     // Exact original POINTS1 L15448 and L15965-15970: first RLSMET at
     // HTSTAK, then RLSMET at PRFIN effective height HEFF. WSNEW must use
     // AMAX1(stack WS, final-rise WS), never only the final-rise wind.
-    OriginalReleaseWindRequest position{
-        .x_cells=static_cast<float>(source.point.source_x_km),
-        .y_cells=static_cast<float>(source.point.source_y_km),
-        .release_height_m=static_cast<float>(source.point.effective_height_m),
-        .calm_threshold_ms=calm_threshold_ms
-    };
-    const auto final=original_release_wind_metfm1(met,statics,position);
-    position.release_height_m=static_cast<float>(source.point.stack_height_m);
-    const auto stack=original_release_wind_metfm1(met,statics,position);
     auto native=source;
-    native.cadence.wind_speed_ms=std::max(
-        stack.wind_speed_ms,final.wind_speed_ms);
+    native.cadence.wind_speed_ms=native_point_wsnew(
+        met,statics,source,calm_threshold_ms);
     return advance_hour_point_cadence(
         met,statics,controls,pg,urban,native);
 }
@@ -131,6 +141,22 @@ RiseCadencedHour OriginalCompRiseMultiPuffHours::advance_hour_point_cadence(
     last_id_=next_id;
     ++hours_;
     return result;
+}
+
+OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_native_wsnew_unsplit(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalPointHourSource& source,
+    float calm_threshold_ms) {
+    // Join the source-faithful release wind to the real MXSAM=99 scheduler.
+    // Only the unsplit physical subcase is accepted: the downstream COMP
+    // rejects any required FSTEP resplit, calm old-puff path or off-grid exit.
+    auto native=source;
+    native.cadence.wind_speed_ms=native_point_wsnew(
+        met,statics,source,calm_threshold_ms);
+    return advance_hour_point_mxsam99_unsplit(
+        met,statics,controls,pg,urban,native);
 }
 
 OriginalCompMxsamHour
