@@ -130,3 +130,13 @@ GitHub-hosted [run 38346726042](https://github.com/RRain001/CTEAS/actions/runs/3
 - The remaining numeric work is to trace USTAR and EL's sensitivity to the DIAGNO first-layer U/V and HEATFX/ELUSTR input, plus WSTAR's propagation through QH/ZICONV/RHO/TEMP2D. The independent CALMET original-wind P6E E42 gate previously passed; use a same-native-state original-wind control to separate P6D physical sensitivity from P6E implementation differences before changing any source-locked formula. Do not relax tolerance and do not retest unrelated P6D formulas.
 
 Scientific CI is intentionally red because the strict comparator rejects those three fields; the P6D 27-field sub-verdict is objectively all green. Never mark P6G as PASS merely because the hourly writer is complete.
+
+
+## 2026-10-13 actual USTAR/EL/WSTAR wind-provenance and stencil-boundary audit
+
+1. [Actions run 38347278722](https://github.com/RRain001/CTEAS/actions/runs/38347278722) controlled **same native P6D station flux and same native P6E kernels** with frozen original U/V/W and native P6D U/V/W respectively. Original-wind control: USTAR/EL/WSTAR **0/0/0 exceedances** with max abs 1.19e-7 m/s, 0.078125 m, 1.19e-7 m/s respectively. Native-wind path: USTAR 5,952; EL 1,105; WSTAR 171. This localizes failures to a wind-driven input dependence and does **not** justify using oracle winds in production.
+2. [Actions run 38350090240](https://github.com/RRain001/CTEAS/actions/runs/38350090240) ran `scripts/p6_diagnose_wind_quantization.py` against all **143×50×50=357,500** source/native first-level winds. Max `|ΔU1|=5.9604790e-6 m/s`, max `|ΔV1|=9.5367577e-6 m/s`. Original AVETMP/AVEMIX-style REAL*4 integer shifts `IETAX/IETAY/ICWX/ICWY` differ in **6,187** grid-hours, but **only 187 of 5,952 USTAR exceedances** overlap a local integer shift; **zero of 1,105 EL** and **zero of 171 WSTAR** overlaps. Thus the initial claim that **INT-boundary flips explain the bulk of P6E failures is falsified**. There are real flips near source values such as V≈−1m/s at hour 39, but most remaining residuals require investigating continuous upstream wind errors and/or other upwind cone/distance/ELUSTR sensitivities.
+3. A controlled GitHub-hosted `p6d-real4-arithmetic-sensitivity.yml` matrix comparing source C++ P6D compile arithmetic with fused operations disabled and with `-O0 -ffp-contract=off` is a **diagnostic hypothesis**, not accepted physics and not a tolerance change. Its results must be measured before any production flag change.
+
+Keep the 27 original U/V/W wind fields' explicit frozen-case PASS (no strict wind-record exceedances), but add an independent **coupling sensitivity** gate before declaring P6E complete; wind tolerance PASS does not imply downstream ELUSTR parity.
+
