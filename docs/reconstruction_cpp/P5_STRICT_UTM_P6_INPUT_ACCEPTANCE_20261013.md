@@ -51,7 +51,7 @@ valid. This does **not** qualify P6D full real-case U/V/W parity.
 ## Runner acceptance
 
 Workflow: `.github/workflows/p5-utm-p6-input-acceptance.yml` (two parallel
-self-hosted Linux jobs).
+GitHub-hosted `ubuntu-22.04` jobs).
 
 - P5: Python NOAA policy tests + projected corners/edges + invalid CRS
   rejection + no legacy geographic bbox source.
@@ -59,7 +59,27 @@ self-hosted Linux jobs).
   P4 effective US1, P5 strict-UTM SS1, full 2022 NOAA history candidate
   comparison and archived scientific input hashes.
 
-This document describes gates, **not a PASS claim**. Record successful
-workflow ID and P5 migration JSON evidence before merging either stacked PR.
-PR #40's old 143-hour full-field numerical FAIL remains separate and must
-not be reclassified by an input-contract check.
+## Executed GitHub-hosted acceptance
+
+GitHub Actions [run #38335888502](https://github.com/RRain001/CTEAS/actions/runs/38335888502)
+(completion on 2026-10-13, 02:14 UTC) **PASS** on both jobs:
+
+- 24/24 P5 policy and strict-UTM regression tests PASS.
+- P3 grid generator → GEO.DAT → met.inp PASS.
+- P4 effective coordinate → US1 and P5 source/effective coordinate → SS1 PASS.
+- 13,946 NOAA history records eligible for the frozen 2022 study window.
+  Legacy approximate bbox: **zero** in-domain candidates; strict WGS-84
+  UTM 50N grid.cmn: **zero** in-domain candidates, no membership differences.
+- Frozen P5 mode remains `VIRTUAL_RELOCATED`; no new SURF.DAT,
+  stations.csv or met.inp generation is required.
+- All four frozen files (selection manifest, surface stations.csv,
+  SURF.DAT, met.inp) match the SHA256 values pinned in
+  run_manifest.json. `reference_regeneration_required=false`.
+
+The separate GitHub-hosted [P5 SMERGE C++20 run #38335888447](https://github.com/RRain001/CTEAS/actions/runs/38335888447)
+also PASS (49/49 Python input tests, build and CTest gates).
+
+**Scope boundary:** This is P5/P6 *input* acceptance, not P6D
+143-hour full U/V/W numerical parity. Do not mark PR #40's previously
+recorded field-numeric FAIL as resolved without a new independent
+field-by-field reference comparison. No frozen reference data was changed.
