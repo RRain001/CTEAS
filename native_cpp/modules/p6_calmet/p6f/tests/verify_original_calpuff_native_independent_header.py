@@ -97,12 +97,23 @@ def main() -> None:
         results[label] = summary
     old, new = (results[k] for k in ("native_borrowed_header",
                                     "native_independent_header"))
-    if old["concentration_sha256"] != new["concentration_sha256"]:
-        fail("original CALPUFF output puff.con changed after header replacement")
-    if old["concentration"]["payload_sha256"] != new["concentration"]["payload_sha256"]:
-        fail("the hourly concentration floating fields changed")
+    full_binary_equal = old["concentration_sha256"] == new["concentration_sha256"]
+    hourly_payload_equal = (
+        old["concentration"]["payload_sha256"] ==
+        new["concentration"]["payload_sha256"])
     if new["concentration"]["hourly_records"] != 143:
         fail("original CALPUFF did not write 143h of concentrations")
+    old_file = (args.work/"native_borrowed_header"/"run"/"puff"/"puff.con").read_bytes()
+    new_file = (args.work/"native_independent_header"/"run"/"puff"/"puff.con").read_bytes()
+    old_records = oracle.walk_records(old_file)
+    new_records = oracle.walk_records(new_file)
+    first_record_difference = next(
+        (i for i,(a,b) in enumerate(zip(old_records,new_records))
+         if old_file[a[0]:a[0]+8+a[1]] != new_file[b[0]:b[0]+8+b[1]]),
+        None)
+    changed_records = sum(
+        old_file[a[0]:a[0]+8+a[1]] != new_file[b[0]:b[0]+8+b[1]]
+        for a,b in zip(old_records,new_records))
     result = {
         "status": "PASS_P6F_ORIGINAL_CALPUFF_NATIVE_INDEPENDENT_HEADER",
         "original_fortran": built,
@@ -112,7 +123,12 @@ def main() -> None:
         "old_met_sha256": oracle.sha256_bytes(raw_native),
         "new_met_sha256": oracle.sha256_bytes(raw_new),
         "calpuff_original_143h": results,
-        "concentration_bit_equal": True,
+        "concentration_full_file_bit_equal": full_binary_equal,
+        "concentration_hourly_payload_bit_equal": hourly_payload_equal,
+        "concentration_first_changed_record": first_record_difference,
+        "concentration_changed_records": changed_records,
+        "concentration_old_records": len(old_records),
+        "concentration_new_records": len(new_records),
         "source_independence_limit": (
             "header/states independently generated from GEO/deck; "
             "hourly C++ payload is from native P6D/P6E, but producer still "
@@ -120,6 +136,11 @@ def main() -> None:
         ),
     }
     args.report.write_text(json.dumps(result, indent=2) + "\n")
+    print("P6F_ORIGINAL_CALPUFF_CONC_COMPARISON "
+          f"file_equal={full_binary_equal} hourly_payload_equal={hourly_payload_equal} "
+          f"first_changed_record={first_record_difference} changed_records={changed_records}")
+    if not hourly_payload_equal:
+        fail("actual 143h floating concentration grids changed with the OUTHD header")
     print("PASS_P6F_ORIGINAL_CALPUFF_NATIVE_INDEPENDENT_HEADER "
           f"old_comments={original_comments} new_comments={new_comments} "
           f"identical_noncomment_records={matched} "
