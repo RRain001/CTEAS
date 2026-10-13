@@ -209,14 +209,8 @@ def render_met_inp(case_name: str, config: dict[str, Any], work_dir: Path) -> tu
     if not upperair_rows:
         raise ValueError(f"No upperair station metadata found in: {upperair_stations_csv}")
 
-    surface_ids = [row["station_id"].strip() for row in surface_rows]
-    upperair_ids = [row["station_id"].strip() for row in upperair_rows]
-    if any(not identifier for identifier in surface_ids + upperair_ids):
-        raise ValueError("Empty CALMET station ID in surface/upper-air metadata")
-    if len(set(surface_ids)) != len(surface_ids):
-        raise ValueError("Duplicate CALMET surface station ID")
-    if len(set(upperair_ids)) != len(upperair_ids):
-        raise ValueError("Duplicate CALMET upper-air station ID")
+    surface_ids = [row["station_id"] for row in surface_rows]
+    upperair_ids = [row["station_id"] for row in upperair_rows]
 
     file_station_ids = [path.stem.split("_", 1)[1] for path in upperair_files]
     if upperair_ids != file_station_ids:
