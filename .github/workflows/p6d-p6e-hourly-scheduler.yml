@@ -1,0 +1,52 @@
+name: P6D-P6E source-ordered hourly COMP scheduler contract
+
+on:
+  push:
+    branches:
+      - codex/p6-hourly-stateful-scheduler-20261013
+    paths:
+      - native_cpp/modules/p6_calmet/include/cteas/p6/hourly_comp_scheduler.hpp
+      - native_cpp/modules/p6_calmet/tests/p6_hourly_comp_scheduler_tests.cpp
+      - .github/workflows/p6d-p6e-hourly-scheduler.yml
+  pull_request:
+    paths:
+      - native_cpp/modules/p6_calmet/include/cteas/p6/hourly_comp_scheduler.hpp
+      - native_cpp/modules/p6_calmet/tests/p6_hourly_comp_scheduler_tests.cpp
+      - .github/workflows/p6d-p6e-hourly-scheduler.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  single-pass-order-contract:
+    name: Native hourly scheduler build and state machine (NOT science parity)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            native_cpp/modules/p6_calmet/include
+            native_cpp/modules/p6_calmet/tests/p6_hourly_comp_scheduler_tests.cpp
+      - name: Compile actual C++20 scheduler, strict
+        shell: bash
+        run: |
+          set -euo pipefail
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror -pedantic -ffp-contract=off \
+            -I native_cpp/modules/p6_calmet/include \
+            native_cpp/modules/p6_calmet/tests/p6_hourly_comp_scheduler_tests.cpp \
+            -o "${RUNNER_TEMP}/p6-hourly-comp-scheduler-contract"
+      - name: Execute all 143 ordered hours; reject reference-backfill and missing outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/p6-hourly-comp-scheduler-contract"
+      - name: Explicit scientific boundary
+        shell: bash
+        run: |
+          echo "SCHEDULER_CONTRACT: compiler/test evidence only"
+          echo "P6D_P6E_REAL_NATIVE_KERNEL_ADAPTER: NOT_IMPLEMENTED"
+          echo "P6D_FULL_UVW: NOT_PASS"
+          echo "P6G_45_FIELDS: NOT_PASS"
