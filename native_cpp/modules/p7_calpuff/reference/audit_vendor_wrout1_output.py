@@ -45,6 +45,7 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
         raise AssertionError("frozen original puff.con SHA256 drift")
     hist=collections.Counter()
     entries=[]
+    record_layout=[]
     pos=0
     while pos<len(data):
         if pos+8>len(data):
@@ -57,6 +58,7 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
         if suffix!=size:
             raise ValueError(f"Fortran framing mismatch at {pos}: {size}/{suffix}")
         hist[size]+=1
+        record_layout.append((pos,size))
         if len(entries)<12:
             entries.append({"ordinal":len(entries)+1,"byte_offset":pos,
                             "payload_bytes":size,
@@ -64,6 +66,39 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
         pos=end+4
     if pos!=len(data) or sum(hist.values())!=ORIGINAL_RECORDS:
         raise AssertionError("frozen original Fortran record count changed")
+    # The previous ledger inferred all 3,226 non-hourly records were WROUT1
+    # missing functions. Distinguish the actual embedded control/comment
+    # prefix from the *remaining* standalone metadata before accepting that
+    # implementation estimate. Never copy any frozen payload into native output.
+    if record_layout[0][1]!=96 or record_layout[1][1]!=4:
+        raise AssertionError("vendor CONC.DAT version/comment-count header changed")
+    first_start=record_layout[0][0]+4
+    version=data[first_start:first_start+96]
+    if not version.startswith(b"CONC.DAT"):
+        raise AssertionError("frozen first record is not CONC.DAT")
+    comments_at=record_layout[1][0]+4
+    ncomments=struct.unpack_from("<i",data,comments_at)[0]
+    if not 0<=ncomments<=len(record_layout)-2:
+        raise AssertionError("invalid original embedded comment count")
+    comment_records=record_layout[2:2+ncomments]
+    comments_hist=collections.Counter(n for _,n in comment_records)
+    trailing_nondata=NONDATA_RECORDS-2-ncomments
+    if trailing_nondata<0:
+        raise AssertionError("comment records exceed original non-DATA budget")
+    comment_examples=[]
+    for pos_comment,size_comment in comment_records[:5]:
+        raw=data[pos_comment+4:pos_comment+4+size_comment]
+        comment_examples.append(raw[:112].decode("latin-1").rstrip())
+    tail=record_layout[2+ncomments:]
+    first_tail=[{"ordinal":2+ncomments+i+1,"bytes":n,
+                 "ascii_prefix":data[p+4:p+4+min(n,32)].decode("latin-1",
+                                                             errors="replace")}
+                for i,(p,n) in enumerate(tail[:6])]
+    print("P7_ORIGINAL_WROUT1_PREFIX_DIAG"
+          f" EMBEDDED_CONTROL_COMMENTS={ncomments}"
+          f" COMMENTS_RECORD_BYTES={dict(sorted(comments_hist.items()))}"
+          f" NONDATA_AFTER_COMMENT_PREFIX={trailing_nondata}"
+          f" FIRST_POSTPREFIX_RECORD={2+ncomments+1}")
     out={
         "status":"ORIGINAL_WROUT1_OUTPUT_REFERENCE_AUDITED",
         "control_scope":"Hefei 2022 METFM=1 MWET=0 143h",
@@ -73,9 +108,16 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
         "original_143_hour_data_records_from_p7g_structure_parity":DATA_RECORDS,
         "original_nondata_records":NONDATA_RECORDS,
         "current_cpp_minimal_writer_nondata_records":2,
-        "missing_vendor_WROUT1_nondata_records":NONDATA_RECORDS-2,
+        "prior_ledger_unclassified_nondata_records":NONDATA_RECORDS-2,
+        "missing_vendor_WROUT1_nondata_records":"REQUIRES_TYPE_CLASSIFICATION",
         "original_record_lengths":{str(k):v for k,v in sorted(hist.items())},
         "original_first_records":entries,
+        "version_record_ascii":version.decode("latin-1").rstrip(),
+        "embedded_comment_count":ncomments,
+        "embedded_comment_record_byte_sizes":dict(sorted(comments_hist.items())),
+        "embedded_comment_first_lines":comment_examples,
+        "remaining_nondata_records_after_embedded_comments":trailing_nondata,
+        "first_records_after_embedded_comments":first_tail,
         "avet_minutes":avet,"pgtime_minutes":pgtime,
         "original_PG_sigma_y_averaging_factor":factor,
         "avenue":"WROUT1 header records and whole-case concentration/period writer must be ported; AVET=PGTIME does not waive them",
