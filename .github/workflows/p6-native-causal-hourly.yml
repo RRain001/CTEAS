@@ -126,6 +126,14 @@ jobs:
              -B "$RUNNER_TEMP/native-p6e" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
           cmake --build "$RUNNER_TEMP/native-p6e" \
              --target p6e_calmet_dat21 p6e_p6c_hourly_bridge --parallel 2
+      - name: Build source-independent P6F selected-case OUTHD writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet/p6f \
+            -B "$RUNNER_TEMP/native-p6f" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
+          cmake --build "$RUNNER_TEMP/native-p6f" \
+            --target cteas_p6f_geo_static_provenance --parallel 2
       - name: Execute all 143 real hours in original one-pass causal order
         shell: bash
         run: |
@@ -136,7 +144,17 @@ jobs:
             --p6e "$RUNNER_TEMP/native-p6e/p6e_calmet_dat21" \
             --bridge "$RUNNER_TEMP/native-p6e/p6e_p6c_hourly_bridge" \
             --cgamma "$RUNNER_TEMP/native-p6d/cteas_p6_native_cgamma_grid_143h" \
-            --work "$RUNNER_TEMP/p6-native-causal-143h" --hours 143 --emit-source-stage-trace
+            --work "$RUNNER_TEMP/p6-native-causal-143h" --hours 143 --emit-source-stage-trace \
+            --p6f-writer "$RUNNER_TEMP/native-p6f/cteas_p6f_geo_static_provenance"
+          independent="$RUNNER_TEMP/p6-native-causal-143h/native_causal_independent_header_calmet.dat"
+          test -s "$independent"
+          grep -q '"independent_p6f_source_header_written": true' \
+            "$RUNNER_TEMP/p6-native-causal-143h/native_cpp_hourly_manifest.json"
+          "$RUNNER_TEMP/native-p6e/p6e_calmet_dat21" compare \
+            --reference "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat" \
+            --candidate "$independent" \
+            --out "$RUNNER_TEMP/p6-native-causal-143h/p6f-independent-direct-45field.json"
+          echo "PASS_P6_NATIVE_COORDINATOR_DIRECT_P6F_SOURCE_HEADER_143H"
       - name: Original-wind P6E three-field control with SAME native station flux
         shell: bash
         run: |
@@ -156,6 +174,9 @@ jobs:
           path: |
             ${{ runner.temp }}/p6-native-causal-143h/native_cpp_hourly_manifest.json
             ${{ runner.temp }}/p6-native-causal-143h/native_causal_calmet.dat
+            ${{ runner.temp }}/p6-native-causal-143h/native_causal_independent_header_calmet.dat
+            ${{ runner.temp }}/p6-native-causal-143h/p6f-independent-direct-45field.json
+            ${{ runner.temp }}/p6-native-causal-143h/p6f-native-header.log
             ${{ runner.temp }}/p6-native-causal-143h/writer.log
             ${{ runner.temp }}/p6-native-causal-143h/three_field_control/p6e_three_field_wind_control.json
             ${{ runner.temp }}/p6-native-causal-143h/native_source_stage_143h/
