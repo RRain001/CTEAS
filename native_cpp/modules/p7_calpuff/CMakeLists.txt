@@ -1364,6 +1364,29 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7_HEFEI_POINT_INP}")
       "${P7G_LOCKED_CASE_MET}" "${P7_HEFEI_POINT_INP}")
 endif()
 
+# Genuine first-hour POINTS1 54 native admission and earliest physical
+# COMP divergence. DGM is an immutable comparator, never a solver input.
+add_executable(cteas_p7_hefei_firsthour_native_comp_tests
+  tests/original_hefei_firsthour_native_comp_tests.cpp)
+target_link_libraries(cteas_p7_hefei_firsthour_native_comp_tests PRIVATE
+  cteas_p7_original_comp_rise_hourly cteas_p7_original_point_prfin
+  cteas_p7_original_met_hours cteas_p7_control)
+if(MSVC)
+  target_compile_options(cteas_p7_hefei_firsthour_native_comp_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_hefei_firsthour_native_comp_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+set(P7_HEFEI_FIRSTHOUR_DGM
+  "${CMAKE_CURRENT_SOURCE_DIR}/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7_HEFEI_POINT_INP}" AND
+   EXISTS "${P7_HEFEI_FIRSTHOUR_DGM}")
+  add_test(NAME cteas_p7_hefei_real_54_puff_native_admissions
+    COMMAND cteas_p7_hefei_firsthour_native_comp_tests
+      "${P7G_LOCKED_CASE_MET}" "${P7_HEFEI_POINT_INP}"
+      "${P7_HEFEI_FIRSTHOUR_DGM}")
+endif()
+
 # Production native COMP post-rise calm IDOPT=1 opt-in,
 # original TURBSET minima, transaction and unsupported branch rollback.
 add_executable(cteas_p7_original_comp_calm_integrated_tests
