@@ -41,6 +41,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Install Qt runtime libraries for Ubuntu headless desktop test
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libegl1 libopengl0 libgl1 libxkbcommon-x11-0 libxcb-cursor0
       - name: Install PySide6 and YAML
         run: python3 -m pip install --disable-pip-version-check PySide6 PyYAML
       - name: Instantiate independent G5 GUI (headless Qt)
