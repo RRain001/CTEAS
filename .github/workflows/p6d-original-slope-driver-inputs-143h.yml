@@ -162,3 +162,76 @@ jobs:
             ${{ runner.temp }}/p6d-slope-causal-${{ github.run_id }}-${{ github.run_attempt }}/original/dgm-audit.json
           if-no-files-found: warn
           retention-days: 14
+
+  slope-no-fma-original-143h:
+    name: Forensic only - SLOPE source inputs with C++ FP contraction disabled
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            .github/actions/cteas-linux-toolchain
+            native_cpp/modules/p6_calmet
+            scripts
+            engine/vendor/src/CALMET_v6.5.0_L150223
+      - uses: ./.github/actions/cteas-linux-toolchain
+      - name: Restore pinned real Hefei grids
+        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+      - name: Recreate independently sourced original CALMET input oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-slope-no-fma-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 native_cpp/modules/p6_calmet/reference/original_internal_state_dump.py audit \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --out "$root/original" --compiler gfortran-11
+      - name: Build original standalone producer with strict C++ REAL4 FP evaluation flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-slope-no-fma-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          # Diagnostic build only; do NOT modify frozen accepted P6D/E/F kernels.
+          cmake -S native_cpp/modules/p6_calmet -B "$root/build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_CXX_FLAGS=-ffp-contract=off -fno-fast-math"
+          cmake --build "$root/build" --target cteas_p6_realcase_wind_field --parallel 2
+          "$root/build/cteas_p6_realcase_wind_field" \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --hours 143 --out "$root/candidate"
+      - name: Compare strict-FP synthetic-independent original SLOPE input trace
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p6d-slope-no-fma-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 scripts/p6d_trace_and_compare_slope_drivers_143h.py \
+            --original-dir "$root/original" \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --candidate "$root/candidate" \
+            --compiler gfortran-11 \
+            --out "$root/p6d_slope_no_fma_driver_143h.json"
+          # Forensic experiment, never promotes a numerical FAIL to physics PASS.
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path(os.environ["RUNNER_TEMP"])/(
+              "p6d-slope-no-fma-"+os.environ["GITHUB_RUN_ID"]+"-"+os.environ["GITHUB_RUN_ATTEMPT"])/"p6d_slope_no_fma_driver_143h.json"
+          r=json.loads(p.read_text())
+          print("SLOPE_NO_FMA_FORENSIC_ONLY",r["scientific_verdict"],
+                {k:(v["exceedances"],v["max_abs"]) for k,v in r["fields"].items()})
+          assert r["candidate_layout"] == "standalone_143h"
+          assert r["source_sha256"] and r["frozen_met_sha256"]
+          PY
+      - name: Archive no-FMA numerical evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6d-slope-no-fma-original-143h
+          path: |
+            ${{ runner.temp }}/p6d-slope-no-fma-${{ github.run_id }}-${{ github.run_attempt }}/p6d_slope_no_fma_driver_143h.json
+            ${{ runner.temp }}/p6d-slope-no-fma-${{ github.run_id }}-${{ github.run_attempt }}/original/dgm-audit.json
+          if-no-files-found: warn
+          retention-days: 14
