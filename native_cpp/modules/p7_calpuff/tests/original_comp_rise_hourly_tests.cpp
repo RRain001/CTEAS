@@ -54,6 +54,10 @@ void run(int total_hours){
     statics.cell_face_m={0,100,200,300};
     NeutralCompControls ctl;
     ctl.max_sampling_steps=1;
+    // Synthetic tiny-wind PG lifecycle fixture only: explicitly keep these
+    // 0.002-0.010 m/s winds NONCALM by choosing WSCALM=0.001.
+    // The frozen Hefei puff.inp independently uses WSCALM=0.5.
+    ctl.calm_threshold_ms=0.001F;
     DispersionSetup pg;
     pg.mdisp=3;
     pg.averaging_factor=1;
