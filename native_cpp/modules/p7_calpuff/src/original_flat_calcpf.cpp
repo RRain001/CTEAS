@@ -217,7 +217,6 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
         if(!std::isfinite(radius)||radius<=0.0F ||
            !std::isfinite(at_rec)||at_rec<=0.0F)
             throw std::invalid_argument("flat CALCPF sampling radius overflow");
-        const float rec_radius=impact_sigma_multiple*at_rec;
         const float frac=s.step_seconds/averaging_period_s;
         const bool pg_receiver=
             vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup;
@@ -251,8 +250,10 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             const float xr=static_cast<float>(i%nx)+1.0F;
             const float yr=static_cast<float>(i/nx)+1.0F;
             const auto screen=original_puff_screen(xo,yo,xn,yn,xr,yr,radius*radius);
-            if(!screen.has_impact ||
-               static_cast<float>(screen.closest_distance_squared)>rec_radius*rec_radius)
+            // Original CALCPF L4221-4224: PFSCRN first screens only
+            // against the END-of-substep puff radius. The second impact
+            // test L4241-4247 MUST follow PUFRECS SIGTY at this receptor.
+            if(!screen.has_impact)
                 continue;
             float receptor_sigma_y=sy;
             float receptor_vertical=vfactor;
@@ -273,6 +274,17 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                         "CALCPF receptor-specific VCOUP invalid");
                 if(receptor_vertical==0.0F)continue;
             }
+            // Vendor L4244-4247: PR2 = (NSIGMA*SYREC/DELSAM)**2.
+            // Using the step-midpoint SYM1 here would reject receptors
+            // that the source-ordered receptor-specific PUFRECS admits.
+            const float receptor_radius=
+                impact_sigma_multiple*(receptor_sigma_y/met_spacing_m);
+            if(!std::isfinite(receptor_radius) || receptor_radius<=0.0F)
+                throw std::invalid_argument(
+                    "original CALCPF receptor-specific sampling radius invalid");
+            if(static_cast<float>(screen.closest_distance_squared)>
+               receptor_radius*receptor_radius)
+                continue;
             const auto ints=puff_sampling_integrals(
                 xo,yo,xn,yn,xr,yr,receptor_sigma_y/met_spacing_m,
                 screen.closest_distance_squared);
