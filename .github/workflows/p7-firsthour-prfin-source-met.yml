@@ -1,0 +1,61 @@
+name: P7 frozen first-hour PRFIN source and MET bridge
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p7_calpuff/tests/original_hefei_source_met_bridge_tests.cpp'
+      - '.github/workflows/p7-firsthour-prfin-source-met.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p7-firsthour-prfin-source-met-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  first-hour-input:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /native_cpp/modules/p7_calpuff/**
+            /engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
+            /project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
+            /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+      - name: Pin original POINTS1 PRFIN RLSMET physical order
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, pathlib, re
+          source=pathlib.Path('engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for')
+          data=source.read_bytes()
+          digest=hashlib.sha256(data).hexdigest()
+          assert digest=='da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568',digest
+          lines=data.decode('latin-1').splitlines()
+          spans=((15415,15755),(15925,16013),(18250,18385))
+          terms=re.compile(r'\b(?:RLSMET|PRFIN|PRFPP|STKTIP|SQRTS|PTGINV|WSNEW|FLUXB|FLUXM|FMIX|HEFF|ZFINAL|XFIN|TEMPK|TEMP|DTEMP|FMFPT1|DPBL|ISTAB|TI|PTLAPS|TSTAK|THETA|TGRAD|ZINV|TINV|SINV)\b',re.I)
+          shown=set()
+          for lo,hi in spans:
+              for idx in range(lo-1,min(hi,len(lines))):
+                  if not terms.search(lines[idx]): continue
+                  for j in range(max(lo-1,idx-2),min(hi,idx+3)):
+                      if j not in shown:
+                          print(f'P7_VENDOR_FIRST_HOUR {j+1:6d} {lines[j]}')
+                          shown.add(j)
+          print('P7_FIRST_HOUR_VENDOR_SOURCE_SHA=PASS LINES_PRINTED='+str(len(shown)))
+          PY
+      - name: Execute real 2022 MET first-hour independent stack input gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
+          test -s project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+          build="${RUNNER_TEMP}/p7-firsthour-input-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cmake -S native_cpp/modules/p7_calpuff -B "$build" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$build" --parallel 2 --target cteas_p7_original_hefei_source_met_bridge_tests
+          ctest --test-dir "$build" -R '^cteas_p7_hefei_source_met_stack_bridge$' --output-on-failure -V
+          echo 'P7_FIRST_HOUR_REAL_MET_STACK_DIAGNOSTIC=PASS PRFIN_PARITY=NOT_YET_ACCEPTED'
