@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cteas/puff/original_comp_rise.hpp"
+#include "cteas/puff/original_release_wind.hpp"
 #include <cstddef>
 #include <vector>
 
@@ -64,6 +65,15 @@ public:
         const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban,const OriginalPointHourSource& source);
+    // First native original POINTS1/WSNEW path. Source must contain
+    // independently computed native PRFIN HEFF; only selected original
+    // METFM1 ZFIND/WINDSET/RLSMET speed is re-evaluated here.
+    // Source.cadence.wind_speed_ms is never used as the physical input.
+    [[nodiscard]] RiseCadencedHour advance_hour_point_native_wsnew(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource& source,
+        float calm_threshold_ms);
     [[nodiscard]] OriginalPuffMotionState motion(int id)const;
     [[nodiscard]] NativeVerticalPuffState vertical(int id)const;
     [[nodiscard]] std::size_t puff_steps(int id)const;

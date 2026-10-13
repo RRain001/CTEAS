@@ -1108,3 +1108,9 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7_RLSMET_REAL_DGM}")
            COMMAND cteas_p7_original_release_wind_tests
            "${P7G_LOCKED_CASE_MET}" "${P7_RLSMET_REAL_DGM}")
 endif()
+
+# Native selection of WSNEW from original WINDSET at PRFIN effective height
+# instead of externally supplied source.cadence.wind_speed_ms.
+target_link_libraries(cteas_p7_original_comp_rise_hourly PUBLIC cteas_p7_original_release_wind)
+add_test(NAME cteas_p7_point_hourly_cadence_native_rlsmet
+         COMMAND cteas_p7_original_point_hourly_cadence_tests rlsmet)

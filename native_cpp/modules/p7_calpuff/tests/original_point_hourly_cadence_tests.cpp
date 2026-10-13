@@ -65,6 +65,33 @@ struct Inputs {
         source.cadence.hour_seconds=3600;
     }
 };
+void native_release_wsnew() {
+    Inputs fixture;
+    auto& a=fixture;
+    // The dummy input WSNEW is enormously above the permitted native
+    // CALMET level-2 wind of 0.006 m/s. Native WINDSET must override it.
+    a.source.cadence.wind_speed_ms=1000.0;
+    a.source.cadence.emission_interval=100.0;
+    a.source.cadence.max_puffs=3;
+    const auto hour=a.driver.advance_hour_point_native_wsnew(
+        a.met,a.geo,a.ctl,a.pg,false,a.source,0.5F);
+    need(hour.cadence.puff_count==1 &&
+         hour.cadence.emission_duration_s==3600.0F &&
+         hour.new_puffs==1 && hour.active_after==1 &&
+         hour.steps.size()==1 &&
+         hour.steps[0].step.after.travel_time_s==3600.0F &&
+         a.driver.completed_hours()==1 &&
+         a.driver.active_count()==1,
+         "native original RLSMET/WINDSET WSNEW was not used for POINTS1");
+    const auto mixed=a.driver.vertical(1);
+    need(mixed.mass_mixed.at(0)+mixed.mass_above.at(0)==7200.0F &&
+         mixed.mass_mixed.at(1)+mixed.mass_above.at(1)==10800.0F,
+         "native release wind integration caused mass drift");
+    std::cout<<"P7_NATIVE_POINTS1_FROM_WINDSET=PASS"
+             <<" EXTERNAL_WSNEW_IGNORED=YES"
+             <<" METFM1_NATIVE_RELEASE_WIND=YES"
+             <<" FROZEN_HEFEI_143H=NOT_YET_ACCEPTED\n";
+}
 void run(int hours){
     Inputs a;
     const auto n=a.source.cadence.max_puffs;
@@ -141,6 +168,7 @@ void run(int hours){
 int main(int argc,char** argv){
     try{
         if(argc!=2)throw std::invalid_argument("expected 1/6/143");
+        if(std::string(argv[1])=="rlsmet"){native_release_wsnew();return 0;}
         const int hours=std::stoi(argv[1]);
         if(hours!=1 && hours!=6 && hours!=143)
             throw std::invalid_argument("invalid selected hour span");
