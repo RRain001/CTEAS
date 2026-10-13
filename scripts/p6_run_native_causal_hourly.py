@@ -78,6 +78,10 @@ def main():
                  "--hours",1,"--out",d,"--gamma",gamma]
         if hour:
             command.extend(["--comp-state-prefix",history])
+        else:
+            # Original CALMET SETUP initializes COMMON thermal state to zero;
+            # DIAGNO still executes real STHEOR/MIXHTST/SIMILT at hour 1.
+            command.append("--native-setup-hour0")
         run(command,folder/"p6d.log")
         native=folder/"comp"
         opts=[
@@ -123,6 +127,7 @@ def main():
         "hours_completed":a.hours,
         "native_p6d_wind":True,
         "native_prepdi_cgamma_previous_comp_state":True,
+        "first_hour_stheor_mixhtst_original_setup_zero":True,
         "native_p6e_comp":True,
         "hourly_execution":"P6D[n] -> P6E[n] -> commit ZI/ZICONV/DPTT -> P6D[n+1]",
         "frozen_original_wind_used":False,
