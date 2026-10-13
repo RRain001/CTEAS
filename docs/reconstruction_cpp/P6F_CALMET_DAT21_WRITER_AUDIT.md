@@ -292,3 +292,21 @@ This milestone **supersedes the earlier pending independently rebuilt header com
 - Separate paired-run evidence from [GitHub Actions #38379020835](https://github.com/RRain001/CTEAS/actions/runs/38379020835) directly compares unmodified CALPUFF's concentration output when its input is the original native-file header versus the independent P6F source-header version. Record its final job result before treating byte-equivalent P7 impact as accepted.
 
 **Remaining explicitly open:** the *P6E per-hour producer* still reads an original/reference `CALMET.DAT` envelope for some setup/statics; this downstream P6F **writer independence does not prove upstream P6E input-reference elimination**. No generic multi-surface-station, precipitation-station, non-UTM, variable dimensions, or end-to-end original-source-free meteorological production is claimed. The C++ CALMET time authority remains process-backed, not an in-process `step_diagno/step_comp` kernel. Do not yet mark the overall P6 milestone PASS.
+
+
+## Original CALPUFF 7.2.1 consumes independent native OUTHD (2026-10-13)
+
+**PASS**, frozen Hefei selected 143h run, [GitHub Actions #38379522205](https://github.com/RRain001/CTEAS/actions/runs/38379522205).
+
+The new [`verify_original_calpuff_native_independent_header.py`](../native_cpp/modules/p6_calmet/p6f/tests/verify_original_calpuff_native_independent_header.py) builds unmodified original CALPUFF 7.2.1 from pinned `modules.for`/`calpuff.for`, and performs a control-variable test using the **same C++ P6D/P6E 143h weather payload** twice:
+1. a native CALMET.DAT merged by the C++ clock whose existing header contains 3 documentation lines;
+2. a source-generated independent P6F OUTHD with 1,090 comments derived from `met.inp` and `GEO.DAT`, with all numeric control fields and 12,514 static values explicitly rebuilt by the native source generator.
+
+The test checks that **all 6,446 non-comment Fortran records**—including the entire 143h weather field inventory—are byte identical between (1) and (2), independent of comment count and record offsets. Both original CALPUFF runs completed all 143 hours. The 143h concentration-grid `float32` payload SHA-256 is identical between the two outputs. The full `puff.con` file hashes are **not** identical (439 non-hourly/non-concentration data records differ; first differing record index 1), so do not claim full-file byte equivalence or prove the meaning of those changed records without separate decoding.
+
+The earlier [Actions #38378460648](https://github.com/RRain001/CTEAS/actions/runs/38378460648) established independent numerical OUTHD and static provenance + original 45-field scientific comparison + P7 structural decoding. This final control-variable CALPUFF test closes the **unmodified P7 read/143h concentration preservation gate**.
+
+Scope and remaining hold:
+- This validates the selected Hefei 2022 one-surface/one-upper-station 50×50×9 case. `--emit-native-header` currently uses an already-assembled native P6D/P6E CALMET.DAT as the *hourly field carrier* (not as the source for header and statics). A fully stand-alone P6F writer should receive the per-hour native P6D/P6E field arrays directly, construct `Calmet21File` without parsing a previously assembled CALMET.DAT, and validate source provenance/hashes at the interface.
+- CALPUFF concentration-grid byte equivalence for this one case is not CALPUFF source-physics numerical equivalence for every deposition, output mode, or input branch. Do not claim P6 generic G5 or complete all-case P6F acceptance.
+- No CALMET scientific tolerances, P6D/P6E physics, reference data or Fortran sources were modified by the OUTHD acceptance test.
