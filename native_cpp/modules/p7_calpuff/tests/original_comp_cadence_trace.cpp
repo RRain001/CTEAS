@@ -39,8 +39,10 @@ int main_run(const std::string& file,const int expected_hours) {
     std::set<int> hours;
     std::size_t records=0,correct_new=0,wrong_new=0;
     std::size_t old_measured=0,old_postwind_differences=0;
+    std::size_t old_pre_exact=0,old_pre_mismatch=0;
     int first_error_hour=0;
     int first_old_hour=0,first_old_puff=0,first_old_ns=0,first_old_pred=0;
+    int first_pre_hour=0;
     OriginalRecord rec;
     while(input.read(reinterpret_cast<char*>(&rec),sizeof(rec))) {
         ++records;
@@ -109,6 +111,44 @@ int main_run(const std::string& file,const int expected_hours) {
                     first_old_ns=nsam;first_old_pred=guess.sampling_steps;
                 }
             }
+            // Real original input for the OLD cadence is the ADVECT
+            // PUFFDZ-averaged wind BEFORE RISEWIND. On the first KSAM
+            // of each old puff, DGM step4 samples the same cell/PUFFDZ as
+            // the initial COMP L10119 ADVECT; do not use post-RISEWIND WS.
+            const float ub=rec.r[9],vb=rec.r[10];
+            const float speed=std::sqrt(ub*ub+vb*vb);
+            need(std::isfinite(speed),"original pre-RISEWIND wind not finite");
+            const float original_pre_ws=speed<0.5F?
+                                         std::max(speed,0.001F):speed;
+            const SamplingCadence pre=sampling_cadence({
+                .new_puff=false,.source_type=1,
+                .emission_period_s=0.0,.step_seconds=3600.0,
+                .release_number=1,.wind_speed_ms=original_pre_ws,
+                .x_sam_len=1.0,.grid_spacing_m=100.0,
+                .max_sampling_steps=99
+            });
+            if(pre.sampling_steps==nsam &&
+               pre.start_substep==nsstr && pre.old_flag==iold &&
+               bits(static_cast<float>(pre.sampling_step_inverse))==
+                   bits(rec.r[15]) &&
+               bits(static_cast<float>(pre.reference_step_s))==
+                   bits(reftsamp)) {
+                ++old_pre_exact;
+            } else {
+                ++old_pre_mismatch;
+                if(!first_pre_hour){
+                    first_pre_hour=hour;
+                    std::cerr<<"P7_ORIGINAL_COMP_OLD_PREWIND_FIRST_DIFFERENCE"
+                             <<" HOUR="<<hour<<" PUFF="<<puff
+                             <<" ORIG_NSAM="<<nsam<<" NATIVE_NSAM="<<pre.sampling_steps
+                             <<" ORIG_REFTSAMP="<<reftsamp
+                             <<" NATIVE_REFTSAMP="<<pre.reference_step_s
+                             <<" ORIG_XSAMI="<<rec.r[15]
+                             <<" NATIVE_XSAMI="<<pre.sampling_step_inverse
+                             <<" ORIGINAL_ADVECT_U="<<ub
+                             <<" ORIGINAL_ADVECT_V="<<vb<<"\n";
+                }
+            }
         }
     }
     need(input.eof(),"original COMP DGM truncated at a non-record boundary");
@@ -130,7 +170,9 @@ int main_run(const std::string& file,const int expected_hours) {
              <<" NEW_MISMATCH="<<wrong_new
              <<" OLD_PUFF_EPISODES="<<old_measured
              <<" OLD_POSTRISE_WS_PROXY_DIFFERENCES="<<old_postwind_differences
-             <<" OLD_TRUE_PRE_CADENCE_WS=NOT_IN_DGM"
+             <<" OLD_PRE_RISE_WIND_EXACT="<<old_pre_exact
+             <<" OLD_PRE_RISE_WIND_MISMATCH="<<old_pre_mismatch
+             <<" OLD_UV=ORIGINAL_ADVECT_DGM_STEP4"
              <<" ORIGINAL_SOURCE_MUTATED=NO"
              <<" FULL_NATIVE_COMP_MXSAM99=NOT_ACCEPTED\n";
     if(first_old_hour)
@@ -141,6 +183,10 @@ int main_run(const std::string& file,const int expected_hours) {
                  <<" POSTRISE_PROXY_CPP_NSAM="<<first_old_pred<<"\n";
     need(wrong_new==0,"source-ported POINTS1/COMP NEW REAL4 cadence diverges");
     need(correct_new==unique_new.size(),"new-puff cadence coverage incomplete");
+    need(old_pre_mismatch==0,
+         "source-ported old-puff NSAM XSAMI REFTSAMP differs from original");
+    need(old_pre_exact==unique_old.size(),
+         "old-puff cadence coverage incomplete");
     return 0;
 }
 }
