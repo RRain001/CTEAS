@@ -86,34 +86,51 @@ def report(args):
             values=[float(x) for x in m.group(1).split()]
             if len(values)!=7:raise ValueError("unexpected native AVETMP trace")
             candidates.append(values)
-    if len(candidates)!=143:raise RuntimeError(f"expected 143 native hourly probes, got {len(candidates)}")
-    if len(originals)<143:raise RuntimeError(f"missing original traces: {len(originals)}")
-    # A candidate must be compared to its original DIAGNO call, not a
-    # possibly different COMP/AVETMP invocation at the same grid cell.
-    # The first nearest ordering uses raw wind inputs and temperature as
-    # discriminators; do not claim stage identity without verifying.
+    nh=143
+    if len(originals)!=3*nh or len(candidates) not in (nh,2*nh):
+        raise RuntimeError(
+            f"unexpected original/native hourly AVETMP calls: {len(originals)}/{len(candidates)}")
+    native_per_hour=len(candidates)//nh
+    # The original always evaluates three AVETMP calls per model hour:
+    # DIAGNO's first SURFVAR, DIAGNO's post-FRADJ SURFVAR, then COMP.
+    # Native P6D formerly had only one DIAGNO call; the source-order repair
+    # introduces the second, and this test must follow both explicitly.
+    # Never pair against a globally nearest hour with coincident observations.
     results=[]
-    for hour,cand in enumerate(candidates):
-        distances=[(abs(ref[0]-cand[0])+abs(ref[1]-cand[1])+abs(ref[2]-cand[2]),idx)
-                   for idx,ref in enumerate(originals)]
-        dist,idx=min(distances)
-        ref=originals[idx]
-        results.append({"hour_index":hour,"candidate":cand,"original_nearest":ref,
-                        "original_probe_index":idx,"input_L1_distance":dist,
-                        "out_delta_K":cand[5]-ref[5],
-                        "sumwt_delta":cand[3]-ref[3],
-                        "ztbar_delta":cand[4]-ref[4]})
+    for hour in range(nh):
+        for phase in range(native_per_hour):
+            cand=candidates[hour*native_per_hour+phase]
+            ref=originals[hour*3+phase]
+            results.append({
+                "hour_index":hour,
+                "phase":"DIAGNO_initial" if phase==0 else "DIAGNO_post_FRADJ",
+                "candidate":cand,"original_stage_matched":ref,
+                "original_probe_index":hour*3+phase,
+                "input_max_abs_difference":max(abs(cand[k]-ref[k]) for k in range(3)),
+                "out_delta_K":cand[5]-ref[5],
+                "sumwt_delta":cand[3]-ref[3],
+                "ztbar_delta":cand[4]-ref[4]})
+    by_phase={}
+    for phase in ("DIAGNO_initial","DIAGNO_post_FRADJ"):
+        subset=[r for r in results if r["phase"]==phase]
+        if subset:by_phase[phase]={
+            "calls":len(subset),
+            "max_input_abs_error":max(x["input_max_abs_difference"] for x in subset),
+            "max_temperature_abs_error_K":max(abs(x["out_delta_K"]) for x in subset),
+            "max_weight_sum_abs_error":max(abs(x["sumwt_delta"]) for x in subset),
+            "strict_1e-4K_exceedances":sum(abs(x["out_delta_K"])>1e-4 for x in subset)}
     report={"status":"FORENSIC_NOT_SCIENCE_PASS","grid_point":[12,19],
             "original_calls":len(originals),"native_calls":len(candidates),
-            "sequence":results}
+            "native_DIAGNO_calls_per_hour":native_per_hour,
+            "by_stage":by_phase,"sequence":results}
     outfile=args.work/"avetmp_first_divergence.json"
-    outfile.write_text(json.dumps(report,indent=2)+"\n")
-    print(json.dumps({"status":report["status"],"original_calls":len(originals),
-          "native_calls":len(candidates),
-          "worst_by_native_original_input_distance":
-              sorted(results,key=lambda x:x["input_L1_distance"],reverse=True)[:5],
-          "largest_output_delta":
-              sorted(results,key=lambda x:abs(x["out_delta_K"]),reverse=True)[:5]},indent=2))
+    outfile.write_text(json.dumps(report,indent=2)+"\\n")
+    print(json.dumps({
+        "status":report["status"],"original_calls":len(originals),
+        "native_calls":len(candidates),"by_stage":by_phase,
+        "Jan1_19_stage_values": [r for r in results if r["hour_index"]==18],
+        "largest_output_delta":
+            sorted(results,key=lambda x:abs(x["out_delta_K"]),reverse=True)[:5]},indent=2))
 
 def main():
     p=argparse.ArgumentParser()
