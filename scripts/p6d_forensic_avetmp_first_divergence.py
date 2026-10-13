@@ -86,7 +86,12 @@ def original(args):
     source_copy = root / "calmet_avetmp_probe.for"
     original_text=inject_once(source.read_text(), FOREIGN_ANCHOR, FOREIGN_PROBE)
     original_text=inject_once(original_text,QH_PRE_ANCHOR,QH_PRE_PROBE)
-    original_text=inject_once(original_text,QH_POST_ANCHOR,QH_POST_PROBE)
+    # Both ISFCMET=0 and =1 ELUSTR branches end in this literal line.
+    # The frozen case uses ISFCMET=0; instrument only the first branch.
+    if original_text.count(QH_POST_ANCHOR)!=2:
+        raise RuntimeError("original DIAGNO ELUSTR branch source drift")
+    original_text=original_text.replace(QH_POST_ANCHOR,
+                                        QH_POST_ANCHOR+QH_POST_PROBE,1)
     source_copy.write_text(original_text)
     binary = root / "bin" / "calmet-avetmp-probe.x"
     dgm._build(args.compiler,source_copy,args.audit_dir / "include-alias",binary)
