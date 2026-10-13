@@ -38,7 +38,7 @@ int main(){
             .travel_distance_begin_m=30,.mean_wind_ms=3,.clip=false});
         check(upstream.distance_to_receptor_m==0 &&
               upstream.time_to_receptor_s==0 &&
-              upstream.fraction==-0.3F,
+              std::abs(upstream.fraction+0.3F)<1.0e-6F,
               "original PUFRECS source-boundary reset failed");
         bool rejected=false;
         try{(void)original_pufrecs_geometry({.mean_wind_ms=0});}
