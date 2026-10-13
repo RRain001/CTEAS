@@ -33,6 +33,15 @@ target_link_libraries(cteas_p6f_calmet_dat21_writer PRIVATE p6f_calmet_dat21 p6f
 add_executable(cteas_p6f_calmet_dat21_perturb src/calmet_dat21_perturb_main.cpp)
 target_link_libraries(cteas_p6f_calmet_dat21_perturb PRIVATE p6f_calmet_dat21)
 
+# Independent provenance checker: uses the original GEO.DAT/P6C READGE
+# parser and the met.inp control deck, never the CALMET.DAT static values
+# as expected values. Comparator file is input only to verify source parity.
+add_executable(cteas_p6f_geo_static_provenance
+  src/p6f_geo_static_provenance_main.cpp)
+target_link_libraries(cteas_p6f_geo_static_provenance PRIVATE p6f_calmet_dat21)
+target_include_directories(cteas_p6f_geo_static_provenance PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../include")
+
 add_executable(p6f_calmet_dat21_writer_tests tests/calmet_dat21_writer_tests.cpp)
 target_link_libraries(p6f_calmet_dat21_writer_tests PRIVATE p6f_calmet_dat21)
 
@@ -48,7 +57,8 @@ target_link_libraries(p6f_calmet_dat21_e22_cross_read_tests PRIVATE p6f_calmet_d
 target_include_directories(p6f_calmet_dat21_e22_cross_read_tests PRIVATE ${P6F_E22_INCLUDE})
 
 foreach(target p6f_calmet_dat21 p6f_p6d_fields cteas_p6f_calmet_dat21_writer
-        cteas_p6f_calmet_dat21_perturb p6f_calmet_dat21_writer_tests
+        cteas_p6f_calmet_dat21_perturb cteas_p6f_geo_static_provenance
+        p6f_calmet_dat21_writer_tests
         p6f_calmet_dat21_e22_cross_read_tests)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX)
@@ -80,6 +90,25 @@ set(P6F_REAL_MET_SHA256
   "b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30")
 set(P6F_P7_DECODER
   "${CMAKE_CURRENT_SOURCE_DIR}/../../p7_calpuff/reference/original_decode_calmet_hourly.py")
+
+# The locked-case static provenance gate has *independent* upstream input:
+# GEO.DAT (READGE), met.inp (grid/station/projection), and no static values
+# sourced from MET.DAT. Missing raw inputs are NOT silently skipped.
+set(P6F_SOURCE_GEO
+  "${P6F_REPO_ROOT}/project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/geo.dat")
+set(P6F_SOURCE_DECK
+  "${P6F_REPO_ROOT}/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
+foreach(source_file "${P6F_SOURCE_GEO}" "${P6F_SOURCE_DECK}")
+  if(NOT EXISTS "${source_file}")
+    message(FATAL_ERROR "P6F source-independent GEO/deck gate missing ${source_file}")
+  endif()
+endforeach()
+add_test(NAME p6f_calmet_dat21_independent_geo_statics
+  COMMAND cteas_p6f_geo_static_provenance
+    --geo "${P6F_SOURCE_GEO}"
+    --deck "${P6F_SOURCE_DECK}"
+    --candidate "${P6F_REAL_MET_DAT}")
+
 if(NOT EXISTS "${P6F_REAL_MET_DAT}")
   message(FATAL_ERROR
     "P6F byte-identity acceptance needs the frozen reference ${P6F_REAL_MET_DAT}.")
