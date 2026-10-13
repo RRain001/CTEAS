@@ -697,13 +697,14 @@ void test(){
     const auto binary_path=std::filesystem::temp_directory_path() /
         ("cteas-p7-flat6h-"+std::to_string(
             std::chrono::steady_clock::now().time_since_epoch().count())+".con");
-    // Source x/y is near the 50th MET cell. Move only the sampling
-    // window (not the puff or wind) so a real, nonzero native transport
-    // contribution can reach it; the earlier local 1..50 window was
-    // capable of passing only zero-field output round trips.
+    // The native point's authoritatively stored coordinates start at
+    // MET cells (5,5), NOT (50,50): source_x_km=5 is already converted
+    // by the POINTS1 release grid convention. A window starting at
+    // (40,40) misses y=5 and yields a fully zero false-positive output.
+    // Keep the original 1..50 grid to intercept the actual plume path.
     auto plume_grid=flat_grid;
-    plume_grid.ibsamp=40;
-    plume_grid.jbsamp=40;
+    plume_grid.ibsamp=1;
+    plume_grid.jbsamp=1;
     const auto plume_sampler=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F);
     std::size_t sample_diagnostic_count=0;
