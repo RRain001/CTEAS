@@ -10,7 +10,7 @@ c --- Test harness. SIGTY / SIGTZ are linked UNMODIFIED vendor units.
      &     status='replace')
       do
          read(*,*,iostat=ios) icase,sy0,sz0,dt,dxkm,uavg,sv,sw,el,
-     &        tyidr,tzidr,syhin,aytin,thftin
+     &        tyidr,tzidr,tzisdr,syhin,aytin,thftin
          if(ios.ne.0) exit
          idoptys=1
          idoptzs=1

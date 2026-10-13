@@ -17,11 +17,11 @@ def main():
  pinned=json.loads((base/"reference/sigma_source_anchor.json").read_text())
  assert manifest==pinned,"vendor SIGTY/SIGTZ anchor changed"
  cases=[]
- for el in [-200.0,0.0]:
+ for el in [-200.0,0.0,100.0]:
   for dt in [0.0,20.0,300.0,1800.0]:
    for sy in [0.0,0.5,4.0,12.0]:
     cases.append((len(cases)+1,sy,sy*0.8,dt,0.02,0.2,
-                  0.45,0.25,el,0.001,0.002,550.0,0.1,5000.0))
+                  0.45,0.25,el,0.001,0.002,0.001,550.0,0.1,5000.0))
  matrix="\n".join(" ".join(str(x) for x in row) for row in cases)+"\n"
  with tempfile.TemporaryDirectory(prefix="p7-calm-idopt1-") as work:
   stage=Path(work)/"stage"
@@ -63,6 +63,6 @@ def main():
      raise RuntimeError(f"original mismatch {i}:{j}: {want} vs {got} rel={rel}")
   print(f"P7_CALM_IDOPT1_SIGTY_SIGTZ_VENDOR_PARITY=PASS CASES={len(cases)} "
         f"VALUES={len(cases)*6} MAX_REL={worst:.3e}")
-  print("P7_STABLE_CALM_ELS_GT_ZERO=NOT_YET_ACCEPTED")
+  print("P7_STABLE_CALM_ELS_GT_ZERO=SOURCE_PARITY_TESTED")
   print("P7_REAL_989_CALM_SUBSTEPS=NOT_YET_ACCEPTED")
 if __name__=="__main__":main()
