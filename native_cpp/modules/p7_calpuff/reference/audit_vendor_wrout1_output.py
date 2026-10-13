@@ -194,6 +194,11 @@ def source_wrou1_writes(vendor: Path) -> None:
           f" WRITE_ANCHORS={len(matches)}")
     for index,line in matches[:65]:
         print(f"P7_VENDOR_WROUT1_STATEMENT LINE={index} CODE={line[:160]!r}")
+    # Keep original fixed-form continuation lines to preserve the exact
+    # ordered payload fields of 300-byte and 52-byte header records.
+    for line_number in range(57174,57235):
+        print(f"P7_VENDOR_WROUT1_RAW LINE={line_number}"
+              f" CODE={source[line_number-1][:126]!r}")
 
 
 def main() -> int:
