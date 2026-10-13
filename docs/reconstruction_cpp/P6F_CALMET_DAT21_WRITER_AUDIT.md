@@ -1,3 +1,13 @@
+## Independent OUTHD control provenance (2026-10-13)
+
+[Actions #38376315827](https://github.com/RRain001/CTEAS/actions/runs/38376315827) is a separate independent-header source gate with **PASS**. It parses the frozen `CALMET.DAT` as a target (not a header template), reads only the upstream `met.inp` and `GEO.DAT` as expected-value inputs and validates 49 source-derived conditions across the 176-byte OUTHD run-control record: 143 hourly intervals, independent start/end clocks, UTC zone, grid geometry and spacing, selected station counts, land-use count/range, UTM 50N datum/date, origin and projection numeric terms. Mutated ABTZ, IEHR, NX and GEO UTM-zone inputs are each rejected. The tool is `scripts/p6f_independent_header_control_audit.py`; workflow `.github/workflows/p6f-independent-header-source.yml`; only the repository's GitHub-hosted Ubuntu runner was used. The reference file SHA-256 is pinned by the job before validation.
+
+This is separate from [Actions #38375786650](https://github.com/RRain001/CTEAS/actions/runs/38375786650), which confirmed 12,514 independently GEO/deck-sourced static field values and byte-exact re-serialisation in the frozen-hourly **envelope**. The selected real-case independent native P6D/P6E 143h candidate was re-serialized with the same sourced statics in [Actions #38376244497](https://github.com/RRain001/CTEAS/actions/runs/38376244497), retaining all 45 numeric original comparison PASS.
+
+**Important scope restriction:** the independent OUTHD audit checks the bytes' *content provenance*, not that all controls/comments/field masks are generated without any reference CALMET envelope in the current production writer. The 1,114 original comments/declaration and full per-hour autonomous writer invocation remain separate completion gates. A 45/45 real-case numeric pass and static source reconstruction do not establish a fully self-sufficient P6F implementation or generic CALMET acceptance. PR #53 must remain Draft.
+
+---
+
 # P6F CALMET.DAT 2.1 writer — byte-identity contract
 
 Date: 2026-10-11. Unchanged reference is CALMET 6.5.0 L150223 (original vendor Git blob
