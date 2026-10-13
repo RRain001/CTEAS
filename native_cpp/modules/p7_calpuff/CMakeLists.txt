@@ -176,7 +176,7 @@ add_executable(cteas_p7_original_turbset_mdisp3_tests
 target_include_directories(cteas_p7_original_turbset_mdisp3_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(cteas_p7_original_turbset_mdisp3_tests PRIVATE
-  cteas_p7_control)
+  cteas_p7_control cteas_p7_calmet21)
 if(MSVC)
   target_compile_options(cteas_p7_original_turbset_mdisp3_tests PRIVATE /W4 /WX)
 else()
@@ -185,9 +185,13 @@ else()
 endif()
 set(P7_CALM_HEFEI_CONTROL
   "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp")
-if(EXISTS "${P7_CALM_HEFEI_CONTROL}")
+set(P7_CALM_HEFEI_MAKEGEO
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp")
+if(EXISTS "${P7_CALM_HEFEI_CONTROL}" AND
+   EXISTS "${P7_CALM_HEFEI_MAKEGEO}" AND EXISTS "${P7G_LOCKED_CASE_MET}")
   add_test(NAME cteas_p7_original_turbset_mdisp3_hefei_minima
-    COMMAND cteas_p7_original_turbset_mdisp3_tests "${P7_CALM_HEFEI_CONTROL}")
+    COMMAND cteas_p7_original_turbset_mdisp3_tests
+      "${P7_CALM_HEFEI_CONTROL}" "${P7_CALM_HEFEI_MAKEGEO}" "${P7G_LOCKED_CASE_MET}")
 endif()
 
 # P7F: CALPUFF 7.2.1 MDRY=1 dry deposition for the selected real-case species

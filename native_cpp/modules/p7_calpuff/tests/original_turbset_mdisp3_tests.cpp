@@ -1,11 +1,12 @@
 #include "cteas/puff/original_turbset_mdisp3.hpp"
+#include "cteas/puff/original_met_hours.hpp"
 #include <array>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
 int main(int argc,char** argv){
  try{
-  if(argc!=2)throw std::invalid_argument("usage TURBSET_TEST puff.inp");
+  if(argc!=4)throw std::invalid_argument("usage TURBSET_TEST puff.inp makegeo.inp met.dat");
   const auto cfg=cteas::puff::original_turbset_mdisp3_from_control(
       cteas::puff::ControlFile::read_file(argv[1]));
   const std::array<float,6> sw={0.20F,0.12F,0.08F,0.06F,0.03F,0.016F};
@@ -27,9 +28,46 @@ int main(int argc,char** argv){
   try{(void)cteas::puff::original_turbset_mdisp3_minimum(cfg,4,0);}
   catch(const std::invalid_argument&){rejected=true;}
   if(!rejected)throw std::runtime_error("unknown land/water silently defaulted");
+  const auto makegeo=cteas::puff::ControlFile::read_file(argv[2]);
+  const int iwat1=makegeo.required_int("IWAT1");
+  const int iwat2=makegeo.required_int("IWAT2");
+  if(iwat1!=50||iwat2!=55)
+   throw std::runtime_error("frozen 2022 original MAKEGEO IWAT1/IWAT2 drift");
+  std::size_t hours=0,land_cells=0,water_cells=0,validated_cells=0;
+  const auto data=cteas::puff::OriginalMetHourlyReader::read(argv[3],
+   [&](const cteas::puff::Calmet21Header& header,
+       const cteas::puff::Calmet21Static& static_fields,
+       const cteas::puff::OriginalMetHour& met){
+    if(header.nx!=50||header.ny!=50||met.nx!=50||met.ny!=50||
+       !static_fields.present||static_fields.land_use.size()!=2500)
+     throw std::runtime_error("frozen original MET static ILANDU grid mismatch");
+    if(hours==0){
+     for(std::size_t cell=0;cell<2500;++cell){
+      const auto cat=static_fields.land_use[cell];
+      const int ilw=cteas::puff::original_turbset_ilw_from_landuse(cat,iwat1,iwat2);
+      if(ilw==2)++water_cells;else ++land_cells;
+      for(int pg=1;pg<=6;++pg){
+       const auto a=cteas::puff::original_turbset_mdisp3_from_cell(
+         cfg,static_fields,50,50,cell,pg,iwat1,iwat2);
+       const auto b=cteas::puff::original_turbset_mdisp3_minimum(cfg,pg,ilw);
+       if(a.sigv_ms!=b.sigv_ms||a.sigw_ms!=b.sigw_ms)
+        throw std::runtime_error("native ILANDU to TURBSET minima parity drift");
+       ++validated_cells;
+      }
+     }
+    }
+    ++hours;
+   },true);
+  if(hours!=143||data.intervals!=143||land_cells+water_cells!=2500||
+     validated_cells!=15000)
+   throw std::runtime_error("original 143h MET ILANDU + MAKEGEO source bridge incomplete");
   std::cout<<"P7_ORIGINAL_TURBSET_MDISP3_HEFEI_MINIMA=PASS"
            <<" CELLS=EXPLICIT_ILW"
            <<" STABILITY_LANDWATER_CASES="<<tested
+           <<" ORIGINAL_MET_HOURS="<<hours
+           <<" ORIGINAL_LAND_CELLS="<<land_cells
+           <<" ORIGINAL_WATER_CELLS="<<water_cells
+           <<" REAL_MET_LANDUSE_MINIMA_CHECKS="<<validated_cells
            <<" TYIDR=0.001 TZIDR=0.002 TZISDR=0.01 AYT=0.5"
            <<" ACTUAL_COMP_989_CALM_SUBSTEPS=NOT_YET_ACCEPTED\n";
   return 0;

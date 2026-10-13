@@ -6,10 +6,12 @@
 // Land/water ILW is explicitly required, never guessed from UTM position.
 // Source-pinned by original SIGTY/SIGTZ calm inspection workflow.
 #include "cteas/puff/control.hpp"
+#include "cteas/puff/calmet21.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <stdexcept>
+#include <cstddef>
 #include <string>
 namespace cteas::puff {
 struct OriginalTurbsetMdisp3 {
@@ -45,5 +47,26 @@ struct OriginalTurbsetMinimum {
   throw std::invalid_argument("original TURBSET requires 1<=JDSTAB<=6 and ILW=1/2");
  const auto i=static_cast<std::size_t>(stability-1+6*(ilw-1));
  return {p.svmin[i],p.swmin[i],stability,ilw};
+}
+// CALPUFF COMP L10839-10842: ILW comes from the current CALMET
+// ILANDU(ixmet,iymet,md) and IWAT1/IWAT2 originally written by MAKEGEO.
+// Do not classify land/water by latitude, grid index, or PG stability.
+[[nodiscard]] inline int original_turbset_ilw_from_landuse(
+    int land_use_code,int iwat1,int iwat2) {
+ if(iwat1>iwat2||iwat1<0||iwat2<0)
+  throw std::invalid_argument("original MAKEGEO water category bounds invalid");
+ return land_use_code>=iwat1 && land_use_code<=iwat2 ? 2 : 1;
+}
+[[nodiscard]] inline OriginalTurbsetMinimum original_turbset_mdisp3_from_cell(
+    const OriginalTurbsetMdisp3& p,const Calmet21Static& met_static,
+    std::size_t nx,std::size_t ny,std::size_t cell_offset,
+    int stability,int iwat1,int iwat2) {
+ if(nx==0||ny==0||nx>static_cast<std::size_t>(1000000)/ny||
+    !met_static.present||met_static.land_use.size()!=nx*ny||
+    cell_offset>=nx*ny)
+  throw std::invalid_argument("TURBSET requires actual decoded CALMET ILANDU grid");
+ const int ilw=original_turbset_ilw_from_landuse(
+     met_static.land_use[cell_offset],iwat1,iwat2);
+ return original_turbset_mdisp3_minimum(p,stability,ilw);
 }
 } // namespace cteas::puff

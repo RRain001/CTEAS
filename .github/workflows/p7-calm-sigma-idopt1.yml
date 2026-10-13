@@ -24,6 +24,8 @@ jobs:
             /native_cpp/modules/p7_calpuff/**
             /engine/vendor/src/CALPUFF_v7.2.1_L150618/**
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
+            /project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp
+            /project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
       - name: Verify original IDOPT1 and source-derived TURBSET
         shell: bash
         run: |
