@@ -32,6 +32,7 @@ struct OriginalPointPrfinResult {
     float stack_tip_downwash_m=0.0F;
     float x_final_m=0.0F;
     float final_rise_m=0.0F;
+    float buoyancy_variance_m2=0.0F; // original POINTS1 BIDSQ=(RISE/3.5)**2
     float effective_height_m=0.0F;   // HEFF
     float mixed_fraction=1.0F;      // FMIX
     float max_layer_height_m=0.0F;   // HMAX
