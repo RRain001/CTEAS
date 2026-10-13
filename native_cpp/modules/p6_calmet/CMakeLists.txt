@@ -46,6 +46,17 @@ else()
 endif()
 add_test(NAME p6g_upper_multi_site_multiyear_frozen_rdupn_parity COMMAND cteas_p6g_upper_dynamic_tests)
 
+# G7c: SOURCE INPUT CONTRACT ONLY. No WIND1/COMP production physics.
+add_executable(cteas_p6g_observation_input_tests tests/p6g_observation_input_tests.cpp)
+target_link_libraries(cteas_p6g_observation_input_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_observation_input_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_observation_input_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_multistation_surface_upper_hourly_input_contract COMMAND cteas_p6g_observation_input_tests)
+
+
 
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
