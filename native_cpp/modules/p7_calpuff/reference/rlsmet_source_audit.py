@@ -94,6 +94,13 @@ def main()->int:
         print(f"RLSMET_REF {row['file']}:{row['line']} {row['text']}")
     for row in report["rlsmet_definitions"]:
         print(f"RLSMET_SOURCE {row['file']}:{row['first_line']}-{row['last_line']}")
+    # This is the ORIGINAL order that computes stack-level wind, PRFIN
+    # final height, the second RLSMET release-height wind and WSNEW.
+    lines=(args.vendor/"calpuff.for").read_bytes().decode("latin-1").splitlines()
+    for first,last in ((15428,15464),(15694,15730),(15935,16010)):
+        print(f"P7_ORIGINAL_POINTS1_SOURCE_CONTEXT L{first}-L{last}")
+        for index in range(first-1,last):
+            print(f"POINTS1_SOURCE {index+1:6d} {lines[index]}")
     return 0
 
 if __name__=="__main__":raise SystemExit(main())
