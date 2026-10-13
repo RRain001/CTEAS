@@ -404,9 +404,13 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
         const float u=static_cast<float>(native.wind.u_ms);
         const float v=static_cast<float>(native.wind.v_ms);
         const float ws=std::sqrt(u*u+v*v);
-        if(!std::isfinite(ws)||ws<0.5F)
-            throw std::invalid_argument(
-                "original COMP old-puff calm treatment not yet integrated");
+        // Pre-cadence wind is NOT the final post-RISEWIND puff wind.
+        // Reject non-finite inputs, but do not impose WSCALM here:
+        // COMP determines LCALM for each actual physical KSAM/FSTEP.
+        // Premature rejection incorrectly conflated CALMET-source low
+        // wind with CALPUFF's puff-specific post-RISEWIND treatment.
+        if(!std::isfinite(ws)||ws<0.0F)
+            throw std::invalid_argument("original COMP pre-cadence wind invalid");
         const auto plan=sampling_cadence({
             .new_puff=false,.step_seconds=controls.seconds,
             .wind_speed_ms=ws,
