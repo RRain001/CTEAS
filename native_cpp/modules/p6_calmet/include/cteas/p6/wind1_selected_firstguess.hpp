@@ -65,8 +65,12 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
         if(c.upper_layer_valid[k]) {
             if(std::abs(u.u_mps)>=998.99f||std::abs(u.v_mps)>=998.99f)
                 throw std::invalid_argument("WIND1 upper validity mask disagrees with values");
-        } else if(u.u_mps<=999998.f||u.v_mps<=999998.f) {
-            throw std::invalid_argument("WIND1 invalid upper mask must use original sentinel");
+        } else if(u.u_mps!=999.f||u.v_mps!=999.f) {
+            // CALMET's DIAGNO initializes EDIT=999 (EDITL=900).
+            // The IEXTRP<=0 PREPDI first upper level must use this exact
+            // REAL*4 missing value. The earlier 999998 threshold incorrectly
+            // rejected 999.f and aborted all native 143-hour production.
+            throw std::invalid_argument("WIND1 invalid upper mask must use original EDIT=999 sentinel");
         }
     }
     const float first_speed=std::sqrt(
