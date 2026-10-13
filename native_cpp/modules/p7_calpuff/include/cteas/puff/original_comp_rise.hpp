@@ -27,6 +27,15 @@ struct RiseCompStep {
     float final_height_m=0.0F;
 };
 
+// COMP KSAM/NSAM context (vendor L10417, 10553-10581). Defaults reproduce
+// the preexisting restricted single-sample solver. For FSTEP the calling
+// scheduler must still account for TLEFT and resume the actual physics.
+struct RiseCompSourceSampling {
+    int ksam=1;
+    int nsam=1;
+    bool lsubsam=false;
+};
+
 class OriginalCompRisePointDriver {
 public:
     void admit(int id,const NewPuffInputs& source,
@@ -34,7 +43,8 @@ public:
     [[nodiscard]] RiseCompStep step_pg_rise(
         int id,const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,
-        const DispersionSetup& pg,bool urban);
+        const DispersionSetup& pg,bool urban,
+        RiseCompSourceSampling source_sampling={});
     // Native COMP old-puff sampling wind BEFORE RISEWIND, from current
     // persistent PUFFDZ/ADVECT state (vendor L10119-10143).
     [[nodiscard]] NativeVerticalWind pre_cadence_wind(
