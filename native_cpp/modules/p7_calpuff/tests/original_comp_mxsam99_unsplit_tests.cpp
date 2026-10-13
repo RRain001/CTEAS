@@ -2,6 +2,7 @@
 #include "cteas/puff/receptors.hpp"
 #include "cteas/puff/original_flat_calcpf.hpp"
 #include "cteas/puff/original_pufrecs_geometry.hpp"
+#include "cteas/puff/original_native_terrain.hpp"
 #include "cteas/puff/hourly_conc.hpp"
 #include <algorithm>
 #include <bit>
@@ -767,23 +768,24 @@ void test(){
     }
     need(missing_receiver_terrain_rejected,
          "MCTADJ2 CALCPF fabricated missing receptor TRELIEF/GETELEV");
-    auto synthetic_terrain_receptor=[](
-        const RiseCompSamplingState&,
-        std::size_t,
-        const OriginalPuffct2Result& position){
-        return OriginalMctadj2ReceptorTerrain{
-            .receptor_ground_elevation_msl=10.0F,
-            .terrain_peak_elevation_msl=40.0F,
-            .terrain_under_puff_msl=10.0F+0.001F*position.x_m,
-            .brunt_vaisala_s=0.0F,
-            .wind_speed_ms=1.2F,
-            .receptor_height_m=0.0F
-        };
-    };
+    // Build physical ELEV, GETELEV, TRELIEF, and VWIDTH from the same
+    // Calmet21Static contract that the frozen real MET.DAT reader supplies.
+    // The elevations here remain a SYNTHETIC 120x120 fixture.
+    auto geo_for_terrain=geo;
+    geo_for_terrain.present=true;
+    geo_for_terrain.elevation_m.assign(n,10.0F);
+    const auto native_terrain_grid=OriginalNativeTerrain::from_calmet(
+        geo_for_terrain,120,120,100.0F);
     const auto source_terrain_sampler=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F,3.0F,
         OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2,
-        synthetic_terrain_receptor);
+        [&native_terrain_grid](const RiseCompSamplingState& state,
+                 std::size_t receiver,const OriginalPuffct2Result& position){
+            const float wind=(state.after.total_distance_m-
+                state.before.total_distance_m)/state.step_seconds;
+            return native_terrain_grid.receptor(
+                receiver,1,1,50,50,position,0.0F,wind);
+        });
     bool missing_step_rejected=false;
     try {(void)source_terrain_sampler(known);}
     catch(const std::invalid_argument&){missing_step_rejected=true;}
@@ -796,10 +798,7 @@ void test(){
     auto terrain_ctl=ctl;
     NativeMctadj2Controls terrain_control;
     terrain_control.brunt_vaisala_s=0.0F;
-    terrain_control.terrain.elevation_msl=[](double,double){return 10.0;};
-    terrain_control.terrain.cell_elevation_msl=[](double,double){return 10.0;};
-    terrain_control.terrain.relief=[](double,double,int){return 40.0;};
-    terrain_control.terrain.valley_width=[](double,double,int){return 10;};
+    terrain_control.terrain=native_terrain_grid.constraint_lookup();
     terrain_ctl.mctadj2=terrain_control;
     std::size_t native_ctadj2_substeps=0;
     std::size_t native_ctadj2_receptor_nonzero=0;
@@ -821,8 +820,8 @@ void test(){
     OriginalCompRiseMultiPuffHours integrated_terrain_driver;
     const auto terrain_hour=
         integrated_terrain_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
-            met,geo,terrain_ctl,pg,false,single_mass,wide_domain,99,
-            2500,integrated_terrain);
+            met,geo_for_terrain,terrain_ctl,pg,false,single_mass,
+            wide_domain,99,2500,integrated_terrain);
     need(terrain_hour.steps.size()>1 &&
          terrain_hour.receptor_concentrations.size()==2500 &&
          native_ctadj2_substeps==terrain_hour.steps.size() &&
@@ -833,6 +832,8 @@ void test(){
              <<" FSTEP="<<native_ctadj2_substeps
              <<" NONZERO_SUBSTEP_RECEPTORS="<<native_ctadj2_receptor_nonzero
              <<" PERSISTENT_HEIGHT=YES"
+             <<" TERRAIN_STATIC_CALMET_INPUT=YES"
+             <<" TRELIEF_GETELEV_VWIDTH_SOURCE_PORTED=YES"
              <<" TERRAIN_SYNTHETIC_ONLY=YES"
              <<" ORIGINAL_HEFEI_MCTADJ2=NOT_YET_ACCEPTED\\n";
 

@@ -1290,7 +1290,8 @@ else()
 endif()
 target_link_libraries(cteas_p7_original_comp_mxsam99_unsplit_tests PRIVATE
   cteas_p7_original_comp_rise_hourly cteas_p7_receptors
-  cteas_p7_original_flat_calcpf cteas_p7_original_pufrecs_geometry)
+  cteas_p7_original_flat_calcpf cteas_p7_original_pufrecs_geometry
+  cteas_p7_original_native_terrain)
 if(MSVC)
   target_compile_options(cteas_p7_original_comp_mxsam99_unsplit_tests PRIVATE /W4 /WX)
 else()
