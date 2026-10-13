@@ -972,3 +972,25 @@ endforeach()
 # MDISP=3 live SIGTY/SIGTZ coupled to native METFM1 within one COMP step.
 add_test(NAME cteas_p7_native_comp_neutral_pg_1h_persistent
          COMMAND cteas_p7_original_comp_neutral_tests pg)
+
+# Native REAL4 bridge from the original METFM1 column through GRISE and
+# RISEWIND. The caller must supply true independently calculated native
+# PRFIN/PUFFDZ state; this is not an autonomous 143-hour production solver.
+add_library(cteas_p7_original_rise_met STATIC src/original_rise_met.cpp)
+target_include_directories(cteas_p7_original_rise_met PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_rise_met PUBLIC
+  cteas_p7_original_met_cell cteas_p7_rise_wind cteas_p7_plume_rise)
+if(MSVC)
+  target_compile_options(cteas_p7_original_rise_met PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_rise_met PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_executable(cteas_p7_original_rise_met_tests tests/original_rise_met_tests.cpp)
+target_link_libraries(cteas_p7_original_rise_met_tests PRIVATE cteas_p7_original_rise_met)
+if(MSVC)
+  target_compile_options(cteas_p7_original_rise_met_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_rise_met_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_native_metfm1_grise_risewind
+  COMMAND cteas_p7_original_rise_met_tests)
