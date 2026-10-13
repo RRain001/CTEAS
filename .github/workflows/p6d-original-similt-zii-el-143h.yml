@@ -19,7 +19,7 @@ concurrency:
 jobs:
   original-similt-state:
     name: Untouched CALMET ELUSTR2 ZII EL source trace 143 hours
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 50
     defaults:
       run:
@@ -56,7 +56,7 @@ jobs:
   full-143h-original-station-input-delta:
     name: Hefei 143h unassisted vs original SIMILT ZII EL diagnostic
     needs: [original-similt-state]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 75
     defaults:
       run:

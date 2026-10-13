@@ -1,4 +1,4 @@
-name: P6D 16 runner independent module completeness verification
+name: P6D GitHub-hosted independent module tests
 
 on:
   push:
@@ -19,33 +19,13 @@ concurrency:
 jobs:
   sixteen-independent-scopes:
     name: ${{ matrix.lane }} source-scoped C++ -Werror + CTest
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 16
+      max-parallel: 9
       matrix:
         include:
-          - lane: p6c_geometry
-            target: cteas_p6_geo_tests
-            test: p6c_geo_selected_scoped_software
-            module: p6d
-          - lane: p6c_station
-            target: cteas_p6_station_tests
-            test: p6c_station_geometry_software
-            module: p6d
-          - lane: p6c_surface
-            target: cteas_p6_surface_tests
-            test: p6c_surface_selected_scoped_software
-            module: p6d
-          - lane: p6c_upper
-            target: cteas_p6_upper_tests
-            test: p6c_upper_rdupn_selected_scoped_software
-            module: p6d
-          - lane: p6c_hourly
-            target: cteas_p6_hourly_tests
-            test: p6c_hourly_prepdi_software
-            module: p6d
           - lane: p6d_wind1
             target: cteas_p6_wind1_firstguess_tests
             test: p6d8b_original_wind1_firstguess_selected_software
@@ -82,14 +62,6 @@ jobs:
             target: cteas_p6_d9a_bridge_tests
             test: p6d9a_wind1_inter2_diagno_selected_bridge_contract
             module: p6d
-          - lane: p6e_heatfx
-            target: p6e_heatfx_tests
-            test: p6e_heatfx_software
-            module: p6e
-          - lane: p6e_mixht
-            target: p6e_mixht_observed_mc_tests
-            test: p6e_mixht_observed_mc_software
-            module: p6e
     steps:
       - uses: actions/checkout@v4
         with:

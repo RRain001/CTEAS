@@ -24,7 +24,7 @@ concurrency:
 jobs:
   slope-driver-real-143h:
     name: Original actual SLOPE QH/TEMP2D/TERSET vs C++ 143h
-    runs-on: [cteas-compute, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4

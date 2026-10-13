@@ -27,7 +27,7 @@ concurrency:
 jobs:
   native-143h-station-comp-closure:
     name: Original CALMET 143h vs native P6D wind to P6E COMP to P6D station MIXHTST
-    runs-on: [cteas-compute, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4

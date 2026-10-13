@@ -19,7 +19,7 @@ concurrency:
 jobs:
   source-station-zii-el:
     name: Independent immutable CALMET 143h station ZII EL trace
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     defaults:
       run:
@@ -54,7 +54,7 @@ jobs:
 
   source-grid-gamma:
     name: Independent immutable CALMET 143h gridded pre-FRADJ GAMMA trace
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     defaults:
       run:
@@ -88,7 +88,7 @@ jobs:
 
   source-boundary-contract:
     name: Independent original WINDBC pre-INTER2 source-order gate
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     defaults:
       run:
@@ -106,7 +106,7 @@ jobs:
   three-arm-combined-143h:
     name: Full 143h corrected WINDBC three-state original U V W comparison
     needs: [source-station-zii-el, source-grid-gamma, source-boundary-contract]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     defaults:
       run:

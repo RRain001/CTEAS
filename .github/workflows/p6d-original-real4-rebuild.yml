@@ -19,7 +19,7 @@ concurrency:
 jobs:
   source-kernel:
     name: Original ${{ matrix.kernel }} (${{ matrix.build_type }})
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     defaults:
       run:
@@ -70,7 +70,7 @@ jobs:
 
   real-hefei-hour:
     name: Hefei first hour ${{ matrix.stage }} three-way source parity
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     defaults:
       run:
@@ -135,7 +135,7 @@ jobs:
 
   source-call-order:
     name: Original SURFVAR FRADJ HEATFX SLOPE INTER2 order
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 12
     defaults:
       run:
@@ -154,7 +154,7 @@ jobs:
 
   original-input-provenance:
     name: Git-pinned original CALMET source and frozen Hefei inputs
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     defaults:
       run:

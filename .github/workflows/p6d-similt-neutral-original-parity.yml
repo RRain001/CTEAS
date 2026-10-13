@@ -13,8 +13,8 @@ concurrency:
 jobs:
   source-similt-neutral:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    # P6D alone owns this custom label; never select generic self-hosted workers.
-    runs-on: [self-hosted, lhy-desktop]
+    # Isolated P6D scientific job on an ephemeral GitHub-hosted Ubuntu runner.
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
       - name: Verify dedicated P6D host and source transports
@@ -165,7 +165,7 @@ jobs:
             if command -v "$x" >/dev/null 2>&1; then fort="$(command -v "$x")"; break; fi
           done
           if [[ -z "$cpp" || -z "$fort" ]]; then
-            echo "::error::Install g++-12+ (or clang++-15+) and gfortran on lhy-desktop"
+            echo "::error::Install g++-12+ (or clang++-15+) and gfortran on GitHub-hosted Ubuntu"
             exit 1
           fi
           printf '#include <chrono>\nint main(){std::chrono::sys_seconds v{}; (void)v;}\n' | \

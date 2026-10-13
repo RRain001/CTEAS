@@ -17,7 +17,7 @@ concurrency:
 jobs:
   independent-strict-compile:
     name: C++20 -Werror P6D P6E station source coupling and P6E original kernel tests
-    runs-on: [cteas-light, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4

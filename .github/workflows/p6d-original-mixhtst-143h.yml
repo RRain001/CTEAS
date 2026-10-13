@@ -21,7 +21,7 @@ concurrency:
 jobs:
   original-mixhtst-143h:
     name: Native MIXHTST vs original ZII, ZICONV and DPTT, original entering COMP state
-    runs-on: [cteas-compute, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4

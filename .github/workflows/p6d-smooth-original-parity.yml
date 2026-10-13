@@ -17,7 +17,7 @@ permissions:
 jobs:
   original-smooth:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, lhy-desktop]
+    runs-on: ubuntu-22.04
     timeout-minutes: 13
     steps:
       - name: Verify dedicated P6D runner
@@ -112,7 +112,7 @@ jobs:
                    .github/actions/cteas-linux-toolchain/action.yml; do
             test -s "$p" || { echo "::error::Missing source $p"; exit 1; }
           done
-      - name: Select self-hosted C++20 and Fortran tools
+      - name: Select GitHub-hosted C++20 and Fortran tools
         uses: ./.github/actions/cteas-linux-toolchain
       - name: Install original Fortran toolchain
         run: gfortran --version | head -1

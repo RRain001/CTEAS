@@ -19,7 +19,7 @@ concurrency:
 jobs:
   source-gamma-143h:
     name: CALMET original write-only GAMMA with byte-identical MET.DAT
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     defaults:
       run:
@@ -54,7 +54,7 @@ jobs:
   full-143h-forensic-diff:
     name: 143-hour P6D original GAMMA vs native baseline diagnostic
     needs: [source-gamma-143h]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 75
     defaults:
       run:

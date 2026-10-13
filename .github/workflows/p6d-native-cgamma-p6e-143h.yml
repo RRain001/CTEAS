@@ -19,7 +19,7 @@ concurrency:
 jobs:
   native-build-contract:
     name: Rebuilt native CGAMMA source and fail-closed missing-input contract
-    runs-on: [cteas-light, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
 
   actual-143h-p6e-to-p6d:
     name: Independent original Fortran vs native P6E driven CGAMMA 143h
-    runs-on: [cteas-compute, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
