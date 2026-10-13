@@ -140,7 +140,7 @@ void assemble_direct_native_hours(cteas::p6f::Calmet21File& file,
     while(std::getline(input,filename)){
         if(!filename.empty()&&filename.back()=='\r')filename.pop_back();
         require(!filename.empty()&&hour<143U,"native one-hour manifest has empty or extra rows");
-        const auto current=pf::read_calmet_dat21(filename);
+        const auto current=pf::read_calmet_dat21_native_one_hour(filename);
         const auto& c=current.header;
         require(c.irlg==1&&c.nx==h.nx&&c.ny==h.ny&&c.nz==h.nz&&
                 c.nssta==h.nssta&&c.nusta==h.nusta&&c.npsta==h.npsta&&

@@ -779,7 +779,8 @@ std::vector<std::uint8_t> serialize_calmet_dat21(const Calmet21File& file) {
 }
 
 // ------------------------------------------------------------------ parsing
-Calmet21File parse_calmet_dat21(const std::vector<std::uint8_t>& bytes) {
+Calmet21File parse_calmet_dat21(const std::vector<std::uint8_t>& bytes,
+                                  bool native_one_hour_transport=false) {
     Calmet21File file;
     Calmet21Header& header = file.header;
     Calmet21Statics& statics = file.statics;
@@ -957,6 +958,21 @@ Calmet21File parse_calmet_dat21(const std::vector<std::uint8_t>& bytes) {
     }
     require(file.hourly.size() % labels.size() == 0U,
             "the file ends inside an hourly field group");
+    if(native_one_hour_transport) {
+        const std::size_t per_hour=fields_per_interval(header);
+        require(file.hourly.size()==per_hour&&header.irlg==1,
+                "native transport must carry exactly one complete hour");
+        const auto& first=file.hourly.front().begin;
+        const auto& last=file.hourly.back().end;
+        const auto begin=calendar_from_instant(instant_seconds(first));
+        const auto end=calendar_from_instant(instant_seconds(last));
+        header.begin_year=begin.year;header.begin_month=begin.month;
+        header.begin_day=begin.day;header.begin_hour=begin.hour;
+        header.begin_second=begin.minute*60+begin.second;
+        header.end_year=end.year;header.end_month=end.month;
+        header.end_day=end.day;header.end_hour=end.hour;
+        header.end_second=end.minute*60+end.second;
+    }
     validate_calmet_dat21(file);
     return file;
 }
@@ -967,6 +983,13 @@ Calmet21File read_calmet_dat21(const std::string& path) {
     const std::vector<std::uint8_t> bytes(
         (std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
     return parse_calmet_dat21(bytes);
+}
+Calmet21File read_calmet_dat21_native_one_hour(const std::string& path) {
+    std::ifstream input(path,std::ios::binary);
+    if(!input)fail("cannot open native one-hour transport " + path);
+    const std::vector<std::uint8_t> bytes(
+        (std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    return parse_calmet_dat21(bytes,true);
 }
 
 void write_calmet_dat21(const std::string& path, const Calmet21File& file) {
