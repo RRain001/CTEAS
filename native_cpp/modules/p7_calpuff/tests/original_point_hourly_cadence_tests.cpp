@@ -27,6 +27,7 @@ struct Inputs {
         for(std::size_t i=n;i<2*n;++i)met.u[i]=0.006F;
         for(std::size_t i=2*n;i<3*n;++i)met.u[i]=0.010F;
         geo.cell_face_m={0,100,200,300};
+        geo.roughness_m.assign(n,0.25F); // RLSMET/WINDSET requires original Z0
         ctl.seconds=3600.0F;
         ctl.source_period_s=3600.0F;
         ctl.max_sampling_steps=1;
