@@ -7,7 +7,6 @@ import zipfile
 from pathlib import Path
 
 from engine.core.paths import current_project_path, engine_path
-from engine.run_met.station_grid import load_strict_utm_grid, lon_lat_in_utm_grid
 
 DATA_ROOT = current_project_path("met", "upperair")
 
@@ -21,6 +20,18 @@ def parse_center(center_path: Path):
     return float(lat_m.group(1)), float(lon_m.group(1))
 
 
+def parse_grid(grid_path: Path):
+    text = grid_path.read_text(encoding='utf-8', errors='ignore')
+
+    def pick(name):
+        m = re.search(rf'!\s*{name}\s*=\s*([-+]?\d+(?:\.\d+)?)', text)
+        if not m:
+            raise ValueError(f'grid.cmn 缺少 {name}')
+        return float(m.group(1))
+
+    return pick('DGRIDKM'), int(pick('NX')), int(pick('NY'))
+
+
 def haversine_km(lat1, lon1, lat2, lon2):
     r = 6371.0
     p1 = math.radians(lat1)
@@ -29,6 +40,12 @@ def haversine_km(lat1, lon1, lat2, lon2):
     dl = math.radians(lon2 - lon1)
     a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
     return 2 * r * math.asin(math.sqrt(a))
+
+
+def signed_offsets_km(lat0, lon0, lat, lon):
+    km_per_deg_lat = 111.32
+    km_per_deg_lon = 111.32 * math.cos(math.radians(lat0))
+    return (lon - lon0) * km_per_deg_lon, (lat - lat0) * km_per_deg_lat
 
 
 def load_station_list(station_list_path: Path):
@@ -51,22 +68,27 @@ def load_station_list(station_list_path: Path):
     return stations
 
 
-def choose_station(stations, center_lat, center_lon, grid, year):
-    """Use the actual grid.cmn UTM footprint and year-eligible IGRA metadata."""
-    eligible = filter_by_year(stations, year)
-    ranked = []
-    for station in eligible:
-        row = dict(station)
-        row["dist_km"] = haversine_km(center_lat, center_lon,
-                                       station["lat"], station["lon"])
-        ranked.append(row)
-    inside = [row for row in ranked if lon_lat_in_utm_grid(
-        row["lon"], row["lat"], grid)]
-    inside.sort(key=lambda row: (row["dist_km"], row["id"]))
+def choose_station(stations, center_lat, center_lon, dgrid_km, nx, ny):
+    half_x = dgrid_km * nx / 2.0
+    half_y = dgrid_km * ny / 2.0
+    inside = []
+    for s in stations:
+        dx, dy = signed_offsets_km(center_lat, center_lon, s['lat'], s['lon'])
+        dist = haversine_km(center_lat, center_lon, s['lat'], s['lon'])
+        row = dict(s)
+        row['dist_km'] = dist
+        if abs(dx) <= half_x and abs(dy) <= half_y:
+            inside.append(row)
     if inside:
+        inside.sort(key=lambda x: x['dist_km'])
         return True, inside
-    ranked.sort(key=lambda row: (row["dist_km"], row["id"]))
-    return False, ranked[:3]
+    rows = []
+    for s in stations:
+        x = dict(s)
+        x['dist_km'] = haversine_km(center_lat, center_lon, s['lat'], s['lon'])
+        rows.append(x)
+    rows.sort(key=lambda x: x['dist_km'])
+    return False, rows[:3]
 
 
 def filter_by_year(stations, year):
@@ -151,7 +173,7 @@ def main():
     station_list_path = engine_path("resources", "igra", "igra2-station-list.txt")
 
     center_lat, center_lon = parse_center(center_path)
-    grid = load_strict_utm_grid(grid_path, context="P4_LEGACY_GUI")
+    dgrid_km, nx, ny = parse_grid(grid_path)
     stations = load_station_list(station_list_path)
 
     year = args.year
@@ -166,7 +188,8 @@ def main():
             return 1
         chosen_list = chosen
     else:
-        in_domain, rows = choose_station(stations, center_lat, center_lon, grid, year)
+        in_domain, rows = choose_station(stations, center_lat, center_lon, dgrid_km, nx, ny)
+        rows = filter_by_year(rows, year)
         if not rows:
             print('范围候选无该年份可用站点, 改为全站最近3个可用站点')
             rows = filter_by_year(stations, year)
