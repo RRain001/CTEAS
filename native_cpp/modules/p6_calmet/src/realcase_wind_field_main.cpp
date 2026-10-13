@@ -958,9 +958,9 @@ int main(int argc,char** argv){
         // with equal inputs. Preserve the pre-FRADJ state for FRADJ above;
         // recompute only the temperature state for downstream physics.
         observed_surface.u_ms.assign(corrected_u.begin(),
-                                     corrected_u.begin()+plane_size);
+                                     corrected_u.begin()+static_cast<std::size_t>(nx*ny));
         observed_surface.v_ms.assign(corrected_v.begin(),
-                                     corrected_v.begin()+plane_size);
+                                     corrected_v.begin()+static_cast<std::size_t>(nx*ny));
         surface_state=cteas::p6e::surfvar_one_station(observed_surface);
         // CALMET DIAGNO L5686-5711: HEATFX/ELUSTR belong AFTER FRADJ.
         // QH is input to SLOPE, so this is not just a cosmetic move.
