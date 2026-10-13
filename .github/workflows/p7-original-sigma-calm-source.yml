@@ -65,5 +65,24 @@ jobs:
                   for k in range(max(0,i-3),min(len(lines),i+4)):
                       print(f'[{k+1:05d}] {lines[k]}')
           print('P7_VENDOR_BLOCK_DATA_TIME_SCALES_END')
+          print('P7_CALM_UPSTREAM_MET_PROVENANCE_START')
+          for label,lo,hi in [('COMP',10000,11100),
+                              ('POINTS1',15700,16300),
+                              ('SETPUF',48000,48800),
+                              ('SETCSIG',52504,52619)]:
+              sub=lines[lo-1:hi]
+              matches=[i for i,s in enumerate(sub) if
+                       re.search(r'tsigv|tsigw|sigv0|sigw0|setcsig|lcalm|wscalm|tyidr|tzisdr',s,re.I)
+                       and not s.lstrip().lower().startswith('c')]
+              print(f'P7_CALM_UPSTREAM {label} MATCHES={len(matches)}')
+              keys=set()
+              for i in matches[:50]:
+                  keys.update(range(max(0,i-4),min(len(sub),i+7)))
+              last=-100
+              for i in sorted(keys):
+                  if i>last+1: print('... omitted ...')
+                  print(f'[{lo+i:05d}] {sub[i]}')
+                  last=i
+          print('P7_CALM_UPSTREAM_MET_PROVENANCE_END')
           print('P7_VENDOR_CALM_PARAMETER_SOURCE_END')
           PY
