@@ -216,18 +216,23 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
                                s.virtual_distance_z_km};
     };
     auto dispersion=control.dispersion;
-    dispersion.step.puff_code=vs.puff_code;
+    // Vendor COMP L10859: VMASS uses OLD sigma and may alter ICODE.
+    const auto mass=v.commit_vmass(
+        id,sampled.mixing_height_m,before.z_m,moved.state.z_m,
+        vs.sigma_z_m,sampled.stability_class,0);
+    order.completed(VendorSubstepPhase::ApplyVmass);
+    dispersion.step.puff_code=mass.puff_code;
     dispersion.step.sigma_y_start_m=vs.sigma_y_m;
     dispersion.step.sigma_z_start_m=vs.sigma_z_m;
     dispersion.step.puff_height_m=before.z_m;
     dispersion.step.mid_time_s=bookkeeping.mid_time_s;
     dispersion.step.mid_distance_km=bookkeeping.mid_distance_km;
     const auto sigma=v.commit_sigma(id,dispersion,sigma_y,sigma_z);
-    const auto mass=v.commit_vmass_and_lid(
-        id,sampled.mixing_height_m,before.z_m,moved.state.z_m,
-        r4(sigma.adjust.sigma_z_end_m,"SIGZE"),
-        sampled.stability_class,0);
     order.completed(VendorSubstepPhase::CommitSetpuf);
+    // Restricted PG rise mode: full COMP CHEM/WET/DRY and CALCPF still
+    // require integration HERE before the L11391-11398 late history commit.
+    v.commit_lid(id,mass.reflecting_lid_m,mass.puff_code);
+    order.completed(VendorSubstepPhase::CommitNextStepHistory);
     order.finish();
     const auto post=v.state(id);
     require(post.completed_substeps==state.completed+1 &&

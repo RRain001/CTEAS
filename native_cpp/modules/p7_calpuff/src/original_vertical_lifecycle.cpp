@@ -110,6 +110,9 @@ SigmaUpdateResult OriginalVerticalLifecycle::commit_sigma(
     const auto it=puffs_.find(id);
     if(it==puffs_.end())throw std::out_of_range("unknown vertical puff");
     const auto& previous=it->second;
+    require(previous.vmass_pending &&
+            previous.completed_substeps==previous.committed_lid_steps,
+            "SETPUF requires VMASS first, once per native substep");
     require(real4(inputs.step.sigma_y_start_m,"sigma-y begin")==previous.sigma_y_m &&
             real4(inputs.step.sigma_z_start_m,"sigma-z begin")==previous.sigma_z_m &&
             inputs.step.puff_code==previous.puff_code,
@@ -132,8 +135,11 @@ void OriginalVerticalLifecycle::commit_lid(
             "nonfinite or negative source-ported HLID");
     require(native_code>0 && native_code<=99,
             "invalid native VMASS-updated puff code");
-    require(before.completed_substeps==before.committed_lid_steps+1,
-            "COMP lid update must occur once after completed SETPUF/sigma step");
+    require(before.vmass_pending &&
+            before.completed_substeps==before.committed_lid_steps+1,
+            "COMP lid history requires VMASS then SETPUF exactly once");
+    require(native_lid==before.pending_reflecting_lid_m,
+            "COMP reflecting lid differs from the pending original VMASS HLID");
     // Fortran REAL*4 AMAX1 exactly matches this max of two float32
     // operands. Keep state authoritative; do not use DGM ZIOLD/ZIMAX here.
     auto after=before;
@@ -141,17 +147,21 @@ void OriginalVerticalLifecycle::commit_lid(
     after.zimax_m=std::max(after.zimax_m,native_lid);
     after.ziold_m=native_lid;
     ++after.committed_lid_steps;
+    after.vmass_pending=false;
+    after.pending_reflecting_lid_m=0.0F;
     it->second=std::move(after);
 }
-VmassResult OriginalVerticalLifecycle::commit_vmass_and_lid(
+VmassResult OriginalVerticalLifecycle::commit_vmass(
     int id,float pbl,float height_begin,float height_end,
     float sigze,int stable,int tilt) {
     const auto it=puffs_.find(id);
     if(it==puffs_.end())throw std::out_of_range("unknown native vertical puff");
     const auto& before=it->second;
-    require(before.completed_substeps==before.committed_lid_steps+1,
-            "native VMASS must follow exactly one completed sigma substep");
-    // Original VMASS L11667-11950 followed by COMP L11391-11398.
+    require(!before.vmass_pending &&
+            before.completed_substeps==before.committed_lid_steps,
+            "native VMASS must precede SETPUF and follow previous lid commit");
+    // Original COMP L10859 VMASS precedes SETPUF L10940; next-step
+    // lid update L11391-11398 is a distinct, later phase.
     // Every input is a native production field, NOT a replayed DGM state.
     VmassInputs input;
     input.puff_code=before.puff_code;
@@ -173,9 +183,10 @@ VmassResult OriginalVerticalLifecycle::commit_vmass_and_lid(
     after.puff_code=updated.puff_code;
     after.mass_mixed=updated.mass_mixed;
     after.mass_above=updated.mass_above;
-    after.zimax_m=std::max(updated.zimax_m,lid);
-    after.ziold_m=lid;
-    ++after.committed_lid_steps;
+    after.zimax_m=updated.zimax_m;
+    after.ziold_m=updated.ziold_m;
+    after.vmass_pending=true;
+    after.pending_reflecting_lid_m=lid;
     it->second=std::move(after);
     return updated;
 }

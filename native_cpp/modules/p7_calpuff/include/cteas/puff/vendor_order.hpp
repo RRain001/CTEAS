@@ -9,6 +9,7 @@ namespace cteas::puff {
 // One puff substep within original CALPUFF COMP, frozen 2022 METFM=1 path.
 // Original source anchors are independently checked in the Python DGM oracle.
 // This is a sequencing guard, NOT a replacement for the missing full driver.
+// CHEM/WET/DRY and CALCPF between SETPUF and late lid are not yet integrated.
 enum class VendorSubstepPhase {
     SamplingCadence,         // COMP L10347
     LoadPreviousPuffState,   // COMP L10473
@@ -18,10 +19,12 @@ enum class VendorSubstepPhase {
     ApplyRiseWindAndCalm,   // COMP L10528
     ChooseSubstepLength,    // COMP L10548-10582
     AdvancePosition,        // COMP L10607-10619
-    CommitSetpuf            // COMP L10942
+    ApplyVmass,             // COMP L10859 (pre-SETPUF)
+    CommitSetpuf,           // COMP L10940-10942
+    CommitNextStepHistory   // COMP L11391-11398, post-CALCPF
 };
 
-inline constexpr std::array<VendorSubstepPhase, 9> kVendorSubstepOrder{{
+inline constexpr std::array<VendorSubstepPhase, 11> kVendorSubstepOrder{{
     VendorSubstepPhase::SamplingCadence,
     VendorSubstepPhase::LoadPreviousPuffState,
     VendorSubstepPhase::ResolveMetCell,
@@ -30,7 +33,9 @@ inline constexpr std::array<VendorSubstepPhase, 9> kVendorSubstepOrder{{
     VendorSubstepPhase::ApplyRiseWindAndCalm,
     VendorSubstepPhase::ChooseSubstepLength,
     VendorSubstepPhase::AdvancePosition,
+    VendorSubstepPhase::ApplyVmass,
     VendorSubstepPhase::CommitSetpuf,
+    VendorSubstepPhase::CommitNextStepHistory,
 }};
 
 // A future original-equivalent C++ orchestrator MUST advance this guard

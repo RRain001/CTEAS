@@ -63,6 +63,12 @@ void local_native_state() {
     inputs.step.mid_time_s=30;
     inputs.step.mid_distance_km=0.05;
     inputs.step.puff_code=1;
+    rejects([&]{(void)life.commit_sigma(1,inputs,yc,zc);},
+            "SETPUF before VMASS should be rejected");
+    const auto first_mass=life.commit_vmass(1,80,50,50,1,4,0);
+    rejects([&]{life.commit_lid(1,first_mass.reflecting_lid_m,first_mass.puff_code);},
+            "late lid before SETPUF should be rejected");
+    inputs.step.puff_code=first_mass.puff_code;
     const auto updated=life.commit_sigma(1,inputs,yc,zc);
     const auto committed=life.state(1);
     require(committed.completed_substeps==1 &&
@@ -75,9 +81,9 @@ void local_native_state() {
             "failed sigma transition mutated state");
     // Original COMP L11391-11398: first lower reflecting lid, then a
     // higher lid on the following native, source-ported sigma substep.
-    life.commit_lid(1,80.0F,1);
+    life.commit_lid(1,first_mass.reflecting_lid_m,first_mass.puff_code);
     const auto first_lid=life.state(1);
-    require(first_lid.ziold_m==80.0F && first_lid.zimax_m==120.0F &&
+    require(first_lid.ziold_m==80.0F && first_lid.zimax_m==80.0F &&
             first_lid.committed_lid_steps==1,
             "CALPUFF COMP REAL4 max/last-lid commit differs");
     rejects([&]{life.commit_lid(1,80.0F,1);},
@@ -91,8 +97,10 @@ void local_native_state() {
     auto second_step=inputs;
     second_step.step.sigma_y_start_m=committed.sigma_y_m;
     second_step.step.sigma_z_start_m=committed.sigma_z_m;
+    const auto second_mass=life.commit_vmass(1,150,50,50,committed.sigma_z_m,4,0);
+    second_step.step.puff_code=second_mass.puff_code;
     (void)life.commit_sigma(1,second_step,yc,zc);
-    life.commit_lid(1,150.0F,1);
+    life.commit_lid(1,second_mass.reflecting_lid_m,second_mass.puff_code);
     const auto second_lid=life.state(1);
     require(second_lid.ziold_m==150.0F &&
             second_lid.zimax_m==150.0F &&
@@ -138,13 +146,20 @@ void local_native_vmass_integration() {
     step.step.puff_height_m=50;
     step.step.mid_time_s=10;
     step.step.mid_distance_km=0.05;
-    rejects([&]{
-        (void)native.commit_vmass_and_lid(44,80,50,50,1,4,0);
-    },"VMASS committed without sigma update");
+    rejects([&]{(void)native.commit_sigma(44,step,yc,zc);},
+            "SETPUF before VMASS should be rejected");
+    // VMASS must use old SIGZB before SETPUF and retain pending late HLID.
+    const auto vm=native.commit_vmass(44,80,50,50,1,4,0);
+    require(native.state(44).vmass_pending &&
+            native.state(44).completed_substeps==0,
+            "VMASS not separate from SETPUF/history");
+    rejects([&]{(void)native.commit_vmass(44,80,50,50,1,4,0);},
+            "duplicate pre-SETPUF VMASS allowed");
+    step.step.puff_code=vm.puff_code;
     (void)native.commit_sigma(44,step,yc,zc);
-    // Actual VMASS takes low DPBL and compresses current Gaussian 1-layer
-    // reflecting lid, then COMP records last lid and max.
-    const auto vm= native.commit_vmass_and_lid(44,80,50,50,1,4,0);
+    rejects([&]{native.commit_lid(44,160,vm.puff_code);},
+            "late lid allowed inconsistent VMASS HLID");
+    native.commit_lid(44,vm.reflecting_lid_m,vm.puff_code);
     const auto after=native.state(44);
     require(vm.puff_code==1 && vm.reflecting_lid_m==80.0F &&
             after.ziold_m==80.0F && after.zimax_m==80.0F &&
@@ -152,15 +167,17 @@ void local_native_vmass_integration() {
             after.committed_lid_steps==1,
             "native VMASS->COMP did not persist source mass / history");
     rejects([&]{
-        (void)native.commit_vmass_and_lid(44,80,50,50,1,4,0);
+        (void)native.commit_vmass(44,80,50,50,1,4,0);
     },"duplicate VMASS step committed");
     rejects([&]{
         (void)native.commit_lid(44,80,1);
     },"direct COMP lid path bypassed already-committed VMASS");
     step.step.sigma_y_start_m=after.sigma_y_m;
     step.step.sigma_z_start_m=after.sigma_z_m;
+    const auto greater=native.commit_vmass(44,160,50,50,after.sigma_z_m,4,0);
+    step.step.puff_code=greater.puff_code;
     (void)native.commit_sigma(44,step,yc,zc);
-    const auto greater= native.commit_vmass_and_lid(44,160,50,50,1,4,0);
+    native.commit_lid(44,greater.reflecting_lid_m,greater.puff_code);
     const auto persisted=native.state(44);
     require(greater.reflecting_lid_m==160.0F &&
             persisted.ziold_m==160.0F &&
