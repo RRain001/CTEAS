@@ -12,8 +12,8 @@ from engine.core.paths import CASES_ROOT, TUTORIAL_ROOT
 
 
 REMOVAL_MESSAGE = (
-    "WebGUI has been removed.\n"
-    "Use ./calpuff-cli desktopgui for the PySide6 desktop GUI,\n"
+    "The retired WebGUI is not the G5 desktop application.\n"
+    "Run python -m engine.gui_g5.main for the independent G5 PySide6 GUI,\n"
     "or ./calpuff-cli run --case <name> --stage <preprocess|upperair|surface|met|puff|all> for CLI orchestration."
 )
 
@@ -57,7 +57,7 @@ def create_case(name: str) -> None:
     if (CASES_ROOT / name).exists():
         raise ValueError(f"case already exists: {name}")
 
-    cmd = [sys.executable, "-m", "engine.preprocess.bin.new_case", name]
+    cmd = [sys.executable, "-m", "engine.gui_g5.case_setup", name]
     proc = subprocess.run(
         cmd,
         cwd=str(TUTORIAL_ROOT),
