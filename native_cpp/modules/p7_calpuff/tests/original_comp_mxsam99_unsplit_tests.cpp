@@ -142,6 +142,51 @@ void test(){
          native_wind_driver.active_count()==99,
          "native WSNEW failure partially committed a COMP hour");
 
+    // One original-style POINTS1 transaction: compact two inactive old
+    // slot episodes by vendor ROLLDN COPY order, then source-derived WSNEW
+    // and MXSAM99 execute. Previously separated compaction would commit
+    // retirement even if the subsequent hour later aborted.
+    OriginalCompRiseMultiPuffHours packed_driver;
+    const auto initial_packed=
+        packed_driver.advance_hour_point_mxsam99_native_wsnew_unsplit(
+            native_wind_met,geo,ctl,pg,false,native_wind_source,0.5F);
+    need(initial_packed.active_puffs==55,
+         "atomic ROLLDN setup lacks 55 old puff slots");
+    const auto packed=
+        packed_driver.advance_hour_point_mxsam99_native_wsnew_unsplit_rolldn(
+            second_native_met,geo,ctl,pg,false,native_wind_source,
+            0.5F,{2,4});
+    const auto& order=packed_driver.canonical_ids();
+    need(packed.release.puff_count==44 && packed.active_puffs==97 &&
+         packed_driver.completed_hours()==2 && order.size()==97 &&
+         order.at(0)==1 && order.at(1)==55 && order.at(2)==3 &&
+         order.at(3)==54 && order.at(52)==53 && order.at(53)==56 &&
+         order.back()==99,
+         "vendor ROLLDN COPY slot order was not preserved into native COMP");
+    bool retired2=false,retired4=false;
+    try{(void)packed_driver.motion(2);}catch(const std::out_of_range&){retired2=true;}
+    try{(void)packed_driver.vertical(4);}catch(const std::out_of_range&){retired4=true;}
+    need(retired2 && retired4 && packed_driver.puff_steps(55)>0,
+         "retired slots remain alive or ROLLDN copied state lost history");
+    const auto prior=packed_driver.motion(1);
+    const auto active_before=packed_driver.canonical_ids();
+    auto broken_met=second_native_met;
+    broken_met.u.clear();
+    bool rollback=false;
+    try {
+        (void)packed_driver.advance_hour_point_mxsam99_native_wsnew_unsplit_rolldn(
+            broken_met,geo,ctl,pg,false,native_wind_source,0.5F,{1});
+    }catch(const std::exception&){rollback=true;}
+    need(rollback && packed_driver.completed_hours()==2 &&
+         packed_driver.active_count()==97 &&
+         packed_driver.canonical_ids()==active_before &&
+         packed_driver.motion(1).travel_time_s==prior.travel_time_s,
+         "failing COMP hour retained a partial ROLLDN retirement");
+    std::cout<<"P7_ROLLDN_NATIVE_MXSAM99_ATOMIC=PASS"
+             <<" OLD_COPIES=2 NATIVE_NEW=44 ACTIVE=97"
+             <<" VENDOR_SLOT_ORDER=YES ABORT_ROLLBACK=YES"
+             <<" AUTONOMOUS_OFFDOMAIN=NOT_YET_ACCEPTED\\n";
+
     const auto state=driver.motion(1);
     const auto count=driver.completed_hours();
     auto bad=source;bad.point.source_x_km=130;
