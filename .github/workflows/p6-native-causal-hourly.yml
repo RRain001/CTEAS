@@ -105,6 +105,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             native_cpp/modules/p6_calmet
+            native_cpp/modules/p7_calpuff/reference/original_decode_calmet_hourly.py
             scripts/p6_run_native_causal_hourly.py
             scripts/p6_diagnose_p6e_three_fields.py
       - uses: actions/checkout@v4
@@ -130,6 +131,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p project/cases
+          ln -s "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
+            project/cases/hefei5km_2022_reference_case_20261011
           cmake -S native_cpp/modules/p6_calmet/p6f \
             -B "$RUNNER_TEMP/native-p6f" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
           cmake --build "$RUNNER_TEMP/native-p6f" \
