@@ -1241,6 +1241,30 @@ endif()
 add_test(NAME cteas_p7_original_puffct2_source_contract
   COMMAND cteas_p7_original_puffct2_tests)
 
+# Original CALMET.DAT OUTHD ELEV -> source-ported GETELEV/TRELIEF/VWIDTH
+# adapter for the selected MCTADJ2 point-receptor terrain path.
+add_library(cteas_p7_original_native_terrain STATIC
+  src/original_native_terrain.cpp)
+target_include_directories(cteas_p7_original_native_terrain PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_native_terrain PUBLIC
+  cteas_p7_terrain_state cteas_p7_valley_width)
+add_executable(cteas_p7_original_native_terrain_tests
+  tests/original_native_terrain_tests.cpp)
+target_link_libraries(cteas_p7_original_native_terrain_tests PRIVATE
+  cteas_p7_original_native_terrain)
+if(MSVC)
+  target_compile_options(cteas_p7_original_native_terrain PRIVATE /W4 /WX)
+  target_compile_options(cteas_p7_original_native_terrain_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_native_terrain PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_compile_options(cteas_p7_original_native_terrain_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_original_native_terrain_real_input_adapter
+  COMMAND cteas_p7_original_native_terrain_tests)
+
 # Restricted native CALCPF gridded point-source bridge: PFSCRN/PFSAMP/VCOUP.
 # This is NOT a replacement for full original receptor-specific PUFRECS.
 # Standalone original-vs-native PFSCRN REAL4 bit comparison probe.
