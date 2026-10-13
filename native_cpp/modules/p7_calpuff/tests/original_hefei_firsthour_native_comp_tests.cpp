@@ -312,11 +312,28 @@ int main(int argc,char** argv){
                      <<" FIRST_SIGZ_DIFFERENCE="<<first_sigma_difference
                      <<" TOTAL_REFERENCE="<<original.size()
                      <<" REAL_CASE_CONCENTRATIONS=NOT_YET_ACCEPTED\\n";
+            // Formerly this diagnostic could exit zero after reporting
+            // mismatched physics. Freeze the newly verified 1275-step
+            // subset as a mandatory regression; this does NOT gate dry
+            // mass or the 2500 CALCPF concentrations.
+            demand(hour.steps.size()==original.size() &&
+                   aligned==original.size() &&
+                   bitwise_old_xy==original.size() &&
+                   bitwise_trajectory==original.size() &&
+                   bitwise_sigz==original.size() &&
+                   bitwise_sigz_triplet==original.size() &&
+                   first_sigma_difference==0 && first==0,
+                   "real Hefei first-hour motion/sigma REAL4 parity regressed");
+            std::cout<<"P7_HEFEI_FIRSTHOUR_1275_MOTION_SIGZ_REAL4=PASS"
+                     <<" EXACT_STEPS=1275 MCTADJ2=LIVE_REAL_MET"
+                     <<" NATIVE_DGM_ORACLE_SEEDING=NO"
+                     <<" FULL_PUFF_CON=NOT_YET_ACCEPTED\\n";
         }catch(const std::exception& e){
-            std::cout<<"P7_HEFEI_FIRST_HOUR_NATIVE_COMP_BLOCKER="
+            std::cerr<<"P7_HEFEI_FIRST_HOUR_NATIVE_COMP_BLOCKER="
                      <<e.what()
                      <<" SOURCE_ADMISSION_GATE=PASS"
                      <<" FULL_COMP=NOT_YET_ACCEPTED\\n";
+            throw;
         }
      },true);
     demand(examined && summary.intervals==143,
