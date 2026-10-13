@@ -61,6 +61,8 @@ struct OriginalCompMxsamHour {
     ReleaseCadence release;
     std::vector<OriginalCompMxsamSubstep> steps;
     std::size_t active_puffs=0;
+    std::size_t fstep_shortened_steps=0; // physical FSTEP > 1
+    std::size_t fstep_reentries=0; // original L11475-11486 goto 500
 };
 class OriginalCompRiseMultiPuffHours {
 public:
@@ -113,6 +115,19 @@ public:
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban,const OriginalPointHourSource& source,
         float calm_threshold_ms,const std::vector<int>& inactive_old_ids);
+    // Native RLSMET + original KSAM/TLEFT substep re-entry. This executes
+    // the original source-ordered single-domain, noncalm PG/GRISE branch;
+    // source PRFIN remains caller-provided. Every COMP hour commits atomically.
+    [[nodiscard]] OriginalCompMxsamHour
+    advance_hour_point_mxsam99_native_wsnew_adaptive(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource& source,
+        float calm_threshold_ms);
+    [[nodiscard]] OriginalCompMxsamHour advance_hour_point_mxsam99_adaptive(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource& source);
     [[nodiscard]] OriginalCompMxsamHour advance_hour_point_mxsam99_unsplit(
         const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,const DispersionSetup& pg,
@@ -131,6 +146,10 @@ public:
     [[nodiscard]] std::size_t compact_original_inactive(
         const std::vector<int>& inactive_state_ids);
 private:
+    [[nodiscard]] OriginalCompMxsamHour advance_hour_mxsam99_source_order(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource& source,bool adaptive);
     OriginalCompRisePointDriver puffs_;
     std::vector<int> active_ids_;
     std::size_t hours_=0;
