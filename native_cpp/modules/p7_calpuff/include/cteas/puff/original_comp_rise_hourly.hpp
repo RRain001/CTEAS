@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cteas/puff/original_comp_rise.hpp"
+#include "cteas/puff/original_comp_exit.hpp"
 #include "cteas/puff/original_release_wind.hpp"
 #include "cteas/puff/original_rolldn.hpp"
 #include <cstddef>
@@ -56,6 +57,18 @@ struct OriginalCompMxsamSubstep {
     SamplingCadence original_plan;
     RiseCompStep step;
 };
+struct OriginalCompPuffRetirement {
+    int puff_id=0;
+    OriginalCompExitReason reason=OriginalCompExitReason::Active;
+    OriginalPuffMotionState motion_at_exit;
+    // Preserve QM/QU for later MBALSUM(OUT/OBC) rather than losing it
+    // when the inactive puff leaves the physical state stores.
+    std::vector<float> mass_mixed;
+    std::vector<float> mass_above;
+};
+// Opt-in source-pinned life-cycle subset: COMP QALL<=0 before each step
+// and inclusive XB/XE/YB/YE center bounds after every executed puff step.
+// Case caller must supply actual original CALPUFF bounds, NOT MET NX/NY.
 struct OriginalCompMxsamHour {
     std::size_t hour_index=0;
     ReleaseCadence release;
@@ -63,6 +76,7 @@ struct OriginalCompMxsamHour {
     std::size_t active_puffs=0;
     std::size_t fstep_shortened_steps=0; // physical FSTEP > 1
     std::size_t fstep_reentries=0; // original L11475-11486 goto 500
+    std::vector<OriginalCompPuffRetirement> retired;
 };
 class OriginalCompRiseMultiPuffHours {
 public:
@@ -141,6 +155,23 @@ public:
         const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban);
+    // Optional bounded active-inventory transitions. The old, unbounded
+    // methods remain fail-closed on off-grid sampling. This path performs
+    // automatic zero-mass and domain-exit diagnosis, stores removed mass
+    // for accounting, and uses original ROLLDN slot COPY to compact.
+    // Original timing of conditional ROLLDN at MXPUFF capacity remains a
+    // separate full-case acceptance gate.
+    [[nodiscard]] OriginalCompMxsamHour
+    advance_hour_existing_mxsam99_adaptive_bounded(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalCompPuffBounds& bounds);
+    [[nodiscard]] OriginalCompMxsamHour
+    advance_hour_point_mxsam99_adaptive_bounded(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource& source,
+        const OriginalCompPuffBounds& bounds);
     [[nodiscard]] OriginalPuffMotionState motion(int id)const;
     [[nodiscard]] NativeVerticalPuffState vertical(int id)const;
     [[nodiscard]] std::size_t puff_steps(int id)const;
@@ -162,7 +193,8 @@ private:
     [[nodiscard]] OriginalCompMxsamHour advance_hour_mxsam99_core(
         const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,const DispersionSetup& pg,
-        bool urban,const OriginalPointHourSource* source,bool adaptive);
+        bool urban,const OriginalPointHourSource* source,bool adaptive,
+        const OriginalCompPuffBounds* bounds=nullptr);
     OriginalCompRisePointDriver puffs_;
     std::vector<int> active_ids_;
     std::size_t hours_=0;
