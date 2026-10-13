@@ -215,7 +215,10 @@ OriginalGaussianDryResult original_gaussian_dry_mass(
     for(std::size_t j=0;j<before.size();++j) {
         const R mass=before[j];
         const R vd=static_cast<R>(d.velocity_ms[j]);
-        const R ratio=static_cast<R>(d.boundary_ratio[j]);
+        // In original DRY L26227–26254 the VDPVD boundary ratio
+        // is calculated ONLY for the uniform codes 2 and 6.
+        // Gaussian codes 1/3/5 keep the initial VDPVD=1.0.
+        const R ratio=1.0F;
         if(!std::isfinite(mass)||mass<0.0F ||
            !std::isfinite(vd)||vd<0.0F ||
            !std::isfinite(ratio)||ratio<0.0F ||

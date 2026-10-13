@@ -142,9 +142,9 @@ struct DryDepositionStep {
 
 // Original DRY calpuff.for L26198–26276 Gaussian puff branch. The
 // resistance calculations (VDCOMP) are provided by dry_deposition_step,
-// but that older helper's uniform FRACDRY must NOT be applied to Gaussian
-// puff QM: original DRY calls VCBAR after SETPUF and uses a different
-// exponent. VCBAR is explicitly input from native P7H (not oracle DGM).
+// but that older helper's uniform FRACDRY and uniform-only VDPVD
+// ratio must NOT be applied to Gaussian puff QM: original DRY keeps
+// VDPVD=1, calls VCBAR after SETPUF and uses a different exponent. VCBAR is explicitly input from native P7H (not oracle DGM).
 // Only Gaussian codes 1/3/5 (or 11/13/15 slugs) and skipped 4/14/99
 // are represented; uniform 2/6/12/16 belong to the other DRY branch.
 struct OriginalGaussianDryResult {

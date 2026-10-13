@@ -110,7 +110,7 @@ void test_original_gaussian_dry_mass() {
     const auto sample=cteas::puff::original_gaussian_dry_mass(
         resistance,1,600.0F,0.001F,mass);
     const float exponent=600.0F*0.001F;
-    const float fraction=std::exp(-0.8F*0.005F*exponent);
+    const float fraction=std::exp(-0.005F*exponent);
     const float after=fraction*10.0F;
     require(sample.mixed_mass_after.size()==2U &&
             sample.fraction_remaining[0]==fraction &&
@@ -140,6 +140,7 @@ void test_original_gaussian_dry_mass() {
     },"unmatched source species count excluded");
     std::cout<<"P7_NATIVE_ORIGINAL_GAUSSIAN_DRY_MASS=PASS"
              <<" VCBAR_IN_EXPONENT=YES"
+             <<" GAUSSIAN_VDPVD=ONE"
              <<" H3_DEPLETED_HE3_UNTOUCHED=YES"
              <<" CODE_4_99_SKIPPED=YES"
              <<" QM_REAL4=YES INTEGRATED_COMP=NOT_YET_ACCEPTED\\n";
