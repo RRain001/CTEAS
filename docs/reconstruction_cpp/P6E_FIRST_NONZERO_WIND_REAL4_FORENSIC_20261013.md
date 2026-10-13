@@ -141,3 +141,20 @@ Original CALMET calmet.for L26579-L26593 (READCF) resets BIAS(1)=-1 when IEXTRP<
 READCF was a genuine WIND1 reconstruction defect but fixing it reduces P6E failures only by 15 points, not by 2,209. The remaining P6E root is NOT proven to be WIND1. Next target: first-failing EL and WSTAR hour 9, USTAR hour 14; compare source/native AVETMP, SURFVAR, ELUSTR stability iterations/convergence, QH/RHO/TEMP2D, MIXHT, AVEMIX, WSTARR using native P6D drive. Keep PR #53 Draft.
 
 References: https://github.com/RRain001/CTEAS/actions/runs/38371413791 ; https://github.com/RRain001/CTEAS/actions/runs/38371224052 ; https://github.com/RRain001/CTEAS/commit/35930faa97d66cebb70dd5ecfd6cef5c17ce432e
+
+
+## Closure: frozen 143h native-wind P6E G4 numeric parity (2026-10-13)
+
+**Scientific result: PASS for the locked Hefei 2022 50×50×9, 143-hour case; not a generic CALMET acceptance.**
+The independent source comparator in [Actions #38372382572](https://github.com/RRain001/CTEAS/actions/runs/38372382572) passed all 45 output fields using the actual C++ P6D-produced wind and the C++ P6E COMP path, `total_exceedances=0`. The reference CALMET.DAT was SHA-256 pinned; fixed G3/G4 tolerances were not changed. P6D 27/27 U/V/W PASS; P6E 18/18 PASS, including USTAR/EL/WSTAR zero exceedances. Maximum absolute discrepancies: USTAR 1.7881393432617188e-7 m/s; EL 0.078125 m; WSTAR 4.4107437133789062e-6 m/s. Source-wind-only control was independent of the native-wind scientific candidate.
+
+Two source reconstruction errors explain the previous long-running G4 blockers:
+
+1. Original `READCF` (vendor calmet.for lines 26579–26613) resets effective `BIAS(1)=-1` for IEXTRP<0 with surface observations and changes higher level bias when |IEXTRP|=1; C++ previously consumed deck BIAS unchanged. This was corrected in [35930faa](https://github.com/RRain001/CTEAS/commit/35930faa97d66cebb70dd5ecfd6cef5c17ce432e). Original 143h first-level WIND1 and pre-SLOPE U/V subsequently became bit identical; 2500 gridpoint RSQWT, pre-/post-missing VVW bit parity and entire first-hour nine-level WIND1 U/V were independently demonstrated in [38371413791](https://github.com/RRain001/CTEAS/actions/runs/38371413791) and [38372106802](https://github.com/RRain001/CTEAS/actions/runs/38372106802). After this fix alone: still USTAR 1,919, EL 237, WSTAR 38, total 2,194 exceedances.
+2. Original `INTER2` (vendor calmet.for line 8526) computes `WT = WO(I,J,K)/(RS(L)**2)` with REAL*4 operands, *then* assigns to DOUBLE PRECISION WT. Native C++ had computed the RHS with double operands, yielding a numerically different effective observation weight and first-level wind. Corrected in [6be6581b](https://github.com/RRain001/CTEAS/commit/6be6581b437b919b69e6ef3971cdb38477d3b56c), casting the *REAL*4 expression result* to double afterward, for both regular and LVARY nearest branches. Independent source INTER2 selected test + all 32 CTests: [38372382463](https://github.com/RRain001/CTEAS/actions/runs/38372382463) PASS.
+
+Combined changes eliminated all remaining 2,194 P6E exceedances in the frozen actual-case native C++ G4 gate; there was no relaxation of comparison thresholds, Fortran wind substitution, or P6E physical-formula rewrite. The 143h C++ scheduler-vs-Python byte-parity gate [38372382584](https://github.com/RRain001/CTEAS/actions/runs/38372382584) also passed.
+
+**Scope exclusions / remaining work:** this is one locked Hefei scientific case, not proof of all prognostic/NOOBS/other geometry branches. The full native independent original-header/static-generation P6F acceptance and general G5/P6 overall scope remain separately gated. The current C++ hour authority still calls process-backed physics kernels (not final in-process `step_diagno/step_comp`). PR #53 remains Draft until broader architecture and P6F requirements are resolved.
+
+Earlier FAIL counts and hypotheses above are historical diagnostic milestones, not the current G4 state.
