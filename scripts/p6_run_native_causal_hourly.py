@@ -40,6 +40,7 @@ def main():
     cli.add_argument("--p6d",required=True,type=pathlib.Path)
     cli.add_argument("--p6e",required=True,type=pathlib.Path)
     cli.add_argument("--bridge",required=True,type=pathlib.Path)
+    cli.add_argument("--cgamma",required=True,type=pathlib.Path)
     cli.add_argument("--work",required=True,type=pathlib.Path)
     cli.add_argument("--hours",type=int,default=6)
     a=cli.parse_args()
@@ -63,8 +64,18 @@ def main():
         folder.mkdir(exist_ok=True)
         d=folder/"diagno"
         d.mkdir(exist_ok=True)
+        gamma=folder/"gamma"
+        gamma.mkdir(exist_ok=True)
+        # PREPDI CGAMMA reads only n-1 committed P6E state, not future P6E
+        # or the original CALMET source-state trace.
+        run([a.cgamma,"--up",upper,"--p6e-state-prefix",history,
+             "--out",gamma,"--station-id",58424,"--zupt",200,
+             "--upper-i",25,"--upper-j",26,
+             "--causal-hours",hour+1],folder/"cgamma.log")
+        if len(list(gamma.glob("gamma_*.f32")))!=1:
+            raise RuntimeError("native causal CGAMMA did not emit exactly one current-hour plane")
         command=[a.p6d,"--case",case,"--first-hour",hour,
-                 "--hours",1,"--out",d]
+                 "--hours",1,"--out",d,"--gamma",gamma]
         if hour:
             command.extend(["--comp-state-prefix",history])
         run(command,folder/"p6d.log")
@@ -111,6 +122,7 @@ def main():
         "status":"PASS_NATIVE_CAUSAL_DIAGNO_COMP_EXECUTION",
         "hours_completed":a.hours,
         "native_p6d_wind":True,
+        "native_prepdi_cgamma_previous_comp_state":True,
         "native_p6e_comp":True,
         "hourly_execution":"P6D[n] -> P6E[n] -> commit ZI/ZICONV/DPTT -> P6D[n+1]",
         "frozen_original_wind_used":False,
