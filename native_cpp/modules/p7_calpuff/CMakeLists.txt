@@ -1188,6 +1188,11 @@ target_include_directories(cteas_p7_original_pufrecs_geometry PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_executable(cteas_p7_original_pufrecs_geometry_tests
   tests/original_pufrecs_geometry_tests.cpp)
+add_executable(cteas_p7_original_pufrecs_geometry_probe
+  src/original_pufrecs_geometry_probe.cpp)
+target_link_libraries(cteas_p7_original_pufrecs_geometry_probe PRIVATE
+  cteas_p7_original_pufrecs_geometry)
+
 target_link_libraries(cteas_p7_original_pufrecs_geometry_tests PRIVATE
   cteas_p7_original_pufrecs_geometry)
 if(MSVC)

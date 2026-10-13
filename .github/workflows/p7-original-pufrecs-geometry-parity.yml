@@ -1,0 +1,36 @@
+name: P7 original SLGFRAC PUFRECS geometry REAL4 parity
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p7_calpuff/**'
+      - '.github/workflows/p7-original-pufrecs-geometry-parity.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p7-pufrecs-geometry-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  original-pufrecs-geometry:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /native_cpp/modules/p7_calpuff/**
+            /engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
+      - name: Source-ported SLGFRAC and PUFRECS geometry REAL4 parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v gfortran
+          cmake -S native_cpp/modules/p7_calpuff -B "$RUNNER_TEMP/p7-pufrecs" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$RUNNER_TEMP/p7-pufrecs" --parallel 2 --target cteas_p7_original_pufrecs_geometry_probe
+          "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_pufrecs_geometry_tests"
+          python3 native_cpp/modules/p7_calpuff/reference/compare_original_pufrecs_geometry.py \
+            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for \
+            --probe "$RUNNER_TEMP/p7-pufrecs/cteas_p7_original_pufrecs_geometry_probe"
