@@ -35,6 +35,11 @@ public:
         int id,const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,
         const DispersionSetup& pg,bool urban);
+    // Native COMP old-puff sampling wind BEFORE RISEWIND, from current
+    // persistent PUFFDZ/ADVECT state (vendor L10119-10143).
+    [[nodiscard]] NativeVerticalWind pre_cadence_wind(
+        int id,const OriginalMetHour& met,
+        const Calmet21Static& statics)const;
     [[nodiscard]] OriginalPuffMotionState motion(int id)const;
     [[nodiscard]] NativeVerticalPuffState vertical(int id)const;
     [[nodiscard]] std::size_t steps(int id)const;

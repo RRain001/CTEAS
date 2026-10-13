@@ -1132,3 +1132,18 @@ if(EXISTS "${P7_DGM_FULL_143H}")
   add_test(NAME cteas_p7_comp_new_cadence_original_143h
     COMMAND cteas_p7_original_comp_cadence_trace "${P7_DGM_FULL_143H}" 143)
 endif()
+
+# Selected REAL4 COMP old/new MXSAM=99 outer-hour execution and native
+# METFM1/GRISE/RISEWIND/PG/VMASS inner substeps, no FSTEP dynamic split.
+add_executable(cteas_p7_original_comp_mxsam99_unsplit_tests
+  tests/original_comp_mxsam99_unsplit_tests.cpp)
+target_link_libraries(cteas_p7_original_comp_mxsam99_unsplit_tests PRIVATE
+  cteas_p7_original_comp_rise_hourly)
+if(MSVC)
+  target_compile_options(cteas_p7_original_comp_mxsam99_unsplit_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_comp_mxsam99_unsplit_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_native_comp_mxsam99_unsplit
+         COMMAND cteas_p7_original_comp_mxsam99_unsplit_tests)

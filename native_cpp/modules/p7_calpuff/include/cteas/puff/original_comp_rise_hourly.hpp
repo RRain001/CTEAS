@@ -47,6 +47,20 @@ struct RiseCadencedHour {
     std::size_t active_after=0;
     std::size_t new_puffs=0;
 };
+// Original 99-slot (old/new) sampling plan + actual rising COMP physics.
+struct OriginalCompMxsamSubstep {
+    int puff_id=0;
+    int release_number=0;
+    int ksam=0;
+    SamplingCadence original_plan;
+    RiseCompStep step;
+};
+struct OriginalCompMxsamHour {
+    std::size_t hour_index=0;
+    ReleaseCadence release;
+    std::vector<OriginalCompMxsamSubstep> steps;
+    std::size_t active_puffs=0;
+};
 class OriginalCompRiseMultiPuffHours {
 public:
     [[nodiscard]] RiseCompHour advance_hour(
@@ -74,6 +88,14 @@ public:
         const NeutralCompControls& controls,const DispersionSetup& pg,
         bool urban,const OriginalPointHourSource& source,
         float calm_threshold_ms);
+    // Bounded source-ordered MXSAM=99 branch for constant POINTS1 puff:
+    // real old pre-rise ADVECT WS -> NSAM, all old/new KSAM slots and
+    // native physical PG/GRISE/VMASS, full-hour atomic commit. FSTEP>1,
+    // CALM and off-grid stop FAIL CLOSED until original resplit/ROLLDN.
+    [[nodiscard]] OriginalCompMxsamHour advance_hour_point_mxsam99_unsplit(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource& source);
     [[nodiscard]] OriginalPuffMotionState motion(int id)const;
     [[nodiscard]] NativeVerticalPuffState vertical(int id)const;
     [[nodiscard]] std::size_t puff_steps(int id)const;

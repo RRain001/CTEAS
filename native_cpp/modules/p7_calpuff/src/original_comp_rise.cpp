@@ -225,6 +225,12 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     found->second=std::move(state);
     return outcome;
 }
+NativeVerticalWind OriginalCompRisePointDriver::pre_cadence_wind(
+    int id,const OriginalMetHour& met,const Calmet21Static& statics)const{
+    const auto before=motion_.state(id);
+    return vertical_.sample(id,met,statics,
+        before.x_cells,before.y_cells,before.z_m);
+}
 OriginalPuffMotionState OriginalCompRisePointDriver::motion(int id)const{
     return motion_.state(id);
 }
