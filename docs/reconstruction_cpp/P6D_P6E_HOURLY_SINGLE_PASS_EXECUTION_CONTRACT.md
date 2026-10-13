@@ -99,3 +99,15 @@ An optional `p6e_calmet_dat21 merge-native-hours` combines the native 45-field h
 
 **Scientific holds**: P6D's currently dispatched single-hour wind branch can still omit internally computed CGAMMA/FRADJ forcing and does not yet demonstrate the original numerical equivalence for U/V/W (27 fields) or all 45 meteorological fields. The copied case header makes G4 full-input independence conditional. Once all 143h complete, compare its entire 45-field CALMET.DAT to the fixed original, diagnose the first residual by source stage and hour, and fix the physical kernel coupling rather than adjusting tolerances.
 
+
+## Real original 143-hour 45-field numeric gate — first result and first divergence
+
+The first strictly compared **fully causal** native 143h CALMET.DAT candidate was accepted as structurally complete, **not** as scientific parity. GitHub Actions [run 38346296680](https://github.com/RRain001/CTEAS/actions/runs/38346296680) separated native 6h/143h execution **PASS** from independent G3/G4 45-field numeric **FAIL**. Unchanged comparator recorded **61,161 total exceedances**.
+
+- At **hour 1**, the old causal driver did not request `--comp-state-prefix` (none exists yet) and accidentally bypassed real STHEOR/MIXHTST/capped SIMILT. As a result native surface-station interpolation was an uncapped neutral substitute: U/V levels 2–9 each diverged on all 2,500 cells in that hour. Example original vs native U-LEV 9 cell 1: 2.46427774 vs 0.71483964 m/s. This is an **upstream initialization/callgraph bug**, not an original WIND1 kernel mismatch.
+- The earlier actual-case **hour-12** INTER2 lower-layer mismatch persists in the first numeric run: U-LEV1 969 exceedances (max 0.0017107 m/s), V-LEV1 824 (max 0.0013192 m/s); first exceedance both at hour 12 cell 18. It must be analyzed after hour 1 closure, not conflated with first-hour STHEOR.
+- Other current failures include USTAR 5957 exceedances, WFACE9 2504 exceedances (max abs 0.33009 m/s), and native upper-level strong deviations. The original 45-field gate remains **NOT PASS**.
+- Independent native COMP migration / hourly clock compatibility gates previously passed; the above test proves those software gates are not substitutes for source numerical equality.
+
+**Immediate corrective change on #53:** `cteas_p6_realcase_wind_field --native-setup-hour0` now explicitly supplies original first-hour zero-initialized thermal COMMON state and runs real native STHEOR→ELUSTR2→MIXHTST→capped SIMILT instead of the neutral fallback. Only hour zero and one-hour window permit this flag; oracle/COMP history mixing fails closed. The coordinator uses it on hour zero and real preceding P6E thermal state thereafter. An independently implemented native `--causal-hours` CGAMMA mode now reads only *already committed* P6E ZICONV states and runs original-order PREPDI before FRADJ, including initial ZICONV=0 at hour 1. This rebuild requires fresh 6h/143h CI and new numeric verdict; **do not reuse the previous 61,161 exceedances as the revised candidate's measured error count**.
+
