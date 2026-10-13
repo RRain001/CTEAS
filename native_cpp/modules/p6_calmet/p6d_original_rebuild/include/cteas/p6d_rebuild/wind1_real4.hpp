@@ -34,7 +34,9 @@ struct StationWind {
 struct Wind1Controls {
     int nx=50,ny=50,nz=9;
     int nssta=1,nusta=1,nowsta=0,nbar=0,iextrp=-4,icalm=0;
-    Real4 dgrid_m=100.f,editl=999998.f;
+    // Frozen original-source WIND1 oracle sets EDITL=900.f; 999.f marks
+    // missing upper-air levels. Keep the threshold aligned with Fortran.
+    Real4 dgrid_m=100.f,editl=900.f;
     Real4 surface_measured_u{},surface_measured_v{};
     std::array<Real4,K> bias{};
     StationWind surface,upper;
