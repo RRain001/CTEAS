@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <limits>
 #include <cstddef>
 #include <optional>
 #include <regex>
@@ -185,6 +186,56 @@ std::vector<TableRow> parse_table(const std::vector<std::string>& lines, std::si
 }
 
 } // namespace
+
+OriginalGaussianDryResult original_gaussian_dry_mass(
+    const DryDepositionStep& d, int puff_code,
+    float tsamp, float vcbar, const std::vector<float>& before) {
+    if(!std::isfinite(tsamp)||tsamp<=0.0F ||
+       !std::isfinite(vcbar)||vcbar<0.0F ||
+       d.velocity_ms.size()!=before.size() ||
+       d.boundary_ratio.size()!=before.size())
+        throw std::invalid_argument(
+            "P7F original Gaussian DRY invalid substep, VCBAR or species");
+    int normalized=puff_code;
+    if(normalized>=11 && normalized<=16)normalized-=10;
+    if(puff_code!=99 && (normalized<1||normalized>6 ||
+                         normalized==2||normalized==6))
+        throw std::invalid_argument(
+            "P7F Gaussian DRY refuses non-Gaussian puff code");
+    OriginalGaussianDryResult out;
+    out.vcbar_m_inverse=vcbar;
+    out.fraction_remaining.reserve(before.size());
+    out.mixed_mass_after.reserve(before.size());
+    out.removed_mass.reserve(before.size());
+    // Original DRY L26198–26203: ICODE=99 or 4/14 return untouched.
+    const bool skipped=(puff_code==99||normalized==4);
+    // DRY L26266–26276: CONST=TSAMP*VCBAR and
+    // FRACDRY=EXP(-VDPVD*VD*CONST), QM=FRACDRY*QM.
+    const R exponent_factor=static_cast<R>(tsamp*vcbar);
+    for(std::size_t j=0;j<before.size();++j) {
+        const R mass=before[j];
+        const R vd=static_cast<R>(d.velocity_ms[j]);
+        const R ratio=static_cast<R>(d.boundary_ratio[j]);
+        if(!std::isfinite(mass)||mass<0.0F ||
+           !std::isfinite(vd)||vd<0.0F ||
+           !std::isfinite(ratio)||ratio<0.0F ||
+           !std::isfinite(exponent_factor))
+            throw std::invalid_argument(
+                "P7F original Gaussian DRY nonfinite/negative REAL4 input");
+        const R fraction=skipped?1.0F:
+            static_cast<R>(std::exp(static_cast<R>(
+                -ratio*vd*exponent_factor)));
+        const R remaining=static_cast<R>(fraction*mass);
+        if(!std::isfinite(fraction)||fraction<0.0F||fraction>1.0F ||
+           !std::isfinite(remaining)||remaining<0.0F)
+            throw std::overflow_error(
+                "P7F original Gaussian DRY invalid remaining QM");
+        out.fraction_remaining.push_back(fraction);
+        out.mixed_mass_after.push_back(remaining);
+        out.removed_mass.push_back(static_cast<R>(mass-remaining));
+    }
+    return out;
+}
 
 DryDepositionMethod require_supported_dry_deposition_method(int method, const std::string& species) {
     switch (method) {

@@ -140,6 +140,24 @@ struct DryDepositionStep {
                                                    double lid_height_m, double sampling_step_s,
                                                    double mixing_height_m, double wstar_ms);
 
+// Original DRY calpuff.for L26198–26276 Gaussian puff branch. The
+// resistance calculations (VDCOMP) are provided by dry_deposition_step,
+// but that older helper's uniform FRACDRY must NOT be applied to Gaussian
+// puff QM: original DRY calls VCBAR after SETPUF and uses a different
+// exponent. VCBAR is explicitly input from native P7H (not oracle DGM).
+// Only Gaussian codes 1/3/5 (or 11/13/15 slugs) and skipped 4/14/99
+// are represented; uniform 2/6/12/16 belong to the other DRY branch.
+struct OriginalGaussianDryResult {
+    std::vector<float> fraction_remaining;
+    std::vector<float> mixed_mass_after;
+    std::vector<float> removed_mass;
+    float vcbar_m_inverse=0.0F;
+};
+[[nodiscard]] OriginalGaussianDryResult original_gaussian_dry_mass(
+    const DryDepositionStep& resistance, int puff_code,
+    float sampling_step_s, float native_vcbar_m_inverse,
+    const std::vector<float>& mixed_mass_before);
+
 // Case-level audit: method per species, which options are effective, and the
 // derived gas parameters, for CI evidence and docs.
 struct DryDepositionAudit {

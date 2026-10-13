@@ -102,6 +102,49 @@ DryDepositionStep step(const DryDepositionSetup& setup, const DryDepositionEnvir
                                             /*wstar_ms=*/0.5);
 }
 
+void test_original_gaussian_dry_mass() {
+    cteas::puff::DryDepositionStep resistance;
+    resistance.velocity_ms={0.005,0.0};
+    resistance.boundary_ratio={0.8,1.0};
+    const std::vector<float> mass={10.0F,7.0F};
+    const auto sample=cteas::puff::original_gaussian_dry_mass(
+        resistance,1,600.0F,0.001F,mass);
+    const float exponent=600.0F*0.001F;
+    const float fraction=std::exp(-0.8F*0.005F*exponent);
+    const float after=fraction*10.0F;
+    require(sample.mixed_mass_after.size()==2U &&
+            sample.fraction_remaining[0]==fraction &&
+            sample.mixed_mass_after[0]==after &&
+            sample.removed_mass[0]==10.0F-after &&
+            sample.mixed_mass_after[1]==7.0F,
+            "original Gaussian DRY VCBAR exponential mass update");
+    const auto none=cteas::puff::original_gaussian_dry_mass(
+        resistance,4,600.0F,0.001F,mass);
+    const auto inactive=cteas::puff::original_gaussian_dry_mass(
+        resistance,99,600.0F,0.001F,mass);
+    require(none.mixed_mass_after==mass &&
+            inactive.mixed_mass_after==mass,
+            "vendor DRY icode 4/99 skips mass removal");
+    const auto slug=cteas::puff::original_gaussian_dry_mass(
+        resistance,11,600.0F,0.001F,mass);
+    require(slug.mixed_mass_after==sample.mixed_mass_after,
+            "vendor Gaussian slug code must preserve DRY exponent semantics");
+    require_throw([&]{(void)cteas::puff::original_gaussian_dry_mass(
+        resistance,2,600.0F,0.001F,mass);
+    },"uniform puff excluded from Gaussian DRY");
+    require_throw([&]{(void)cteas::puff::original_gaussian_dry_mass(
+        resistance,1,600.0F,-1.0F,mass);
+    },"negative VCBAR excluded");
+    require_throw([&]{(void)cteas::puff::original_gaussian_dry_mass(
+        resistance,1,600.0F,0.001F,{1.0F});
+    },"unmatched source species count excluded");
+    std::cout<<"P7_NATIVE_ORIGINAL_GAUSSIAN_DRY_MASS=PASS"
+             <<" VCBAR_IN_EXPONENT=YES"
+             <<" H3_DEPLETED_HE3_UNTOUCHED=YES"
+             <<" CODE_4_99_SKIPPED=YES"
+             <<" QM_REAL4=YES INTEGRATED_COMP=NOT_YET_ACCEPTED\\n";
+}
+
 void test_method_validation() {
     require(static_cast<int>(cteas::puff::require_supported_dry_deposition_method(0, "X")) == 0,
             "method 0 accepted");
@@ -391,6 +434,7 @@ void test_real_deck(const std::string& path) {
 int main(int argc, char** argv) {
     try {
         test_method_validation();
+        test_original_gaussian_dry_mass();
         test_setup_from_control();
         test_setup_fail_closed();
         test_resistance_model();
