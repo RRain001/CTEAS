@@ -166,3 +166,11 @@ This subsection supersedes earlier statements that the *real* native causal C++ 
 - This state-owner migration changes no P6D/P6E physical kernel, numerical tolerance, frozen original Fortran input, or reference wind provenance. Historical PR #53 remains Draft until complete P6 science G4 and P6E residuals are resolved.
 
 Next architectural step is to extract existing validated P6D and P6E monolithic loop contents into native per-hour callable kernels and bind them to `P6SinglePassHourlyScheduler` without subprocess/file round trips, preserving the same input provenance and these strict numeric gates.
+
+### NativeCompHistory 143h closure (source-scoped, run 2026-10-13)
+
+- GitHub Actions [#38362578396](https://github.com/RRain001/CTEAS/actions/runs/38362578396): the C++ controller with single `NativeCompHistory` state owner passed both build-level fail-closed CTests, 6h original Python-vs-C++ strict byte comparison, and the full 143h byte-by-byte comparison of native hourly CALMET.DAT records, final 45-field MET.DAT, ZI/ZICONV/DPTT state, station flux, observations, and native 143h FRADJ/WIND1/SLOPE/INTER2 stage traces. Full-case MET.DAT SHA-256 remained `d942510459dd7392b03d8cb63f743f7015a7efb9985ea4767277020ac0a75686` (unchanged).
+- GitHub Actions [#38362578127](https://github.com/RRain001/CTEAS/actions/runs/38362578127): native first 6h and full 143h production PASS after the state-owner cutover, unchanged original scientific comparator P6D U/V/W **27 of 27 PASS, zero excess points**. The overall 45-field gate remains intentionally FAIL for USTAR 5,952, EL 1,105, WSTAR 171, total 7,228. No tolerances or physical formulas changed.
+- Source-order scheduler-contract and standalone native history rollback tests passed independently in [#38362578136](https://github.com/RRain001/CTEAS/actions/runs/38362578136).
+
+**Accepted scope:** frozen Hefei 2022 selected-case C++ process coordinator with one validated file-backed COMP history owner, not generic CALMET and not in-process `step_diagno/step_comp`. Automatic restart following partial OS-level file promotion remains explicitly unsupported. Strict G4/P6E scientific hold remains. Do not merge PR #53 into its parent or main solely on the basis of these migration gates.
