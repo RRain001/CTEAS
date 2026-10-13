@@ -40,21 +40,24 @@ c --- Write-only original after-HEATFX and after-ELUSTR heat-flux grid
 """
 def stage_instrument(before:Path,after:Path):
     lines=before.read_text().splitlines(keepends=True)
-    # Two branches have the same final continuation line; select the
-    # source ISFCMET=0 path, with a nearby CALL HEATFX/ELUSTR respectively.
+    # CALMET calls HEATFX in BOTH COMP (around L4583) and DIAGNO
+    # (around L5686). Each has ISFCMET=0 and ISFCMET=1 branches:
+    # four matches are expected. The SLOPE input audit must sample only
+    # DIAGNO's first (ISFCMET=0) HEATFX and ELUSTR calls; COMP precedes
+    # the per-hour DIAGNO wind construction and is a different stage.
     ending="     1              iwat2,nx,ny,mcloud,ccgrid,qh,qsw)"
     heat=[i for i,l in enumerate(lines)
           if l.rstrip()==ending
           and any("call heatfx(" in s.lower() for s in lines[max(0,i-6):i+1])]
-    # CALMET has two branches: first one is the selected ISFCMET=0 route.
-    if len(heat)!=2:raise RuntimeError(f"HEATFX original source anchor drift: {heat}")
-    first_heat=heat[0]
+    if len(heat)!=4 or not(heat[0]<heat[1]<5000<heat[2]<heat[3]):
+        raise RuntimeError(f"HEATFX original COMP/DIAGNO source site drift: {heat}")
+    first_heat=heat[2]
     end_elustr="     2               nx,ny,mcloud,ccgrid,ipsifcn,qh,ustar,el)"
     elustr=[i for i,l in enumerate(lines)
            if l.rstrip()==end_elustr
            and any("call elustr(" in s.lower() for s in lines[max(0,i-6):i+1])]
-    if len(elustr)!=2 or elustr[0]<=first_heat:
-        raise RuntimeError(f"ELUSTR original source anchor drift: {elustr}")
+    if len(elustr)!=2 or not(first_heat<elustr[0]<heat[3]<elustr[1]):
+        raise RuntimeError(f"DIAGNO ISFCMET ELUSTR source order drift: {elustr}")
     lines.insert(elustr[0]+1,"      call dgmqhstage(2)\n")
     lines.insert(first_heat+1,"      call dgmqhstage(1)\n")
     after.write_text("".join(lines)+HELPER)
