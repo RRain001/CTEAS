@@ -121,6 +121,12 @@ jobs:
                   if i>old+1: print('... omitted ...')
                   print(f'[{lo+i:05d}] {sub[i]}')
                   old=i
+          print('P7_ORIGINAL_COMP_RISEWIND_CONDITION_START')
+          for lo,hi in [(10470,10534),(10540,10586)]:
+              print(f'P7_EXACT_COMP_RISEWIND {lo}-{hi}')
+              for n in range(lo-1,hi):
+                  print(f'[{n+1:05d}] {lines[n]}')
+          print('P7_ORIGINAL_COMP_RISEWIND_CONDITION_END')
           print('P7_ORIGINAL_COMP_ILW_MAPPING_END')
           print('P7_VENDOR_CALM_PARAMETER_SOURCE_END')
           PY
