@@ -84,5 +84,30 @@ jobs:
                   print(f'[{lo+i:05d}] {sub[i]}')
                   last=i
           print('P7_CALM_UPSTREAM_MET_PROVENANCE_END')
+          header=re.compile(r'^      subroutine turbset\\b',re.I)
+          starts=[i for i,line in enumerate(lines) if header.match(line)]
+          if len(starts)!=1:
+              raise RuntimeError(f'exact TURBSET source header expected, got {len(starts)}')
+          start=starts[0]
+          stops=[i for i in range(start+1,len(lines)) if
+                 re.match(r'^      end\\s*
+          print('P7_VENDOR_CALM_PARAMETER_SOURCE_END')
+          PY
+,lines[i],re.I)]
+          if not stops: raise RuntimeError('TURBSET end not found')
+          end=stops[0]
+          src=lines[start:end+1]
+          pattern=re.compile(r'tsigv|tsigw|sigv|sigw|ustar|wstar|svmin|swmin|mdisp|idopty|idoptz|el|zi|mix|metfm',re.I)
+          chosen=set(range(min(65,len(src))))
+          for n,line in enumerate(src):
+              if not line.lstrip().lower().startswith('c') and pattern.search(line):
+                  chosen.update(range(max(0,n-4),min(len(src),n+7)))
+          print(f'P7_ORIGINAL_TURBSET_SOURCE_START LINES={start+1}-{end+1}')
+          old=-10
+          for n in sorted(chosen):
+              if n>old+1: print('... omitted ...')
+              print(f'[{start+n+1:05d}] {src[n]}')
+              old=n
+          print('P7_ORIGINAL_TURBSET_SOURCE_END')
           print('P7_VENDOR_CALM_PARAMETER_SOURCE_END')
           PY
