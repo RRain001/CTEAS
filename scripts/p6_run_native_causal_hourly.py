@@ -59,6 +59,7 @@ def main():
     history.parent.mkdir(exist_ok=True)
     manifest=work/"native_hourly_files.txt"
     files=[]
+    station_flux_lines=[]
     for hour in range(a.hours):
         folder=work/f"hour_{hour:03d}"
         folder.mkdir(exist_ok=True)
@@ -83,6 +84,13 @@ def main():
             # DIAGNO still executes real STHEOR/MIXHTST/SIMILT at hour 1.
             command.append("--native-setup-hour0")
         run(command,folder/"p6d.log")
+        flux_lines=(d/"station_elustr2.csv").read_text().splitlines()
+        if len(flux_lines)!=2:
+            raise RuntimeError(f"hour={hour}: single-hour native P6D station flux malformed")
+        if not station_flux_lines:station_flux_lines.append(flux_lines[0])
+        elif station_flux_lines[0]!=flux_lines[0]:
+            raise RuntimeError("native station flux column contract changed")
+        station_flux_lines.append(flux_lines[1])
         native=folder/"comp"
         opts=[
             a.p6e,"emit-realcase",
@@ -117,6 +125,8 @@ def main():
         files.append(f)
         # One hour at a time, NEVER run full-period P6E before P6D.
     manifest.write_text("\n".join(map(str,files))+"\n")
+    joined_station=work/"native_station_flux.csv"
+    joined_station.write_text("\n".join(station_flux_lines)+"\n")
     merged=work/"native_causal_calmet.dat"
     run([a.p6e,"merge-native-hours","--manifest",manifest,"--out",merged],
         work/"writer.log")
@@ -137,6 +147,7 @@ def main():
         "complete_45_field_writer":"PASS_FORMAT_ONLY_NOT_REFERENCE_PARITY",
         "native_calmet_dat":str(merged),
         "native_calmet_dat_sha256":digest(merged),
+        "native_station_flux_csv":str(joined_station),
         "first_hour":str(files[0]),
         "last_hour":str(files[-1]),
         "hour_files_manifest":str(manifest),
