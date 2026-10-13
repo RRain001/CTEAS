@@ -56,7 +56,7 @@ jobs:
           python3 - <<'PY'
           import pathlib,struct
           source=pathlib.Path('engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for').read_bytes().decode('latin-1').splitlines()
-          for first,last in ((15972,16190),):
+          for first,last in ((15645,15688),(15880,15974),(15972,16190)):
               for i in range(first-1,last):
                   print(f'P7_POINT_ADMISSION_SOURCE {i+1:6d} {source[i]}')
           path=pathlib.Path('native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin')
