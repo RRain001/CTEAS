@@ -7,6 +7,7 @@
 #include "cteas/puff/dispersion.hpp"
 #include "cteas/puff/vendor_order.hpp"
 #include "cteas/puff/dry_deposition.hpp"
+#include "cteas/puff/original_turbset_mdisp3.hpp"
 #include <optional>
 
 namespace cteas::puff {
@@ -33,6 +34,12 @@ struct NativeGaussianDryControls {
     DryDepositionSetup setup;          // validated from original puff.inp
     float plume_path_coefficient=1.0F; // PPCOEF of selected source
 };
+// Opt-in original MDISP3 turbulence, with water category boundaries from
+// authoritative MAKEGEO control rather than guessed land-use categories.
+struct NativeCalmMdisp3Controls {
+    OriginalTurbsetMdisp3 original_turbulence;
+    int iwat1=0, iwat2=0;
+};
 struct NeutralCompControls {
     float seconds=3600.0F;
     float source_period_s=3600.0F;
@@ -46,6 +53,9 @@ struct NeutralCompControls {
     SigmaUpdateInputs dispersion;
     std::optional<NativeMctadj2Controls> mctadj2;
     std::optional<NativeGaussianDryControls> gaussian_dry;
+    // Only post-rise unsampled calm point steps until receptor/DRY/MCTADJ2
+    // source parity is established. Missing data is a hard error.
+    std::optional<NativeCalmMdisp3Controls> calm_mdisp3;
 };
 struct NeutralCompResult {
     OriginalPuffMotionState before;
