@@ -13,7 +13,7 @@ concurrency:
 jobs:
   rise-phys-bridge:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [cteas-managed, Linux, X64, cteas-compute]
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

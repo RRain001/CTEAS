@@ -15,7 +15,7 @@ jobs:
   # Kind proof is independent of the expensive original CALPUFF compilation.
   precision-kind-audit:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [cteas-managed, Linux, X64, cteas-light]
+    runs-on: ubuntu-22.04
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
@@ -72,12 +72,9 @@ jobs:
 
   # Independent original-source parity modules can run on *different* idle
   # self-hosted runner instances. Do not pin this matrix to desktop-3.
-  # 14 source parity lanes on dedicated cteas-managed runners 4..16,
-  # including eight light, three compute, two reserve and one overflow.
-  # The user reports 56 physical CPU cores / 112 threads / ~125 GiB RAM.
-  # One compiler per lane; no artificial 4-process host lock.
-  # Existing self-hosted runners 1..3 stay available for P6/full P7.
-  # The long 6h/143h reference replay is independently dispatchable.
+  # 14 independent source physics lanes on fresh GitHub-hosted Ubuntu VMs.
+  # Preserve max-parallel=16 (no shared self-hosted machine).
+  # The pinned six/143-hour original replay runs in its own VM.
   source-parity-shards:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
     strategy:
@@ -86,49 +83,20 @@ jobs:
       matrix:
         include:
           - lane: release-inject
-            runner: cteas-r04
-            pool: light
           - lane: step-bookkeeping
-            runner: cteas-r05
-            pool: light
           - lane: advection
-            runner: cteas-r06
-            pool: light
           - lane: dispersion
-            runner: cteas-r07
-            pool: light
           - lane: sigma-update
-            runner: cteas-r08
-            pool: light
           - lane: terrain-constraints
-            runner: cteas-r09
-            pool: light
           - lane: terrain-relief
-            runner: cteas-r10
-            pool: light
           - lane: valley-width
-            runner: cteas-r11
-            pool: light
           - lane: plume-rise
-            runner: cteas-r12
-            pool: compute
           - lane: receptor-sampling
-            runner: cteas-r13
-            pool: compute
           - lane: vertical-coupling
-            runner: cteas-r14
-            pool: compute
           - lane: ctsg-kernels
-            runner: cteas-r15
-            pool: reserve
           - lane: dry-removal
-            runner: cteas-r16
-            pool: reserve
           - lane: wind-step-output
-            runner: cteas-light
-            pool: overflow
-    # cteas-managed deliberately has NO 'self-hosted' label on runners 4..16.
-    runs-on: [cteas-managed, Linux, X64, "${{ matrix.runner }}"]
+    runs-on: ubuntu-22.04
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
@@ -326,7 +294,7 @@ jobs:
 
   original-execution-order:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [cteas-managed, Linux, X64, cteas-compute]
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -413,9 +381,18 @@ jobs:
     # Independent frozen input SHA and vendor-output invariants make this
     # an autonomous scientific gate, not blocked by another runner's order job.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [cteas-managed, Linux, X64, cteas-reserve]
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
+      - name: Ensure exact original Fortran 11 compiler on GitHub-hosted Ubuntu
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v gfortran-11 >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gfortran-11
+          fi
+          gfortran-11 --version | head -n 1
       - uses: actions/checkout@v4
         with:
           persist-credentials: false

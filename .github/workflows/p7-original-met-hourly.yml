@@ -15,7 +15,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
     # Independent of the full original CALPUFF and P6 workers. This job
     # takes one compute slot rather than building every P7 physics kernel.
-    runs-on: [cteas-managed, Linux, X64, cteas-compute]
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

@@ -9,7 +9,7 @@ permissions:
 jobs:
   vendor-vmass-source:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [cteas-managed, Linux, X64, cteas-light]
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

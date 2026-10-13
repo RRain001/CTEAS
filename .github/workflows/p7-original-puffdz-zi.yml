@@ -14,9 +14,18 @@ concurrency:
 jobs:
   native-puffdz-all-143h:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [cteas-managed, Linux, X64, cteas-reserve]
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
+      - name: Ensure exact original Fortran 11 compiler on GitHub-hosted Ubuntu
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v gfortran-11 >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gfortran-11
+          fi
+          gfortran-11 --version | head -n 1
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
