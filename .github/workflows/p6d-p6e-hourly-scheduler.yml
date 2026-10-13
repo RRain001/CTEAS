@@ -280,14 +280,16 @@ jobs:
           for n in 6 143; do
             py="$RUNNER_TEMP/coordinator-parity/python-$n"
             cpp="$RUNNER_TEMP/coordinator-parity/cpp-$n"
+            extra=()
+            if [ "$n" -eq 143 ]; then extra=(--emit-source-stage-trace); fi
             python3 scripts/p6_run_native_causal_hourly.py \
               --case "$reference" --p6d "$p6d" --p6e "$p6e" \
               --cgamma "$gamma" --bridge "$bridge" \
-              --hours "$n" --work "$py" > "$RUNNER_TEMP/coordinator-parity/python-$n.log"
+              --hours "$n" --work "$py" "${extra[@]}" > "$RUNNER_TEMP/coordinator-parity/python-$n.log"
             "$RUNNER_TEMP/native-p6d/cteas_p6_native_hourly_driver" \
               --case "$reference" --p6d "$p6d" --p6e "$p6e" \
               --cgamma "$gamma" --bridge "$bridge" \
-              --hours "$n" --work "$cpp" > "$RUNNER_TEMP/coordinator-parity/cpp-$n.log"
+              --hours "$n" --work "$cpp" "${extra[@]}" > "$RUNNER_TEMP/coordinator-parity/cpp-$n.log"
             cmp "$py/native_causal_calmet.dat" "$cpp/native_causal_calmet.dat"
             cmp "$py/native_station_flux.csv" "$cpp/native_station_flux.csv"
             cmp "$py/observations.csv" "$cpp/observations.csv"
@@ -300,6 +302,16 @@ jobs:
               cmp "$py/hour_$suffix/met_native_1h.dat" \
                   "$cpp/hour_$suffix/met_native_1h.dat"
             done
+            if [ "$n" -eq 143 ]; then
+              py_stage="$py/native_source_stage_143h"
+              cpp_stage="$cpp/native_source_stage_143h"
+              find "$py_stage" -maxdepth 1 -type f -printf "%f\n" | sort > "$py/stage_names.txt"
+              find "$cpp_stage" -maxdepth 1 -type f -printf "%f\n" | sort > "$cpp/stage_names.txt"
+              cmp "$py/stage_names.txt" "$cpp/stage_names.txt"
+              while IFS= read -r file; do
+                cmp "$py_stage/$file" "$cpp_stage/$file"
+              done < "$py/stage_names.txt"
+            fi
             digest="$(sha256sum "$cpp/native_causal_calmet.dat" | cut -d' ' -f1)"
             echo "hours=$n P6D/P6E_CXX_DRIVER_BYTE_PARITY=PASS sha256=$digest" |
               tee -a "$RUNNER_TEMP/coordinator-parity/acceptance.txt"
