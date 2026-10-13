@@ -35,7 +35,7 @@ jobs:
       - name: Download verified original-case native 6h C++ evidence after RSQWT capture
         uses: actions/download-artifact@v4
         with:
-          run-id: 38369116848
+          run-id: 38369861653
           github-token: ${{ github.token }}
           name: p6-causal-original-case-6h
           path: ${{ runner.temp }}/p6e-weights/native-six
@@ -59,6 +59,15 @@ jobs:
             --out "$RUNNER_TEMP/p6e-weights/original_vs_cpp_first_hour_rsqwt.json" \
             > "$RUNNER_TEMP/p6e-weights/result.txt"
           cat "$RUNNER_TEMP/p6e-weights/result.txt"
+          python3 - <<'PY'
+          import json, os, pathlib
+          report=json.loads((pathlib.Path(os.environ["RUNNER_TEMP"])/"p6e-weights/original_vs_cpp_first_hour_rsqwt.json").read_text())
+          if report["status"]!="MATCH_ALL_WEIGHT_BITS":
+              raise SystemExit(f"FAIL_WIND1_WEIGHT_BITS: {report['status']}")
+          for name in ("surface","upper","vvw_surface1","vvw_upper1"):
+              assert report["fields"][name]["nonzero"]==0,name
+          print("PASS_WIND1_REAL4_WEIGHT_BITS_2500_CELLS_2_STATIONS")
+          PY
       - name: Persist original/native REAL4 source evidence
         if: always()
         uses: actions/upload-artifact@v4
