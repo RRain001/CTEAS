@@ -54,47 +54,28 @@ def parse_center(path: Path) -> tuple[float, float]:
     return float(m_lon.group(1)), float(m_lat.group(1))
 
 
+# Backwards-compatible exported functions; P4 and P5 share one geometry kernel.
+from engine.run_met.station_grid import (
+    load_strict_utm_grid, utm_bounds_km as _utm_bounds_km,
+    contains_projected_utm_km as _contains_projected_utm_km,
+    lon_lat_in_utm_grid,
+)
+
+
 def load_utm_grid(path: Path) -> GridDef:
-    """Read the same published UTM grid.cmn as P6; refuse unsupported CRS."""
-    grid = parse_grid_cmn("p5", path=path)
-    if (grid.imap != "UTM" or grid.datum != "WGS-84" or
-            grid.lsohem not in ("N", "S") or not 1 <= grid.iutmzn <= 60):
-        raise ValueError("P5 candidate selection requires WGS-84 UTM zone/hemisphere from grid.cmn")
-    values = (grid.xrefkm, grid.yrefkm, grid.dgridkm)
-    if (not all(math.isfinite(v) for v in values) or grid.dgridkm <= 0 or
-            grid.nx <= 0 or grid.ny <= 0):
-        raise ValueError("P5 grid.cmn contains nonfinite or nonpositive grid geometry")
-    return grid
+    return load_strict_utm_grid(path, context="P5")
 
 
 def utm_bounds_km(grid: GridDef) -> tuple[float, float, float, float]:
-    """Actual projected outer edges, including the published 0.001-km origin rounding."""
-    return (grid.xrefkm, grid.xrefkm + grid.nx * grid.dgridkm,
-            grid.yrefkm, grid.yrefkm + grid.ny * grid.dgridkm)
+    return _utm_bounds_km(grid)
 
 
 def contains_projected_utm_km(x: float, y: float, grid: GridDef) -> bool:
-    """Closed outer footprint: edges and corners count as in-domain.
-
-    1e-10 km (0.1 micrometre) avoids machine-roundoff around a computed
-    exact edge; it does not expand the physical grid by a meaningful amount.
-    """
-    if not (math.isfinite(x) and math.isfinite(y)):
-        return False
-    xmin, xmax, ymin, ymax = utm_bounds_km(grid)
-    eps_km = 1e-10
-    return xmin - eps_km <= x <= xmax + eps_km and ymin - eps_km <= y <= ymax + eps_km
+    return _contains_projected_utm_km(x, y, grid)
 
 
 def station_in_utm_grid(st: Station, grid: GridDef) -> bool:
-    """Project every station into the configured UTM zone, even across zone boundaries."""
-    try:
-        x, y = lon_lat_to_utm_km(st.lon, st.lat, grid.iutmzn, grid.lsohem == "N")
-    except ValueError:
-        # The global NOAA inventory contains polar/out-of-range stations that
-        # cannot be represented in UTM; they are not Hefei grid candidates.
-        return False
-    return contains_projected_utm_km(x, y, grid)
+    return lon_lat_in_utm_grid(st.lon, st.lat, grid)
 
 
 def parse_history_txt(path: Path) -> list[Station]:
