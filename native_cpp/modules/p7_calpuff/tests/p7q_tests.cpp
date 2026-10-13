@@ -161,6 +161,51 @@ void test_adjust() {
     }, "negative BIDFNL");
 }
 
+void test_terrain_sigma_source_order() {
+    const SigmaYCurve y=stub_sigma_y;
+    const SigmaZCurve z=stub_sigma_z;
+    SigmaUpdateInputs inputs;
+    inputs.step.sigma_y_start_m=2.0;
+    inputs.step.sigma_z_start_m=1.0;
+    inputs.step.puff_height_m=70.8;
+    inputs.step.mid_time_s=25.0;
+    inputs.step.mid_distance_km=0.2;
+    inputs.step.puff_code=1;
+    auto no_terrain=cteas::puff::sigma_update(inputs,y,z);
+    require(!no_terrain.terrain,"flat original sigma unexpectedly has terrain state");
+    // Fully explicit REAL4 mock terrain state; no oracle/frozen outputs.
+    cteas::puff::TerrainLookup real_lookup;
+    real_lookup.elevation_msl=[](double x,double){return 10.0+0.005*x;};
+    real_lookup.cell_elevation_msl=[](double,double){return 10.0;};
+    real_lookup.relief=[](double,double,int){return 60.0;};
+    real_lookup.valley_width=[](double,double,int){return 15;};
+    cteas::puff::OriginalTerrainSigmaInputs terr;
+    terr.lookup=&real_lookup;
+    terr.x_begin_cells=5.0F;terr.y_begin_cells=5.0F;
+    terr.x_end_cells=6.0F;terr.y_end_cells=5.0F;
+    terr.z_begin_m=70.8F;terr.brunt_vaisala_s=0.015F;
+    terr.wind_speed_ms=1.2F;terr.met_spacing_m=100.0F;
+    const auto result=cteas::puff::sigma_update(inputs,y,z,&terr);
+    require(result.terrain.has_value(),"native CTADJ2 midpoint/end state absent");
+    require(std::isfinite(result.terrain->z_end_m) &&
+            std::isfinite(result.terrain->fracz_end) &&
+            std::isfinite(result.step.sigma_z_end_m) &&
+            result.adjust.stored_sigma_z_m>0.0,
+            "CTADJ2 SETPUF did not return finite native height and stored sigma");
+    auto missing=terr;missing.lookup=nullptr;
+    require_throw([&]{
+        (void)cteas::puff::sigma_update(inputs,y,z,&missing);
+    },"original MCTADJ2 may not invent missing terrain data");
+    auto even=inputs;even.step.puff_code=2;
+    require_throw([&]{
+        (void)cteas::puff::sigma_update(even,y,z,&terr);
+    },"selected original MCTADJ2 only supports Gaussian sigma");
+    std::cout<<"P7_MCTADJ2_SETPUF_SOURCE_ORDER=PASS"
+             <<" CTADJ2_MID_END=YES REINVERT_SIGTZ=YES"
+             <<" FRACZ1_LUP1=FROM_END=YES"
+             <<" NO_NATIVE_RELIEF_FAIL_CLOSED=YES\\n";
+}
+
 void test_sigma_update_chain() {
     const SigmaYCurve y = stub_sigma_y;
     const SigmaZCurve z = stub_sigma_z;
@@ -191,6 +236,7 @@ int main() {
         test_sigma_step();
         test_adjust();
         test_sigma_update_chain();
+        test_terrain_sigma_source_order();
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

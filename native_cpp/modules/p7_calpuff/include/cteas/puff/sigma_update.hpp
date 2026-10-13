@@ -1,6 +1,8 @@
 #pragma once
 
 #include "cteas/puff/ctsg.hpp"
+#include "cteas/puff/terrain_constraints.hpp"
+#include <optional>
 
 namespace cteas::puff {
 
@@ -98,13 +100,31 @@ struct SigmaUpdateInputs {
     bool calm = false;
 };
 
+// Source-ordered SETPUF L48616-48631 inputs, selected Gaussian MCTADJ=2.
+// For CTADJ2 use actual native domain relief/elevation lookups; no defaults.
+struct OriginalTerrainSigmaInputs {
+    const TerrainLookup* lookup=nullptr; // borrowed only for this substep
+    float x_begin_cells=0.0F,y_begin_cells=0.0F;
+    float x_end_cells=0.0F,y_end_cells=0.0F;
+    float z_begin_m=0.0F;               // ZPB(II)
+    float brunt_vaisala_s=0.0F;          // BVF from native meteorology
+    float wind_speed_ms=0.0F;           // WS native RISEWIND
+    float met_spacing_m=0.0F;          // DGRID
+};
+struct OriginalTerrainSigmaState {
+    float z_mid_m=0.0F,z_end_m=0.0F;  // ZM1, ZE1
+    float fracz_end=0.0F;             // FRACZ1, at END of step
+    bool upslope_end=false;           // LUP1, at END of step
+};
 struct SigmaUpdateResult {
     SigmaStep step;
     SigmaAdjust adjust;
+    std::optional<OriginalTerrainSigmaState> terrain;  // no false flat defaults
 };
 
 [[nodiscard]] SigmaUpdateResult sigma_update(const SigmaUpdateInputs& inputs,
                                              const SigmaYCurve& sigma_y_curve,
-                                             const SigmaZCurve& sigma_z_curve);
+                                             const SigmaZCurve& sigma_z_curve,
+                                             const OriginalTerrainSigmaInputs* terrain=nullptr);
 
 } // namespace cteas::puff

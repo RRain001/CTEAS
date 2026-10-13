@@ -508,6 +508,8 @@ endif()
 # P7R: the MCTADJ=2 terrain constraints (CTADJ2 strain, WALLTRAP valley).
 add_library(cteas_p7_terrain STATIC src/terrain_constraints.cpp)
 target_include_directories(cteas_p7_terrain PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# MCTADJ2-optional SETPUF: compiled original CTADJ2 is a new dependency.
+target_link_libraries(cteas_p7_sigma_update PUBLIC cteas_p7_terrain)
 if(MSVC)
   target_compile_options(cteas_p7_terrain PRIVATE /W4 /WX)
 else()

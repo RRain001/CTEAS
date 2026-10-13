@@ -166,9 +166,68 @@ SigmaAdjust adjust_sigmas(const SigmaAdjustInputs& inputs) {
 }
 
 SigmaUpdateResult sigma_update(const SigmaUpdateInputs& inputs, const SigmaYCurve& sigma_y_curve,
-                               const SigmaZCurve& sigma_z_curve) {
+                               const SigmaZCurve& sigma_z_curve,
+                               const OriginalTerrainSigmaInputs* terrain) {
     SigmaUpdateResult result;
     result.step = sigma_step(inputs.step, sigma_y_curve, sigma_z_curve);
+    if(terrain) {
+        // Original SETPUF CALPUFF L48616-48631:
+        // SIGTZ start/mid/end are first computed, then CTADJ2(mid),
+        // SIGTZ(strained_mid,0,0,ZPB), CTADJ2(end), and SIGTZ again.
+        // FRACZ1/LUP1 from the END call are later read by PUFFCT2.
+        require_true(terrain->lookup!=nullptr,
+                     "MCTADJ2 requires native TRELIEF/GETELEV lookups");
+        require_true(result.step.gaussian_vertical,
+                     "MCTADJ2 Gaussian-only sigma branch selected");
+        const R grid=to_real(terrain->met_spacing_m,"native terrain DGRID");
+        const R wind=to_real(terrain->wind_speed_ms,"native terrain WS");
+        require_true(grid>0.0F && wind>0.0F,
+                     "MCTADJ2 needs positive native grid/wind");
+        const R xb=to_real(terrain->x_begin_cells,"CTADJ2 XPB");
+        const R yb=to_real(terrain->y_begin_cells,"CTADJ2 YPB");
+        const R xe=to_real(terrain->x_end_cells,"CTADJ2 XNEW");
+        const R ye=to_real(terrain->y_end_cells,"CTADJ2 YNEW");
+        const R zpb=to_real(terrain->z_begin_m,"CTADJ2 ZPB");
+        const R bvf=to_real(terrain->brunt_vaisala_s,"CTADJ2 BVF");
+        const R sb=to_real(inputs.step.sigma_z_start_m,"SIGZB");
+        R sm=to_real(result.step.sigma_z_mid_m,"SETPUF SZM1");
+        R se=to_real(result.step.sigma_z_end_m,"SETPUF SZE1");
+        require_true(sm>0.0F && se>0.0F,
+                     "MCTADJ2 sigma ratio denominator is zero");
+        const R xm=0.5F*(xb+xe),ym=0.5F*(yb+ye);
+        const auto ct=[&](R r,R endx,R endy){
+            return terrain_strain({
+                .sigma_ratio=r,.puff_height_start_m=zpb,
+                .x_old=xb,.y_old=yb,.x_new=endx,.y_new=endy,
+                .sigma_z_start_m=sb,.brunt_vaisala_s=bvf,
+                .wind_speed_ms=wind,.grid_spacing_m=grid
+            },*terrain->lookup);
+        };
+        const auto mid=ct(sb/sm,xm,ym);
+        const R strained_mid=sm*to_real(mid.strain,"CTADJ2 midpoint STRAIN");
+        const auto mid_sigma=sigma_z_curve(strained_mid,0.0,0.0,zpb);
+        sm=curve_value(mid_sigma.value,"SETPUF terrain midpoint SZM1");
+        result.step.sigma_z_mid_m=sm;
+        result.step.virtual_time_z_mid_s=
+            to_real(mid_sigma.virtual_time_s,"CTADJ2 midpoint VTZM1");
+        result.step.virtual_distance_z_mid_km=
+            to_real(mid_sigma.virtual_distance_km,"CTADJ2 midpoint VDZ M1");
+        const auto end=ct(sb/se,xe,ye);
+        const R strained_end=se*to_real(end.strain,"CTADJ2 end STRAIN");
+        const auto end_sigma=sigma_z_curve(strained_end,0.0,0.0,zpb);
+        se=curve_value(end_sigma.value,"SETPUF terrain end SZE1");
+        result.step.sigma_z_end_m=se;
+        result.step.virtual_time_z_end_s=
+            to_real(end_sigma.virtual_time_s,"CTADJ2 end VTZE1");
+        result.step.virtual_distance_z_end_km=
+            to_real(end_sigma.virtual_distance_km,"CTADJ2 end VDZE1");
+        result.terrain=OriginalTerrainSigmaState{
+            .z_mid_m=to_real(mid.puff_height_end_m,"CTADJ2 ZM1"),
+            .z_end_m=to_real(end.puff_height_end_m,"CTADJ2 ZE1"),
+            .fracz_end=to_real(end.fraction_beyond,"CTADJ2 FRACZ1"),
+            .upslope_end=end.upslope
+        };
+    }
     SigmaAdjustInputs adjust;
     adjust.sigma_y_begin_m = result.step.sigma_y_begin_m;
     adjust.sigma_y_mid_m = result.step.sigma_y_mid_m;
