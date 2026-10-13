@@ -35,7 +35,7 @@ jobs:
       - name: Retrieve independently accepted native 143h source stage traces
         uses: actions/download-artifact@v4
         with:
-          run-id: 38365068473
+          run-id: 38367339733
           github-token: ${{ github.token }}
           name: p6-causal-original-case-143h
           path: ${{ runner.temp }}/p6e-earliest-stage/native-evidence
@@ -56,6 +56,7 @@ jobs:
             --vendor "$GITHUB_WORKSPACE/engine/vendor/src/CALMET_v6.5.0_L150223" \
             --case "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
             --candidate "$RUNNER_TEMP/p6e-earliest-stage/native-evidence/native_source_stage_143h" \
+            --require-neutral-profile \
             --compiler gfortran-11 \
             --out "$RUNNER_TEMP/p6e-earliest-stage/original_source_first_nonzero.json"
       - name: Summarize source-first versus native-first floating discrepancies
@@ -66,6 +67,7 @@ jobs:
           p=pathlib.Path(os.environ['RUNNER_TEMP'])/'p6e-earliest-stage/original_source_first_nonzero.json'
           r=json.loads(p.read_text())
           print("143h_DIAGNO_SOURCE_COMPARE_STATUS", r["status"])
+          print("WIND1_SOURCE_NEUTRAL_PROFILE",r["wind1_neutral_profile_source_check"])
           print("FIRST_NONZERO_REAL4_SOURCE_STAGE", r["first_nonzero_source_stage"])
           print("FIRST_OUTSIDE_TOLERANCE_HOUR",r["first_failing_hour"])
           for key,item in r["fields"].items():
@@ -82,5 +84,6 @@ jobs:
             ${{ runner.temp }}/p6e-earliest-stage/original_source_first_nonzero.json
             ${{ runner.temp }}/p6e-earliest-stage/firstlayer-fortran/case/run/met/dgm_inter2_layer1.bin
             ${{ runner.temp }}/p6e-earliest-stage/firstlayer-fortran/case/run/met/dgm_slope_layer1.bin
+            ${{ runner.temp }}/p6e-earliest-stage/firstlayer-fortran/case/run/met/dgm_wind1_neutral.bin
           retention-days: 14
           if-no-files-found: warn
