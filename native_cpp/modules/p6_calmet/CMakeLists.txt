@@ -435,7 +435,8 @@ if(UNIX)
   add_executable(cteas_p6_native_hourly_driver
     src/native_hourly_driver_main.cpp p6f/src/sha256.cpp)
   target_include_directories(cteas_p6_native_hourly_driver PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/p6f/include)
+    ${CMAKE_CURRENT_SOURCE_DIR}/p6f/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_compile_options(cteas_p6_native_hourly_driver PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
   add_test(NAME p6_native_cpp_hourly_driver_fail_closed_missing_case
@@ -447,6 +448,14 @@ if(UNIX)
       --work ${CMAKE_CURRENT_BINARY_DIR}/missing-hourly-case)
   set_tests_properties(p6_native_cpp_hourly_driver_fail_closed_missing_case
     PROPERTIES WILL_FAIL TRUE)
+  add_executable(cteas_p6_native_comp_history_tests
+    tests/p6_native_comp_history_tests.cpp)
+  target_link_libraries(cteas_p6_native_comp_history_tests PRIVATE cteas_p6a_contracts)
+  target_compile_options(cteas_p6_native_comp_history_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  add_test(NAME p6_native_cpp_comp_history_state_and_rollback
+    COMMAND cteas_p6_native_comp_history_tests
+      ${CMAKE_CURRENT_BINARY_DIR}/native_comp_history_ctest)
 endif()
 
 # Fail-closed contract run of the real-case producer on the frozen 5 km case
