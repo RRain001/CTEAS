@@ -1,0 +1,71 @@
+name: P6 native causal DIAGNO COMP hourly integration
+
+on:
+  push:
+    branches: [codex/p6-hourly-stateful-scheduler-20261013]
+    paths:
+      - .github/workflows/p6-native-causal-hourly.yml
+      - scripts/p6_run_native_causal_hourly.py
+      - native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
+      - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
+      - native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/native_hourly_comp_steps.hpp
+  pull_request:
+    paths:
+      - .github/workflows/p6-native-causal-hourly.yml
+      - scripts/p6_run_native_causal_hourly.py
+      - native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
+      - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-hefei-causal-six-hours:
+    name: Hefei first six native P6D→P6E hours, no frozen wind
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            native_cpp/modules/p6_calmet
+            scripts/p6_run_native_causal_hourly.py
+      - uses: actions/checkout@v4
+        with:
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          filter: blob:none
+          path: original_locked_case
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
+      - name: Build actual C++ P6D and P6E executables (GCC 12)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet \
+             -B "$RUNNER_TEMP/native-p6d" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
+          cmake --build "$RUNNER_TEMP/native-p6d" \
+             --target cteas_p6_realcase_wind_field --parallel 2
+          cmake -S native_cpp/modules/p6_calmet/p6e \
+             -B "$RUNNER_TEMP/native-p6e" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
+          cmake --build "$RUNNER_TEMP/native-p6e" \
+             --target p6e_calmet_dat21 p6e_p6c_hourly_bridge --parallel 2
+      - name: Execute 6 real hours in original one-pass causal order
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/p6_run_native_causal_hourly.py \
+            --case "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
+            --p6d "$RUNNER_TEMP/native-p6d/cteas_p6_realcase_wind_field" \
+            --p6e "$RUNNER_TEMP/native-p6e/p6e_calmet_dat21" \
+            --bridge "$RUNNER_TEMP/native-p6e/p6e_p6c_hourly_bridge" \
+            --work "$RUNNER_TEMP/p6-native-causal-6h" --hours 6
+      - name: Archive actual P6D/P6E hour-by-hour evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6-causal-original-case-6h
+          path: ${{ runner.temp }}/p6-native-causal-6h/
+          retention-days: 7
+          if-no-files-found: warn
