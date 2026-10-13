@@ -1,5 +1,6 @@
 #include "cteas/puff/original_comp_rise.hpp"
 #include "cteas/puff/original_comp_calm.hpp"
+#include "cteas/puff/original_calm_sigma.hpp"
 #include "cteas/puff/coupling.hpp"
 #include <algorithm>
 #include <cmath>
@@ -162,10 +163,10 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     // ordinary PG dispersion coefficients and claiming false parity.
     const auto wind_calm=original_comp_calm_transport(
         u,w,ws,control.calm_threshold_ms);
-    if(wind_calm.calm)
+    if(wind_calm.calm && !control.calm_mdisp3)
         throw std::invalid_argument(
             "native COMP detected original WSCALM branch: "
-            "IDOPTY=1/IDOPTZ=1 SIGTY/SIGTZ not yet implemented");
+            "IDOPTY=1/IDOPTZ=1 requires source-derived TURBSET inputs");
     u=wind_calm.u_ms;
     w=wind_calm.v_ms;
     ws=wind_calm.wind_speed_ms;
@@ -194,10 +195,10 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             // Classify THAT wind too; the provisional branch may differ.
             const auto resampled_calm=original_comp_calm_transport(
                 u,w,ws,control.calm_threshold_ms);
-            if(resampled_calm.calm)
+            if(resampled_calm.calm && !control.calm_mdisp3)
                 throw std::invalid_argument(
                     "resampled native COMP detected original WSCALM branch: "
-                    "IDOPTY=1/IDOPTZ=1 SIGTY/SIGTZ not yet implemented");
+                    "IDOPTY=1/IDOPTZ=1 requires source-derived TURBSET inputs");
             u=resampled_calm.u_ms;
             w=resampled_calm.v_ms;
             ws=resampled_calm.wind_speed_ms;
@@ -206,6 +207,18 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         throw std::logic_error("COMP unexpectedly shortened unsplit step");
     }
     order.completed(VendorSubstepPhase::ChooseSubstepLength);
+
+    // Final post-FSTEP RISEWIND determines LCALM. Only the post-rise,
+    // no-receptor subset has been source-validated for native IDOPT=1.
+    const bool lcalm=ws<control.calm_threshold_ms;
+    if(lcalm){
+        require(control.calm_mdisp3.has_value(),
+                "LCALM requires original MDISP3 turbulence inputs");
+        require(!sampling_kernel && !control.mctadj2 && !control.gaussian_dry,
+                "CALPUFF calm receptor/CTADJ2/DRY coupling not yet accepted");
+        require(before.total_distance_m>=state.x_final_m,
+                "calm puff still rising requires separate GRISE/SETPUF parity");
+    }
 
     const float distance=r4(ws*r4(substep.step_s,"time"),"rise distance");
     auto end_state=state.physics;
@@ -227,25 +240,77 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         .step_distance_m=moved.distance_m,
         .step_seconds=substep.step_s,
         .km_per_m=0.001,.wind_speed_ms=ws,
-        .calm_wind_threshold=0.0,.downwash_code=0,
+        .calm_wind_threshold=control.calm_threshold_ms,.downwash_code=0,
         .x_final_m=state.x_final_m,
         .dispersion_y_option=3,.dispersion_z_option=3
     });
-    require(!bookkeeping.calm,"rise COMP refuses calm SETPUF");
+    require(bookkeeping.calm==lcalm &&
+            bookkeeping.dispersion_y_option==(lcalm?1:3) &&
+            bookkeeping.dispersion_z_option==(lcalm?1:3),
+            "SETPUF LCALM and IDOPT classification drift");
     const SigmaCurves curves(dispersion_environment(
         pg,sampled.stability_class,urban,ws));
-    const SigmaYCurve sigma_y=[&curves](double first,double delta,double time) {
+    SigmaYCurve sigma_y=[&curves](double first,double delta,double time) {
         const auto s=curves.sigma_y(first,{delta,time});
         return SigmaCurvePoint{s.sigma_y_m,s.virtual_time_y_s,
                                s.virtual_distance_y_km};
     };
-    const SigmaZCurve sigma_z=[&curves](double first,double delta,
+    SigmaZCurve sigma_z=[&curves](double first,double delta,
                                         double time,double height) {
         const auto s=curves.sigma_z(first,height,{delta,time});
         return SigmaCurvePoint{s.sigma_z_m,s.virtual_time_z_s,
                                s.virtual_distance_z_km};
     };
+    if(lcalm){
+        // COMP L10839-10842 obtains ILW from the current met cell.
+        // Disallow ambiguous cell crossing until midpoint selection parity.
+        const auto mid_cell=original_met_cell(
+            0.5F*(before.x_cells+moved.state.x_cells),
+            0.5F*(before.y_cells+moved.state.y_cells),met.nx,met.ny);
+        require(mid_cell.offset_0based==sampled.cell.offset_0based,
+                "calm COMP midpoint met-cell crossing not yet accepted");
+        require(sampled.cell.offset_0based<met.el.size(),
+                "native calm SETCSIG requires real hourly EL");
+        const auto& cfg=*control.calm_mdisp3;
+        const auto turb=original_turbset_mdisp3_from_cell(
+            cfg.original_turbulence,statics,
+            static_cast<std::size_t>(met.nx),
+            static_cast<std::size_t>(met.ny),
+            sampled.cell.offset_0based,sampled.stability_class,
+            cfg.iwat1,cfg.iwat2);
+        OriginalCalmSigmaInput parameters;
+        parameters.uavg=ws;
+        parameters.sigv=turb.sigv_ms;
+        parameters.sigw=turb.sigw_ms;
+        parameters.el=met.el[sampled.cell.offset_0based];
+        parameters.tyidr=cfg.original_turbulence.tyidr;
+        parameters.tzidr=cfg.original_turbulence.tzidr;
+        parameters.tzisdr=cfg.original_turbulence.tzisdr;
+        parameters.syh=r4(pg.sigma_y_heffter_m,"original SYH");
+        parameters.ayt=cfg.original_turbulence.ayt;
+        parameters.sy0=parameters.syh;
+        // SETCSIG initializes THFTY with SIGTY(SYH,0,0).
+        parameters.thfty=original_calm_sigma(parameters).virty;
+        sigma_y=[parameters](double initial,double distance,double time){
+            auto p=parameters;
+            p.sy0=static_cast<float>(initial);p.sz0=0.0F;
+            p.dx_km=static_cast<float>(distance);
+            p.dt_s=static_cast<float>(time);
+            const auto r=original_calm_sigma(p);
+            return SigmaCurvePoint{r.sy,r.virty,r.virdy};
+        };
+        sigma_z=[parameters](double initial,double distance,double time,
+                             double /*height*/){
+            auto p=parameters;
+            p.sy0=0.0F;p.sz0=static_cast<float>(initial);
+            p.dx_km=static_cast<float>(distance);
+            p.dt_s=static_cast<float>(time);
+            const auto r=original_calm_sigma(p);
+            return SigmaCurvePoint{r.sz,r.virtz,r.virdz};
+        };
+    }
     auto dispersion=control.dispersion;
+    dispersion.calm=lcalm;
     // Vendor COMP L10859: VMASS uses OLD sigma and may alter ICODE.
     auto mass=v.commit_vmass(
         id,sampled.mixing_height_m,before.z_m,moved.state.z_m,
@@ -401,6 +466,13 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     require(post.completed_substeps==state.completed+1 &&
             post.committed_lid_steps==state.completed+1,
             "native rising COMP partial vertical commit");
+    // SETPUF cancels remaining plume rise and persists calm midpoint
+    // minima only after every component of this substep has succeeded.
+    if(lcalm){
+        state.x_final_m=0.0F;
+        state.minimum_sigma_y_m=r4(sigma.adjust.minimum_sigma_y_m,"LCALM SY0");
+        state.minimum_sigma_z_m=r4(sigma.adjust.minimum_sigma_z_m,"LCALM SZ0");
+    }
     state.previous_wind_ms=ws;
     ++state.completed;
     RiseCompStep outcome{
