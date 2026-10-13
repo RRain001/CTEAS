@@ -16,7 +16,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Select self-hosted C++20 and Fortran tools
+      - name: Select Linux C++20 and Fortran tools
         uses: ./.github/actions/cteas-linux-toolchain
       - name: Dependencies
         run: python3 -m pip install --disable-pip-version-check PyYAML numpy pandas
@@ -30,9 +30,26 @@ jobs:
           longitude: 117.141610855
           EOF
           cat > project/current/grid/grid.cmn <<'EOF'
+          ! IMAP = UTM !
+          ! IUTMZN = 50 !
+          ! LSOHEM = N !
+          ! DATUM = WGS-84 !
+          ! XREFKM = 510.885 !
+          ! YREFKM = 3531.269 !
           ! DGRIDKM = 0.1 !
           ! NX = 50 !
           ! NY = 50 !
+          ! NZ = 9 !
+          ! ZFACE = 0 !
+          ! ZFACE = 20 !
+          ! ZFACE = 40 !
+          ! ZFACE = 80 !
+          ! ZFACE = 160 !
+          ! ZFACE = 320 !
+          ! ZFACE = 640 !
+          ! ZFACE = 1200 !
+          ! ZFACE = 2000 !
+          ! ZFACE = 3000 !
           EOF
           cat > project/current/grid/research_time <<'EOF'
           BEGIN: 20220101-000000
