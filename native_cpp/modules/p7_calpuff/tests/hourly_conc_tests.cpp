@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <regex>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -136,14 +138,24 @@ void frozen_wrout1_identifiers(const fs::path& original,
     for(auto& line:typed.run_titles)
         require(static_cast<bool>(std::getline(deck,line)),
                 "frozen input lacks three run-title lines");
-    // Selected case source list and species/units are explicit, not a copy
-    // of frozen puff.con bytes. Extract other values from the control
-    // before claiming general, multi-species WROUT1 compatibility.
+    // Selected case NPT1=1; no other source categories are active.
+    // This source-type vector comes from the active control, NOT from
+    // the frozen binary. Non-selected decks need separate type audits.
+    deck.clear();
+    deck.seekg(0);
+    const std::string control_text{
+        std::istreambuf_iterator<char>(deck),std::istreambuf_iterator<char>()};
+    require(std::regex_search(control_text,
+                             std::regex(R"(!\s*NPT1\s*=\s*1\s*!)")),
+            "source-type count fixture requires active NPT1=1");
+    std::array<std::int32_t,13> source_counts{};
+    source_counts[0]=1;
     {
         ConcFileWriter out(native.string(),"2.2","selected typed metadata",{});
+        out.write_original_wrout1_source_type_counts(source_counts);
         out.write_original_wrout1_identity(typed);
-        require(out.records_written()==4,
-                "native WROUT1 did not emit exactly four typed records");
+        require(out.records_written()==5,
+                "native WROUT1 did not emit five typed records");
         out.close();
     }
     FortranRecordReader orig(original.string(),4,RecordByteOrder::LittleEndian);
@@ -155,20 +167,24 @@ void frozen_wrout1_identifiers(const fs::path& original,
     std::int32_t comments=0;
     std::memcpy(&comments,a.data(),4);
     require(comments==3218,"original WROUT1 embedded comment count changed");
-    for(int i=0;i<comments+2;++i)
-        require(orig.next(a),"original WROUT1 comment/numeric header truncated");
+    for(int i=0;i<comments+1;++i)
+        require(orig.next(a),"original WROUT1 echo/300-byte header truncated");
+    require(a.size()==300U,
+            "original WROUT1 expected 300-byte numeric header");
     require(generated.next(b)&&b.size()==96 &&
             generated.next(b)&&b.size()==4,
             "native typed WROUT1 fixture lacks prefix");
+    require(orig.next(a)&&generated.next(b)&&a.size()==52U&&
+            a==b,"native source-type counters do not match frozen WROUT1");
     for(const auto bytes:{240U,15U,16U,20U}){
         require(orig.next(a)&&generated.next(b)&&
                 a.size()==bytes&&b.size()==bytes&&a==b,
                 "source-derived WROUT1 metadata differs from frozen original");
     }
-    std::cout<<"P7_ORIGINAL_WROUT1_FOUR_TYPED_METADATA=PASS"
-             <<" RECORD_BYTES=240,15,16,20"
+    std::cout<<"P7_ORIGINAL_WROUT1_FIVE_TYPED_METADATA=PASS"
+             <<" RECORD_BYTES=52,240,15,16,20"
              <<" FROZEN_BINARY_RECORDS=BITWISE_EXACT"
-             <<" PREFIX_3218_ECHO_AND_300_52=OPEN"
+             <<" PREFIX_3218_ECHO_AND_300=OPEN"
              <<" FULL_PUFF_CON=NOT_YET_ACCEPTED\\n";
 }
 

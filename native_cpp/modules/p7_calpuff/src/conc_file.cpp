@@ -187,6 +187,20 @@ void ConcFileWriter::write_source_descriptor(const ConcSourceDescriptor& source)
     ++records_written_;
 }
 
+void ConcFileWriter::write_original_wrout1_source_type_counts(
+    const std::array<std::int32_t,13>& counts) {
+    require_true(impl_!=nullptr && !impl_->closed,"writer is closed");
+    std::vector<std::uint8_t> payload;
+    payload.reserve(counts.size()*sizeof(std::int32_t));
+    for(const auto count:counts) {
+        require_true(count>=0,"WROUT1 negative source type count");
+        append_int(payload,count);
+    }
+    require_true(payload.size()==52U,"WROUT1 13 INTEGER*4 source counters invalid");
+    write_framed(impl_->stream,payload);
+    ++records_written_;
+}
+
 void ConcFileWriter::write_original_wrout1_identity(
     const OriginalWrout1Identity& item) {
     require_true(impl_!=nullptr && !impl_->closed,"writer is closed");

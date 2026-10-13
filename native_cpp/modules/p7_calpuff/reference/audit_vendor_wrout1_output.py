@@ -124,6 +124,10 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
             })
     if counts!={"period":143,"total_source":143,"h3_field":143}:
         raise AssertionError(f"unexpected original hourly stream topology: {counts}")
+    source_type_body=data[record_layout[2+ncomments+1][0]+4:
+                          record_layout[2+ncomments+1][0]+4+52]
+    if len(source_type_body)!=52 or struct.unpack("<13i",source_type_body)!=(1,)+(0,)*12:
+        raise AssertionError("original 13 INTEGER*4 source category counts changed")
     if len(metadata)!=trailing_nondata:
         raise AssertionError("WROUT1 residual metadata count inconsistent")
     for item in metadata:

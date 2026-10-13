@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -127,6 +128,11 @@ public:
     void write_source_descriptor(const ConcSourceDescriptor& descriptor);
     // Emit all four independently constructed selected-case metadata records.
     void write_original_wrout1_identity(const OriginalWrout1Identity& identity);
+    // Original WROUT1 L57184: 13 Fortran INTEGER*4 source-type counters
+    // in ordinal order, present immediately after 300-byte run metadata.
+    // The native caller supplies the actual selected-case counts.
+    void write_original_wrout1_source_type_counts(
+        const std::array<std::int32_t,13>& source_count);
     void write_species_field(const std::string& label, int species_index, int nx, int ny,
                              const std::vector<float>& values);
     void close();
