@@ -1182,6 +1182,26 @@ add_test(NAME cteas_p7_original_comp_exit_source_contract
 # METFM1/GRISE/RISEWIND/PG/VMASS inner substeps, no FSTEP dynamic split.
 add_executable(cteas_p7_original_comp_mxsam99_unsplit_tests
   tests/original_comp_mxsam99_unsplit_tests.cpp)
+# Source-ported original PUFRECS receptor projection and FCLIP front-end.
+add_library(cteas_p7_original_pufrecs_geometry STATIC src/original_pufrecs_geometry.cpp)
+target_include_directories(cteas_p7_original_pufrecs_geometry PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_executable(cteas_p7_original_pufrecs_geometry_tests
+  tests/original_pufrecs_geometry_tests.cpp)
+target_link_libraries(cteas_p7_original_pufrecs_geometry_tests PRIVATE
+  cteas_p7_original_pufrecs_geometry)
+if(MSVC)
+  target_compile_options(cteas_p7_original_pufrecs_geometry PRIVATE /W4 /WX)
+  target_compile_options(cteas_p7_original_pufrecs_geometry_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_pufrecs_geometry PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_compile_options(cteas_p7_original_pufrecs_geometry_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_original_pufrecs_geometry
+  COMMAND cteas_p7_original_pufrecs_geometry_tests)
+
 # Restricted native CALCPF gridded point-source bridge: PFSCRN/PFSAMP/VCOUP.
 # This is NOT a replacement for full original receptor-specific PUFRECS.
 # Standalone original-vs-native PFSCRN REAL4 bit comparison probe.
