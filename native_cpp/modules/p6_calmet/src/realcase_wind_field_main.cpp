@@ -526,6 +526,9 @@ int main(int argc,char** argv){
     std::ofstream station_mixhtst_trace(args.out()/"station_mixhtst.csv");
     if(!station_mixhtst_trace)throw std::runtime_error("cannot write station MIXHTST trace");
     station_mixhtst_trace<<"hour_end,ZI_M,ZICONV_M,DPTT_K,PREV_ZI_M,PREV_ZICONV_M,PREV_DPTT_K,EL_M,source_kind\n";
+    std::ofstream station_inter2_first(args.out()/"station_inter2_layer1.csv");
+    if(!station_inter2_first)throw std::runtime_error("cannot write station INTER2 source inputs");
+    station_inter2_first<<"hour_end,surface_u,surface_v,upper_u,upper_v\n";
     std::ofstream index(args.out()/"produced_hours.txt");
     if(!index)throw std::runtime_error("cannot write produced_hours.txt");
     std::size_t similt_levels_min=9,similt_levels_max=0;
@@ -1029,6 +1032,11 @@ int main(int argc,char** argv){
             if(component==0)inter2_u=blended.component_mps;
             else inter2_v=blended.component_mps;
         }
+        // Snapshot the EXACT independent station values handed into INTER2.
+        // Needed to isolate the 2022-01-01 hour-12 level-one first divergence.
+        station_inter2_first<<hour_label(clock)<<","<<std::setprecision(10)
+            <<station_values[0][0]<<","<<station_values[1][0]<<","
+            <<station_values[0][1]<<","<<station_values[1][1]<<"\n";
         // CALMET original DIAGNO has TWO WINDBC snapshots:
         // (1) L5748 WINDBC(UG,VG) before INTER2;
         // (2) L6092-L6101: IF (HTFAC<=0) GOTO 285, otherwise
