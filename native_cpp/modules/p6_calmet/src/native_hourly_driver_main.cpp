@@ -26,6 +26,7 @@ constexpr std::uintmax_t kStateBytes=50U*50U*sizeof(float);
 struct Options {
     fs::path source, p6d, p6e, cgamma, bridge, work;
     int hours=6;
+    bool emit_source_stage_trace=false;
 };
 std::string str(const fs::path& p){return p.string();}
 void require(const fs::path& p) {
@@ -43,6 +44,7 @@ Options parse(int argc,char** argv) {
     Options o;
     for(int i=1;i<argc;++i) {
         const std::string flag=argv[i];
+        if(flag=="--emit-source-stage-trace"){o.emit_source_stage_trace=true;continue;}
         if(++i==argc)throw std::invalid_argument("missing argument "+flag);
         const std::string v=argv[i];
         if(flag=="--case")o.source=v;
@@ -58,6 +60,8 @@ Options parse(int argc,char** argv) {
        o.cgamma.empty()||o.bridge.empty()||o.work.empty())
         throw std::invalid_argument("--case --p6d --p6e --cgamma --bridge --work required");
     if(o.hours<1||o.hours>143)throw std::invalid_argument("hours must be 1..143");
+    if(o.emit_source_stage_trace&&o.hours!=143)
+        throw std::invalid_argument("stage trace requires all 143 hours");
     o.source=fs::absolute(o.source).lexically_normal();
     o.p6d=fs::absolute(o.p6d).lexically_normal();
     o.p6e=fs::absolute(o.p6e).lexically_normal();
@@ -147,7 +151,9 @@ int main(int argc,char** argv){
         require(observations);
         const auto history=o.work/"history/comp";
         fs::create_directories(history.parent_path());
-        std::vector<std::string> hourly_files,station_lines;
+        std::vector<std::string> hourly_files,station_lines,stage_rows;
+        const fs::path stage_root=o.work/"native_source_stage_143h";
+        if(o.emit_source_stage_trace)fs::create_directories(stage_root);
         for(int hour=0;hour<o.hours;++hour){
             const auto dir=o.work/hour_dir(hour),diagno=dir/"diagno",gamma=dir/"gamma";
             fs::create_directories(diagno);fs::create_directories(gamma);
@@ -193,9 +199,31 @@ int main(int argc,char** argv){
                           fs::copy_options::overwrite_existing);
             require(hour_met);
             hourly_files.push_back(str(hour_met));
+            if(o.emit_source_stage_trace){
+                auto label=read(diagno/"produced_hours.txt");
+                label=label.substr(0,label.find_first_of("\r\n\t "));
+                if(label.empty())throw std::runtime_error("missing stage-trace hour label");
+                for(const char* prefix:{"fradj_corrected_u","fradj_corrected_v",
+                                       "wind1_u","wind1_v","slope_corrected_u",
+                                       "slope_corrected_v","inter2_u","inter2_v"}){
+                    const auto source=diagno/(std::string(prefix)+"_"+label+".f32");
+                    require(source);
+                    if(fs::file_size(source)!=9U*50U*50U*sizeof(float))
+                        throw std::runtime_error("wrong stage-trace float32 shape: "+str(source));
+                    fs::copy_file(source,stage_root/source.filename());
+                }
+                const auto row=lines(read(diagno/"station_inter2_layer1.csv"));
+                if(row.size()!=2)throw std::runtime_error("station INTER2 row malformed");
+                if(stage_rows.empty())stage_rows.push_back(row[0]);
+                else if(stage_rows[0]!=row[0])
+                    throw std::runtime_error("station INTER2 header changed");
+                stage_rows.push_back(row[1]);
+            }
         }
         const auto station=o.work/"native_station_flux.csv";
         write(station,join(station_lines));
+        if(o.emit_source_stage_trace)
+            write(stage_root/"station_inter2_layer1.csv",join(stage_rows));
         const auto manifest=o.work/"native_hourly_files.txt";
         write(manifest,join(hourly_files));
         const auto output=o.work/"native_causal_calmet.dat";
