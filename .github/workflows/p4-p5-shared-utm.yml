@@ -4,8 +4,11 @@ on:
   pull_request:
     paths:
       - 'engine/run_met/station_grid.py'
+      - 'engine/preprocess/read62_upperair_data/download_igra.py'
+      - 'engine/preprocess/read62_upperair_data/run_upperair_pipeline.py'
+      - 'engine/preprocess/smerge_surf_data/download_isd_by_grid.py'
       - 'native_cpp/modules/p4_read62/data_prep/download_igra.py'
-      - 'native_cpp/modules/p4_read62/data_prep/tests/test_p4_data_prep.py'
+      - 'native_cpp/modules/p4_read62/data_prep/tests/**'
       - 'native_cpp/modules/p5_smerge/data_prep/download_isd_by_grid.py'
       - '.github/workflows/p4-p5-shared-utm.yml'
   push:
@@ -27,6 +30,9 @@ jobs:
       - name: Compile changed Python modules
         run: |
           python3 -m compileall -q engine/run_met/station_grid.py \
+            engine/preprocess/read62_upperair_data/download_igra.py \
+            engine/preprocess/read62_upperair_data/run_upperair_pipeline.py \
+            engine/preprocess/smerge_surf_data/download_isd_by_grid.py \
             native_cpp/modules/p4_read62/data_prep/download_igra.py \
             native_cpp/modules/p5_smerge/data_prep/download_isd_by_grid.py
       - name: P4 annual station selection, integration and strict UTM tests
@@ -39,11 +45,13 @@ jobs:
           from pathlib import Path
           import ast
           for filename in (
+              "engine/preprocess/read62_upperair_data/download_igra.py",
+              "engine/preprocess/smerge_surf_data/download_isd_by_grid.py",
               "native_cpp/modules/p4_read62/data_prep/download_igra.py",
               "native_cpp/modules/p5_smerge/data_prep/download_isd_by_grid.py",
           ):
               tree = ast.parse(Path(filename).read_text())
               fns = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
-              assert "build_bbox" not in fns and "signed_offsets_km" not in fns, filename
+              assert "build_bbox" not in fns and "signed_offsets_km" not in fns and "inside_bbox" not in fns, filename
               print("PASS_NO_APPROXIMATE_GEOGRAPHIC_STATION_SELECTOR", filename)
           PY
