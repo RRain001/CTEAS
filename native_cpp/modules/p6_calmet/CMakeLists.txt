@@ -36,6 +36,16 @@ else()
 endif()
 add_test(NAME p6g_surface_multi_site_multiyear_frozen_143h_parity COMMAND cteas_p6g_surface_dynamic_tests)
 
+# G7b: native READ62/RDUPN upper-air file-per-station, multiple soundings.
+add_executable(cteas_p6g_upper_dynamic_tests tests/p6g_upper_dynamic_tests.cpp)
+target_link_libraries(cteas_p6g_upper_dynamic_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_upper_dynamic_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_upper_dynamic_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_upper_multi_site_multiyear_frozen_rdupn_parity COMMAND cteas_p6g_upper_dynamic_tests)
+
 
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
