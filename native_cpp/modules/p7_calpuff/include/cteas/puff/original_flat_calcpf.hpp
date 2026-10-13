@@ -5,6 +5,14 @@
 
 namespace cteas::puff {
 
+// The legacy midpoint VCOUP path is kept as a control. The new, explicitly
+// selected VCBAR path uses native SETPUF begin/mid/end sigma-z and heights.
+// Neither choice by itself supplies receptor-dependent PUFRECS sigma/rise.
+enum class OriginalFlatVerticalMethod {
+    midpoint_vcoup,
+    substep_vcbar
+};
+
 // Restricted, deliberately non-oracle flat-grid CALCPF integration.
 // This connects native COMP's per-substep hook to the independently
 // source-ported PFSCRN -> PFSAMP -> VCOUP -> CALCPF horizontal kernel.
@@ -18,6 +26,8 @@ namespace cteas::puff {
 // staged by COMP and committed only at the successful hour boundary.
 [[nodiscard]] RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     const ReceptorSet& receptors, float met_spacing_m,
-    float averaging_period_s, float impact_sigma_multiple = 3.0F);
+    float averaging_period_s, float impact_sigma_multiple = 3.0F,
+    OriginalFlatVerticalMethod vertical_method =
+        OriginalFlatVerticalMethod::midpoint_vcoup);
 
 } // namespace cteas::puff
