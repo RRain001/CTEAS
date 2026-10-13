@@ -1264,6 +1264,23 @@ else()
 endif()
 add_test(NAME cteas_p7_original_native_terrain_real_input_adapter
   COMMAND cteas_p7_original_native_terrain_tests)
+# Genuine frozen 2022 CALMET.DAT terrain input and provenance; this
+# deliberately does NOT claim real-case CTADJ2→CALCPF scientific parity.
+add_executable(cteas_p7_original_native_terrain_frozen_met_tests
+  tests/original_native_terrain_frozen_met_tests.cpp)
+target_link_libraries(cteas_p7_original_native_terrain_frozen_met_tests PRIVATE
+  cteas_p7_original_native_terrain cteas_p7_calmet21)
+if(MSVC)
+  target_compile_options(cteas_p7_original_native_terrain_frozen_met_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_native_terrain_frozen_met_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(EXISTS "${P7G_LOCKED_CASE_MET}")
+  add_test(NAME cteas_p7_hefei_frozen_met_terrain_source
+    COMMAND cteas_p7_original_native_terrain_frozen_met_tests
+      "${P7G_LOCKED_CASE_MET}")
+endif()
 
 # Restricted native CALCPF gridded point-source bridge: PFSCRN/PFSAMP/VCOUP.
 # This is NOT a replacement for full original receptor-specific PUFRECS.
