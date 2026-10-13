@@ -1,0 +1,54 @@
+name: P7 original CALPUFF DRY Gaussian puff source-order audit
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/p7-original-dry-gaussian-source-audit.yml'
+      - 'native_cpp/modules/p7_calpuff/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p7-original-dry-gaussian-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  original-dry-gaussian-source:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
+            /native_cpp/modules/p7_calpuff/reference/drydep_source_anchor.json
+      - name: Pinned DRY source, Gaussian-puff branch and active COMP caller
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,re
+          from pathlib import Path
+          src=Path("engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for")
+          data=src.read_bytes()
+          anchor=json.loads(Path("native_cpp/modules/p7_calpuff/reference/drydep_source_anchor.json").read_text())
+          digest=hashlib.sha256(data).hexdigest()
+          if digest!=anchor["vendor_source_sha256"]:
+              raise SystemExit("Vendor CALPUFF DRY SHA changed; refuse inference")
+          lines=data.decode("latin1").splitlines()
+          lo=anchor["anchored_units"]["dry"]["first_line"]
+          hi=anchor["anchored_units"]["dry"]["last_line"]
+          if not re.match(r"\s{6}subroutine\s+dry\b",lines[lo-1],re.I):
+              raise SystemExit("Vendor original DRY unit anchor moved")
+          print(f"P7_ORIGINAL_DRY_SOURCE_SHA=PASS DRY_LINES={lo}-{hi}")
+          for i in range(lo-1,hi):
+              st=lines[i]
+              if st.strip() and (st[0].lower()!='c'):
+                  print(f"P7_VENDOR_DRY_FORTRAN LINE={i+1} TEXT={st.rstrip()!r}")
+          for i,line in enumerate(lines):
+              if re.search(r"\bcall\s+dry\s*\(",line,re.I):
+                  print(f"P7_VENDOR_DRY_CALL LINE={i+1}")
+                  for j in range(max(i-13,0),min(i+21,len(lines))):
+                      print(f"P7_VENDOR_DRY_CALL_CONTEXT LINE={j+1} TEXT={lines[j].rstrip()!r}")
+          PY
