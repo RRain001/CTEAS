@@ -43,6 +43,8 @@ def main():
     cli.add_argument("--cgamma",required=True,type=pathlib.Path)
     cli.add_argument("--work",required=True,type=pathlib.Path)
     cli.add_argument("--hours",type=int,default=6)
+    cli.add_argument("--emit-source-stage-trace",action="store_true",
+        help="flatten per-hour native FRADJ, SLOPE, INTER2 traces for pinned original forensic comparison")
     a=cli.parse_args()
     if not 1<=a.hours<=143:raise ValueError("1..143 consecutive Hefei hours required")
     case=a.case.resolve();work=a.work.resolve();work.mkdir(parents=True,exist_ok=True)
@@ -60,6 +62,11 @@ def main():
     manifest=work/"native_hourly_files.txt"
     files=[]
     station_flux_lines=[]
+    stage_root=work/"native_source_stage_143h"
+    stage_rows=[]
+    if a.emit_source_stage_trace:
+        if a.hours!=143:raise ValueError("original source stage trace requires full 143-hour frozen interval")
+        stage_root.mkdir(exist_ok=True)
     for hour in range(a.hours):
         folder=work/f"hour_{hour:03d}"
         folder.mkdir(exist_ok=True)
@@ -122,11 +129,29 @@ def main():
         shutil.copyfile(str(native)+".state.json",str(history)+".state.json")
         f=folder/"met_native_1h.dat"
         if not f.is_file():raise RuntimeError("missing native P6D/P6E hour")
+        if a.emit_source_stage_trace:
+            label=(d/"produced_hours.txt").read_text().strip()
+            for prefix in ("fradj_corrected_u","fradj_corrected_v",
+                           "wind1_u","wind1_v",
+                           "slope_corrected_u","slope_corrected_v",
+                           "inter2_u","inter2_v"):
+                original_plane=d/f"{prefix}_{label}.f32"
+                if not original_plane.is_file() or original_plane.stat().st_size!=9*CELLS*4:
+                    raise RuntimeError(f"missing original stage input in native C++ output: {original_plane}")
+                # Keep the source stage physically unchanged (read-only forensic copy).
+                shutil.copyfile(original_plane,stage_root/original_plane.name)
+            stage_lines=(d/"station_inter2_layer1.csv").read_text().splitlines()
+            if len(stage_lines)!=2:raise RuntimeError("single-hour INTER2 station trace malformed")
+            if not stage_rows:stage_rows.append(stage_lines[0])
+            elif stage_rows[0]!=stage_lines[0]:raise RuntimeError("station stage header drift")
+            stage_rows.append(stage_lines[1])
         files.append(f)
         # One hour at a time, NEVER run full-period P6E before P6D.
     manifest.write_text("\n".join(map(str,files))+"\n")
     joined_station=work/"native_station_flux.csv"
     joined_station.write_text("\n".join(station_flux_lines)+"\n")
+    if a.emit_source_stage_trace:
+        (stage_root/"station_inter2_layer1.csv").write_text("\n".join(stage_rows)+"\n")
     merged=work/"native_causal_calmet.dat"
     run([a.p6e,"merge-native-hours","--manifest",manifest,"--out",merged],
         work/"writer.log")
@@ -148,6 +173,7 @@ def main():
         "native_calmet_dat":str(merged),
         "native_calmet_dat_sha256":digest(merged),
         "native_station_flux_csv":str(joined_station),
+        "native_source_stage_trace":str(stage_root) if a.emit_source_stage_trace else None,
         "first_hour":str(files[0]),
         "last_hour":str(files[-1]),
         "hour_files_manifest":str(manifest),
