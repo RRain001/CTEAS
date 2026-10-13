@@ -187,6 +187,67 @@ void local_native_vmass_integration() {
     native.retire(44);
     require(native.active_count()==0,"native VMASS retirement failed");
 }
+// Regression for CALPUFF COMP L10859 -> L10940: a falling PBL changes
+// ICODE before SETPUF, and sigma MUST use the updated type, not old code.
+void source_order_vmass_changes_code_before_sigma() {
+    using namespace cteas::puff;
+    OriginalVerticalLifecycle life;
+    NewPuffInputs source;
+    source.source_x_km=0.5;
+    source.source_y_km=0.5;
+    source.effective_height_m=50;
+    source.sigma_y_source_m=1;
+    source.sigma_z_source_m=1;
+    source.stability_class=4;
+    InjectionInputs emission;
+    emission.species_count=1;
+    emission.emission_duration_s=60;
+    emission.effective_height_m=50;
+    emission.mixing_height_m=120;
+    emission.max_layer_height_m=200;
+    emission.mass_fraction_mixed=1;
+    emission.stability_class=4;
+    emission.gaussian_distribution=1;
+    emission.emission_rate={1.0};
+    life.admit_point(19,source,emission);
+    require(life.state(19).puff_code==1,"source code must start Gaussian=1");
+    const auto mass=life.commit_vmass(19,20,50,50,1,4,0);
+    require(mass.puff_code==5 && life.state(19).puff_code==5 &&
+            life.state(19).completed_substeps==0 &&
+            life.state(19).vmass_pending,
+            "pre-SETPUF VMASS did not switch original ICODE 1 -> 5");
+    SigmaUpdateInputs req;
+    req.step.sigma_y_start_m=1;
+    req.step.sigma_z_start_m=1;
+    req.step.puff_height_m=50;
+    req.step.mid_time_s=30;
+    req.step.mid_distance_km=0.05;
+    req.step.puff_code=1;
+    auto yc=[](double s,double d,double t)->SigmaCurvePoint {
+        return {s>0?s:1.0,t,d};
+    };
+    auto zc=[](double s,double d,double t,double)->SigmaCurvePoint {
+        return {s>0?s:1.0,t,d};
+    };
+    rejects([&]{(void)life.commit_sigma(19,req,yc,zc);},
+            "SETPUF accepted stale pre-VMASS ICODE 1");
+    require(life.state(19).vmass_pending &&
+            life.state(19).completed_substeps==0,
+            "failed stale-code SETPUF corrupted pending VMASS");
+    req.step.puff_code=mass.puff_code;
+    (void)life.commit_sigma(19,req,yc,zc);
+    require(life.state(19).completed_substeps==1 &&
+            life.state(19).committed_lid_steps==0 &&
+            life.state(19).vmass_pending,
+            "SETPUF committed historical lid before original sampling point");
+    life.commit_lid(19,mass.reflecting_lid_m,mass.puff_code);
+    require(life.state(19).puff_code==5 &&
+            life.state(19).ziold_m==120.0F &&
+            life.state(19).completed_substeps==1 &&
+            life.state(19).committed_lid_steps==1 &&
+            !life.state(19).vmass_pending,
+            "late source-order ICODE/ZIOLD history incorrectly committed");
+}
 void original_high_uniform_layer() {
     using namespace cteas::puff;
     OriginalVerticalLifecycle vertical;
@@ -285,6 +346,7 @@ int main(int argc,char** argv) {
         local_native_state();
         original_high_uniform_layer();
         local_native_vmass_integration();
+        source_order_vmass_changes_code_before_sigma();
         if(argc==3) original_first_step(argv[1],argv[2]);
         else if(argc!=1)throw std::invalid_argument("usage: native-vertical-test [MET DGM]");
         std::cout<<"P7_NATIVE_VERTICAL_PERSISTENT=PASS"
