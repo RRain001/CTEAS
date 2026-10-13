@@ -1,4 +1,5 @@
 #include "cteas/puff/original_turbset_mdisp3.hpp"
+#include "cteas/puff/original_comp_neutral.hpp"
 #include "cteas/puff/original_met_hours.hpp"
 #include <array>
 #include <cmath>
@@ -29,8 +30,13 @@ int main(int argc,char** argv){
   catch(const std::invalid_argument&){rejected=true;}
   if(!rejected)throw std::runtime_error("unknown land/water silently defaulted");
   const auto makegeo=cteas::puff::ControlFile::read_file(argv[2]);
-  const int iwat1=makegeo.required_int("IWAT1");
-  const int iwat2=makegeo.required_int("IWAT2");
+  const auto production=cteas::puff::original_calm_mdisp3_from_decks(
+      cteas::puff::ControlFile::read_file(argv[1]),makegeo);
+  if(production.original_turbulence.svmin!=cfg.svmin ||
+     production.original_turbulence.swmin!=cfg.swmin)
+      throw std::runtime_error("native production calm deck factory changed original TURBSET minima");
+  const int iwat1=production.iwat1;
+  const int iwat2=production.iwat2;
   if(iwat1!=50||iwat2!=55)
    throw std::runtime_error("frozen 2022 original MAKEGEO IWAT1/IWAT2 drift");
   std::size_t hours=0,land_cells=0,water_cells=0,validated_cells=0;
