@@ -1030,6 +1030,92 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
              <<" TERRAIN_SYNTHETIC_ONLY=YES"
              <<" FROZEN_HEFEI_PARITY=NOT_ACCEPTED\\n";
 
+    // Combined source-ordered P7 gate: actual native SETPUF CTADJ2,
+    // gas-phase DRY, then receptor-specific PUFRECS/CALCPF on the same
+    // physical substeps. Both existing independent gates must also pass.
+    // These meteorological values are SYNTHETIC; no vendor DGM is input.
+    auto coupled_met=met_for_terrain;
+    coupled_met.ustar.assign(terrain_n,0.3F);
+    coupled_met.el.assign(terrain_n,-80.0F);
+    coupled_met.tempk.assign(terrain_n,288.0F);
+    coupled_met.qsw.assign(terrain_n,300.0F);
+    coupled_met.wstar.assign(terrain_n,0.5F);
+    auto coupled_geo=grade_geo;
+    coupled_geo.roughness_m.assign(terrain_n,0.25F);
+    coupled_geo.land_use.assign(terrain_n,10);
+    coupled_geo.leaf_area_index.assign(terrain_n,2.0F);
+    auto coupled_ctl=grade_ctl;
+    auto h3_dry_setup=dry_controls.gaussian_dry->setup;
+    need(!h3_dry_setup.species.empty(),
+         "selected H-3 gas dry controls missing");
+    h3_dry_setup.species.resize(1); // one-species PUFRECS H-3 source
+    coupled_ctl.gaussian_dry=NativeGaussianDryControls{
+        h3_dry_setup,1.0F};
+    std::size_t coupled_samples=0;
+    const RiseCompSamplingKernel coupled_sampler=[&](
+        const RiseCompSamplingState& state){
+        need(state.original_ctadj2_step.has_value() &&
+             state.vmass.mass_mixed.size()==1 &&
+             state.after_setpuf_before_lid.mass_mixed==
+                 state.vmass.mass_mixed,
+             "combined DRY/CTADJ2 sampler received stale native puff state");
+        ++coupled_samples;
+        return grade_sampler(state);
+    };
+    OriginalCompRiseMultiPuffHours coupled_dry_driver;
+    const auto coupled_dry_hour=
+        coupled_dry_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+            coupled_met,coupled_geo,coupled_ctl,pg,false,single_mass,
+            wide_domain,99,2500,coupled_sampler);
+    OriginalCompRiseMultiPuffHours coupled_nodry_driver;
+    const auto coupled_nodry_hour=
+        coupled_nodry_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+            coupled_met,coupled_geo,grade_ctl,pg,false,single_mass,
+            wide_domain,99,2500,grade_sampler);
+    need(coupled_samples==coupled_dry_hour.steps.size() &&
+         coupled_samples>1 &&
+         coupled_dry_hour.steps.size()==coupled_nodry_hour.steps.size() &&
+         coupled_dry_hour.receptor_concentrations.size()==2500 &&
+         coupled_nodry_hour.receptor_concentrations.size()==2500 &&
+         coupled_dry_driver.completed_hours()==1 &&
+         coupled_nodry_driver.completed_hours()==1,
+         "MCTADJ2 plus MDRY failed joint native substep/receiver transaction");
+    std::size_t positive_dry_removal=0;
+    for(std::size_t i=0;i<coupled_dry_hour.steps.size();++i){
+        const auto& a=coupled_dry_hour.steps[i].step;
+        const auto& b=coupled_nodry_hour.steps[i].step;
+        need(a.dry.has_value() &&
+             a.dry->removed_mass.size()==1 &&
+             a.after.x_cells==b.after.x_cells &&
+             a.after.y_cells==b.after.y_cells &&
+             a.after.z_m==b.after.z_m &&
+             a.vmass.mass_above==b.vmass.mass_above &&
+             a.vmass.mass_mixed[0]<=b.vmass.mass_mixed[0],
+             "combined gas DRY changed native trajectory, QU, or raised QM");
+        if(a.dry->removed_mass[0]>0.0F)++positive_dry_removal;
+    }
+    std::size_t nonzero_cells=0,decreased_cells=0;
+    for(std::size_t i=0;i<2500;++i){
+        const float dry=coupled_dry_hour.receptor_concentrations[i];
+        const float baseline=coupled_nodry_hour.receptor_concentrations[i];
+        need(std::isfinite(dry)&&std::isfinite(baseline) &&
+             dry>=0.0F && baseline>=0.0F && dry<=baseline,
+             "combined DRY+MCTADJ2 invalid H-3 receptor concentration");
+        if(baseline>0.0F)++nonzero_cells;
+        if(dry<baseline)++decreased_cells;
+    }
+    need(positive_dry_removal>0 && nonzero_cells>0 && decreased_cells>0 &&
+         coupled_dry_driver.vertical(1).mass_mixed[0]<
+             coupled_nodry_driver.vertical(1).mass_mixed[0],
+         "combined native DRY+MCTADJ2 produced no physical receptor effect");
+    std::cout<<"P7_NATIVE_MCTADJ2_MDRY1_PUFRECS_CALCPF_1H=PASS"
+             <<" PHYSICAL_SUBSTEPS="<<coupled_samples
+             <<" H3_REMOVAL_SUBSTEPS="<<positive_dry_removal
+             <<" NONZERO_NO_DRY_CELLS="<<nonzero_cells
+             <<" DECREASED_H3_RECEPTORS="<<decreased_cells
+             <<" TERRAIN_AND_DRY_COMBINED=YES"
+             <<" REAL_HEFEI_EQUIVALENCE=NOT_YET_ACCEPTED\\n";
+
     const auto plume_sampler=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F,3.0F,
         OriginalFlatVerticalMethod::receptor_pg_vcoup);
