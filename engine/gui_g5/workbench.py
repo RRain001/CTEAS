@@ -64,7 +64,17 @@ from engine.gui_g5.app import create_case, list_case_summaries, load_case_yaml
 from engine.gui_g5.pipeline import stage_readiness, validate_case
 from engine.gui_g5.case_setup import write_case_grid, projected_stack_utm_km
 from engine.preprocess.grid.center_location_to_utm import convert_lon_lat
-from engine.postprocessing._core import index_time_records, parse_calmet_grid
+# G5 must start without the optional legacy plotting stack (matplotlib).
+# Load compatibility-only postprocessing parsers only when a plot is requested.
+def index_time_records(*args: Any, **kwargs: Any) -> Any:
+    from engine.postprocessing._core import index_time_records as parser
+    return parser(*args, **kwargs)
+
+
+def parse_calmet_grid(*args: Any, **kwargs: Any) -> Any:
+    from engine.postprocessing._core import parse_calmet_grid as parser
+    return parser(*args, **kwargs)
+
 
 
 SOFTWARE_TITLE = "CTEAS G5 — 原生 P1–P7 重构版（独立试验）"
