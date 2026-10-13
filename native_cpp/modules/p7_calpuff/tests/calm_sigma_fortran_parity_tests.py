@@ -17,11 +17,14 @@ def main():
  pinned=json.loads((base/"reference/sigma_source_anchor.json").read_text())
  assert manifest==pinned,"vendor SIGTY/SIGTZ anchor changed"
  cases=[]
+ # Include the original frozen BLOCK DATA stable scale TZISDR=0.01,
+ # zero-time and Heffter transitions; earlier 48 rows used only 0.001.
  for el in [-200.0,0.0,100.0]:
-  for dt in [0.0,20.0,300.0,1800.0]:
-   for sy in [0.0,0.5,4.0,12.0]:
-    cases.append((len(cases)+1,sy,sy*0.8,dt,0.02,0.2,
-                  0.45,0.25,el,0.001,0.002,0.001,550.0,0.1,5000.0))
+  for dt in [0.0,20.0,300.0,1800.0,6000.0]:
+   for sy in [0.0,0.5,4.0,12.0,600.0]:
+    for tzisdr in [0.001,0.01]:
+     cases.append((len(cases)+1,sy,sy*0.8,dt,0.02,0.2,
+                   0.45,0.25,el,0.001,0.002,tzisdr,550.0,0.5,5000.0))
  matrix="\n".join(" ".join(str(x) for x in row) for row in cases)+"\n"
  with tempfile.TemporaryDirectory(prefix="p7-calm-idopt1-") as work:
   stage=Path(work)/"stage"
