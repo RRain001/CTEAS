@@ -11,7 +11,7 @@ template <typename F> void throws(F f, const char* reason) {
 int main() {
     try {
         using namespace cteas::puff;
-        static_assert(kVendorSubstepOrder.size() == 9U);
+        static_assert(kVendorSubstepOrder.size() == 11U);
         VendorSubstepOrder order;
         throws([&]{ order.completed(VendorSubstepPhase::EvaluateAdvect); },
                "advection accepted before cadence");
@@ -30,7 +30,7 @@ int main() {
             order.completed(kVendorSubstepOrder[i]);
         order.finish();
         std::cout << "P7_VENDOR_COMP_ORDER_CONTRACT=PASS"
-                  << " PHASES=9 OUT_OF_ORDER=REJECTED"
+                  << " PHASES=11 OUT_OF_ORDER=REJECTED"
                   << " PHYSICS_DRIVER_PARITY=NOT_YET_TESTED\n";
     } catch (const std::exception& e) {
         std::cerr << "P7_VENDOR_COMP_ORDER_CONTRACT=FAIL " << e.what() << '\n';

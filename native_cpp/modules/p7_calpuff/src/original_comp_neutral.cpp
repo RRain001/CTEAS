@@ -135,13 +135,13 @@ NeutralCompResult OriginalCompNeutralPointDriver::step(
     });
     order.completed(VendorSubstepPhase::AdvancePosition);
 
-    // Native P7Q/SETPUF sigma, followed by the original VMASS and COMP
-    // history assignment. Physical dispersion curves remain caller-provided
+    // Original VMASS PRECEDES P7Q/SETPUF sigma; COMP history assignment
+    // follows sampling. Physical dispersion curves remain caller-provided
     // (not yet calculated from the full frozen CALPUFF local met).
     auto sigma=control.dispersion;
     sigma.step.sigma_y_start_m=existing.sigma_y_m;
     sigma.step.sigma_z_start_m=existing.sigma_z_m;
-    sigma.step.puff_code=existing.puff_code;
+    sigma.step.puff_code=existing.puff_code; // updated by VMASS below
     sigma.step.puff_height_m=before.z_m;
     // Source-ported SETPUF L48373-48399: TMID=0.5*TSAMP and
     // DMIDKM=0.5*DISTM*DM2KM (NOT accumulated travel time/distance).
@@ -163,11 +163,18 @@ NeutralCompResult OriginalCompNeutralPointDriver::step(
     require(!bookkeeping.calm,"neutral COMP does not support calm SETPUF");
     sigma.step.mid_time_s=bookkeeping.mid_time_s;
     sigma.step.mid_distance_km=bookkeeping.mid_distance_km;
-    const auto sigmas=v.commit_sigma(id,sigma,yc,zc);
-    const auto vmass=v.commit_vmass_and_lid(
+    // COMP L10859 uses the previous SIGZB while changing ICODE/QM/QU.
+    const auto vmass=v.commit_vmass(
         id,sampled.mixing_height_m,before.z_m,post.state.z_m,
-        f32(sigmas.adjust.sigma_z_end_m),sampled.stability_class,0);
+        existing.sigma_z_m,sampled.stability_class,0);
+    order.completed(VendorSubstepPhase::ApplyVmass);
+    sigma.step.puff_code=vmass.puff_code;
+    const auto sigmas=v.commit_sigma(id,sigma,yc,zc);
     order.completed(VendorSubstepPhase::CommitSetpuf);
+    // The restricted neutral driver has no CHEM/WET/DRY/CALCPF yet.
+    // Integrate those stages HERE before the late COMP history commit.
+    v.commit_lid(id,vmass.reflecting_lid_m,vmass.puff_code);
+    order.completed(VendorSubstepPhase::CommitNextStepHistory);
     order.finish();
     const auto updated=v.state(id);
     require(updated.completed_substeps==running.steps+1 &&
