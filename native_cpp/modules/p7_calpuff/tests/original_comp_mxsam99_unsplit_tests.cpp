@@ -646,6 +646,48 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
              <<" SYNTHETIC_MET_ONLY=YES"
              <<" FROZEN_HEFEI_DRY=NOT_YET_ACCEPTED\\n";
 
+    // Preserve EXACT native H-3 depletion across a delayed ICODE
+    // transition. The 143-hour no-removal test identifies the first
+    // Gaussian->uniform code transition at about hour 18 under
+    // alternating winds. Real DRY uses Gaussian VCBAR for odd codes
+    // and uniform VDPVD*TSAMP/HLID for even 2/6, without resetting QM.
+    std::size_t uniform_dry_steps=0;
+    std::size_t dry_longitudinal_steps=0;
+    for(int hour=1;hour<=22;++hour) {
+        auto met_next=dry_met;
+        const float wind=(hour%2 ? -1.2F : 1.2F);
+        std::fill(met_next.u.begin(),met_next.u.end(),wind);
+        const auto old_hour=
+            dry_native.advance_hour_existing_mxsam99_adaptive_bounded_capacity(
+                met_next,dry_geo,dry_controls,pg,false,wide_domain,1);
+        ++dry_longitudinal_steps;
+        for(const auto& state:old_hour.steps) {
+            need(state.step.dry.has_value() &&
+                 state.step.dry->mixed_mass_after==
+                   state.step.vmass.mass_mixed,
+                 "native DRY old puff lost state while crossing hour");
+            const int type=state.step.vmass.puff_code%10;
+            if(type==2||type==6) {
+                ++uniform_dry_steps;
+                need(state.step.dry->vcbar_m_inverse==0.0F &&
+                     state.step.dry->fraction_remaining.at(1)==1.0F,
+                     "native uniform DRY used forbidden Gaussian VCBAR");
+            }
+        }
+    }
+    need(uniform_dry_steps>0 &&
+         dry_native.completed_hours()==1+dry_longitudinal_steps &&
+         dry_native.vertical(1).mass_mixed.at(1)>=0.0F &&
+         dry_native.vertical(1).mass_above.size()==2,
+         "native dry old puff never exercised original uniform ICODE2/6");
+    std::cout<<"P7_NATIVE_DRY_GAUSSIAN_TO_UNIFORM_23H=PASS"
+             <<" HOUR_TRANSITIONS="<<dry_longitudinal_steps
+             <<" UNIFORM_STEPS="<<uniform_dry_steps
+             <<" VDPVD_ONLY_FOR_UNIFORM=YES"
+             <<" NO_DGM_DRIVING_INPUT=YES"
+             <<" SYNTHETIC_MET_ONLY=YES"
+             <<" FROZEN_HEFEI_DRY=NOT_YET_ACCEPTED\\n";
+
     // Source-ordered CALCPF seam: use source-ported PFSAMP + source-ported
     // gridded CALCPF horizontal mass weighting at a receptor positioned on
     // each substep trajectory. PFSAMP expects sigma in SAMPLING GRID UNITS
