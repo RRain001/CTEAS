@@ -9,14 +9,18 @@
 
 namespace cteas::puff {
 
-// Native streaming interface for the WROUT1 hourly DATA records. Each accepted
-// hour appends exactly: period (32), grid descriptor (32), H-3 field
+// Native original OUTPUT hourly DATA; WROUT1 constructs only the header.
+// Each accepted hour appends: period (32), SOURCE descriptor (32), H-3 field
 // (15 + nx*ny*4). The caller MUST calculate the concentrations independently;
 // this class does not read oracle values or reconstruct the vendor file preamble.
 // It cannot produce a standalone CALPUFF-compatible puff.con until original
 // WROUT1 headers and source tables have been implemented separately.
 class HourlyConcSeriesWriter {
 public:
+    HourlyConcSeriesWriter(ConcFileWriter& output, ConcSourceDescriptor source,
+                           int nx, int ny, std::string species = "H-3",
+                           int species_index = 1);
+    // Legacy TOTAL-only overload.
     HourlyConcSeriesWriter(ConcFileWriter& output, ConcGridDescriptor grid,
                            int nx, int ny, std::string species = "H-3",
                            int species_index = 1);
@@ -30,7 +34,7 @@ public:
 
 private:
     ConcFileWriter& output_;
-    ConcGridDescriptor grid_;
+    ConcSourceDescriptor source_;
     int nx_;
     int ny_;
     std::string species_;

@@ -1,10 +1,12 @@
 #include "cteas/puff/hourly_conc.hpp"
+#include "cteas/puff/fortran_records.hpp"
 
 #include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -49,8 +51,9 @@ void original_2022_series(const fs::path& path) {
     std::vector<std::vector<float>> expected;
     {
         ConcFileWriter out(path.string(), "2.2", "native DATA-only hourly test", {});
-        const auto grid = original_met_grid_descriptor(510885.0F, 3531269.0F);
-        require(grid.group_index == 1 && grid.y_origin_km == 3531.269287109375,
+        const auto grid = original_total_source_descriptor(510885.0F, 3531269.0F);
+        require(grid.source_type==0 && grid.source_index==1 &&
+                grid.source_name=="TOTAL" && grid.y_map_km==3531.269287109375,
                 "MET origin must preserve original REAL*4 multiplication");
         HourlyConcSeriesWriter series(out, grid, 50, 50);
         for (int t = 0; t < 143; ++t) {
@@ -91,6 +94,37 @@ void original_2022_series(const fs::path& path) {
     }
 }
 
+void vendor_source_record_bytes(const fs::path& path) {
+    using namespace cteas::puff;
+    {
+        ConcFileWriter out(path.string(),"2.2","typed source descriptor",{});
+        out.write_source_descriptor({1,7,"STACK07",513.3846435546875,
+                                     3533.768798828125});
+        out.close();
+    }
+    FortranRecordReader reader(path.string(),4,RecordByteOrder::LittleEndian);
+    std::vector<std::uint8_t> rec;
+    require(reader.next(rec) && rec.size()==96,"missing CONC version");
+    require(reader.next(rec) && rec.size()==4,"missing comment count");
+    require(reader.next(rec) && rec.size()==32,"OUTPUT source record size is not 32");
+    std::int32_t type=0,index=0;
+    float x=0,y=0;
+    std::memcpy(&type,rec.data(),4);
+    std::memcpy(&index,rec.data()+4,4);
+    std::memcpy(&x,rec.data()+24,4);
+    std::memcpy(&y,rec.data()+28,4);
+    require(type==1 && index==7 &&
+            std::string(reinterpret_cast<const char*>(rec.data()+8),16)
+                 =="STACK07         " &&
+            x==513.3846435546875F && y==3533.768798828125F,
+            "OUTPUT KTYPE/KSOURCE/CSRCNAM/XMAPKM/YMAPKM differs from source");
+    bool rejects_total=false;
+    try{
+        ConcFileWriter bad(path.string()+"-invalid","2.2","bad",{});
+        bad.write_source_descriptor({0,2,"TOTAL",0,0});
+    }catch(const std::invalid_argument&){rejects_total=true;}
+    require(rejects_total,"TOTAL record allowed invalid KTYPE/KSOURCE");
+}
 void invalid_and_year_boundary(const fs::path& path) {
     using namespace cteas::puff;
     ConcFileWriter out(path.string(), "2.2", "boundary test", {});
@@ -136,10 +170,12 @@ int main() {
     try {
         fs::create_directories(root);
         original_2022_series(root / "native-143-data.con");
+        vendor_source_record_bytes(root / "source-record.con");
         invalid_and_year_boundary(root / "boundary.con");
         fs::remove_all(root);
         std::cout << "P7E_NATIVE_143H_HOURLY_DATA=PASS HOURS=143 RECORDS=429"
                   << " GRID_CELLS=2500 REAL4_VALUES=EXACT CLOCK=CONTIGUOUS"
+                  << " OUTPUT_SOURCE_DESCRIPTOR=VENDOR_LAYOUT"
                   << " ORIGINAL_FULL_CONC_PARITY=NOT_CLAIMED\n";
         return 0;
     } catch (const std::exception& e) {

@@ -28,9 +28,9 @@ std::int64_t timestamp_seconds(int year, int julian, int hour, int seconds) {
 } // namespace
 
 HourlyConcSeriesWriter::HourlyConcSeriesWriter(
-    ConcFileWriter& output, ConcGridDescriptor grid, int nx, int ny,
+    ConcFileWriter& output, ConcSourceDescriptor source, int nx, int ny,
     std::string species, int species_index)
-    : output_(output), grid_(std::move(grid)), nx_(nx), ny_(ny),
+    : output_(output), source_(std::move(source)), nx_(nx), ny_(ny),
       species_(std::move(species)), species_index_(species_index),
       cell_count_(0) {
     if (nx_ <= 0 || ny_ <= 0 ||
@@ -41,12 +41,21 @@ HourlyConcSeriesWriter::HourlyConcSeriesWriter(
     cell_count_ = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_);
     if (species_.empty() || species_.size() > 8 ||
         species_index_ < 1 || species_index_ > 9999999 ||
-        grid_.discrete_receptors < 0 || grid_.group_index < 1 ||
-        grid_.group_name.empty() || grid_.group_name.size() > 16 ||
-        !std::isfinite(grid_.x_origin_km) || !std::isfinite(grid_.y_origin_km)) {
+        source_.source_type < 0 || source_.source_type > 8 ||
+        source_.source_index < 1 ||
+        source_.source_name.empty() || source_.source_name.size() > 16 ||
+        !std::isfinite(source_.x_map_km) || !std::isfinite(source_.y_map_km)) {
         throw std::invalid_argument("P7E hourly series: invalid species/grid metadata");
     }
 }
+
+HourlyConcSeriesWriter::HourlyConcSeriesWriter(
+    ConcFileWriter& output, ConcGridDescriptor grid, int nx, int ny,
+    std::string species, int species_index)
+    :HourlyConcSeriesWriter(output,
+        ConcSourceDescriptor{grid.discrete_receptors,grid.group_index,
+         grid.group_name,grid.x_origin_km,grid.y_origin_km},
+        nx,ny,std::move(species),species_index) {}
 
 void HourlyConcSeriesWriter::write_hour(
     const ConcPeriod& period, const std::vector<float>& values) {
@@ -68,7 +77,7 @@ void HourlyConcSeriesWriter::write_hour(
         }
     }
     output_.write_period_record(period);
-    output_.write_grid_descriptor(grid_);
+    output_.write_source_descriptor(source_);
     output_.write_species_field(species_, species_index_, nx_, ny_, values);
     next_start_second_ = finish;
     ++hours_written_;

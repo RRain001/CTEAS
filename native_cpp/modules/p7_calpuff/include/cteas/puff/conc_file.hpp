@@ -57,7 +57,19 @@ struct ConcFileSummary {
     int last_end_date = 0;
 };
 
-// CONC.DAT period/grid descriptors, as measured from the frozen artifact.
+// Original CALPUFF OUTPUT L57913 is a SOURCE descriptor (not a grid).
+// KTYPE/KSOURCE/CSRCNAM/XMAPKM/YMAPKM; TOTAL is 0/1/TOTAL/origin.
+struct ConcSourceDescriptor {
+    int source_type=0;
+    int source_index=1;
+    std::string source_name="TOTAL";
+    double x_map_km=0.0;
+    double y_map_km=0.0;
+};
+[[nodiscard]] ConcSourceDescriptor original_total_source_descriptor(
+    float origin_x_m,float origin_y_m);
+
+// Legacy TOTAL-only descriptor naming for older tests/callers.
 struct ConcPeriod {
     int begin_year = 0, begin_julian = 0, begin_hour = 0, begin_seconds = 0;
     int end_year = 0, end_julian = 0, end_hour = 0, end_seconds = 0;
@@ -96,6 +108,8 @@ public:
     // CONC.DAT v2.2 forms measured from the frozen artifact.
     void write_period_record(const ConcPeriod& period);
     void write_grid_descriptor(const ConcGridDescriptor& descriptor);
+    // Original OUTPUT L57913: int32/int32/CHARACTER*16/REAL4/REAL4.
+    void write_source_descriptor(const ConcSourceDescriptor& descriptor);
     void write_species_field(const std::string& label, int species_index, int nx, int ny,
                              const std::vector<float>& values);
     void close();

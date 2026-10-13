@@ -157,19 +157,44 @@ ConcGridDescriptor original_met_grid_descriptor(
     return result;
 }
 
-void ConcFileWriter::write_grid_descriptor(const ConcGridDescriptor& descriptor) {
-    require_true(impl_ != nullptr && !impl_->closed, "writer is closed");
-    require_true(descriptor.discrete_receptors >= 0, "discrete receptor count must not be negative");
+ConcSourceDescriptor original_total_source_descriptor(float origin_x_m,float origin_y_m) {
+    const auto legacy=original_met_grid_descriptor(origin_x_m,origin_y_m);
+    return {0,1,"TOTAL",legacy.x_origin_km,legacy.y_origin_km};
+}
+
+void ConcFileWriter::write_source_descriptor(const ConcSourceDescriptor& source) {
+    require_true(impl_!=nullptr && !impl_->closed,"writer is closed");
+    require_true(source.source_type>=0 && source.source_type<=8,
+                 "invalid OUTPUT source KTYPE");
+    require_true(source.source_index>=1,
+                 "invalid OUTPUT source KSOURCE");
+    require_true(!source.source_name.empty() && source.source_name.size()<=16U,
+                 "invalid OUTPUT source CSRCNAM");
+    require_true(std::isfinite(source.x_map_km) && std::isfinite(source.y_map_km),
+                 "invalid OUTPUT source XY coordinates");
+    if(source.source_type==0)
+        require_true(source.source_index==1 && source.source_name=="TOTAL",
+                     "TOTAL must have KTYPE=0 KSOURCE=1 name TOTAL");
     std::vector<std::uint8_t> payload;
-    append_int(payload, descriptor.discrete_receptors);
-    append_int(payload, descriptor.group_index);
-    const std::string name = padded(descriptor.group_name, 16U, "receptor group name");
-    append_bytes(payload, name.data(), name.size());
-    append_float(payload, static_cast<float>(descriptor.x_origin_km));
-    append_float(payload, static_cast<float>(descriptor.y_origin_km));
-    require_true(payload.size() == 32U, "grid descriptor must be 32 bytes");
-    write_framed(impl_->stream, payload);
+    append_int(payload,source.source_type);
+    append_int(payload,source.source_index);
+    const auto name=padded(source.source_name,16U,"source name");
+    append_bytes(payload,name.data(),name.size());
+    append_float(payload,static_cast<float>(source.x_map_km));
+    append_float(payload,static_cast<float>(source.y_map_km));
+    require_true(payload.size()==32U,"OUTPUT source descriptor must be 32 bytes");
+    write_framed(impl_->stream,payload);
     ++records_written_;
+}
+
+void ConcFileWriter::write_grid_descriptor(const ConcGridDescriptor& descriptor) {
+    // Backward-compatible TOTAL-only alias. These fields NEVER describe
+    // receptor grid dimensions in vendor OUTPUT L57912-57913.
+    require_true(descriptor.discrete_receptors==0 &&
+                 descriptor.group_index==1 && descriptor.group_name=="TOTAL",
+                 "legacy TOTAL descriptor cannot represent individual source");
+    write_source_descriptor({0,1,"TOTAL",
+        descriptor.x_origin_km,descriptor.y_origin_km});
 }
 
 void ConcFileWriter::write_species_field(const std::string& label, int species_index, int nx, int ny,
