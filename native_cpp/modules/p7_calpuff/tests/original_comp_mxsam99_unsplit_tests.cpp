@@ -256,6 +256,94 @@ void test(){
              <<" ATOMIC_ROLLBACK=YES"
              <<" ORIGINAL_FROZEN_143H_NOT_YET_ACCEPTED=YES\\n";
 
+    // Across-hour native state authority. Release ends after hour 1,
+    // yet the same puff MUST keep moving, broadening and preserving
+    // source mass over the remaining hours. This is not a 143x replay
+    // of independent POINTS1 emissions: every old puff inherits its full
+    // preceding hour's native motion, sigma, lid and QM/QU.
+    const auto born=adaptive.motion(1);
+    const auto old_vert=adaptive.vertical(1);
+    const auto birth_steps=adaptive.puff_steps(1);
+    need(adaptive.canonical_ids().size()==1 && adaptive.canonical_ids()[0]==1,
+         "first-hour source puff ID missing from persistent inventory");
+    std::size_t old_advance_steps=0;
+    for(int h=1;h<143;++h){
+        auto nextmet=met;
+        const float wind=h%2 ? -1.2F : 1.2F;
+        std::fill(nextmet.u.begin(),nextmet.u.end(),wind);
+        const auto before=adaptive.motion(1);
+        const auto vb=adaptive.vertical(1);
+        const auto steps_before=adaptive.puff_steps(1);
+        const auto no_release=adaptive.advance_hour_existing_mxsam99_adaptive(
+            nextmet,geo,ctl,pg,false);
+        need(no_release.hour_index==static_cast<std::size_t>(h) &&
+             no_release.release.puff_count==0 &&
+             no_release.release.new_puffs==0 &&
+             no_release.active_puffs==1 &&
+             no_release.steps.size()>0 &&
+             adaptive.active_count()==1 &&
+             adaptive.canonical_ids().at(0)==1,
+             "non-emitting COMP hour reset or duplicated the puff");
+        const auto after=adaptive.motion(1);
+        const auto va=adaptive.vertical(1);
+        need(no_release.steps.front().puff_id==1 &&
+             no_release.steps.front().release_number==0 &&
+             no_release.steps.front().step.before.x_cells==before.x_cells &&
+             no_release.steps.front().step.before.y_cells==before.y_cells &&
+             no_release.steps.front().step.before.travel_time_s==before.travel_time_s,
+             "old puff did not start exactly from previous native hour end");
+        need(after.travel_time_s>before.travel_time_s &&
+             std::abs((after.travel_time_s-before.travel_time_s)-3600.0F)<1.0F &&
+             adaptive.puff_steps(1)==steps_before+no_release.steps.size() &&
+             va.committed_lid_steps==va.completed_substeps &&
+             va.committed_lid_steps==adaptive.puff_steps(1) &&
+             va.completed_substeps>vb.completed_substeps &&
+             va.sigma_y_m>=vb.sigma_y_m &&
+             va.sigma_z_m>=vb.sigma_z_m &&
+             va.ziold_m>=0.0F && va.zimax_m>=va.ziold_m,
+             "native old puff motion/sigma/VMASS/lid history not continuous");
+        need(va.mass_mixed.size()==2 && va.mass_above.size()==2 &&
+             std::abs(va.mass_mixed[0]+va.mass_above[0]-7200.0F)<0.25F &&
+             std::abs(va.mass_mixed[1]+va.mass_above[1]-10800.0F)<0.25F,
+             "native old puff mass changed without removal or new emissions");
+        // Changing meteorology MUST change the inherited puff motion.
+        need(wind>0.0F ? after.x_cells>before.x_cells
+                       : after.x_cells<before.x_cells,
+             "old puff ignored the next hour's native wind");
+        old_advance_steps+=no_release.steps.size();
+    }
+    need(adaptive.completed_hours()==143 && adaptive.active_count()==1 &&
+         adaptive.canonical_ids().size()==1 &&
+         adaptive.puff_steps(1)==birth_steps+old_advance_steps &&
+         adaptive.motion(1).travel_time_s>born.travel_time_s &&
+         adaptive.vertical(1).completed_substeps>old_vert.completed_substeps,
+         "143h stateful old-puff continuation was accidentally split into independent hours");
+    const auto final_motion=adaptive.motion(1);
+    const auto final_vertical=adaptive.vertical(1);
+    const auto final_steps=adaptive.puff_steps(1);
+    auto broken_old_met=met;
+    broken_old_met.u.clear();
+    bool history_rollback=false;
+    try{(void)adaptive.advance_hour_existing_mxsam99_adaptive(
+        broken_old_met,geo,ctl,pg,false);}
+    catch(const std::exception&){history_rollback=true;}
+    need(history_rollback && adaptive.completed_hours()==143 &&
+         adaptive.puff_steps(1)==final_steps &&
+         adaptive.motion(1).x_cells==final_motion.x_cells &&
+         adaptive.motion(1).travel_time_s==final_motion.travel_time_s &&
+         adaptive.vertical(1).sigma_y_m==final_vertical.sigma_y_m &&
+         adaptive.vertical(1).ziold_m==final_vertical.ziold_m &&
+         adaptive.vertical(1).mass_mixed==final_vertical.mass_mixed &&
+         adaptive.vertical(1).mass_above==final_vertical.mass_above,
+         "failed hour committed partial old-puff physical history");
+    std::cout<<"P7_NATIVE_143H_CONTINUOUS_PUFF_HISTORY=PASS"
+             <<" RELEASE_HOURS=1 NO_RELEASE_HOURS=142"
+             <<" EPISODE_ID=1 OLD_STEPS="<<old_advance_steps
+             <<" POSITION=RETAINED SIGMA=RETAINED"
+             <<" QM_QU=CONSERVED ZIOLD_ZIMAX=RETAINED"
+             <<" HOURLY_WIND=CHANGED FAILURE_ATOMIC=YES"
+             <<" REAL_HEFEI_143H_CONC=NOT_YET_ACCEPTED\\n";
+
     const auto state=driver.motion(1);
     const auto count=driver.completed_hours();
     auto bad=source;bad.point.source_x_km=130;
