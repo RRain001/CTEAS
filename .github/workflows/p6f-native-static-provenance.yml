@@ -89,7 +89,8 @@ jobs:
       - name: Retrieve source-accepted native C++ 143h meteorology
         uses: actions/download-artifact@v4
         with:
-          run-id: 38372382572
+          # Accepted source-only C++ 143h P6D/P6E/P6F direct manifest producer.
+          run-id: 38388062863
           github-token: ${{ github.token }}
           name: p6-causal-original-case-143h
           path: ${{ runner.temp }}/p6f-native-case
@@ -152,7 +153,15 @@ jobs:
           print('PASS_P6F_SOURCE_GENERATED_CONTROL_COMMENTS',ncomments)
           PY
           echo "PASS_P6F_NATIVE_INDEPENDENT_HEADER_WITH_NATIVE_HOURLY_45_FIELDS"
-      - name: Unmodified original CALPUFF reads independent native OUTHD for 143h
+          # End-to-end: the exact file emitted directly from 143 original-free
+          # hourly C++ P6F records must match the stand-alone independent
+          # header reconstruction, with no edits or conversions after export.
+          direct="$RUNNER_TEMP/p6f-native-case/native_causal_independent_header_calmet.dat"
+          test -s "$direct"
+          cmp "$direct" "$RUNNER_TEMP/p6f-native-independent-header.dat"
+          sha256sum "$direct"
+          echo "PASS_P6F_DIRECT_143H_FROM_NATIVE_MANIFEST_EQUALS_SOURCE_REBUILT_HEADER"
+      - name: Unmodified original CALPUFF reads native manifest-built CALMET.DAT for 143h
         shell: bash
         run: |
           set -euo pipefail
@@ -161,7 +170,7 @@ jobs:
             --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618 \
             --fortran gfortran-11 \
             --control project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
-            --native-met "$RUNNER_TEMP/p6f-native-independent-header.dat" \
+            --native-met "$RUNNER_TEMP/p6f-native-case/native_causal_independent_header_calmet.dat" \
             --work "$RUNNER_TEMP/p6f-native-p7-original" \
             --report "$RUNNER_TEMP/p6f-original-calpuff-native-header-report.json"
       - name: Original CALPUFF concentrations unchanged after independent OUTHD replacement
@@ -171,7 +180,7 @@ jobs:
           set -euo pipefail
           python3 native_cpp/modules/p6_calmet/p6f/tests/verify_original_calpuff_native_independent_header.py \
             --native-weather "$RUNNER_TEMP/p6f-native-case/native_causal_calmet.dat" \
-            --independent-header-weather "$RUNNER_TEMP/p6f-native-independent-header.dat" \
+            --independent-header-weather "$RUNNER_TEMP/p6f-native-case/native_causal_independent_header_calmet.dat" \
             --vendor "$GITHUB_WORKSPACE/engine/vendor/src/CALPUFF_v7.2.1_L150618" \
             --puff-control "$GITHUB_WORKSPACE/project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp" \
             --work "$RUNNER_TEMP/p6f-original-calpuff-pair" \
