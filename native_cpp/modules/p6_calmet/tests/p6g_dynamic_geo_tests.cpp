@@ -52,7 +52,7 @@ static void fixture(const std::string& path,int nx,int ny,double dx=0.1,
 int main() {
     const std::string path="g6_geo_dynamic_fixture.txt";
     try {
-        for(const auto [nx,ny,spacing]:std::vector<std::tuple<int,int,double>>{
+        for(const auto& [nx,ny,spacing]:std::vector<std::tuple<int,int,double>>{
                 {50,50,0.1},{13,7,0.5},{120,64,2.0},{1,1,1.0}}) {
             fixture(path,nx,ny,spacing);
             const GeoGridSpec spec{nx,ny,50,'N',510.885,3531.269,spacing};
