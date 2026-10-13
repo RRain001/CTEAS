@@ -187,6 +187,75 @@ void test(){
              <<" VENDOR_SLOT_ORDER=YES ABORT_ROLLBACK=YES"
              <<" AUTONOMOUS_OFFDOMAIN=NOT_YET_ACCEPTED\\n";
 
+    // Force a physically meaningful FSTEP > 1: only one newly released
+    // puff (externally controlled release speed 0.001 m/s), but its actual
+    // 3-D METFM1 wind is 1.2 m/s. Unlike the existing unsplit branch, the
+    // new scheduler must shorten TSAMP, re-evaluate rising RISEWIND, and
+    // use the original TLEFT/goto-500 loop without discarding puff state.
+    auto fast=source;
+    fast.cadence.wind_speed_ms=0.001;
+    fast.cadence.emission_interval=36.0;
+    OriginalCompRiseMultiPuffHours refused_split;
+    bool fstep_refusal=false;
+    try{(void)refused_split.advance_hour_point_mxsam99_unsplit(
+        met,geo,ctl,pg,false,fast);}catch(const std::invalid_argument&){
+        fstep_refusal=true;
+    }
+    need(fstep_refusal && refused_split.completed_hours()==0 &&
+         refused_split.active_count()==0,
+         "legacy unsplit COMP silently accepted forced FSTEP");
+    OriginalCompRiseMultiPuffHours adaptive;
+    const auto split_hour=adaptive.advance_hour_point_mxsam99_adaptive(
+        met,geo,ctl,pg,false,fast);
+    need(split_hour.release.puff_count==1 &&
+         split_hour.active_puffs==1 &&
+         split_hour.fstep_shortened_steps>0 &&
+         split_hour.fstep_reentries>0 &&
+         split_hour.steps.size()>1 &&
+         adaptive.completed_hours()==1,
+         "native FSTEP did not execute source TLEFT/substep reentries");
+    double used_time=0.0;
+    bool rising_resample=false;
+    for(const auto& rec:split_hour.steps){
+        need(rec.puff_id==1 && rec.ksam==1 &&
+             rec.step.after.travel_time_s>rec.step.before.travel_time_s &&
+             rec.step.vertical_after.committed_lid_steps>0 &&
+             rec.step.substep.step_s>0.0,
+             "native FSTEP resampling corrupted puff clock or lid");
+        used_time+=rec.step.substep.step_s;
+        if(rec.step.before.total_distance_m<230.0F &&
+           rec.step.substep.split && rec.step.rise.adjusted.passes==2)
+            rising_resample=true;
+    }
+    need(rising_resample &&
+         std::abs(adaptive.motion(1).travel_time_s-3600.0F)<1.0F &&
+         std::abs(used_time-3600.0)<1.0 &&
+         adaptive.puff_steps(1)==split_hour.steps.size(),
+         "native FSTEP lost full-hour time or rising puff state");
+    const auto mass_state=adaptive.vertical(1);
+    need(std::abs(mass_state.mass_mixed.at(0)+
+                  mass_state.mass_above.at(0)-7200.0F)<0.1F &&
+         std::abs(mass_state.mass_mixed.at(1)+
+                  mass_state.mass_above.at(1)-10800.0F)<0.1F,
+         "native FSTEP introduced source-mass drift");
+    const auto saved=adaptive.motion(1);
+    auto invalid_admission=fast;
+    invalid_admission.point.source_x_km=130;
+    bool adaptive_rollback=false;
+    try{(void)adaptive.advance_hour_point_mxsam99_adaptive(
+        met,geo,ctl,pg,false,invalid_admission);
+    }catch(const std::exception&){adaptive_rollback=true;}
+    need(adaptive_rollback && adaptive.completed_hours()==1 &&
+         adaptive.active_count()==1 &&
+         adaptive.motion(1).travel_time_s==saved.travel_time_s &&
+         adaptive.motion(1).x_cells==saved.x_cells,
+         "late FSTEP+POINTS1 error corrupted an earlier physical hour");
+    std::cout<<"P7_NATIVE_FSTEP_TLEFT_REENTRY=PASS"
+             <<" SOURCE_KSAM=1 RESAMPLE_RISEWIND=YES"
+             <<" FULL_HOUR_MOTION=YES MASS_CONSERVED=YES"
+             <<" ATOMIC_ROLLBACK=YES"
+             <<" ORIGINAL_FROZEN_143H_NOT_YET_ACCEPTED=YES\\n";
+
     const auto state=driver.motion(1);
     const auto count=driver.completed_hours();
     auto bad=source;bad.point.source_x_km=130;
