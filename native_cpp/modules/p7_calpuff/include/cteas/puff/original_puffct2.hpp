@@ -24,4 +24,24 @@ struct OriginalPuffct2Result {
 [[nodiscard]] OriginalPuffct2Result original_puffct2(
     const OriginalPuffct2Step& step, float fraction);
 
+// PUFRECS MCTADJ=2 terrain-specific receptor pole, L5321–5375.
+// The caller supplies actual RELIEF/GETELEV terrain values; none are
+// inferred from the puff or filled from default zeros.
+struct OriginalMctadj2ReceptorTerrain {
+    float receptor_ground_elevation_msl=0.0F; // ZRTERR
+    float terrain_peak_elevation_msl=0.0F;    // RELIEF(5)
+    float terrain_under_puff_msl=0.0F;        // GETELEV(XR1,YR1)
+    float brunt_vaisala_s=0.0F;              // BVF
+    float wind_speed_ms=0.0F;                // UAVG
+    float receptor_height_m=0.0F;            // Z
+};
+struct OriginalMctadj2ReceptorHeight {
+    float puff_height_above_ground_m=0.0F; // ZPR after MTRANS=1
+    float pole_height_m=0.0F;              // ZRPOLE
+};
+[[nodiscard]] OriginalMctadj2ReceptorHeight original_mctadj2_receptor_height(
+    const OriginalPuffct2Result& puff_position,
+    float gradual_rise_height_m, float final_rise_height_m,
+    const OriginalMctadj2ReceptorTerrain& terrain);
+
 } // namespace cteas::puff

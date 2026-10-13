@@ -43,4 +43,44 @@ OriginalPuffct2Result original_puffct2(
         throw std::overflow_error("original PUFFCT2 REAL4 output overflow");
     return {x,y,z};
 }
+OriginalMctadj2ReceptorHeight original_mctadj2_receptor_height(
+    const OriginalPuffct2Result& puff,float hgr,float zfinal,
+    const OriginalMctadj2ReceptorTerrain& t) {
+    for(float v:{puff.x_m,puff.y_m,puff.z_m,hgr,zfinal,
+                 t.receptor_ground_elevation_msl,
+                 t.terrain_peak_elevation_msl,t.terrain_under_puff_msl,
+                 t.brunt_vaisala_s,t.wind_speed_ms,t.receptor_height_m})
+        if(!std::isfinite(v))
+            throw std::invalid_argument(
+                "PUFRECS MCTADJ2 requires finite actual terrain inputs");
+    if(t.wind_speed_ms<=0.0F)
+        throw std::invalid_argument(
+            "PUFRECS MCTADJ2 requires positive native UAVG");
+    // Original PUFRECS L5324–5331 for selected MTRANS=1.
+    float zpr=puff.z_m;
+    if(zfinal>0.0F)zpr=zpr*hgr/zfinal;
+    else zpr=0.0F;
+    float pole=t.receptor_height_m;
+    // Original L5333–5359: BVF=0 leaves receptor pole unchanged.
+    if(t.brunt_vaisala_s>0.0F) {
+        const float dsel=t.terrain_peak_elevation_msl-
+                         t.wind_speed_ms/t.brunt_vaisala_s;
+        const float dsh=std::max(0.0F,dsel-t.terrain_under_puff_msl);
+        const float zdiff=t.receptor_ground_elevation_msl-dsel;
+        if(dsh==0.0F) {
+            if(zdiff<0.0F)
+                pole=std::max(0.0F,t.receptor_height_m+zdiff);
+        } else {
+            if(zdiff<0.0F)
+                pole=std::max(0.0F,t.receptor_height_m+
+                    t.receptor_ground_elevation_msl-t.terrain_under_puff_msl);
+            else
+                pole=t.receptor_height_m+dsh;
+        }
+    }
+    zpr=std::max(zpr,0.0F);
+    if(!std::isfinite(zpr)||!std::isfinite(pole))
+        throw std::overflow_error("PUFRECS MCTADJ2 receptor height overflow");
+    return {zpr,pole};
+}
 } // namespace cteas::puff
