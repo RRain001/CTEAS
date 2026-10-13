@@ -3,6 +3,7 @@
 #include "cteas/puff/original_met_hours.hpp"
 #include "cteas/puff/original_release_wind.hpp"
 #include "cteas/puff/plume_rise.hpp"
+#include "cteas/puff/original_point_prfin.hpp"
 #include "cteas/puff/control.hpp"
 #include "cteas/puff/release.hpp"
 #include <bit>
@@ -229,6 +230,38 @@ int main(int argc,char** argv){
                                static_cast<float>(cadence.emission_duration_s))==
                            std::bit_cast<std::uint32_t>(66.66666412353516F),
                            "native first-hour POINTS1 cadence differs from original DGM");
+                    const cteas::puff::OriginalPointPrfinRequest request{
+                        x,y,source.row[2],source.row[4],source.row[5],
+                        source.row[6],static_cast<float>(factor[0]),0.5F,
+                        static_cast<float>(sampling[0]),
+                        deck.required_int("MXNEW"),3600.0F};
+                    const auto portable=cteas::puff::original_point_prfin_metfm1(
+                        hour,statics,header,request);
+                    demand(portable.effective_height_m==heff &&
+                           portable.release_wind_ms==wsnew &&
+                           portable.buoyancy_flux==
+                               static_cast<float>(flux.buoyancy_m4s3) &&
+                           portable.momentum_flux==
+                               static_cast<float>(flux.momentum_m4s2) &&
+                           portable.x_final_m==
+                               static_cast<float>(rise.x_final_m) &&
+                           portable.release.puff_count==cadence.puff_count &&
+                           static_cast<float>(portable.release.emission_duration_s)==
+                               static_cast<float>(cadence.emission_duration_s),
+                           "native reusable PRFIN source differs from independent first-hour bridge");
+                    auto stable=hour;
+                    stable.ipgt[cell]=5;
+                    bool stable_rejected=false;
+                    try{
+                        (void)cteas::puff::original_point_prfin_metfm1(
+                            stable,statics,header,request);
+                    }catch(const std::invalid_argument&){stable_rejected=true;}
+                    demand(stable_rejected,
+                        "unimplemented stable PTLAPS was approximated in production PRFIN");
+                    std::cout<<"P7_NATIVE_PRODUCTION_PRFIN_REUSE=PASS"
+                             <<" SITE_IS_GRID_RELATIVE=YES"
+                             <<" STABLE_PTLAPS=FAIL_CLOSED"
+                             <<" DGM_SEEDING=NO\\n";
                     std::cout<<"P7_FIRST_HOUR_PRFIN_DGM_COMPARE=PASS"
                              <<" HEFF_REAL4=BITWISE"
                              <<" WSNEW_REAL4=BITWISE"
@@ -293,7 +326,7 @@ int main(int argc,char** argv){
                  <<" WIND_MIN_MS="<<min_ws<<" WIND_MAX_MS="<<max_ws
                  <<" CALM_HOURS="<<calms
                  <<" REAL_MET_DRIVER=YES DGM_DRIVING_INPUT=NO"
-                 <<" NATIVE_PRFIN=NOT_YET_ACCEPTED"
+                 <<" NATIVE_FIRST_HOUR_PRFIN_DGM=PASS"
                  <<" MDRY_CALCPF_PARITY=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
