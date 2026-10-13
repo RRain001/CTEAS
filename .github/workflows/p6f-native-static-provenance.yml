@@ -6,6 +6,7 @@ on:
       - .github/workflows/p6f-native-static-provenance.yml
       - native_cpp/modules/p6_calmet/p6f/CMakeLists.txt
       - native_cpp/modules/p6_calmet/p6f/src/p6f_geo_static_provenance_main.cpp
+      - native_cpp/modules/p6_calmet/p6f/tests/verify_independent_native_header_original_calpuff.py
       - native_cpp/modules/p6_calmet/include/cteas/p6/read_geo.hpp
   workflow_dispatch:
 
@@ -24,6 +25,8 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             native_cpp/modules/p6_calmet/p6f
+            engine/vendor/src/CALPUFF_v7.2.1_L150618
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
             native_cpp/modules/p6_calmet/include/cteas/p6/read_geo.hpp
             native_cpp/modules/p6_calmet/p6e
             native_cpp/modules/p7_calpuff/reference/original_decode_calmet_hourly.py
@@ -148,6 +151,18 @@ jobs:
           print('PASS_P6F_SOURCE_GENERATED_CONTROL_COMMENTS',ncomments)
           PY
           echo "PASS_P6F_NATIVE_INDEPENDENT_HEADER_WITH_NATIVE_HOURLY_45_FIELDS"
+      - name: Unmodified original CALPUFF reads independent native OUTHD for 143h
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v gfortran-11
+          python3 native_cpp/modules/p6_calmet/p6f/tests/verify_independent_native_header_original_calpuff.py \
+            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618 \
+            --fortran gfortran-11 \
+            --control project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            --native-met "$RUNNER_TEMP/p6f-native-independent-header.dat" \
+            --work "$RUNNER_TEMP/p6f-native-p7-original" \
+            --report "$RUNNER_TEMP/p6f-original-calpuff-native-header-report.json"
       - name: Archive source static reconstruction evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -161,5 +176,6 @@ jobs:
             ${{ runner.temp }}/p6f-independent-header-report.json
             ${{ runner.temp }}/p6f-independent-header-45field-verdict.json
             ${{ runner.temp }}/p6f-independent-header-p7-decoder.json
+            ${{ runner.temp }}/p6f-original-calpuff-native-header-report.json
           if-no-files-found: warn
           retention-days: 14
