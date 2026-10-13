@@ -1214,6 +1214,31 @@ endif()
 add_test(NAME cteas_p7_original_pufrecs_geometry
   COMMAND cteas_p7_original_pufrecs_geometry_tests)
 
+# Original CALPUFF PUFFCT2 receptor height for MCTADJ=2.
+# Pure port: CTADJ2/SETPUF still must supply native FRACZ1 and LUP1.
+add_library(cteas_p7_original_puffct2 STATIC src/original_puffct2.cpp)
+target_include_directories(cteas_p7_original_puffct2 PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_executable(cteas_p7_original_puffct2_probe
+  src/original_puffct2_probe.cpp)
+target_link_libraries(cteas_p7_original_puffct2_probe PRIVATE
+  cteas_p7_original_puffct2)
+add_executable(cteas_p7_original_puffct2_tests
+  tests/original_puffct2_tests.cpp)
+target_link_libraries(cteas_p7_original_puffct2_tests PRIVATE
+  cteas_p7_original_puffct2)
+if(MSVC)
+  target_compile_options(cteas_p7_original_puffct2 PRIVATE /W4 /WX)
+  target_compile_options(cteas_p7_original_puffct2_probe PRIVATE /W4 /WX)
+  target_compile_options(cteas_p7_original_puffct2_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_puffct2 PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_compile_options(cteas_p7_original_puffct2_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_compile_options(cteas_p7_original_puffct2_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME cteas_p7_original_puffct2_source_contract
+  COMMAND cteas_p7_original_puffct2_tests)
+
 # Restricted native CALCPF gridded point-source bridge: PFSCRN/PFSAMP/VCOUP.
 # This is NOT a replacement for full original receptor-specific PUFRECS.
 # Standalone original-vs-native PFSCRN REAL4 bit comparison probe.
