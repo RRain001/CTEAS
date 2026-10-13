@@ -1228,7 +1228,9 @@ endif()
 add_library(cteas_p7_original_flat_calcpf STATIC src/original_flat_calcpf.cpp)
 target_include_directories(cteas_p7_original_flat_calcpf PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(cteas_p7_original_flat_calcpf PUBLIC cteas_p7_receptors)
+target_link_libraries(cteas_p7_original_flat_calcpf PUBLIC
+  cteas_p7_receptors cteas_p7_dispersion cteas_p7_plume_rise
+  cteas_p7_original_pufrecs_geometry)
 if(MSVC)
   target_compile_options(cteas_p7_original_flat_calcpf PRIVATE /W4 /WX)
 else()

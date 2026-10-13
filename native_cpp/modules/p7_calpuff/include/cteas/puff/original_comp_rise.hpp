@@ -28,6 +28,15 @@ struct RiseCompSamplingState {
     SigmaUpdateResult sigmas;
     VmassResult vmass;
     float step_seconds=0.0F;
+    // Authoritative original SETCSIG/GRISE context for receptor-specific
+    // PUFRECS: supplied by native COMP, never frozen DGM/puff.con.
+    DispersionEnvironment receptor_dispersion;
+    PlumeRiseState receptor_rise;
+    float receptor_final_rise_distance_m=0.0F;
+    float receptor_buoyancy_variance_m2=0.0F;
+    float receptor_initial_sigma_y_squared_m2=0.0F;
+    float receptor_minimum_sigma_y_m=0.0F;
+    float receptor_minimum_sigma_z_m=0.0F;
 };
 using RiseCompSamplingKernel=std::function<std::vector<float>(
     const RiseCompSamplingState&)>;
@@ -81,6 +90,10 @@ private:
         float x_final_m=0.0F;
         float previous_wind_ms=0.0F;
         std::size_t completed=0U;
+        float buoyancy_variance_m2=0.0F;
+        float initial_sigma_y_squared_m2=0.0F;
+        float minimum_sigma_y_m=0.0F;
+        float minimum_sigma_z_m=0.0F;
     };
     OriginalPuffMotionLifecycle motion_;
     OriginalVerticalLifecycle vertical_;

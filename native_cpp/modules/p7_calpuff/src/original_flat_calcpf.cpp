@@ -1,12 +1,112 @@
 #include "cteas/puff/original_flat_calcpf.hpp"
+#include "cteas/puff/original_pufrecs_geometry.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
 namespace cteas::puff {
+namespace {
+// PUFRECS original L5152–5272 for the selected no-building,
+// no-calm, Gaussian-vertical MDISP=3 PG point-puff branch.
+// All intermediates deliberately return to original REAL*4.
+struct ReceptorPgSigma {
+    float y=0.0F,z=0.0F,grise_height_m=0.0F;
+};
+ReceptorPgSigma receptor_pg_sigma(
+    const RiseCompSamplingState& s,
+    const OriginalPufrecsGeometry& geom,
+    const SigmaCurves& curves) {
+    const float frac=geom.fraction;
+    const float xtt=geom.distance_to_receptor_m;
+    const float xfinal=s.receptor_final_rise_distance_m;
+    const float bidsq=s.receptor_buoyancy_variance_m2;
+    const float sy0sq=s.receptor_initial_sigma_y_squared_m2;
+    if(!std::isfinite(frac)||!std::isfinite(xtt)||xtt<0.0F ||
+       !std::isfinite(xfinal)||xfinal<=0.0F ||
+       !std::isfinite(bidsq)||bidsq<0.0F ||
+       !std::isfinite(sy0sq)||sy0sq<0.0F)
+        throw std::invalid_argument("PUFRECS receptor PG requires valid native rise/virtuals");
+    // Original L5152-5195: source-specific gradual/final rise.
+    float hgr=0.0F,rfacsq=1.0F;
+    if(xtt<xfinal && xtt>0.0F) {
+        auto plume=s.receptor_rise;
+        plume.x_m=xtt;
+        const auto rise=gradual_plume_height(plume);
+        hgr=static_cast<float>(rise.height_m);
+        const float rf=static_cast<float>(rise.rise_fraction);
+        rfacsq=rf*rf;
+    } else if(xtt<=0.0F) {
+        hgr=static_cast<float>(s.receptor_rise.stack_height_m);
+        rfacsq=0.0F;
+    } else {
+        hgr=static_cast<float>(s.receptor_rise.final_rise_m);
+    }
+    const float addbid=bidsq*rfacsq;
+    const float subbid=bidsq*(1.0F-rfacsq);
+    const auto& a=s.sigmas.adjust;
+    const auto& v=s.sigmas.step;
+    float syr=0.0F,szr=0.0F;
+    if(frac==0.0F || frac==1.0F) {
+        // Original L5201-5223: endpoints use stored begin/end sigma,
+        // removing the missing part of the final buoyancy enhancement.
+        syr=static_cast<float>(frac==0.0F?a.sigma_y_begin_m:a.sigma_y_end_m);
+        szr=static_cast<float>(frac==0.0F?a.sigma_z_begin_m:a.sigma_z_end_m);
+        if(subbid>=0.0F) {
+            const float argy=syr*syr-subbid;
+            syr=s.receptor_minimum_sigma_y_m;
+            if(argy>0.0F)syr=std::sqrt(argy);
+            if(v.gaussian_vertical) {
+                const float argz=szr*szr-subbid;
+                szr=s.receptor_minimum_sigma_z_m;
+                if(argz>0.0F)szr=std::sqrt(argz);
+            }
+        }
+    } else {
+        // Original L5233-5265: interpolated PUFRECS virtual distances
+        // and times feed *forward* SIGTY/SIGTZ from zero initial sigma.
+        const float vty=std::max(0.0F,static_cast<float>(
+            v.virtual_time_y_begin_s)+frac*(static_cast<float>(
+            v.virtual_time_y_end_s)-static_cast<float>(
+            v.virtual_time_y_begin_s)));
+        const float vdy=std::max(0.0F,static_cast<float>(
+            v.virtual_distance_y_begin_km)+frac*(static_cast<float>(
+            v.virtual_distance_y_end_km)-static_cast<float>(
+            v.virtual_distance_y_begin_km)));
+        const float syar=static_cast<float>(
+            curves.sigma_y(0.0F,{vdy,vty}).sigma_y_m);
+        syr=syar;
+        if(addbid>0.0F || sy0sq>0.0F)
+            syr=std::sqrt(syar*syar+addbid+sy0sq);
+        if(v.gaussian_vertical) {
+            const float vtz=std::max(0.0F,static_cast<float>(
+                v.virtual_time_z_begin_s)+frac*(static_cast<float>(
+                v.virtual_time_z_end_s)-static_cast<float>(
+                v.virtual_time_z_begin_s)));
+            const float vdz=std::max(0.0F,static_cast<float>(
+                v.virtual_distance_z_begin_km)+frac*(static_cast<float>(
+                v.virtual_distance_z_end_km)-static_cast<float>(
+                v.virtual_distance_z_begin_km)));
+            // Original SIGTZ(...,ZB1,...): use native puff's begin height.
+            const float szar=static_cast<float>(curves.sigma_z(
+                0.0F,s.before.z_m,{vdz,vtz}).sigma_z_m);
+            szr=szar;
+            if(addbid>0.0F)szr=std::sqrt(szar*szar+addbid);
+        } else {
+            szr=static_cast<float>(a.sigma_z_begin_m);
+        }
+    }
+    syr=std::max(syr,s.receptor_minimum_sigma_y_m);
+    szr=std::max(szr,s.receptor_minimum_sigma_z_m);
+    if(!std::isfinite(syr)||syr<=0.0F ||
+       !std::isfinite(szr)||szr<0.0F || !std::isfinite(hgr))
+       throw std::invalid_argument("PUFRECS receptor-specific PG sigma failed");
+    return {syr,szr,hgr};
+}
+} // namespace
 RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     const ReceptorSet& receptors,float met_spacing_m,
     float averaging_period_s,float impact_sigma_multiple,
@@ -64,7 +164,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             // six-hour nonzero/bitwise-readback regression as a control.
             vfactor=static_cast<float>(vertical_coupling({
                 s.vmass.puff_code,0.0,midz,sz,lid,max_lid}));
-        } else if(vertical_method==OriginalFlatVerticalMethod::substep_vcbar) {
+        } else if(vertical_method==OriginalFlatVerticalMethod::substep_vcbar ||
+                  vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcbar) {
             // Source-ported CALPUFF VCBAR: use the *native* post-SETPUF
             // begin/mid/end vertical distribution, not a fabricated sigma
             // sampled at the midpoint. Strictly flat, MTILT=0, non-slug,
@@ -108,6 +209,34 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             throw std::invalid_argument("flat CALCPF sampling radius overflow");
         const float rec_radius=impact_sigma_multiple*at_rec;
         const float frac=s.step_seconds/averaging_period_s;
+        const bool pg_receiver=
+            vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcbar;
+        // Source-ported SETCSIG uses the meteorology already selected by
+        // native COMP for this substep; never use a frozen DGM class/wind.
+        const auto curves=pg_receiver ?
+            std::make_optional<SigmaCurves>(s.receptor_dispersion) :
+            std::nullopt;
+        OriginalPufrecsGridStepInputs grid_step;
+        if(pg_receiver) {
+            grid_step.x_begin_cells=s.before.x_cells;
+            grid_step.y_begin_cells=s.before.y_cells;
+            grid_step.x_end_cells=s.after.x_cells;
+            grid_step.y_end_cells=s.after.y_cells;
+            grid_step.sigma_y_begin_m=static_cast<float>(
+                s.sigmas.adjust.sigma_y_begin_m);
+            grid_step.sigma_y_end_m=end_sy;
+            grid_step.distance_begin_m=s.before.total_distance_m;
+            grid_step.mean_wind_ms=static_cast<float>(
+                (s.after.total_distance_m-s.before.total_distance_m)/
+                s.step_seconds);
+            grid_step.met_spacing_m=met_spacing_m;
+            grid_step.ibsamp=static_cast<int>(grid_x+0.5F);
+            grid_step.jbsamp=static_cast<int>(grid_y+0.5F);
+            grid_step.sampling_nx=static_cast<int>(nx);
+            grid_step.sampling_ny=static_cast<int>(nrecs/nx);
+            grid_step.fclip=impact_sigma_multiple;
+            grid_step.clip=true;
+        }
         for(std::size_t i=0;i<nrecs;++i) {
             const float xr=static_cast<float>(i%nx)+1.0F;
             const float yr=static_cast<float>(i/nx)+1.0F;
@@ -115,12 +244,20 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             if(!screen.has_impact ||
                static_cast<float>(screen.closest_distance_squared)>rec_radius*rec_radius)
                 continue;
+            float receptor_sigma_y=sy;
+            if(pg_receiver) {
+                const auto geometry=original_pufrecs_grid_receptor_geometry(
+                    grid_step,i);
+                const auto pufrecs=receptor_pg_sigma(s,geometry,*curves);
+                receptor_sigma_y=pufrecs.y;
+            }
             const auto ints=puff_sampling_integrals(
-                xo,yo,xn,yn,xr,yr,at_rec,screen.closest_distance_squared);
+                xo,yo,xn,yn,xr,yr,receptor_sigma_y/met_spacing_m,
+                screen.closest_distance_squared);
             const double inc=receptor_concentration_increment(ints,{
                 .mass_old=s.vmass.mass_mixed[0],
                 .mass_new=s.vmass.mass_mixed[0],
-                .sigma_y_at_receptor_m=sy,
+                .sigma_y_at_receptor_m=receptor_sigma_y,
                 .closest_approach_squared_km2=screen.closest_distance_squared,
                 .vertical_factor=vfactor,
                 .time_fraction=frac,

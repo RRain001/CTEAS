@@ -36,6 +36,11 @@ void OriginalCompRisePointDriver::admit(
             "rise POINTS1 and INJECT source height or Gaussian flag differs");
     RiseSource state;
     state.x_final_m=r4(source.x_final_m,"XFINAL");
+    state.buoyancy_variance_m2=r4(source.final_rise_variance_m2,"BIDSQ");
+    state.initial_sigma_y_squared_m2=
+        r4(source.sigma_y_source_m*source.sigma_y_source_m,"SYSRC squared");
+    state.minimum_sigma_y_m=r4(source.initial_sigma_y_m,"SY0");
+    state.minimum_sigma_z_m=r4(source.initial_sigma_z_m,"SZ0");
     auto& p=state.physics;
     p.source_type=1;
     p.downwash_code=0;
@@ -238,7 +243,11 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     if(sampling_kernel){
         const RiseCompSamplingState at_receptor{
             id,before,moved.state,v.state(id),sigma,mass,
-            r4(substep.step_s,"native sample step seconds")
+            r4(substep.step_s,"native sample step seconds"),
+            curves.environment(),state.physics,state.x_final_m,
+            state.buoyancy_variance_m2,
+            state.initial_sigma_y_squared_m2,
+            state.minimum_sigma_y_m,state.minimum_sigma_z_m
         };
         receptor_increments=sampling_kernel(at_receptor);
         for(float increment:receptor_increments){

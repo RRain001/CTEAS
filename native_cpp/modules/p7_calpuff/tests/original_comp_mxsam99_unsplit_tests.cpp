@@ -756,10 +756,10 @@ void test(){
     // remains an independent, deliberately restricted control.
     const auto plume_sampler=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F,3.0F,
-        OriginalFlatVerticalMethod::substep_vcbar);
+        OriginalFlatVerticalMethod::receptor_pg_vcbar);
     const auto midpoint_control=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F,3.0F,
-        OriginalFlatVerticalMethod::midpoint_vcoup);
+        OriginalFlatVerticalMethod::substep_vcbar);
     std::size_t vcbar_native_substeps=0;
     std::size_t vcbar_changed_receptor_increments=0;
     std::size_t sample_diagnostic_count=0;
@@ -893,10 +893,10 @@ void test(){
                  "six-hour native CALCPF field bytes changed during OUTPUT");
     }
     std::filesystem::remove(binary_path);
-    std::cout<<"P7_NATIVE_VCBAR_CALCPF_OUTPUT_6H=PASS"
+    std::cout<<"P7_NATIVE_PUFRECS_PG_VCBAR_CALCPF_OUTPUT_6H=PASS"
              <<" HOURS=6 RECORDS=18 RECEIVERS=2500"
              <<" VCBAR_REAL_NATIVE_SUBSTEPS="<<vcbar_native_substeps
-             <<" VCBAR_VCOUP_CHANGED_INCREMENTS="<<vcbar_changed_receptor_increments
+             <<" PUFRECS_PG_VCBAR_CHANGED_INCREMENTS="<<vcbar_changed_receptor_increments
              <<" PERSISTENT_NATIVE_PUFFS=YES"
              <<" NONZERO_RECEPTOR_VALUES="<<meaningful_cells
              <<" CONCENTRATION_REAL4=BITWISE_READBACK"
