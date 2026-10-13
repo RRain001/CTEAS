@@ -61,6 +61,25 @@ int main(){
   ctrl.calm_mdisp3->original_turbulence.svmin.fill(.5F);
   ctrl.calm_mdisp3->original_turbulence.swmin.fill(.06F);
 
+  // Use identical native puff history and wind to exercise the
+  // original stable ELS>0 logarithmic SIGTZ inversion in production,
+  // independently of the ELS<=0 physical substeps below.
+  auto stable_driver=driver;
+  auto stable_met=low;
+  stable_met.el.assign(n,100.0F);
+  const auto stable_hour=stable_driver.advance_hour_existing_mxsam99_adaptive(
+      stable_met,st,ctrl,pg,false);
+  check(stable_driver.completed_hours()==2&&!stable_hour.steps.empty(),
+        "stable native CALPUFF calm hour did not commit");
+  std::size_t stable_calm=0;
+  for(const auto& sub:stable_hour.steps){
+    if(!sub.step.bookkeeping.calm)continue;
+    ++stable_calm;
+    check(sub.step.sigma.adjust.stored_sigma_z_m>0.0,
+          "stable log-secant SIGTZ left the native physical domain");
+  }
+  check(stable_calm>0,"stable native COMP has no actual calm substeps");
+
   // An actual post-rise old-puff hour, with no new emissions.
   const auto hour1=driver.advance_hour_existing_mxsam99_adaptive(
       low,st,ctrl,pg,false);
@@ -81,6 +100,9 @@ int main(){
           "calm midpoint sigma minimum not generated");
   }
   check(calm>0,"low wind did not drive actual calm COMP SETPUF");
+  check(stable_hour.steps.front().step.sigma.step.sigma_z_end_m!=
+        hour1.steps.front().step.sigma.step.sigma_z_end_m,
+        "EL>0 SIGTZ branch was silently replaced with ELS<=0 math");
   const auto post=driver.vertical(1);
   check(post.completed_substeps>old_vertical.completed_substeps &&
         post.committed_lid_steps==post.completed_substeps &&
@@ -101,6 +123,7 @@ int main(){
         "unsupported calm terrain was accepted or partially committed");
   std::cout<<"P7_ORIGINAL_COMP_CALM_NATIVE_INTEGRATION=PASS"
            <<" COMP_IDOPT1_REAL_SUBSTEPS="<<calm
+           <<" COMP_STABLE_CALM_SUBSTEPS="<<stable_calm
            <<" VMASS_SETPUF_COMMIT=ATOMIC"
            <<" RECEPTOR_MCTADJ2_DRY=FAIL_CLOSED"
            <<" HEFEI_989_CALM_PARITY=NOT_YET_ACCEPTED\n";
