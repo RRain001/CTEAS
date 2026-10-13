@@ -972,6 +972,10 @@ endforeach()
 # MDISP=3 live SIGTY/SIGTZ coupled to native METFM1 within one COMP step.
 add_test(NAME cteas_p7_native_comp_neutral_pg_1h_persistent
          COMMAND cteas_p7_original_comp_neutral_tests pg)
+add_test(NAME cteas_p7_native_comp_neutral_pg_6h_persistent
+         COMMAND cteas_p7_original_comp_neutral_tests pg6)
+add_test(NAME cteas_p7_native_comp_neutral_pg_143h_persistent
+         COMMAND cteas_p7_original_comp_neutral_tests pg143)
 
 # Native REAL4 bridge from the original METFM1 column through GRISE and
 # RISEWIND. The caller must supply true independently calculated native
