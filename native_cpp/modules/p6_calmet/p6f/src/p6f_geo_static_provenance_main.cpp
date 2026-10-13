@@ -125,6 +125,18 @@ int main(int argc,char** argv) {
         check_scalar(hdr.npsta,number_i(deck,"NPSTA"),"NPSTA");
         check_scalar(hdr.nowsta,number_i(deck,"NOWSTA"),"NOWSTA");
         check_scalar(hdr.irtype,number_i(deck,"IRTYPE"),"IRTYPE");
+        check_scalar(hdr.begin_year,number_i(deck,"IBYR"),"IBYR");
+        check_scalar(hdr.begin_month,number_i(deck,"IBMO"),"IBMO");
+        check_scalar(hdr.begin_day,number_i(deck,"IBDY"),"IBDY");
+        check_scalar(hdr.begin_hour,number_i(deck,"IBHR"),"IBHR");
+        check_scalar(hdr.begin_second,number_i(deck,"IBSEC"),"IBSEC");
+        check_scalar(hdr.end_year,number_i(deck,"IEYR"),"IEYR");
+        check_scalar(hdr.end_month,number_i(deck,"IEMO"),"IEMO");
+        check_scalar(hdr.end_day,number_i(deck,"IEDY"),"IEDY");
+        check_scalar(hdr.end_hour,number_i(deck,"IEHR"),"IEHR");
+        check_scalar(hdr.end_second,number_i(deck,"IESEC"),"IESEC");
+        require(hdr.timezone==field(deck,"ABTZ"),"ABTZ");
+        require(hdr.lcalgrd==(field(deck,"LCALGRD")=="T"),"LCALGRD");
         require(near(hdr.dgrid_m,number_f(deck,"DGRIDKM")*1000.f),"DGRID");
         require(near(hdr.xorigin_m,number_f(deck,"XORIGKM")*1000.f,0.3f),"XORIG");
         require(near(hdr.yorigin_m,number_f(deck,"YORIGKM")*1000.f,0.3f),"YORIG");
@@ -192,6 +204,54 @@ int main(int argc,char** argv) {
             out.upper_x_m={xy_u[0]*1000.f-xorig};
             out.upper_y_m={xy_u[1]*1000.f-yorig};
             out.nears.assign(2500,1);
+            // Numeric file controls must also come from the upsteam deck.
+            // CALMET.DAT is only retained as an envelope for comments and
+            // hourly fields until those independent upstream writers exist.
+            auto& h=file.header;
+            h.begin_year=number_i(deck,"IBYR");
+            h.begin_month=number_i(deck,"IBMO");
+            h.begin_day=number_i(deck,"IBDY");
+            h.begin_hour=number_i(deck,"IBHR");
+            h.begin_second=number_i(deck,"IBSEC");
+            h.end_year=number_i(deck,"IEYR");
+            h.end_month=number_i(deck,"IEMO");
+            h.end_day=number_i(deck,"IEDY");
+            h.end_hour=number_i(deck,"IEHR");
+            h.end_second=number_i(deck,"IESEC");
+            h.timezone=field(deck,"ABTZ");
+            h.irtype=number_i(deck,"IRTYPE");
+            h.lcalgrd=(field(deck,"LCALGRD")=="T");
+            h.nx=number_i(deck,"NX");
+            h.ny=number_i(deck,"NY");
+            h.nz=number_i(deck,"NZ");
+            h.nssta=number_i(deck,"NSSTA");
+            h.nusta=number_i(deck,"NUSTA");
+            h.npsta=number_i(deck,"NPSTA");
+            h.nowsta=number_i(deck,"NOWSTA");
+            h.dgrid_m=number_f(deck,"DGRIDKM")*1000.f;
+            h.xorigin_m=number_f(deck,"XORIGKM")*1000.f;
+            h.yorigin_m=number_f(deck,"YORIGKM")*1000.f;
+            h.nlu=geo.nlu;
+            h.iwat1=geo.iwat1;
+            h.iwat2=geo.iwat2;
+            h.projection.pmap=field(deck,"PMAP");
+            h.projection.datum=field(deck,"DATUM");
+            h.projection.utmhem=field(deck,"UTMHEM");
+            h.projection.iutmzn=number_i(deck,"IUTMZN");
+            h.projection.feast=number_f(deck,"FEAST");
+            h.projection.fnorth=number_f(deck,"FNORTH");
+            const std::int64_t begin_days=cteas::p6f::days_from_civil(
+                h.begin_year,static_cast<unsigned>(h.begin_month),
+                static_cast<unsigned>(h.begin_day));
+            const std::int64_t end_days=cteas::p6f::days_from_civil(
+                h.end_year,static_cast<unsigned>(h.end_month),
+                static_cast<unsigned>(h.end_day));
+            const auto period_seconds=(end_days-begin_days)*86400+
+                (h.end_hour-h.begin_hour)*3600+
+                h.end_second-h.begin_second;
+            require(period_seconds>0&&period_seconds%3600==0,
+                    "source run window not integral hours");
+            h.irlg=static_cast<std::int32_t>(period_seconds/3600);
             cteas::p6f::write_calmet_dat21(argv[8],file);
         }
         std::cout<<"{\"status\":\"PASS_P6F_INDEPENDENT_SOURCE_STATIC_VALUES\","
@@ -199,6 +259,7 @@ int main(int argc,char** argv) {
                  <<"\"grid\":["<<hdr.nx<<","<<hdr.ny<<","<<hdr.nz<<"],"
                  <<"\"source\":\"GEO.DAT+met.inp independent of CALMET.DAT static inputs\","
                  <<"\"static_records_rebuilt\":"<<(argc==9?"true":"false")<<","
+                 <<"\"numeric_run_controls_rebuilt\":"<<(argc==9?"true":"false")<<","
                  <<"\"header_comments_independent\":false,"
                  <<"\"all_stations_independent\":false,"
                  <<"\"hourly_field_inputs_independent\":false,"
