@@ -23,7 +23,9 @@ NX=NY=50
 RECORD="<2i2f"
 REC_BYTES=struct.calcsize(RECORD)
 FIELDS={"surface":"wind1_rsqwt_surface_2022-01-01_01.f32",
-        "upper":"wind1_rsqwt_upper_2022-01-01_01.f32"}
+        "upper":"wind1_rsqwt_upper_2022-01-01_01.f32",
+        "vvw_surface1":"wind1_vvw_surface1_2022-01-01_01.f32",
+        "vvw_upper1":"wind1_vvw_upper1_2022-01-01_01.f32"}
 SOURCE_ROUTINE=r"""
 c --- Write-only first-hour WIND1 normalized station weights, 50x50x2.
 c --- No assignments to any source CALMET physical model variables.
@@ -49,6 +51,30 @@ c --- No assignments to any source CALMET physical model variables.
       endif
       return
       end
+c --- Write-only final first-layer WIND1 weights after BIAS/upper-missing
+c --- reallocation, before barrier and wind accumulation.
+      subroutine p6e_vvw_first(i,j,nstat,vvw)
+      include 'params.met'
+      include 'grid.met'
+      integer i,j,nstat
+      real vvw(mxnz,mxwnd)
+      logical done,opened
+      save done,opened
+      data done/.false./,opened/.false./
+      if(done)return
+      if(nstat.ne.2) stop 'P6E_FORENSIC_BAD_VVW_NSTAT'
+      if(.not.opened)then
+        open(96,file='p6e_wind1_vvw_first.bin',
+     1       form='unformatted',access='stream',status='replace')
+        opened=.true.
+      endif
+      write(96) i,j,vvw(1,1),vvw(1,2)
+      if(i.eq.nx.and.j.eq.ny)then
+        close(96)
+        done=.true.
+      endif
+      return
+      end
 """
 
 def checksum(path:Path)->str:
@@ -61,6 +87,10 @@ def patched(original:Path,target:Path):
     if (lines[36250].strip().lower()!="end do" or
         "rsqwt(l)=rsqwt(l)*sumwt" not in lines[36249].replace(" ","").lower()):
         raise ValueError("WIND1 source RSQWT normalization anchor changed")
+    if lines[36347].strip().replace(" ","").lower()!="if(nbar.le.0)goto91":
+        raise ValueError("original WIND1 VVW redistribution anchor changed")
+    # Reverse source order avoids moving the second source anchor.
+    lines.insert(36347,"      call p6e_vvw_first(i,j,nstat,vvw)\n")
     lines.insert(36251,"      call p6e_rsquwt_first(i,j,nstat,rsqwt)\n")
     target.write_text("".join(lines)+SOURCE_ROUTINE)
 
@@ -91,9 +121,11 @@ def compare(source,candidate:Path):
     for j in range(1,NY+1):
         for i in range(1,NX+1):
             index=(j-1)*NX+(i-1)
-            expected=source[(i,j)]
-            for field,col in (("surface",0),("upper",1)):
-                ref=expected[col];test=native[field][index]
+            for field,col,phase in (("surface",0,"rsqwt"),
+                                    ("upper",1,"rsqwt"),
+                                    ("vvw_surface1",0,"vvw"),
+                                    ("vvw_upper1",1,"vvw")):
+                ref=source[phase][(i,j)][col];test=native[field][index]
                 if not(math.isfinite(ref) and math.isfinite(test)):
                     raise ValueError("nonfinite WIND1 source/native normalized weights")
                 delta=abs(ref-test)
@@ -138,17 +170,25 @@ def main():
     if source_run["met_dat_sha256"]!=oracle.TARGET_MET_DAT_SHA256:
         raise ValueError("forensic insert changed frozen original CALMET.DAT")
     source=run_dir/"p6e_wind1_rsqwt_first.bin"
+    vvw=run_dir/"p6e_wind1_vvw_first.bin"
     if not source.is_file():raise FileNotFoundError(source)
-    fields=compare(original_weights(source),args.native_diagno.resolve())
-    status="MATCH_WEIGHT_BITS" if all(v["nonzero"]==0 for v in fields.values()) \
-        else "REAL4_WEIGHT_DRIFT_LOCATED"
+    if not vvw.is_file():raise FileNotFoundError(vvw)
+    fields=compare({"rsqwt":original_weights(source),"vvw":original_weights(vvw)},
+                   args.native_diagno.resolve())
+    if all(v["nonzero"]==0 for v in fields.values()):
+        status="MATCH_ALL_WEIGHT_BITS"
+    elif fields["surface"]["nonzero"]==0 and fields["upper"]["nonzero"]==0:
+        status="MATCH_RSQWT_BUT_VVW_DRIFT"
+    else:
+        status="REAL4_RSQWT_DRIFT"
     report={
-        "status":status,"scope":"original and native first-hour WIND1 two-station normalized spatial RSQWT",
+        "status":status,"scope":"original and native first-hour WIND1 RSQWT and final layer-one VVW",
         "hours_compared":1,"grid":[NX,NY],"stations":2,
         "fields":fields,
         "source_calmet_sha256":oracle.ORIGINAL_CALMET_SHA256,
         "source_modified_sha256":checksum(edited),
         "source_weight_trace_sha256":checksum(source),
+        "source_reweighted_vvw_trace_sha256":checksum(vvw),
         "frozen_met_sha256":source_run["met_dat_sha256"],
         "weight_was_never_read_back_into_native":True,
         "full_p6e_science":"NOT_CLAIMED"
