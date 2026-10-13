@@ -1149,6 +1149,19 @@ if(MSVC)
 else()
   target_compile_options(cteas_p7_original_release_wind PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
+# Reusable source-ordered point PRFIN/PRFPP/WSNEW bridge, independent of
+# test fixtures, original DGM initial states and case-specific coordinates.
+add_library(cteas_p7_original_point_prfin STATIC src/original_point_prfin.cpp)
+target_include_directories(cteas_p7_original_point_prfin PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(cteas_p7_original_point_prfin PUBLIC
+  cteas_p7_original_release_wind cteas_p7_plume_rise cteas_p7_release)
+if(MSVC)
+  target_compile_options(cteas_p7_original_point_prfin PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_point_prfin PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
 add_executable(cteas_p7_original_release_wind_tests tests/original_release_wind_tests.cpp)
 target_link_libraries(cteas_p7_original_release_wind_tests PRIVATE cteas_p7_original_release_wind)
 if(MSVC)
@@ -1335,7 +1348,8 @@ add_executable(cteas_p7_original_hefei_source_met_bridge_tests
   tests/original_hefei_source_met_bridge_tests.cpp)
 target_link_libraries(cteas_p7_original_hefei_source_met_bridge_tests PRIVATE
   cteas_p7_original_release_wind cteas_p7_calmet21
-  cteas_p7_plume_rise cteas_p7_control cteas_p7_release)
+  cteas_p7_plume_rise cteas_p7_control cteas_p7_release
+  cteas_p7_original_point_prfin)
 if(MSVC)
   target_compile_options(cteas_p7_original_hefei_source_met_bridge_tests PRIVATE /W4 /WX)
 else()
