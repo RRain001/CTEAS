@@ -1370,7 +1370,7 @@ add_executable(cteas_p7_hefei_firsthour_native_comp_tests
   tests/original_hefei_firsthour_native_comp_tests.cpp)
 target_link_libraries(cteas_p7_hefei_firsthour_native_comp_tests PRIVATE
   cteas_p7_original_comp_rise_hourly cteas_p7_original_point_prfin
-  cteas_p7_original_met_hours cteas_p7_control)
+  cteas_p7_calmet21 cteas_p7_control)
 if(MSVC)
   target_compile_options(cteas_p7_hefei_firsthour_native_comp_tests PRIVATE /W4 /WX)
 else()
