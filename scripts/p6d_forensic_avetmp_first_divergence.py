@@ -37,7 +37,7 @@ CPP_PROBE = """            if(i==11 && j==18) {
 """
 
 QH_PRE_ANCHOR = "         if (itprog.lt.2) call airden(pres,temp2d,rho)\n"
-QH_POST_ANCHOR = "      2               nx,ny,mcloud,ccgrid,ipsifcn,qh,ustar,el)\n"
+QH_POST_ANCHOR = "     2               nx,ny,mcloud,ccgrid,ipsifcn,qh,ustar,el)\n"
 QH_PRE_PROBE = """          open(92,file='dgm_qh_pre_probe.txt',status='unknown',
      1         position='append')
           write(92,'(7(ES24.15E3,1X))') ug(23,29,1),vg(23,29,1),
