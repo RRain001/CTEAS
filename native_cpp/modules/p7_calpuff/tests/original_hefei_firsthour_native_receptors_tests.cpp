@@ -169,7 +169,10 @@ int main(int argc,char** argv) {
              "real first-hour native 1275-step/2500-receptor integration failed");
         std::size_t dried=0,receiver_nonzero=0;
         double dry_mass=0.0,max_abs_diff=0.0,sum_abs_diff=0.0;
+        double native_total=0.0,reference_total=0.0;
         std::size_t max_diff_cell=0,bitwise_equal=0,reference_nonzero=0;
+        struct ReceptorDifference {std::size_t cell;float native,reference;double error;};
+        std::vector<ReceptorDifference> mismatches;
         for(const auto& step:hour.steps) {
             need(step.step.dry.has_value() &&
                  step.step.dry->removed_mass.size()==2 &&
@@ -190,12 +193,37 @@ int main(int argc,char** argv) {
                  "original/native H-3 concentration contains invalid value");
             receiver_nonzero+=observed>0.0F?1U:0U;
             reference_nonzero+=reference>0.0F?1U:0U;
+            native_total+=observed;
+            reference_total+=reference;
             if(std::bit_cast<std::uint32_t>(observed)==
                std::bit_cast<std::uint32_t>(reference))++bitwise_equal;
+            else mismatches.push_back({i,observed,reference,
+                static_cast<double>(observed)-static_cast<double>(reference)});
             const double diff=std::abs(
                 static_cast<double>(observed)-static_cast<double>(reference));
             sum_abs_diff+=diff;
             if(diff>max_abs_diff){max_abs_diff=diff;max_diff_cell=i;}
+        }
+        std::sort(mismatches.begin(),mismatches.end(),
+            [](const auto& left,const auto& right){
+                return std::abs(left.error)>std::abs(right.error);
+            });
+        const auto top=std::min<std::size_t>(mismatches.size(),12U);
+        for(std::size_t k=0;k<top;++k){
+            const auto& d=mismatches[k];
+            std::cout<<std::setprecision(9)
+                     <<"P7_HEFEI_H3_FIRSTHOUR_RECEPTOR_DIFF"
+                     <<" RANK="<<k+1<<" INDEX0="<<d.cell
+                     <<" GRID_I="<<d.cell%50U+1U
+                     <<" GRID_J="<<d.cell/50U+1U
+                     <<" NATIVE_BQ_M3="<<d.native
+                     <<" ORIGINAL_BQ_M3="<<d.reference
+                     <<" SIGNED_DIFFERENCE="<<d.error
+                     <<" RELATIVE_TO_ORIGINAL="<<
+                     (d.reference!=0.0F ?
+                       d.error/static_cast<double>(d.reference):0.0)
+                     <<" ORIGINAL_ZERO="<<(d.reference==0.0F?"YES":"NO")
+                     <<"\n";
         }
         need(dried>0 && dry_mass>0,
              "real first-hour source-ordered MDRY=1 never removed H-3 mass");
@@ -213,6 +241,9 @@ int main(int argc,char** argv) {
                  <<" REFERENCE_MEAN_ABS_ERROR="<<sum_abs_diff/2500.0
                  <<" REFERENCE_MAX_ABS_ERROR="<<max_abs_diff
                  <<" REFERENCE_MAX_ERROR_CELL="<<max_diff_cell
+                 <<" NATIVE_FIELD_SUM_BQ_M3="<<native_total
+                 <<" REFERENCE_FIELD_SUM_BQ_M3="<<reference_total
+                 <<" CONCENTRATION_MISMATCH_CELLS="<<mismatches.size()
                  <<" REFERENCE_SCIENTIFIC_PARITY=OPEN"
                  <<" 6H_143H=NOT_YET_ACCEPTED\n";
       },true);
