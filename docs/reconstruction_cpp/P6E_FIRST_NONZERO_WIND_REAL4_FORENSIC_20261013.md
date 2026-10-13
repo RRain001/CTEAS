@@ -90,3 +90,39 @@ until all three native-driven P6E fields meet original fixed tolerances.
 - The experiment was reverted in [commit 248a66b](https://github.com/RRain001/CTEAS/commit/248a66b25892b63f064e6111126a78ca16876d2a), retaining only the measured beneficial PREPDI surface-direction radians fix. If future experiments revisit SIMILT, change one cause at a time and use the first nonzero original WIND1 trace as the tighter intermediate acceptance gate.
 
 Keep this negative result frozen as scientific evidence, not as an open recommendation to apply the same change again.
+
+
+## Decisive native vs source WIND1 neutral station profile test
+
+[GitHub Actions #38367919692](https://github.com/RRain001/CTEAS/actions/runs/38367919692)
+uses a new original Fortran write-only `dgmwind1neutral(ustmp,vstmp)` hook
+immediately after station extrapolation within WIND1, **before** spatial
+interpolation. The native C++ P6D independently writes its corresponding
+neutral SIMILT 9-level profile. Both tracks include all **143 hours, 9 vertical
+layers and U/V** and compare raw IEEE-754 REAL*4 data; the original instrumented
+Fortran emitted the identical frozen reference MET.DAT hash. The profile
+comparison is:
+
+| Native-vs-source station profile | Nonzero values | Max absolute error | RMS |
+|---|---:|---:|---:|
+| `USTMP(:,surface)` from neutral SIMILT | **0** | **0** | **0** |
+| `VSTMP(:,surface)` from neutral SIMILT | **0** | **0** | **0** |
+
+The original source output **after WIND1** is still not byte-identical to
+native C++, with first level first cell differences U 1.1920928955078125e-7
+and V 2.384185791015625e-7 m/s (the 143h grid maxima are U 1.9073486328125e-6
+and V 1.430511474609375e-6 m/s). This conclusively eliminates the neutral
+surface-station SIMILT profile as the origin of the observed WIND1 discrepancy
+for this frozen case, and narrows it to **WIND1 spatial weighting, station
+relative coordinates and/or REAL*4 grid accumulation order**. The very first
+nonzero grid field appears already in WIND1, before FRADJ/SLOPE/INTER2.
+
+**Next exact diagnosis:** capture original-vs-native `RSQWT` (normalized
+inverse-distance weights) and `VVW(k,station)` (vertically varying and
+missing-upper corrected weights), starting with hour 1 and cell (1,1). If
+RSQWT or VVW differ, audit geometry and normalization arithmetic; if both
+agree at the bit level, audit the original `UNEXT/VNEXT` two-station
+accumulation order and compiler-level floating-point contraction, **without
+changing P6E physics**. This is an evidence-driven narrowing step, not yet
+proof that correcting WIND1 weights alone will eliminate all 2,209 residual
+P6E exceedances. Strict native-wind P6E science status remains FAIL.
