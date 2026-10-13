@@ -50,3 +50,28 @@ The existing numeric failures in PR #51 (low-layer INTER2 deviation first at hou
 - #44's first WINDBC correction cannot be used alone as source-order completeness: PR #51 also needs the HTFAC=1 **second** WINDBC.
 - Preserve separate historical #23/#38/#39 and source-forensic #43/#45/#47/#48/#50 until code ownership and ancestry are reconciled. Do not blindly squash or rebase validated reference traces.
 - Use this branch as an integration staging PR **targeting #51**. Keep Draft while real native DIAGNO/COMP adapters, strict 143h parity and independent writer are absent.
+
+
+## 2026-10-13 implementation follow-up (PR #53, latest)
+
+- Corrected the scheduler's native W vertical array contract to **(NZ+1) × NX × NY** = 10 × 50 × 50 floats per hour; CALMET.DAT writes only the top 9 faces (WFACE1…9). No reduction of native W state is permitted.
+- Added `p6e/native_hourly_comp_steps.hpp`: **existing** physically implemented C++ MIXHT, AVEMIX, WSTARR, and TEMP3D are now callable in this original-order hourly frame, with prior-hour ZICONV and current-hour station-cell DPTT consumed in the correct positions. `CompGridMixht` restores the original MIXHT initial-ZI and previous ZICONV/DPTT contract; updates all current-hour MIXHT states and then AVEMIX before WSTARR/TEMP3D.
+- A six-hour native COMP integration test passed on GitHub-hosted Ubuntu, with upstream DIAGNO explicitly **a test fixture**. No fabricated Fortran reference comparisons or new physics formulas were introduced.
+- The actual existing `p6e_calmet_dat21 emit-realcase` production executable now has an **opt-in** `--native-hour-comp 1` mode which executes these same four native COMP functions with a per-hour state frame and commits thermal history only after TEMP3D. This mode requires `--station-flux-csv` from native P6D; refusing the old approximate refresh if absent. The original E42 path remains unchanged by default.
+- Native P6E source-build and frozen original-wind 143h 18-field baseline strict gate passed once after production-source modification: GitHub Actions run `38340366186`. A further hosted gate compares default and opt-in real-COMP paths over all 143 hours, **both fed by the same native P6D station ELUSTR2 inputs and original frozen wind**, and requires candidate CALMET.DAT byte-identical outputs. It is a *migration guard*, not standalone physical acceptance.
+- Remaining primary integration task: transform P6D monolithic wind producer into a **true native per-hour DIAGNO adapter** and feed same-hour U/V/W to these COMP steps under `P6SinglePassHourlyScheduler`. Original `met.dat` must then become read-only comparator. Until that is done, `G2/G3/G4=NOT_PASS`.
+
+### One-P6-focus PR dependency ledger (do not claim merged siblings are in this branch)
+
+| PR | Purpose / disposition |
+| --- | --- |
+| #8 | Older overall P6 draft; not the active integrator. |
+| #9 / #10 | #9 canonical merged SLOPE, #10 closed duplicate. |
+| #40 / #52 | Original SS1/US1 station geometry and P5 strict UTM: #52 merged **into #40**. #40 does **not** automatically propagate into #53. |
+| #42 / #46 | Source-first P6D REAL*4 reconstruction: #46 merged **into #42**. #42 has diverged from #53; reconcile test/source changes deliberately, not blind merge. |
+| #11 / #49 | P6E source implementation: #49 merged **into #11**. Its historical merge does **not** imply #53 contains the #49 workflow. |
+| #43–#48, #50 | Frozen source and native-CGAMMA forensic lineage already underpinning #51 where applicable; preserve trace provenance. |
+| #51 | P6D full-wind scientific blocker and immediate parent of #53, remains Draft. |
+| **#53** | **Only active P6D/P6E source-ordered integration branch**; real hourly COMP adapter in code; DIAGNO adapter and science gates remain open. |
+
+Do not merge #53 into #51, #51 into #42, or any incomplete P6 branch into main just because the contract CI is green. Future PR consolidation should occur only with the exact ancestry, reference SHA and 1/6/143-hour gates checked; closing historical drafts before their sources are accounted for risks losing verification evidence.
