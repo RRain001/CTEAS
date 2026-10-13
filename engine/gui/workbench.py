@@ -1706,8 +1706,11 @@ class MainWindow(QMainWindow):
 
         points = _get_path(self.case_data, "puff.point_sources", [])
         src = points[0] if isinstance(points, list) and points and isinstance(points[0], dict) else DEFAULT_POINT_SOURCE
-        lon = float(_get_path(self.case_data, "preprocess.grid.center.longitude", 117.0) or 117.0)
-        lat = float(_get_path(self.case_data, "preprocess.grid.center.latitude", 32.0) or 32.0)
+        # Release location is independent of the computational grid centre.
+        # Older case.yaml files without exact release lon/lat retain legacy
+        # centre fallback until explicitly saved with source coordinates.
+        lon = float(src.get("longitude", _get_path(self.case_data, "preprocess.grid.center.longitude", 117.0)))
+        lat = float(src.get("latitude", _get_path(self.case_data, "preprocess.grid.center.latitude", 32.0)))
         self.point_widgets["lon"].setText(str(lon))
         self.point_widgets["lat"].setText(str(lat))
         self.point_widgets["stack_height_m"].setText(str(src.get("stack_height_m", 70.0)))
@@ -1744,6 +1747,10 @@ class MainWindow(QMainWindow):
         emission = float(self.point_widgets["emission_bq_s"].text().strip())
         source = {
             "name": "P1",
+            # Preserve full user-entered decimal coordinates; the rounded
+            # legacy UTM columns remain for the existing Fortran input deck.
+            "longitude": lon,
+            "latitude": lat,
             "x_km": round(float(utm["x_km"]), 3),
             "y_km": round(float(utm["y_km"]), 3),
             "stack_height_m": float(self.point_widgets["stack_height_m"].text().strip()),
@@ -1849,6 +1856,16 @@ class MainWindow(QMainWindow):
             path = case_yaml_path(self.current_case)
             text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
             text = _format_emissions_inline(text)
+            # P4 and P5 use this same explicit chimney coordinate for
+            # domain-external station fallback; never silently use centre.
+            # The domain remains controlled separately by center_location.
+            source = data["puff"]["point_sources"][0]
+            stack_file = case_dir(self.current_case) / "grid" / "stack_location"
+            stack_file.parent.mkdir(parents=True, exist_ok=True)
+            stack_file.write_text(
+                f'longitude:{source["longitude"]:.9f}\nlatitude:{source["latitude"]:.9f}\n',
+                encoding="utf-8",
+            )
             path.write_text(text, encoding="utf-8")
             self.case_data = data
             self._refresh_top_info()
