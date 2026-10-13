@@ -151,7 +151,25 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         std::max(0.0,sampled.extent.z_top_m-before.z_m),"DZB");
     inputs.rise_iterations=2;
     inputs.plume=state.physics;
-    auto rise=original_rise_wind_met(met,statics,inputs);
+    // SETPUF zeroes XFINAL after a calm step. On later steps there is no
+    // remaining transitional rise: ADVECT's current vertical puff wind is
+    // authoritative. Passing XFINAL=0 to RISEWIND is not a valid physical
+    // rise request (and used to stop the next native calm substep).
+    OriginalRiseMetResult rise;
+    if(state.x_final_m>0.0F){
+        rise=original_rise_wind_met(met,statics,inputs);
+    }else{
+        const float raw_u=r4(sampled.wind.u_ms,"post-calm ADVECT U");
+        const float raw_v=r4(sampled.wind.v_ms,"post-calm ADVECT V");
+        const float raw_ws=std::sqrt(r4(raw_u*raw_u+raw_v*raw_v,
+                                          "post-calm ADVECT WS2"));
+        rise.cell=sampled.cell;
+        rise.final_rise_wind=sampled.wind;
+        rise.adjusted={raw_u,raw_v,raw_ws,0};
+        auto p=state.physics;
+        p.x_m=before.total_distance_m;
+        rise.initial_rise=gradual_plume_height(p);
+    }
     float u=r4(rise.adjusted.u_ms,"RISEWIND U");
     float w=r4(rise.adjusted.v_ms,"RISEWIND V");
     float ws=r4(rise.adjusted.wind_speed_ms,"RISEWIND WS");
