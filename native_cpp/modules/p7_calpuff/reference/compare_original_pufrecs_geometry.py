@@ -24,7 +24,9 @@ def main():
     # SIGTZ and GRISE. Emit original lines, including fixed-form continuation
     # statements, so the physical execution order is never guessed.
     print("P7_ORIGINAL_PUFRECS_RECEIVER_BRANCH_BEGIN")
-    for i in range(5149,5340):
+    for i in list(range(5340,5436))+list(range(4080,4300)):
+        if i<0 or i>=len(source):
+            raise AssertionError("source range changed")
         print(f"P7_ORIGINAL_PUFRECS_RAW LINE={i+1} TEXT={source[i].rstrip()!r}")
     print("P7_ORIGINAL_PUFRECS_RECEIVER_BRANCH_END")
     if "frac=AMAX1(" not in geom or "xtt1 = xttb1+xr1" not in geom:
