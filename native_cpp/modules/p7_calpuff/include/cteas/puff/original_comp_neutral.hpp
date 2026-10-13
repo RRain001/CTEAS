@@ -8,6 +8,7 @@
 #include "cteas/puff/vendor_order.hpp"
 #include "cteas/puff/dry_deposition.hpp"
 #include "cteas/puff/original_turbset_mdisp3.hpp"
+#include "cteas/puff/original_vertical_divergence.hpp"
 #include <optional>
 #include <stdexcept>
 
@@ -66,6 +67,8 @@ struct NeutralCompControls {
     SigmaUpdateInputs dispersion;
     std::optional<NativeMctadj2Controls> mctadj2;
     std::optional<NativeGaussianDryControls> gaussian_dry;
+    // COMP L10629 pre-VMASS WDIV -> SIGZB, opt-in for CALMET METFM1.
+    std::optional<NativeOriginalWdivControls> original_wdiv;
     // Only post-rise unsampled calm point steps until receptor/DRY/MCTADJ2
     // source parity is established. Missing data is a hard error.
     std::optional<NativeCalmMdisp3Controls> calm_mdisp3;
