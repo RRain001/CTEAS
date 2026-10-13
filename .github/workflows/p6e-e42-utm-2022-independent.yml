@@ -1,0 +1,118 @@
+name: P6E E42 original COORDLIB UTM and 143h full-field acceptance
+
+on:
+  push:
+    branches: [audit/p6e-e42-original-utm-fullfield-20261012]
+    paths:
+      - '.github/workflows/p6e-e42-utm-2022-independent.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/p6e-e42-utm-2022-independent.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p6e-e42-utm-2022-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-solar-matrix:
+    name: E42 light source-oracle ${{ matrix.scope }}
+    runs-on: [cteas-light, Linux, X64]
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - { scope: COORDLIB_FORTRAN, target: p6e_coordlib_utm_reference, test: p6e_coordlib_utm_original_source_parity }
+          - { scope: COORDLIB_CPP, target: p6e_coordlib_pj09z0_tests, test: p6e_coordlib_pj09z0_software }
+          - { scope: SOLAR_CPP, target: p6e_solar_tests, test: p6e_solar_software }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            .github/actions/cteas-linux-toolchain
+            native_cpp/modules/p6_calmet
+            engine/vendor/src/CALMET_v6.5.0_L150223
+      - uses: ./.github/actions/cteas-linux-toolchain
+      - name: Independent original source or software acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$RUNNER_TEMP/p6e-e42-${{ matrix.scope }}-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cmake -S native_cpp/modules/p6_calmet/p6e -B "$scratch" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$scratch" --target "${{ matrix.target }}" --parallel 1
+          ctest --test-dir "$scratch" -R "^${{ matrix.test }}$" \
+            --no-tests=error --output-on-failure --timeout 300
+      - name: Archive optional source comparator evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: p6e-e42-source-${{ matrix.scope }}
+          path: ${{ runner.temp }}/p6e-e42-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}/coordlib-utm-original-parity.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  real-2022-full-fields:
+    name: E42 ORIGINAL MET.DAT driven 143h P6E strict 18-field gate
+    runs-on: [cteas-compute, Linux, X64]
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            .github/actions/cteas-linux-toolchain
+            native_cpp/modules/p6_calmet
+            engine/vendor/src/CALMET_v6.5.0_L150223
+      - uses: actions/checkout@v4
+        with:
+          # CTEAS P6E feature base precedes the tracked frozen case.
+          # Fetch its immutable SHA separately; NEVER use an unpinned
+          # mutable main ref or substitute dummy meteorological inputs.
+          ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
+          path: frozen_original_checkout
+          filter: blob:none
+          sparse-checkout: |
+            project/cases/hefei5km_2022_reference_case_20261011
+      - uses: ./.github/actions/cteas-linux-toolchain
+      - name: Verify frozen original 2022 CALMET.DAT SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          case_dir="$GITHUB_WORKSPACE/frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011"
+          test -s "$case_dir/run/met/met.dat"
+          test -s "$case_dir/met/surface/final/surf.dat"
+          test -s "$case_dir/met/upperair/final/up_58424.dat"
+          test -s "$case_dir/geo/makegeo/geo.dat"
+          printf '%s  %s\n' b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30 "$case_dir/run/met/met.dat" | sha256sum --check
+          echo "CTEAS_P6E_REAL_CASE=$case_dir" >> "$GITHUB_ENV"
+      - name: Build P6E 143-hour hourly-input bridge and CALMET.DAT 2.1 tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$RUNNER_TEMP/p6e-e42-full-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cmake -S native_cpp/modules/p6_calmet/p6e -B "$scratch" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$scratch" --target p6e_p6c_hourly_bridge p6e_calmet_dat21 --parallel 2
+      - name: Fail closed on any E42 original 2022 P6E field residual
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="$RUNNER_TEMP/p6e-e42-full-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          ctest --test-dir "$scratch" \
+            -R '^p6e_calmet_dat21_real_full_field_reference$' \
+            --no-tests=error --output-on-failure --timeout 900
+      - name: Archive original-source 143-hour scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: p6e-e42-2022-full-field
+          path: ${{ runner.temp }}/p6e-e42-full-${{ github.run_id }}-${{ github.run_attempt }}/e42-real-full-field/
+          if-no-files-found: warn
+          retention-days: 7
