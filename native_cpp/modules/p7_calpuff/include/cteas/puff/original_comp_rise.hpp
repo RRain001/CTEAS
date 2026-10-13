@@ -58,6 +58,9 @@ struct RiseCompStep {
     VmassResult vmass;
     float final_height_m=0.0F;
     std::vector<float> receptor_increments;
+    // Native QM after original DRY, before CALCPF, for scientific
+    // audit/retirement. Empty if MDRY=0 or not enabled.
+    std::optional<OriginalGaussianDryResult> dry;
 };
 
 // COMP KSAM/NSAM context (vendor L10417, 10553-10581). Defaults reproduce

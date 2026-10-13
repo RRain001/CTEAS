@@ -1037,7 +1037,8 @@ target_include_directories(cteas_p7_original_comp_rise PUBLIC ${CMAKE_CURRENT_SO
 target_link_libraries(cteas_p7_original_comp_rise PUBLIC
   cteas_p7_original_vertical cteas_p7_original_motion
   cteas_p7_original_rise_met cteas_p7_step_integration
-  cteas_p7_step cteas_p7_dispersion)
+  cteas_p7_step cteas_p7_dispersion
+  cteas_p7_dry_deposition cteas_p7_coupling)
 if(MSVC)
   target_compile_options(cteas_p7_original_comp_rise PRIVATE /W4 /WX)
 else()

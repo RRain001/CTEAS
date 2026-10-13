@@ -75,6 +75,10 @@ public:
     // Must be called AFTER SETPUF and, once connected, CHEM/WET/DRY/CALCPF.
     // One late lid commit for each completed native sigma substep.
     void commit_lid(int puff_id, float native_hlid_m, int native_puff_code);
+    // DRY L11084–11090 acts after SETPUF and before CALCPF, updates
+    // QM only. Preserve QU and the pending historical lid exactly.
+    void commit_dry(int puff_id,const std::vector<float>& expected_mixed_before,
+                    const std::vector<float>& mixed_after);
     void retire(int puff_id);
     [[nodiscard]] std::size_t active_count() const noexcept;
 private:

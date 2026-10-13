@@ -1,4 +1,5 @@
 #include "cteas/puff/original_comp_rise.hpp"
+#include "cteas/puff/coupling.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -223,7 +224,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     };
     auto dispersion=control.dispersion;
     // Vendor COMP L10859: VMASS uses OLD sigma and may alter ICODE.
-    const auto mass=v.commit_vmass(
+    auto mass=v.commit_vmass(
         id,sampled.mixing_height_m,before.z_m,moved.state.z_m,
         vs.sigma_z_m,sampled.stability_class,0);
     order.completed(VendorSubstepPhase::ApplyVmass);
@@ -272,6 +273,68 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         moved.state=m.state(id);
     }
     order.completed(VendorSubstepPhase::CommitSetpuf);
+    // Original COMP calpuff.for L11076–11097 invokes DRY after SETPUF,
+    // before CALCPF, and applies the exponential fraction to QM.
+    // This selected Gaussian branch uses independently native
+    // VDCOMP meteorology and full SETPUF VCBAR. It refuses the
+    // original uniform codes 2/6 until their distinct ratio branch
+    // is integrated, rather than applying the wrong Gaussian fraction.
+    std::optional<OriginalGaussianDryResult> dry_result;
+    if(control.gaussian_dry){
+        const auto& setup=control.gaussian_dry->setup;
+        const auto index=sampled.cell.offset_0based;
+        const auto has_cell=[index](const auto& field){
+            return index<field.size();
+        };
+        require(setup.species.size()==mass.mass_mixed.size() &&
+                has_cell(met.u)&&has_cell(met.v)&&
+                has_cell(met.ustar)&&has_cell(met.el)&&
+                has_cell(met.tempk)&&has_cell(met.qsw)&&
+                has_cell(met.wstar)&&
+                has_cell(statics.land_use)&&
+                has_cell(statics.roughness_m)&&
+                has_cell(statics.leaf_area_index),
+                "native DRY requires exact METFM1 hourly and static cell inputs");
+        DryDepositionEnvironment e;
+        e.u10_ms=met.u[index];
+        e.v10_ms=met.v[index];
+        e.land_use=statics.land_use[index];
+        e.roughness_m=statics.roughness_m[index];
+        e.temperature_k=met.tempk[index];
+        e.friction_velocity_ms=met.ustar[index];
+        e.monin_obukhov_m=met.el[index];
+        e.leaf_area_index=statics.leaf_area_index[index];
+        e.shortwave_w_m2=met.qsw[index];
+        e.vegetation_state=setup.vegetation_state;
+        const auto resistance=dry_deposition_step(
+            setup,e,mass.reflecting_lid_m,substep.step_s,
+            sampled.mixing_height_m,met.wstar[index]);
+        VcbarInputs vc;
+        vc.state.puff_code=mass.puff_code;
+        vc.state.x_begin1=before.x_cells;
+        vc.state.y_begin1=before.y_cells;
+        vc.state.x_end1=moved.state.x_cells;
+        vc.state.y_end1=moved.state.y_cells;
+        vc.state.z_begin1=before.z_m;
+        vc.state.z_end1=moved.state.z_m;
+        vc.state.sigma_z_begin1=sigma.adjust.sigma_z_begin_m;
+        vc.state.sigma_z_mid=sigma.adjust.sigma_z_mid_m;
+        vc.state.sigma_z_end1=sigma.adjust.sigma_z_end_m;
+        vc.lid_height_m=mass.reflecting_lid_m;
+        vc.terrain_adjustment=control.mctadj2?2:0;
+        vc.plume_path_coefficient=
+            control.gaussian_dry->plume_path_coefficient;
+        const float vbar=r4(
+            vertical_coupling_bar(vc),"native DRY original VCBAR");
+        auto updated=original_gaussian_dry_mass(
+            resistance,mass.puff_code,
+            r4(substep.step_s,"native DRY TSAMP"),
+            vbar,mass.mass_mixed);
+        // State and returned VMASS must agree at CALCPF and next hour.
+        v.commit_dry(id,mass.mass_mixed,updated.mixed_mass_after);
+        mass.mass_mixed=updated.mixed_mass_after;
+        dry_result=std::move(updated);
+    }
     // Native receptor accumulation belongs AFTER SETPUF but BEFORE COMP
     // L11391-11398. A pure sampling callback returns staged increments;
     // it must not directly write puff.con or mutate external accumulators.
@@ -307,6 +370,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         cadence,substep,bookkeeping,sigma,mass,end_height,
         std::move(receptor_increments)
     };
+    outcome.dry=std::move(dry_result);
     motion_=std::move(m);
     vertical_=std::move(v);
     found->second=std::move(state);

@@ -191,6 +191,26 @@ VmassResult OriginalVerticalLifecycle::commit_vmass(
     it->second=std::move(after);
     return updated;
 }
+void OriginalVerticalLifecycle::commit_dry(
+    int id,const std::vector<float>& expected,
+    const std::vector<float>& after_mass) {
+    const auto it=puffs_.find(id);
+    if(it==puffs_.end())throw std::out_of_range("DRY on absent puff");
+    const auto& before=it->second;
+    require(before.vmass_pending &&
+            before.completed_substeps==before.committed_lid_steps+1,
+            "DRY must follow VMASS/SETPUF, precede late lid commit");
+    require(before.mass_mixed==expected && expected.size()==after_mass.size(),
+            "native DRY source QM differs from staged original VMASS");
+    for(std::size_t j=0;j<after_mass.size();++j) {
+        require(std::isfinite(after_mass[j]) && after_mass[j]>=0.0F &&
+                after_mass[j]<=expected[j],
+                "native DRY must not create species mass");
+    }
+    auto next=before;
+    next.mass_mixed=after_mass;
+    it->second=std::move(next);
+}
 void OriginalVerticalLifecycle::retire(int id) {
     if(puffs_.erase(id)!=1U)throw std::out_of_range("retire unknown vertical puff");
 }

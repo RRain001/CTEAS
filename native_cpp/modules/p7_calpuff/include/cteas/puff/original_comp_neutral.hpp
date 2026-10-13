@@ -6,6 +6,7 @@
 #include "cteas/puff/step.hpp"
 #include "cteas/puff/dispersion.hpp"
 #include "cteas/puff/vendor_order.hpp"
+#include "cteas/puff/dry_deposition.hpp"
 #include <optional>
 
 namespace cteas::puff {
@@ -25,6 +26,13 @@ struct NativeMctadj2Controls {
     TerrainLookup terrain;
     float brunt_vaisala_s=0.0F;  // from independently resolved CALPUFF met
 };
+// Selected original CALPUFF MDRY=1 gas deposition at COMP
+// L11076-11097. Explicitly opt-in until frozen 2022 setup/cell
+// selection and uniform-code transition reach final case parity.
+struct NativeGaussianDryControls {
+    DryDepositionSetup setup;          // validated from original puff.inp
+    float plume_path_coefficient=1.0F; // PPCOEF of selected source
+};
 struct NeutralCompControls {
     float seconds=3600.0F;
     float source_period_s=3600.0F;
@@ -34,6 +42,7 @@ struct NeutralCompControls {
     int release_number=1;
     SigmaUpdateInputs dispersion;
     std::optional<NativeMctadj2Controls> mctadj2;
+    std::optional<NativeGaussianDryControls> gaussian_dry;
 };
 struct NeutralCompResult {
     OriginalPuffMotionState before;
