@@ -195,7 +195,9 @@ def main():
         raise RuntimeError("native first-layer station input stream mismatch")
     stats={k:{"compared":0,"exceedances":0,"max_abs":0.,
               "first_exceedance":None,"worst":None,"hour_exceedances":{},
-              "source_and_native_both_missing":0}
+              "source_and_native_both_missing":0,
+              "nonzero_values":0,"first_nonzero":None,
+              "sum_squared_difference":0.0}
            for k in TOL}
     for h,orig in enumerate(read_orig(source),1):
         orig.update(orig_slopes[h-1])
@@ -234,6 +236,13 @@ def main():
                     st["source_and_native_both_missing"]+=1
                     continue
                 delta=abs(ref-val)
+                if delta != 0.0:
+                    st["nonzero_values"]+=1
+                    st["sum_squared_difference"]+=delta*delta
+                    if st["first_nonzero"] is None:
+                        st["first_nonzero"]={"hour":h,"cell":n+1,"i":n%NX+1,
+                                            "j":n//NX+1,"original":ref,
+                                            "native":val,"abs":delta}
                 if delta>st["max_abs"]:
                     st["max_abs"]=delta
                     st["worst"]={"hour":h,"i":n%NX+1,"j":n//NX+1,
@@ -248,10 +257,25 @@ def main():
         if st["compared"]!=(NH if field in STATION_COLS else NH*PLANE):
             raise RuntimeError(f"incomplete native original INTER2 field {field}")
     failed=[k for k,v in stats.items() if v["exceedances"]]
+    stage_priority=("surface_u","surface_v","upper_u","upper_v",
+                    "before_slope_u","before_slope_v",
+                    "after_slope_u","after_slope_v",
+                    "pre_inter2_u","pre_inter2_v","inter2_u","inter2_v")
+    first_nonzero=min(
+        (dict(stage=key,**stats[key]["first_nonzero"]) for key in stage_priority
+         if stats[key]["first_nonzero"] is not None),
+        key=lambda item:(item["hour"],stage_priority.index(item["stage"])),
+        default=None)
+    for record in stats.values():
+        compared_valid=record["compared"]-record["source_and_native_both_missing"]
+        record["rms_difference"]=math.sqrt(
+            record.pop("sum_squared_difference")/compared_valid) if compared_valid else 0.
     report={
         "status":"PASS_FIRST_LAYER_INTER2_SOURCE_143H" if not failed else
                  "FAIL_FIRST_LAYER_INTER2_SOURCE_143H",
         "first_failing_fields":failed,
+        "first_nonzero_source_stage":first_nonzero,
+        "note":"exact nonzero source drift is diagnostic, not an independent tolerance failure; source parity uses unchanged thresholds",
         "first_failing_hour":min((v["first_exceedance"]["hour"] for v in stats.values()
                                   if v["first_exceedance"]),default=None),
         "source_instrumented_sha256":digest(trace_source),
@@ -271,7 +295,10 @@ def main():
                       "first_failing_hour":report["first_failing_hour"],
                       "summary":{k:{"max_abs":v["max_abs"],"exceedances":v["exceedances"],
                                      "first":v["first_exceedance"],"worst":v["worst"],
-                                     "hour_exceedances":v["hour_exceedances"]}
+                                     "hour_exceedances":v["hour_exceedances"],
+                                     "nonzero_values":v["nonzero_values"],
+                                     "first_nonzero":v["first_nonzero"],
+                                     "rms_difference":v["rms_difference"]}
                                  for k,v in stats.items()}},indent=2))
     if a.require_parity and failed:
         raise SystemExit(1)
