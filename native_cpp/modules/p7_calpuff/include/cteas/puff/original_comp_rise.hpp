@@ -42,6 +42,10 @@ struct RiseCompSamplingState {
     // Native SETPUF's *end* CTADJ2 call, never defaulted. This is
     // the state read by original PUFFCT2 at each receptor fraction.
     std::optional<OriginalPuffct2Step> original_ctadj2_step;
+    // Authoritative COMP/SETPUF instantaneous environment needed by
+    // receptor-specific terrain PUFRECS, NOT derived from receptor motion.
+    float receptor_brunt_vaisala_s=0.0F;
+    float receptor_effective_wind_ms=0.0F;
 };
 using RiseCompSamplingKernel=std::function<std::vector<float>(
     const RiseCompSamplingState&)>;
