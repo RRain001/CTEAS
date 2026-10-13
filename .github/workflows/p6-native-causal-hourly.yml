@@ -14,6 +14,7 @@ on:
       - scripts/p6_diagnose_wind_quantization.py
       - native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp
       - native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
+      - native_cpp/modules/p6_calmet/include/cteas/p6/inter2_selected.hpp
       - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
       - native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/native_hourly_comp_steps.hpp
   pull_request:
@@ -28,6 +29,7 @@ on:
       - scripts/p6_diagnose_wind_quantization.py
       - native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp
       - native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
+      - native_cpp/modules/p6_calmet/include/cteas/p6/inter2_selected.hpp
       - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
   workflow_dispatch:
 
@@ -161,7 +163,7 @@ jobs:
           if-no-files-found: warn
 
   strict-original-45-field-parity:
-    name: SCIENCE G3/G4 original 143h 45-field parity (expected FAIL until fixed)
+    name: SCIENCE G3/G4 original 143h 45-field parity (strict PASS required)
     needs: real-hefei-causal-143-hours
     runs-on: ubuntu-22.04
     timeout-minutes: 30
