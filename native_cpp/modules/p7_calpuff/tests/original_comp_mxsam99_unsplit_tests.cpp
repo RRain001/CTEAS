@@ -418,6 +418,72 @@ void test(){
              <<" HOURLY_WIND=CHANGED FAILURE_ATOMIC=YES"
              <<" REAL_HEFEI_143H_CONC=NOT_YET_ACCEPTED\\n";
 
+    // Original COMP L11400: detect exiting PUFF CENTERS after their native
+    // physical step, not on the next hourly GETCELL and not from Gaussian
+    // sigma extents. Use CALPUFF XB/XE/YB/YE explicitly, independent of
+    // CALMET array dimensions. A puff with zero remaining live time must
+    // not be spuriously sampled on another KSAM or in the next hour.
+    OriginalCompRiseMultiPuffHours crossing;
+    const OriginalCompPuffBounds narrow_domain{
+        .xb=0.0F,.xe=6.0F,.yb=0.0F,.ye=119.0F};
+    const auto outside=crossing.advance_hour_point_mxsam99_adaptive_bounded(
+        met,geo,ctl,pg,false,fast,narrow_domain);
+    need(outside.release.puff_count==1 && outside.retired.size()==1 &&
+         outside.retired[0].puff_id==1 &&
+         outside.retired[0].reason==
+             OriginalCompExitReason::OutsideComputationalDomain &&
+         outside.retired[0].motion_at_exit.x_cells>narrow_domain.xe &&
+         outside.steps.size()>=1 &&
+         outside.steps.size()<split_hour.steps.size() &&
+         crossing.active_count()==0 &&
+         crossing.canonical_ids().empty() &&
+         crossing.completed_hours()==1,
+         "source COMP off-domain failed to retire puff after its exit step");
+    need(outside.retired[0].mass_mixed.size()==2 &&
+         outside.retired[0].mass_above.size()==2 &&
+         std::abs(outside.retired[0].mass_mixed[0]+
+                  outside.retired[0].mass_above[0]-7200.0F)<0.25F &&
+         std::abs(outside.retired[0].mass_mixed[1]+
+                  outside.retired[0].mass_above[1]-10800.0F)<0.25F,
+         "COMP retired puff mass disappeared instead of entering OUT ledger");
+    const auto after_empty=crossing.advance_hour_existing_mxsam99_adaptive_bounded(
+        met,geo,ctl,pg,false,narrow_domain);
+    need(after_empty.steps.empty() && after_empty.retired.empty() &&
+         crossing.completed_hours()==2 && crossing.active_count()==0,
+         "zero-active next hour re-sampled an already retired puff");
+
+    // Original COMP L10450: mass fully removed before a step is taken.
+    // No wind, travel, PG or VMASS step should execute on zero-QALL puffs.
+    OriginalCompRiseMultiPuffHours zero_driver;
+    auto source_zero=fast;
+    source_zero.mass.emission_rate={0.0,0.0};
+    const auto zero=zero_driver.advance_hour_point_mxsam99_adaptive_bounded(
+        met,geo,ctl,pg,false,source_zero,narrow_domain);
+    need(zero.release.puff_count==1 &&
+         zero.steps.empty() &&
+         zero.retired.size()==1 && zero.retired[0].puff_id==1 &&
+         zero.retired[0].reason==OriginalCompExitReason::ExhaustedMass &&
+         zero_driver.completed_hours()==1 &&
+         zero_driver.active_count()==0,
+         "COMP QALL=0 puff advanced physically instead of being retired");
+
+    const auto invalid_bounds=OriginalCompPuffBounds{
+        .xb=7.0F,.xe=6.0F,.yb=0.0F,.ye=9.0F};
+    bool domain_rollback=false;
+    try {
+        (void)crossing.advance_hour_existing_mxsam99_adaptive_bounded(
+            met,geo,ctl,pg,false,invalid_bounds);
+    } catch(const std::invalid_argument&){domain_rollback=true;}
+    need(domain_rollback && crossing.completed_hours()==2 &&
+         crossing.active_count()==0,
+         "invalid CALPUFF bounds advanced a committed episode");
+    std::cout<<"P7_NATIVE_COMP_AUTONOMOUS_EXIT=PASS"
+             <<" POST_STEP_CENTER=YES PRE_STEP_ZERO_QALL=YES"
+             <<" RETIRED_QM_QU_PRESERVED=YES"
+             <<" NEXT_HOUR_NO_PHANTOM_PUFF=YES"
+             <<" BOUNDARY_FROM_CALPUFF=YES"
+             <<" SOURCE_ROLLDN_CALL_TIMING=NOT_YET_ACCEPTED\\n";
+
     const auto state=driver.motion(1);
     const auto count=driver.completed_hours();
     auto bad=source;bad.point.source_x_km=130;
