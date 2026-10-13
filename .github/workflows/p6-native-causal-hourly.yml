@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/p6-native-causal-hourly.yml
       - scripts/p6_run_native_causal_hourly.py
+      - scripts/p6_diagnose_p6e_three_fields.py
       - native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp
       - native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
       - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
@@ -14,6 +15,7 @@ on:
     paths:
       - .github/workflows/p6-native-causal-hourly.yml
       - scripts/p6_run_native_causal_hourly.py
+      - scripts/p6_diagnose_p6e_three_fields.py
       - native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp
       - native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
       - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
@@ -34,6 +36,7 @@ jobs:
           sparse-checkout: |
             native_cpp/modules/p6_calmet
             scripts/p6_run_native_causal_hourly.py
+            scripts/p6_diagnose_p6e_three_fields.py
       - uses: actions/checkout@v4
         with:
           ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
@@ -85,6 +88,7 @@ jobs:
           sparse-checkout: |
             native_cpp/modules/p6_calmet
             scripts/p6_run_native_causal_hourly.py
+            scripts/p6_diagnose_p6e_three_fields.py
       - uses: actions/checkout@v4
         with:
           ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
@@ -115,6 +119,17 @@ jobs:
             --bridge "$RUNNER_TEMP/native-p6e/p6e_p6c_hourly_bridge" \
             --cgamma "$RUNNER_TEMP/native-p6d/cteas_p6_native_cgamma_grid_143h" \
             --work "$RUNNER_TEMP/p6-native-causal-143h" --hours 143
+      - name: Original-wind P6E three-field control with SAME native station flux
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/p6_diagnose_p6e_three_fields.py \
+            --case "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
+            --p6e "$RUNNER_TEMP/native-p6e/p6e_calmet_dat21" \
+            --native "$RUNNER_TEMP/p6-native-causal-143h/native_causal_calmet.dat" \
+            --observations "$RUNNER_TEMP/p6-native-causal-143h/observations.csv" \
+            --station-flux "$RUNNER_TEMP/p6-native-causal-143h/native_station_flux.csv" \
+            --work "$RUNNER_TEMP/p6-native-causal-143h/three_field_control"
       - name: Archive actual P6D/P6E hour-by-hour evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -124,6 +139,7 @@ jobs:
             ${{ runner.temp }}/p6-native-causal-143h/native_hourly_manifest.json
             ${{ runner.temp }}/p6-native-causal-143h/native_causal_calmet.dat
             ${{ runner.temp }}/p6-native-causal-143h/writer.log
+            ${{ runner.temp }}/p6-native-causal-143h/three_field_control/p6e_three_field_wind_control.json
           retention-days: 7
           if-no-files-found: warn
 
