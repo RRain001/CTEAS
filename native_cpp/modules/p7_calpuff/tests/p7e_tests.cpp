@@ -187,6 +187,35 @@ void test_receptor_geometry() {
     std::cout << "P7E_RECEPTOR_GEOMETRY=PASS GRID_RECEPTORS=2500 SPACING_KM=0.1\n";
 }
 
+void test_original_pfscrn() {
+    using cteas::puff::original_puff_screen;
+    // CALPUFF L4649-4679, REAL4. Moving 0->2 along X with radius 1.
+    const auto on=original_puff_screen(0,0,2,0,1,0,1);
+    require(on.has_impact && !on.calm_midpoint_branch &&
+            on.closest_distance_squared==0.0,
+            "PFSCRN moving on-track receptor incorrectly screened");
+    const auto near=original_puff_screen(0,0,2,0,1,0.5,1);
+    require(near.has_impact && near.closest_distance_squared==0.25,
+            "PFSCRN missed perpendicular nearest approach");
+    const auto edge=original_puff_screen(0,0,2,0,3,0,1);
+    require(edge.has_impact && edge.closest_distance_squared==1.0,
+            "PFSCRN radius threshold must be inclusive");
+    const auto far=original_puff_screen(0,0,2,0,3.01,0,1);
+    require(!far.has_impact,"PFSCRN out-of-radius receptor not excluded");
+    const auto still=original_puff_screen(0,0,0,0,0.2,0,1);
+    require(still.has_impact && still.calm_midpoint_branch,
+            "PFSCRN calm midpoint branch incorrectly selected");
+    const auto midpoint=original_puff_screen(0,0,0.00001,0,0.2,0,1);
+    require(midpoint.calm_midpoint_branch && midpoint.has_impact,
+            "PFSCRN short trajectory must use original a<1.e-4");
+    require_throw([]{(void)original_puff_screen(0,0,1,0,0,0,0);},
+                  "PFSCRN accepted zero radius");
+    require_throw([]{(void)original_puff_screen(0,0,1,0,0,0,std::nan(""));},
+                  "PFSCRN accepted NaN radius");
+    std::cout<<"P7E_ORIGINAL_PFSCRN_REAL4=PASS MOVING=YES CALM=YES"
+             <<" INCLUSIVE_RADIUS=YES FAIL_CLOSED=YES\n";
+}
+
 void test_sampling_integrals() {
     // Low-wind shortcut: A < 1e-4 -> xi2 = 0.5*exp(-dist2/(2*tsy)), xi1 = 2*xi2.
     const auto low = cteas::puff::puff_sampling_integrals(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 100.0, 0.0);
@@ -449,6 +478,7 @@ int main(int argc, char** argv) {
         fs::create_directories(root);
 
         test_receptor_geometry();
+        test_original_pfscrn();
         test_sampling_integrals();
         test_accumulation();
         test_conc_file_round_trip(root);
