@@ -90,11 +90,9 @@ jobs:
               raise RuntimeError(f'exact TURBSET source header expected, got {len(starts)}')
           start=starts[0]
           stops=[i for i in range(start+1,len(lines)) if
-                 re.match(r'^      end\\s*
-          print('P7_VENDOR_CALM_PARAMETER_SOURCE_END')
-          PY
-,lines[i],re.I)]
-          if not stops: raise RuntimeError('TURBSET end not found')
+                 re.match(r'^      end\\s*'+'$',lines[i],re.I)]
+          if not stops:
+              raise RuntimeError('TURBSET end not found')
           end=stops[0]
           src=lines[start:end+1]
           pattern=re.compile(r'tsigv|tsigw|sigv|sigw|ustar|wstar|svmin|swmin|mdisp|idopty|idoptz|el|zi|mix|metfm',re.I)
