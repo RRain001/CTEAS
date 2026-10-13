@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <utility>
 
 namespace {
 std::string input_text(const std::string& path) {
@@ -104,18 +105,98 @@ template<class A,class B> void check_array(const A& actual,const B& expected,
 void check_scalar(int actual,int expected,const std::string& name) {
     require(actual==expected,name+" not reproduced");
 }
+
+void assemble_direct_native_hours(cteas::p6f::Calmet21File& file,
+                                  const std::string& manifest_path) {
+    namespace pf=cteas::p6f;
+    const auto& h=file.header;
+    require(h.irlg==143&&h.nx==50&&h.ny==50&&h.nz==9&&
+            h.nssta==1&&h.nusta==1&&h.npsta==0,
+            "native direct P6F supports the frozen 143h 50x50x9 case only");
+    const auto labels=pf::hourly_labels(h.nz,h.irtype,h.lcalgrd,h.npsta);
+    require(labels.size()==45U&&file.hourly.size()==143U*45U,
+            "native source-only metadata inventory mismatch");
+    for(std::size_t i=0;i<file.hourly.size();++i){
+        const auto& v=file.hourly[i];
+        require(v.label==labels[i%45U],"source metadata field label mismatch");
+        if(v.integer){
+            for(const auto x:v.integer_values)
+                require(x==pf::missing_integer,"source metadata leaks integer weather");
+        }else{
+            for(const auto x:v.real_values)
+                require(x==pf::missing_real,"source metadata leaks real weather");
+        }
+    }
+    std::ifstream input(manifest_path);
+    require(static_cast<bool>(input),"native one-hour manifest missing");
+    std::vector<pf::Calmet21Field> assembled;
+    assembled.reserve(143U*45U);
+    std::string filename;
+    std::size_t hour=0;
+    auto same_clock=[](const pf::Calmet21Time& a,const pf::Calmet21Time& b){
+        return a.year==b.year&&a.julian_day==b.julian_day&&
+               a.hour==b.hour&&a.seconds==b.seconds;
+    };
+    while(std::getline(input,filename)){
+        if(!filename.empty()&&filename.back()=='\r')filename.pop_back();
+        require(!filename.empty()&&hour<143U,"native one-hour manifest has empty or extra rows");
+        const auto current=pf::read_calmet_dat21(filename);
+        const auto& c=current.header;
+        require(c.irlg==1&&c.nx==h.nx&&c.ny==h.ny&&c.nz==h.nz&&
+                c.nssta==h.nssta&&c.nusta==h.nusta&&c.npsta==h.npsta&&
+                c.timezone==h.timezone&&c.irtype==h.irtype&&
+                c.lcalgrd==h.lcalgrd&&c.dgrid_m==h.dgrid_m&&
+                c.xorigin_m==h.xorigin_m&&c.yorigin_m==h.yorigin_m,
+                "native one-hour geometry or controls drift");
+        require(current.hourly.size()==45U,"native one-hour payload not 45 fields");
+        for(std::size_t j=0;j<45U;++j){
+            const auto& field=current.hourly[j];
+            const auto& expected=file.hourly[hour*45U+j];
+            require(field.label==expected.label&&field.integer==expected.integer&&
+                    same_clock(field.begin,expected.begin)&&
+                    same_clock(field.end,expected.end),
+                    "native hourly field label/clock/order mismatch");
+            const std::size_t cells=2500U;
+            if(field.integer){
+                require(field.integer_values.size()==cells,
+                        "native integer hourly field shape mismatch");
+                for(auto x:field.integer_values)
+                    require(x!=pf::missing_integer,
+                            "unproduced native hourly integer field");
+            }else{
+                require(field.real_values.size()==cells,
+                        "native real hourly field shape mismatch");
+                for(auto x:field.real_values)
+                    require(std::isfinite(x)&&x!=pf::missing_real,
+                            "unproduced native hourly real field");
+            }
+        }
+        assembled.insert(assembled.end(),current.hourly.begin(),current.hourly.end());
+        ++hour;
+    }
+    require(!input.bad()&&hour==143U,"native direct writer requires exactly 143 hours");
+    file.hourly=std::move(assembled);
+}
 }
 int main(int argc,char** argv) {
     try {
-        if((argc!=7&&argc!=9)||std::string(argv[1])!="--geo"||
-           std::string(argv[3])!="--deck"||
-           std::string(argv[5])!="--candidate"||
-           (argc==9&&std::string(argv[7])!="--emit-source-statics"&&
-                      std::string(argv[7])!="--emit-native-header"))
-            throw std::runtime_error(
-                "usage: p6f_geo_static_provenance --geo GEO.DAT --deck met.inp --candidate NATIVE_HOURLY_CALMET.DAT [--emit-source-statics OUT | --emit-native-header OUT]");
+        const bool direct=(argc==11&&std::string(argv[1])=="--geo"&&
+                           std::string(argv[3])=="--deck"&&
+                           std::string(argv[5])=="--source-metadata"&&
+                           std::string(argv[7])=="--hour-manifest"&&
+                           std::string(argv[9])=="--emit-native-header");
+        const bool candidate=((argc==7||argc==9)&&
+            std::string(argv[1])=="--geo"&&std::string(argv[3])=="--deck"&&
+            std::string(argv[5])=="--candidate"&&
+            (argc==7||std::string(argv[7])=="--emit-source-statics"||
+                       std::string(argv[7])=="--emit-native-header"));
+        if(!direct&&!candidate)
+            throw std::runtime_error("usage: --geo GEO --deck DECK --candidate FILE"
+                " [--emit-native-header OUT] or --source-metadata META"
+                " --hour-manifest LIST --emit-native-header OUT (with --geo/--deck)");
         const auto deck=input_text(argv[4]);
         auto file=cteas::p6f::read_calmet_dat21(argv[6]);
+        if(direct)assemble_direct_native_hours(file,argv[8]);
         const auto& hdr=file.header;
         const auto& stat=file.statics;
         check_scalar(hdr.nx,number_i(deck,"NX"),"NX");
@@ -183,7 +264,7 @@ int main(int argc,char** argv) {
             check_array(stat.upper_y_m,std::vector<float>{north_m},
                         "YUSTA/met.inp",compared);
         }
-        if(argc==9) {
+        if(argc==9||direct) {
             // Rebuild every supported case static from the primary GEO/deck,
             // not from the CALMET.DAT file under audit. Original hourly fields,
             // commentary, and unsupported header metadata are retained solely
@@ -253,7 +334,7 @@ int main(int argc,char** argv) {
             require(period_seconds>0&&period_seconds%3600==0,
                     "source run window not integral hours");
             h.irlg=static_cast<std::int32_t>(period_seconds/3600);
-            if(std::string(argv[7])=="--emit-native-header") {
+            if(direct||std::string(argv[7])=="--emit-native-header") {
                 // Full independently sourced OUTPUT *header and statics*.
                 // The input's only retained data is its native P6D/P6E
                 // hourly field values and their source-locked hour records.
@@ -313,21 +394,21 @@ int main(int argc,char** argv) {
                 // without reading them from the input file.
                 head.projection.rnlat0=0.f;head.projection.relon0=0.f;
                 head.projection.xlat1=0.f;head.projection.xlat2=0.f;
-                cteas::p6f::write_calmet_dat21(argv[8],assembled);
+                cteas::p6f::write_calmet_dat21(direct?argv[10]:argv[8],assembled);
             }else{
-                cteas::p6f::write_calmet_dat21(argv[8],file);
+                cteas::p6f::write_calmet_dat21(direct?argv[10]:argv[8],file);
             }
         }
         std::cout<<"{\"status\":\"PASS_P6F_INDEPENDENT_SOURCE_STATIC_VALUES\","
                  <<"\"compared_static_values\":"<<compared<<","
                  <<"\"grid\":["<<hdr.nx<<","<<hdr.ny<<","<<hdr.nz<<"],"
                  <<"\"source\":\"GEO.DAT+met.inp independent of CALMET.DAT static inputs\","
-                 <<"\"static_records_rebuilt\":"<<(argc==9?"true":"false")<<","
-                 <<"\"numeric_run_controls_rebuilt\":"<<(argc==9?"true":"false")<<","
+                 <<"\"static_records_rebuilt\":"<<((argc==9||direct)?"true":"false")<<","
+                 <<"\"numeric_run_controls_rebuilt\":"<<((argc==9||direct)?"true":"false")<<","
                  <<"\"header_comments_independent\":"<<
-                      (argc==9&&std::string(argv[7])=="--emit-native-header"?"true":"false")<<","
+                      ((argc==9&&std::string(argv[7])=="--emit-native-header")||direct?"true":"false")<<","
                  <<"\"all_stations_independent\":false,"
-                 <<"\"hourly_field_inputs_independent\":false,"
+                 <<"\"hourly_field_inputs_independent\":"<<(direct?"true":"false")<<","
                  <<"\"full_P6F_acceptance\":false}\n";
         return 0;
     }catch(const std::exception& e){
