@@ -218,6 +218,25 @@ OriginalCompRiseMultiPuffHours::advance_hour_existing_mxsam99_adaptive(
 }
 
 OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_existing_mxsam99_adaptive_bounded(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalCompPuffBounds& bounds) {
+    return advance_hour_mxsam99_core(
+        met,statics,controls,pg,urban,nullptr,true,&bounds);
+}
+
+OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_adaptive_bounded(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalPointHourSource& source,
+    const OriginalCompPuffBounds& bounds) {
+    return advance_hour_mxsam99_core(
+        met,statics,controls,pg,urban,&source,true,&bounds);
+}
+
+OriginalCompMxsamHour
 OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_source_order(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& controls,const DispersionSetup& pg,
@@ -230,7 +249,8 @@ OriginalCompMxsamHour
 OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& controls,const DispersionSetup& pg,
-    bool urban,const OriginalPointHourSource* source,bool adaptive) {
+    bool urban,const OriginalPointHourSource* source,bool adaptive,
+    const OriginalCompPuffBounds* bounds) {
     if(controls.max_sampling_steps!=99 || controls.release_number!=1 ||
        !std::isfinite(controls.met_spacing_m) ||
        controls.met_spacing_m<=0.0F ||
@@ -252,6 +272,10 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
     if(source && (!std::isfinite(dt)||dt<=0 || release.puff_count<1))
         throw std::invalid_argument("invalid source-ported NPUFFS/DT");
 
+    // Fail closed on absent/invalid ORIGINAL CALPUFF XB/XE/YB/YE; do not
+    // infer bounds from CALMET NX/NY (distinct coordinate authorities).
+    if(bounds)
+        (void)original_comp_after_step_exit(bounds->xb,bounds->yb,*bounds);
     // Entire hour is a single transaction, including all old puff states,
     // newly admitted POINTS1 puffs, every re-entry and vertical mass/lid.
     auto trial=puffs_;
@@ -260,6 +284,17 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
     OriginalCompMxsamHour result;
     result.hour_index=hours_;
     result.release=release;
+    const auto mark_retired=[&](int id,OriginalCompExitReason why){
+        if(why==OriginalCompExitReason::Active)
+            throw std::logic_error("COMP invalid active retirement request");
+        for(const auto& item:result.retired)
+            if(item.puff_id==id)
+                throw std::logic_error("COMP retired the same puff twice");
+        const auto v=trial.vertical(id);
+        result.retired.push_back({
+            id,why,trial.motion(id),v.mass_mixed,v.mass_above
+        });
+    };
     const auto execute=[&](int id,int rel,const SamplingCadence& plan){
         const float reference=static_cast<float>(plan.reference_step_s);
         if(!std::isfinite(reference) || reference<=0.0F ||
@@ -268,6 +303,17 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
             throw std::invalid_argument("COMP invalid source sampling plan");
         float tleft=0.0F; // source L10348
         for(int k=plan.start_substep;k<=plan.sampling_steps;++k){
+            // Original COMP L10450-10457: zero total QM+QU kills this
+            // puff BEFORE fetching the next wind or advancing position.
+            if(bounds){
+                const auto vertical=trial.vertical(id);
+                const auto reason=original_comp_before_step_exit(
+                    vertical.mass_mixed,vertical.mass_above);
+                if(reason!=OriginalCompExitReason::Active){
+                    mark_retired(id,reason);
+                    return;
+                }
+            }
             // Original L10430-10433: excess time carries to next KSAM.
             float tsamp=static_cast<float>(reference+tleft);
             tleft=tsamp;
@@ -308,6 +354,17 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
                 }
                 if(physics.substep.split)++result.fstep_shortened_steps;
                 result.steps.push_back({id,rel,k,plan,physics});
+                // Original COMP L11400-L11413: only after the actual
+                // native substep, test PUFF CENTER (not sigma footprint).
+                // An exited puff must never be sampled in another KSAM.
+                if(bounds){
+                    const auto reason=original_comp_after_step_exit(
+                        physics.after.x_cells,physics.after.y_cells,*bounds);
+                    if(reason!=OriginalCompExitReason::Active){
+                        mark_retired(id,reason);
+                        return;
+                    }
+                }
                 // Original L10581 and L11475-11492, in REAL*4 order.
                 tleft=static_cast<float>(tleft-used);
                 const bool repeat=adaptive && plan.subsampling &&
@@ -357,6 +414,26 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
         if(plan.sampling_steps!=release.puff_count)
             throw std::invalid_argument("native POINTS1/COMP NEW NSAM drift");
         execute(id,j,plan);
+    }
+    if(bounds && !result.retired.empty()){
+        // Source-ported ROLLDN slot COPY, not std::swap, with immutable
+        // physical episode IDs. The original invokes ROLLDN conditionally
+        // on MXPUFF pressure; this opt-in eager compact is NOT that full
+        // original call timing and must be gated separately.
+        std::vector<OriginalPuffSlot> slots;
+        slots.reserve(ids.size());
+        for(int id:ids){
+            bool expired=false;
+            for(const auto& entry:result.retired)
+                if(entry.puff_id==id){expired=true;break;}
+            slots.push_back({id,expired?99:trial.vertical(id).puff_code});
+        }
+        const auto packed=original_rolldn_slots(slots,ids.size());
+        for(const auto& item:result.retired)trial.retire(item.puff_id);
+        ids.clear();
+        for(const auto& slot:packed.slots)ids.push_back(slot.state_id);
+        if(packed.retired_old!=result.retired.size())
+            throw std::logic_error("COMP ROLLDN lost a native retirement");
     }
     result.active_puffs=ids.size();
     puffs_=std::move(trial);
