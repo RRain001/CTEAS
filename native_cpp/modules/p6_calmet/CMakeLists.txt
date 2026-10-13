@@ -15,6 +15,16 @@ else()
 endif()
 add_test(NAME p6g_dynamic_geo_utm_and_frozen_field_parity COMMAND cteas_p6g_dynamic_geo_tests)
 
+# Source-compatible dynamic station deck, segregated from frozen SS1/US1.
+add_executable(cteas_p6g_station_set_tests tests/p6g_station_set_tests.cpp)
+target_link_libraries(cteas_p6g_station_set_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_station_set_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_station_set_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_multistation_readcf_real4_parity COMMAND cteas_p6g_station_set_tests)
+
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
 add_executable(cteas_p6_terset src/terrain_envelope_main.cpp)
