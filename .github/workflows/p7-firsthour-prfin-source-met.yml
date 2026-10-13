@@ -126,35 +126,24 @@ jobs:
                               shown.add(j)
           print('P7_MCTADJ2_BVF_VENDOR_SOURCE_AUDIT=PASS REAL_HEFEI_SIGMA_PARITY=OPEN')
           PY
-      - name: Audit original PTLAPS implementation required by MCTADJ2
+      - name: Source-audit PTLAPS without changing production inputs
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import pathlib,re
           root=pathlib.Path('engine/vendor/src/CALPUFF_v7.2.1_L150618')
+          count=0
           for p in sorted(root.rglob('*.for')):
-              lines=p.read_bytes().decode('latin-1').splitlines()
-              matches=[i for i,l in enumerate(lines) if re.match(r'^\s{6}(?:subroutine|real\s+function)\s+ptlaps\b',l,re.I)]
-              for i in matches:
-                  stop=next((j for j in range(i+1,len(lines)) if re.match(r'^      end\s*
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
-          test -s project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
-          test -s native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin
-          build="${RUNNER_TEMP}/p7-firsthour-input-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          cmake -S native_cpp/modules/p7_calpuff -B "$build" -DCMAKE_BUILD_TYPE=Debug
-          cmake --build "$build" --parallel 2 --target \
-            cteas_p7_original_hefei_source_met_bridge_tests \
-            cteas_p7_hefei_firsthour_native_comp_tests
-          ctest --test-dir "$build" -R '^cteas_p7_hefei_(source_met_stack_bridge|real_54_puff_native_admissions)$' --output-on-failure -V
-          echo 'P7_FIRST_HOUR_NATIVE_PRFIN_AND_POINT_ADMISSIONS=PASS FULL_COMP_PARITY=OPEN'
-,lines[j],re.I)),i+150)
-                  print(f'P7_PT_LAPSE_SOURCE file={p.name} lines={i+1}-{stop+1}')
-                  for j in range(i,min(stop+1,i+270)):
-                      print(f'P7_PT_LAPSE_LINE {j+1:6d} {lines[j]}')
+              src=p.read_bytes().decode('latin-1').splitlines()
+              for i,s in enumerate(src):
+                  if re.match(r'^      subroutine ptlaps',s,re.I):
+                      stop=next((j for j in range(i+1,len(src)) if src[j].strip().lower()=='end'),min(i+180,len(src)-1))
+                      print('P7_PT_LAPSE_FILE='+p.name+' RANGE='+str(i+1)+'-'+str(stop+1))
+                      for j in range(i,stop+1):
+                          print('P7_PT_LAPSE_LINE '+str(j+1)+' '+src[j])
+                      count+=1
+          print('P7_PT_LAPSE_SOURCE_ROUTINES='+str(count))
           PY
       - name: Execute real Hefei source and 54 puff admission gates
         shell: bash
