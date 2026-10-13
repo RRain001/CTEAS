@@ -49,7 +49,7 @@ jobs:
           root="$RUNNER_TEMP/p6d-avetmp-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           python3 scripts/p6d_forensic_avetmp_first_divergence.py cpp \
             --work "$root" \
-            --header native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/avetmp.hpp
+            --header native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/avetmp.hpp \
             --main-file native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
           cmake -S native_cpp/modules/p6_calmet -B "$root/native-build" \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
