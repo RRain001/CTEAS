@@ -185,6 +185,23 @@ void write(const std::string& geo_filename,const std::string& deck_filename,
         }
     }
     cteas::p6f::write_calmet_dat21(output_filename,file);
+    // Independently parse the product under the same fail-closed CALMET 2.1
+    // binary contract consumed by the P6E emitter. Do not allow any field
+    // from the missing-only input to masquerade as computed meteorology.
+    const auto reopened=cteas::p6f::read_calmet_dat21(output_filename);
+    need(reopened.header.irlg==143&&reopened.hourly.size()==143U*45U,
+         "P6E metadata source output inventory drift");
+    for(const auto& fld:reopened.hourly) {
+        if(fld.integer){
+            for(const auto v:fld.integer_values)
+                need(v==cteas::p6f::missing_integer,
+                     "P6E source-only metadata contains live integer weather");
+        }else{
+            for(const auto v:fld.real_values)
+                need(v==cteas::p6f::missing_real,
+                     "P6E source-only metadata contains live real weather");
+        }
+    }
     std::cout<<"PASS_P6F_P6E_SOURCE_ONLY_METADATA "
              <<"hours="<<h.irlg<<" fields_per_hour="<<labels.size()
              <<" cells="<<cells<<" source=GEO.DAT+met.inp "
