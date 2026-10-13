@@ -1487,6 +1487,62 @@ int run_compare(const std::string& reference_path,const std::string& candidate_p
     return exceedances==0.0?0:1;
 }
 
+
+void merge_native_causal_hours(const std::string& manifest_path,
+                               const std::string& output_path) {
+    std::ifstream list(manifest_path);
+    if(!list)throw std::invalid_argument("native hourly manifest absent");
+    std::string path;
+    std::vector<CalmetDat21Field> combined;
+    std::optional<CalmetDat21Dataset> first;
+    std::size_t hours=0;
+    while(std::getline(list,path)) {
+        if(path.empty())continue;
+        const auto candidate=read_calmet_dat21(path);
+        if(candidate.intervals!=1U||candidate.fields_per_hour!=45U||
+           candidate.header.nx!=50||candidate.header.ny!=50||
+           candidate.header.nz!=9)
+            throw std::invalid_argument("expected one complete 45-field real Hefei hour");
+        if(first) {
+            const auto& a=first->header;
+            const auto& b=candidate.header;
+            if(a.nx!=b.nx||a.ny!=b.ny||a.nz!=b.nz||
+               a.timezone!=b.timezone||a.dgrid_m!=b.dgrid_m||
+               a.xorigin_m!=b.xorigin_m||a.yorigin_m!=b.yorigin_m||
+               first->statics.ilandu!=candidate.statics.ilandu||
+               first->statics.zface_m!=candidate.statics.zface_m||
+               first->statics.surface_x_m!=candidate.statics.surface_x_m||
+               first->statics.upper_x_m!=candidate.statics.upper_x_m)
+                throw std::invalid_argument("native hourly header/static geometry drift");
+        } else first=candidate;
+        // The native producer must supply all 27 U/V/W and 18 P6E fields.
+        // CALMET.DAT missing values may not be filled from the original ref.
+        for(const auto& field:candidate.hourly) {
+            if(field.integer) {
+                for(auto v:field.integer_values)
+                    if(v==calmet21_missing_int)
+                        throw std::invalid_argument("unproduced native integer field "+field.label);
+            } else {
+                for(auto v:field.real_values)
+                    if(!std::isfinite(v)||v==calmet21_missing)
+                        throw std::invalid_argument("unproduced native real field "+field.label);
+            }
+        }
+        combined.insert(combined.end(),candidate.hourly.begin(),candidate.hourly.end());
+        ++hours;
+    }
+    if(!first||hours==0||hours>143)
+        throw std::invalid_argument("native hour manifest must contain 1..143 valid intervals");
+    auto h=first->header;
+    h.run_hours=static_cast<int>(hours);
+    h.comments={"C++ P6D->P6E causal one-pass original-order prototype",
+                "Native 45 meteorological field values, case grid header external",
+                "SCIENTIFIC ORIGINAL NUMERIC PARITY NOT YET ESTABLISHED"};
+    write_calmet_dat21(output_path,h,first->statics,combined);
+    std::cout<<"P6_NATIVE_CAUSAL_CALMET_DAT_FORMAT_PASS hours="<<hours
+             <<" fields_per_hour=45; ORIGINAL_NUMERIC_PARITY=NOT_PASS\\n";
+}
+
 std::string argument(int argc,char** argv,const std::string& flag,
                      const std::string& fallback=std::string()) {
     for(int k=1;k+1<argc;++k)if(flag==argv[k])return argv[k+1];
@@ -1505,6 +1561,14 @@ int main(int argc,char** argv) {
             return 2;
         }
         const std::string mode=argv[1];
+        if(mode=="merge-native-hours") {
+            const auto manifest=argument(argc,argv,"--manifest");
+            const auto out=argument(argc,argv,"--out");
+            if(manifest.empty()||out.empty())
+                throw std::invalid_argument("merge-native-hours needs --manifest and --out");
+            merge_native_causal_hours(manifest,out);
+            return 0;
+        }
         if(mode=="emit-synthetic") {
             const auto out=argument(argc,argv,"--out");
             if(out.empty())throw std::invalid_argument("emit-synthetic needs --out");
