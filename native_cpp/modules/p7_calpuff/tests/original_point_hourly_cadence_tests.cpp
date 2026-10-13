@@ -31,6 +31,10 @@ struct Inputs {
         ctl.seconds=3600.0F;
         ctl.source_period_s=3600.0F;
         ctl.max_sampling_steps=1;
+        // This POINTS1 chronology fixture deliberately uses 0.002-0.010 m/s
+        // winds and explicitly selects a TEST-ONLY noncalm WSCALM=0.001.
+        // Real frozen Hefei puff.inp uses WSCALM=0.5, unchanged.
+        ctl.calm_threshold_ms=0.001F;
         ctl.release_number=1;
         pg.mdisp=3;
         pg.averaging_factor=1;
