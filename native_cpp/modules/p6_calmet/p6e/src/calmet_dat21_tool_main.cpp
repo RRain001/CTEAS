@@ -42,6 +42,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -488,6 +489,87 @@ WindLevels read_wind_levels(const std::string& path,
             }
         }
     return out;
+}
+
+
+std::string native_hour_label(std::size_t hour) {
+    const auto at=std::chrono::sys_days{std::chrono::year{2022}/1/1}+
+                  std::chrono::hours{static_cast<int>(hour+1)};
+    const auto day=std::chrono::floor<std::chrono::days>(at);
+    const std::chrono::year_month_day ymd{day};
+    const int hh=static_cast<int>(
+        std::chrono::duration_cast<std::chrono::hours>(at-day).count());
+    std::ostringstream label;
+    label<<int(ymd.year())<<'-'
+         <<(unsigned(ymd.month())<10?"0":"")<<unsigned(ymd.month())<<'-'
+         <<(unsigned(ymd.day())<10?"0":"")<<unsigned(ymd.day())<<'_'
+         <<(hh<10?"0":"")<<hh;
+    return label.str();
+}
+std::vector<float> read_hourly_native_f32(
+        const std::filesystem::path& path,std::size_t count) {
+    if(!std::filesystem::is_regular_file(path)||
+       std::filesystem::file_size(path)!=count*sizeof(float))
+        throw std::invalid_argument("native REAL4 plane missing/wrong size: "+path.string());
+    std::ifstream in(path,std::ios::binary);
+    std::vector<float> out(count);
+    in.read(reinterpret_cast<char*>(out.data()),
+            static_cast<std::streamsize>(count*sizeof(float)));
+    if(!in||!std::all_of(out.begin(),out.end(),[](float x){
+        return std::isfinite(x)&&x!=9999.f;
+    }))throw std::invalid_argument("invalid native REAL4: "+path.string());
+    return out;
+}
+WindLevels read_p6d_one_hour_native_wind(
+        const std::string& directory,
+        const CalmetDat21Dataset& reference,std::size_t hour) {
+    namespace fs=std::filesystem;
+    const fs::path dir(directory);
+    const auto label=native_hour_label(hour);
+    std::ifstream produced(dir/"produced_hours.txt");
+    std::string actual,second;
+    if(!std::getline(produced,actual)||actual!=label||
+       std::getline(produced,second))
+        throw std::invalid_argument("native P6D single-hour provenance/time label mismatch");
+    const auto nx=static_cast<std::size_t>(reference.header.nx);
+    const auto ny=static_cast<std::size_t>(reference.header.ny);
+    const auto nz=static_cast<std::size_t>(reference.header.nz);
+    if(nx!=50||ny!=50||nz!=9||hour>=reference.intervals)
+        throw std::invalid_argument("native P6D single-hour only supports frozen 50x50x9");
+    const auto cells=nx*ny;
+    const auto uu=read_hourly_native_f32(dir/("blend_u_"+label+".f32"),nz*cells);
+    const auto vv=read_hourly_native_f32(dir/("blend_v_"+label+".f32"),nz*cells);
+    const auto ww=read_hourly_native_f32(dir/("w_face_"+label+".f32"),(nz+1)*cells);
+    WindLevels out;
+    out.u.assign(nz,std::vector<float>(reference.intervals*cells,0.f));
+    out.v.assign(nz,std::vector<float>(reference.intervals*cells,0.f));
+    out.w.assign(nz,std::vector<float>(reference.intervals*cells,0.f));
+    for(std::size_t level=0;level<nz;++level)
+        for(std::size_t k=0;k<cells;++k) {
+            const auto target=hour*cells+k;
+            out.u[level][target]=uu[level*cells+k];
+            out.v[level][target]=vv[level*cells+k];
+            // Original WFACE(k) is the TOP face of layer k, not the ground face.
+            out.w[level][target]=ww[(level+1)*cells+k];
+        }
+    return out;
+}
+cteas::calmet::p6::NativeGridMemory read_previous_comp_hour(
+        const std::string& prefix,std::size_t previous_hour,std::size_t cells) {
+    if(prefix.empty())throw std::invalid_argument(
+        "native hour n>0 requires hour n-1 COMP-owned state, not frozen original");
+    std::ifstream in(prefix+".state.json");
+    std::ostringstream meta;meta<<in.rdbuf();
+    const auto m=meta.str();
+    if(m.find("\"producer\": \"p6e_calmet_dat21 emit-realcase\"")==std::string::npos||
+       m.find("\"first_hour_zero_based\": "+std::to_string(previous_hour))==
+           std::string::npos)
+        throw std::invalid_argument("previous COMP state producer/clock mismatch");
+    return {
+        read_hourly_native_f32(prefix+".zi.f32",cells),
+        read_hourly_native_f32(prefix+".ziconv.f32",cells),
+        read_hourly_native_f32(prefix+".dptt.f32",cells)
+    };
 }
 
 void emit_realcase(const std::string& reference_path,const std::string& observations_path,
