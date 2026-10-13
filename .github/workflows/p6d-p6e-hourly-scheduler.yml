@@ -9,6 +9,8 @@ on:
       - native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/native_hourly_comp_steps.hpp
       - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
       - scripts/p6e_verify_native_hour_comp_143h.py
+      - scripts/p6d_verify_single_hour_windows.py
+      - native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
       - native_cpp/modules/p6_calmet/tests/p6_hourly_native_comp_integration_tests.cpp
       - native_cpp/modules/p6_calmet/tests/p6_hourly_comp_scheduler_tests.cpp
       - .github/workflows/p6d-p6e-hourly-scheduler.yml
@@ -18,6 +20,8 @@ on:
       - native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/native_hourly_comp_steps.hpp
       - native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp
       - scripts/p6e_verify_native_hour_comp_143h.py
+      - scripts/p6d_verify_single_hour_windows.py
+      - native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
       - native_cpp/modules/p6_calmet/tests/p6_hourly_native_comp_integration_tests.cpp
       - native_cpp/modules/p6_calmet/tests/p6_hourly_comp_scheduler_tests.cpp
       - .github/workflows/p6d-p6e-hourly-scheduler.yml
@@ -151,6 +155,7 @@ jobs:
           sparse-checkout: |
             native_cpp/modules/p6_calmet
             scripts/p6e_verify_native_hour_comp_143h.py
+            scripts/p6d_verify_single_hour_windows.py
       - uses: actions/checkout@v4
         with:
           ref: 3b94cdbfbb5f44146ba51a4ef112114f199d28b9
@@ -182,6 +187,15 @@ jobs:
             --p6e "$RUNNER_TEMP/p6e-hourly/p6e_calmet_dat21" \
             --bridge "$RUNNER_TEMP/p6e-hourly/p6e_p6c_hourly_bridge" \
             --work "$RUNNER_TEMP/p6e-native-comp-143h"
+      - name: Require P6D hour-1/hour-6/hour-12/hour-143 native windows equal whole-period route
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/p6d_verify_single_hour_windows.py \
+            --case "$GITHUB_WORKSPACE/frozen_original_checkout/project/cases/hefei5km_2022_reference_case_20261011" \
+            --p6d "$RUNNER_TEMP/p6d-hourly/cteas_p6_realcase_wind_field" \
+            --comp-state-prefix "$RUNNER_TEMP/p6e-native-comp-143h/native_comp_state" \
+            --work "$RUNNER_TEMP/p6e-native-comp-143h/p6d_single_hour"
       - name: Archive actual 143h COMP migration evidence, never label full G2
         if: always()
         uses: actions/upload-artifact@v4
