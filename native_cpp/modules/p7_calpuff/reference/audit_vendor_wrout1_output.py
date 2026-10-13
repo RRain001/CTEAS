@@ -85,6 +85,31 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
     trailing_nondata=NONDATA_RECORDS-2-ncomments
     if trailing_nondata<0:
         raise AssertionError("comment records exceed original non-DATA budget")
+    # Infer the original echo's INPUT origins before porting the WROUT1
+    # comment writer. Copying bytes from frozen puff.con is forbidden.
+    echo=[data[p+4:p+4+n].decode("latin-1").rstrip()
+          for p,n in comment_records]
+    deck_lines=[line.rstrip() for line in
+                control.read_text(encoding="latin-1").splitlines()]
+    deck_set=set(deck_lines)
+    direct_matches=sum(line in deck_set for line in echo[2:])
+    from difflib import SequenceMatcher
+    matcher=SequenceMatcher(None,deck_lines,echo[2:],autojunk=True)
+    spans=matcher.get_matching_blocks()
+    longests=sorted((size,i,j) for i,j,size in spans if size>0)[-6:]
+    echo_diagnostics={
+        "deck_lines":len(deck_lines),
+        "echo_records":len(echo),
+        "echo_first_lines":echo[:10],
+        "echo_last_lines":echo[-10:],
+        "echo_lines_equal_to_deck_line":direct_matches,
+        "direct_sequence_ratio":round(matcher.ratio(),6),
+        "longest_exact_runs":[
+            {"count":size,"deck_index":i,"echo_after_preamble_index":j}
+            for size,i,j in longests],
+    }
+    print("P7_WROUT1_ECHO_INPUT_PROVENANCE="+json.dumps(
+        echo_diagnostics,ensure_ascii=True))
     comment_examples=[]
     for pos_comment,size_comment in comment_records[:5]:
         raw=data[pos_comment+4:pos_comment+4+size_comment]
@@ -162,6 +187,7 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
         "embedded_comment_count":ncomments,
         "embedded_comment_record_byte_sizes":dict(sorted(comments_hist.items())),
         "embedded_comment_first_lines":comment_examples,
+        "echo_input_provenance":echo_diagnostics,
         "remaining_nondata_records_after_embedded_comments":trailing_nondata,
         "first_records_after_embedded_comments":first_tail,
         "independently_classified_data_record_counts":dict(counts),
