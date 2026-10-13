@@ -985,6 +985,10 @@ int main(int argc,char** argv){
             flux.anthropogenic_wm2=geo.qf;
             flux.initial_qh.assign(2500,0.f);
             heat_flux=cteas::p6e::heatfx(flux).sensible_wm2;
+            // Write-only forensic snapshot: HEATFX QH before grid ELUSTR
+            // overwrites stable nighttime flux. No source/test oracle input.
+            write_f32(args.out()/("qh_before_elustr_"+
+                      hour_label(clock)+".f32"),heat_flux);
         }
         // Exact source order CALMET DIAGNO L5685-L5716:
         // HEATFX -> AIRDEN -> ELUSTR(UG,VG) -> SLOPE(QH).
