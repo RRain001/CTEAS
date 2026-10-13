@@ -48,6 +48,7 @@ struct SelectedBridgeGrid {
     int nx=0,ny=0;
     float spacing_km=0.0f;
     std::array<float,10> zface_m{};
+    std::vector<int> landuse; // Read from P6G READGE GEO.DAT, not hardcoded.
 };
 struct SelectedBridgeHour {
     std::chrono::sys_seconds end{};
@@ -64,7 +65,9 @@ inline SelectedBridgeHour selected_multisite_hour(
        surface.end!=input.end||surface.by_station.size()!=deck.surface.size()||
        prepared.profiles.size()!=deck.upper.size()||
        prepared.layers.size()!=deck.upper.size()||
-       input.upper.size()!=deck.upper.size())
+       input.upper.size()!=deck.upper.size()||
+       grid.landuse.size()!=static_cast<std::size_t>(grid.nx)*
+                            static_cast<std::size_t>(grid.ny))
         throw std::invalid_argument("G8 bridge source-hour/grid/array mismatch");
     for(std::size_t i=1;i<grid.zface_m.size();++i)
         if(!(grid.zface_m[i]>grid.zface_m[i-1]))
@@ -84,7 +87,7 @@ inline SelectedBridgeHour selected_multisite_hour(
     inter.nintrp_per_layer.assign(9,inter.nstations);
     const std::size_t cells=static_cast<std::size_t>(grid.nx)*
                             static_cast<std::size_t>(grid.ny);
-    inter.landuse.assign(cells,20);
+    inter.landuse=grid.landuse;
     inter.station_x_km.reserve(stations);
     inter.station_y_km.reserve(stations);
     for(const auto& s:deck.surface){
