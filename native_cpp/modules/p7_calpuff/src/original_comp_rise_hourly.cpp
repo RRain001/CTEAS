@@ -160,6 +160,25 @@ OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_native_wsnew_unsplit(
 }
 
 OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_native_wsnew_unsplit_rolldn(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalPointHourSource& source,
+    float calm_threshold_ms,const std::vector<int>& inactive_old_ids) {
+    // Fortran POINTS1/ROLLDN/SWAP packs the old puff slots, then new
+    // admissions are appended. Keep the original COPY (not std::swap)
+    // slot permutation in the transient driver, and atomically commit
+    // compaction AND the complete hour only after every substep succeeds.
+    // Existing active episode IDs are stable while their array slots move.
+    auto trial=*this;
+    (void)trial.compact_original_inactive(inactive_old_ids);
+    auto result=trial.advance_hour_point_mxsam99_native_wsnew_unsplit(
+        met,statics,controls,pg,urban,source,calm_threshold_ms);
+    *this=std::move(trial);
+    return result;
+}
+
+OriginalCompMxsamHour
 OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_unsplit(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& controls,const DispersionSetup& pg,
