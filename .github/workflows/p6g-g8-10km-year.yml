@@ -1,0 +1,43 @@
+name: P6G G8 10km multi-site whole-year selected kernels
+
+on:
+  push:
+    branches:
+      - codex/p6g-g8-10km-multistation-year-20261014
+  pull_request:
+    paths:
+      - "engine/gui_g5/p6_domain.py"
+      - "engine/gui_g5/tests/test_p6g_domain.py"
+      - "native_cpp/modules/p6_calmet/include/cteas/p6/p6g_selected_hour_bridge.hpp"
+      - "native_cpp/modules/p6_calmet/tests/p6g_g8_10km_year_stress_tests.cpp"
+      - "native_cpp/modules/p6_calmet/CMakeLists.txt"
+      - ".github/workflows/p6g-g8-10km-year.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-selected-multisite-annual:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pure-Python grid prerequisites
+        run: python3 -m pip install --quiet PyYAML
+      - name: Verify exact 10km station-containing footprint and no frozen changes
+        run: python3 -m unittest engine.gui_g5.tests.test_p6g_domain -v
+      - name: Configure GCC 11 C++20 strict test
+        run: cmake -S native_cpp/modules/p6_calmet -B "${{ runner.temp }}/p6g-g8" -DCMAKE_BUILD_TYPE=${{ matrix.build }}
+      - name: Build 10km source-selected integration and frozen scoped tests
+        run: |
+          cmake --build "${{ runner.temp }}/p6g-g8" \
+            --target cteas_p6g_g8_10km_year_tests cteas_p6g_observation_input_tests cteas_p6_inter2_tests cteas_p6_upper_tests cteas_p6_surface_tests -j2
+      - name: Run full 8784 hour annual and cross-year selected physics plus frozen contracts
+        run: |
+          ctest --test-dir "${{ runner.temp }}/p6g-g8" --output-on-failure \
+            -R 'p6g_g8_multisite_10km_8784h_selected_source_bridge|p6g_multistation_surface_upper_hourly_input_contract|p6d_original_inter2_selected_software|p6c_upper_rdupn_selected_scoped_software|p6c_surface_selected_scoped_software'
