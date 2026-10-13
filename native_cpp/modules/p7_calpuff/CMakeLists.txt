@@ -1148,9 +1148,9 @@ if(EXISTS "${P7_DGM_HOUR0}")
   add_test(NAME cteas_p7_original_first_hour_fstep_controller
     COMMAND cteas_p7_original_fstep_trace "${P7_DGM_HOUR0}" 1)
 endif()
-if(EXISTS "${P7_DGM_FIRST_SIX_HOURS}")
+if(EXISTS "${P7_DGM_FIRST_6H}")
   add_test(NAME cteas_p7_original_six_hour_fstep_controller
-    COMMAND cteas_p7_original_fstep_trace "${P7_DGM_FIRST_SIX_HOURS}" 6)
+    COMMAND cteas_p7_original_fstep_trace "${P7_DGM_FIRST_6H}" 6)
 endif()
 if(EXISTS "${P7_DGM_FULL_143H}")
   add_test(NAME cteas_p7_original_143_hour_fstep_controller
