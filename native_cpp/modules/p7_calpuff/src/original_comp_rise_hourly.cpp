@@ -210,26 +210,46 @@ OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_unsplit(
 }
 
 OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_existing_mxsam99_adaptive(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,bool urban) {
+    return advance_hour_mxsam99_core(
+        met,statics,controls,pg,urban,nullptr,true);
+}
+
+OriginalCompMxsamHour
 OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_source_order(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const NeutralCompControls& controls,const DispersionSetup& pg,
     bool urban,const OriginalPointHourSource& source,bool adaptive) {
+    return advance_hour_mxsam99_core(
+        met,statics,controls,pg,urban,&source,adaptive);
+}
+
+OriginalCompMxsamHour
+OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
+    const OriginalMetHour& met,const Calmet21Static& statics,
+    const NeutralCompControls& controls,const DispersionSetup& pg,
+    bool urban,const OriginalPointHourSource* source,bool adaptive) {
     if(controls.max_sampling_steps!=99 || controls.release_number!=1 ||
        !std::isfinite(controls.met_spacing_m) ||
        controls.met_spacing_m<=0.0F ||
        !std::isfinite(controls.max_sample_distance_cells) ||
        controls.max_sample_distance_cells<=0.0F ||
        controls.seconds!=3600.0F ||
-       source.cadence.hour_seconds!=3600.0 ||
-       source.point.source_type!=1 ||
-       source.mass.step_index!=0 ||
-       source.cadence.max_puffs>99 ||
-       last_id_>std::numeric_limits<int>::max()-99)
+       (source!=nullptr &&
+        (source->cadence.hour_seconds!=3600.0 ||
+         source->point.source_type!=1 ||
+         source->mass.step_index!=0 ||
+         source->cadence.max_puffs>99 ||
+         last_id_>std::numeric_limits<int>::max()-99)))
         throw std::invalid_argument(
             "original COMP MXSAM99 point-puff scope invalid");
-    const ReleaseCadence release=release_cadence(source.cadence);
+    // No releases is a valid history-continuation hour (no POINTS1).
+    const ReleaseCadence release=source
+        ?release_cadence(source->cadence):ReleaseCadence{};
     const float dt=static_cast<float>(release.emission_duration_s);
-    if(!std::isfinite(dt)||dt<=0 || release.puff_count<1)
+    if(source && (!std::isfinite(dt)||dt<=0 || release.puff_count<1))
         throw std::invalid_argument("invalid source-ported NPUFFS/DT");
 
     // Entire hour is a single transaction, including all old puff states,
@@ -317,8 +337,8 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_source_order(
         execute(id,0,plan);
     }
     for(int j=1;j<=release.puff_count;++j){
-        auto point=source.point;
-        auto mass=source.mass;
+        auto point=source->point;
+        auto mass=source->mass;
         point.release_index=j;
         point.emission_duration_s=dt;
         mass.emission_duration_s=dt;
@@ -329,7 +349,7 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_source_order(
             .new_puff=true,.source_type=1,
             .emission_period_s=dt,.step_seconds=controls.seconds,
             .release_number=j,
-            .wind_speed_ms=source.cadence.wind_speed_ms,
+            .wind_speed_ms=source->cadence.wind_speed_ms,
             .x_sam_len=controls.max_sample_distance_cells,
             .grid_spacing_m=controls.met_spacing_m,
             .max_sampling_steps=99
