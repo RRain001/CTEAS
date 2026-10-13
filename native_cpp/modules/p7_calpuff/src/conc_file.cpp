@@ -187,6 +187,57 @@ void ConcFileWriter::write_source_descriptor(const ConcSourceDescriptor& source)
     ++records_written_;
 }
 
+void ConcFileWriter::write_original_wrout1_general_header(
+    const OriginalWrout1GeneralHeader& h) {
+    require_true(impl_!=nullptr && !impl_->closed,"writer is closed");
+    require_true(h.start[0]>=1900 && h.start[0]<=2100 &&
+                 h.start[1]>=1 && h.start[1]<=366 &&
+                 h.start[2]>=0 && h.start[2]<=23 &&
+                 h.start[3]>=0 && h.start[3]<=3600,
+                 "WROUT1 general header invalid start date");
+    require_true(h.timing_grid[0]>0 && h.timing_grid[2]>0 &&
+                 h.timing_grid[3]>0 && h.timing_grid[4]>0 &&
+                 h.options[10]==13,
+                 "WROUT1 general header unsupported grid/source groups");
+    std::vector<std::uint8_t> body;
+    const auto chars=[&](const std::string& value,
+                         std::size_t width,const char* what) {
+        const auto text=padded(value,width,what);
+        append_bytes(body,text.data(),text.size());
+    };
+    chars(h.model,12,"WROUT1 model");
+    chars(h.model_version,12,"WROUT1 version");
+    chars(h.model_level,12,"WROUT1 level");
+    for(const auto value:h.start)append_int(body,value);
+    chars(h.timezone,8,"WROUT1 timezone");
+    for(const auto value:h.timing_grid)append_int(body,value);
+    for(const auto value:h.spacing_km){
+        require_true(std::isfinite(value)&&value>0.0F,
+                     "WROUT1 spacing invalid");
+        append_float(body,value);
+    }
+    append_int(body,h.original_one);
+    for(const auto value:h.met_origins_km){
+        require_true(std::isfinite(value),"WROUT1 MET origin invalid");
+        append_float(body,value);
+    }
+    for(const auto value:h.options)append_int(body,value);
+    for(const auto value:h.projection){
+        require_true(std::isfinite(value),"WROUT1 projection invalid");
+        append_float(body,value);
+    }
+    chars(h.pmap,8,"WROUT1 PMAP");
+    chars(h.utmhem,4,"WROUT1 UTMHEM");
+    chars(h.datum,8,"WROUT1 DATUM");
+    chars(h.datum_epoch,12,"WROUT1 DATEN");
+    for(const auto& text:h.latlon_labels)
+        chars(text,16,"WROUT1 raw latitude/longitude");
+    require_true(body.size()==300U,
+                 "WROUT1 source-ordered general header not 300 bytes");
+    write_framed(impl_->stream,body);
+    ++records_written_;
+}
+
 void ConcFileWriter::write_original_wrout1_source_type_counts(
     const std::array<std::int32_t,13>& counts) {
     require_true(impl_!=nullptr && !impl_->closed,"writer is closed");

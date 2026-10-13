@@ -100,6 +100,29 @@ struct ConcGridDescriptor {
 // CHARACTER*16 concentration units (16B), I4+CHARACTER*16 source (20B).
 // This does NOT infer or write the preceding 300/52-byte numeric records
 // or reconstruct the 3218 embedded input/control echo records.
+// Original CALPUFF 7.2.1 WROUT1 L57177-L57183 (300-byte record).
+// Input data is typed, independently assembled by the caller, and never
+// accepted from a frozen/output binary. The arrays reflect literal vendor
+// field order: timing/grid=[IRLG,IAVG,NSECDT,NX,NY]; options=[NSSTA1,
+// IBCOMP,IECOMP,JBCOMP,JECOMP,IBSAMP,JBSAMP,IESAMP,JESAMP,MESHDN,
+// NSRCTYPE,MSOURCE,NREC,NRGRP,NCTREC,LSAMP,NSPOUT,LCOMPRS,I2DMET,IUTMZN];
+// projection=[FEAST,FNORTH,RNLAT0,RELON0,XLAT1,XLAT2].
+struct OriginalWrout1GeneralHeader {
+    std::string model="CALPUFF";
+    std::string model_version="7.2.1";
+    std::string model_level="150618";
+    std::array<std::int32_t,4> start{}; // IBYR,IBJUL,IBHR,IBSEC
+    std::string timezone;
+    std::array<std::int32_t,5> timing_grid{};
+    std::array<float,2> spacing_km{};
+    std::int32_t original_one=1;
+    std::array<float,2> met_origins_km{};
+    std::array<std::int32_t,20> options{};
+    std::array<float,6> projection{};
+    std::string pmap, utmhem, datum, datum_epoch;
+    std::array<std::string,4> latlon_labels{}; // CLAT0,CLON0,CLAT1,CLAT2
+};
+
 struct OriginalWrout1Identity {
     std::array<std::string,3> run_titles{};
     std::string species_name="H-3";
@@ -133,6 +156,8 @@ public:
     // The native caller supplies the actual selected-case counts.
     void write_original_wrout1_source_type_counts(
         const std::array<std::int32_t,13>& source_count);
+    void write_original_wrout1_general_header(
+        const OriginalWrout1GeneralHeader& header);
     void write_species_field(const std::string& label, int species_index, int nx, int ny,
                              const std::vector<float>& values);
     void close();
