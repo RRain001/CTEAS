@@ -93,7 +93,44 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
     first_tail=[{"ordinal":2+ncomments+i+1,"bytes":n,
                  "ascii_prefix":data[p+4:p+4+min(n,32)].decode("latin-1",
                                                              errors="replace")}
-                for i,(p,n) in enumerate(tail[:6])]
+                for i,(p,n) in enumerate(tail[:12])]
+    # Identify the known 143 x (period, TOTAL descriptor, H-3 REAL4 field)
+    # records *by layout and payload*, and enumerate every remaining record.
+    # This closes the erroneous equation "non-DATA = unported headers".
+    counts=collections.Counter()
+    metadata=[]
+    for ordinal,(p,n) in enumerate(tail,start=3+ncomments):
+        body=data[p+4:p+4+n]
+        record_type=None
+        if n==32:
+            i=struct.unpack_from("<8i",body)
+            if (1900<=i[0]<=2100 and 1<=i[1]<=366 and 0<=i[2]<=23 and
+                1900<=i[4]<=2100 and 1<=i[5]<=366 and 0<=i[6]<=23):
+                record_type="period"
+            elif body[8:24].startswith(b"TOTAL") and (
+                 body[8:24].rstrip(b" ")==b"TOTAL"):
+                record_type="total_source"
+        if n==10015 and body[:8]==b"H-3     ":
+            record_type="h3_field"
+        if record_type:
+            counts[record_type]+=1
+        else:
+            metadata.append({
+                "ordinal":ordinal,
+                "bytes":n,
+                "hex_prefix":body[:64].hex(),
+                "latin1_prefix":body[:96].decode("latin-1",
+                                               errors="replace")
+            })
+    if counts!={"period":143,"total_source":143,"h3_field":143}:
+        raise AssertionError(f"unexpected original hourly stream topology: {counts}")
+    if len(metadata)!=trailing_nondata:
+        raise AssertionError("WROUT1 residual metadata count inconsistent")
+    for item in metadata:
+        print("P7_ORIGINAL_WROUT1_METADATA"
+              f" ORDINAL={item['ordinal']} BYTES={item['bytes']}"
+              f" HEX={item['hex_prefix']}"
+              f" TEXT={item['latin1_prefix']!r}")
     print("P7_ORIGINAL_WROUT1_PREFIX_DIAG"
           f" EMBEDDED_CONTROL_COMMENTS={ncomments}"
           f" COMMENTS_RECORD_BYTES={dict(sorted(comments_hist.items()))}"
@@ -118,6 +155,8 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
         "embedded_comment_first_lines":comment_examples,
         "remaining_nondata_records_after_embedded_comments":trailing_nondata,
         "first_records_after_embedded_comments":first_tail,
+        "independently_classified_data_record_counts":dict(counts),
+        "post_comment_extra_metadata_records":metadata,
         "avet_minutes":avet,"pgtime_minutes":pgtime,
         "original_PG_sigma_y_averaging_factor":factor,
         "avenue":"WROUT1 header records and whole-case concentration/period writer must be ported; AVET=PGTIME does not waive them",
