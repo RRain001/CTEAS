@@ -74,7 +74,7 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
         for(std::size_t i=0;i<nrecs;++i) {
             const float xr=static_cast<float>(i%nx)+1.0F;
             const float yr=static_cast<float>(i/nx)+1.0F;
-            const auto screen=original_puff_screen(xo,yo,xn,yn,xr,yr,radius);
+            const auto screen=original_puff_screen(xo,yo,xn,yn,xr,yr,radius*radius);
             if(!screen.has_impact ||
                static_cast<float>(screen.closest_distance_squared)>rec_radius*rec_radius)
                 continue;

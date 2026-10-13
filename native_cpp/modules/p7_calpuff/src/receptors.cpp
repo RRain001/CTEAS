@@ -184,18 +184,17 @@ double erf_difference(double x1, double x2) {
 
 PuffScreeningResult original_puff_screen(
     double x_old,double y_old,double x_new,double y_new,
-    double x_receptor,double y_receptor,double puff_radius) {
-    for(double v:{x_old,y_old,x_new,y_new,x_receptor,y_receptor,puff_radius})
+    double x_receptor,double y_receptor,double puff_radius_squared) {
+    for(double v:{x_old,y_old,x_new,y_new,x_receptor,y_receptor,puff_radius_squared})
         require_finite(v,"PFSCRN input");
-    require_true(puff_radius>0.0,"PFSCRN radius must be positive");
+    require_true(puff_radius_squared>0.0,"PFSCRN radius squared must be positive");
     // Vendor calpuff.for L4649-4678. Preserve REAL*4 and MIN/MAX order.
     const R dx=static_cast<R>(x_new)-static_cast<R>(x_old);
     const R dy=static_cast<R>(y_new)-static_cast<R>(y_old);
     const R dx1=static_cast<R>(x_old)-static_cast<R>(x_receptor);
     const R dy1=static_cast<R>(y_old)-static_cast<R>(y_receptor);
     const R c1=dx*dx+dy*dy;
-    const R radius=static_cast<R>(puff_radius);
-    const R radius2=radius*radius;
+    const R radius2=static_cast<R>(puff_radius_squared);
     require_true(std::isfinite(radius2)&&radius2>0.0F,
                  "PFSCRN radius squared underflows/overflows REAL4");
     const R a=c1/radius2;
