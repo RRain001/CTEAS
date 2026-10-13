@@ -1283,6 +1283,26 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}")
       "${P7G_LOCKED_CASE_MET}")
 endif()
 
+# Selected genuine Hefei 2022 Group 13b stack -> original 143h METFM1
+# WINDSET at HTSTAK, no DGM driving input and no PRFIN/parity claim.
+add_executable(cteas_p7_original_hefei_source_met_bridge_tests
+  tests/original_hefei_source_met_bridge_tests.cpp)
+target_link_libraries(cteas_p7_original_hefei_source_met_bridge_tests PRIVATE
+  cteas_p7_original_release_wind cteas_p7_calmet21)
+if(MSVC)
+  target_compile_options(cteas_p7_original_hefei_source_met_bridge_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_original_hefei_source_met_bridge_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+set(P7_HEFEI_POINT_INP
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7_HEFEI_POINT_INP}")
+  add_test(NAME cteas_p7_hefei_source_met_stack_bridge
+    COMMAND cteas_p7_original_hefei_source_met_bridge_tests
+      "${P7G_LOCKED_CASE_MET}" "${P7_HEFEI_POINT_INP}")
+endif()
+
 # Restricted native CALCPF gridded point-source bridge: PFSCRN/PFSAMP/VCOUP.
 # This is NOT a replacement for full original receptor-specific PUFRECS.
 # Standalone original-vs-native PFSCRN REAL4 bit comparison probe.
