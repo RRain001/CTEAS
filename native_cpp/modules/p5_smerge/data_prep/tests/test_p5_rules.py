@@ -109,7 +109,7 @@ class P5SelectionTests(unittest.TestCase):
     def test_selection_never_uses_geographic_centre_bbox(self):
         # A shifted display/metadata centre must not move the numerical grid.
         (self.root / "center").write_text(
-            "latitude: 31.90\\nlongitude: 117.10\\n")
+            "latitude: 31.90\nlongitude: 117.10\n")
         st = [station("58321099999", 31.939774444, 117.141610855)]
         result = self.execute(st, {"58321099999": 8000})
         self.assertEqual(result["mode"], "OBSERVED")
