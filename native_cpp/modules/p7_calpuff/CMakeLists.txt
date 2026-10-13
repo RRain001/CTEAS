@@ -1403,6 +1403,31 @@ if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7_HEFEI_POINT_INP}" AND
       "${P7_HEFEI_FIRSTHOUR_DGM}")
 endif()
 
+# Frozen Hefei 2022 native full first-hour (1275 COMP substeps) H-3-only
+# receptor integration with genuine MCTADJ2/PTLAPS, MDRY=1 and original
+# puff.con as read-only diagnostic; scientific concentration parity is OPEN.
+add_executable(cteas_p7_hefei_firsthour_native_h3_receptors_tests
+  tests/original_hefei_firsthour_native_receptors_tests.cpp)
+target_link_libraries(cteas_p7_hefei_firsthour_native_h3_receptors_tests PRIVATE
+  cteas_p7_original_comp_rise_hourly cteas_p7_original_point_prfin
+  cteas_p7_calmet21 cteas_p7_control
+  cteas_p7_original_native_terrain cteas_p7_original_flat_calcpf
+  cteas_p7_receptors cteas_p7_dry_deposition)
+if(MSVC)
+  target_compile_options(cteas_p7_hefei_firsthour_native_h3_receptors_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p7_hefei_firsthour_native_h3_receptors_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+endif()
+set(P7_HEFEI_REFERENCE_CON
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con")
+if(EXISTS "${P7G_LOCKED_CASE_MET}" AND EXISTS "${P7_HEFEI_POINT_INP}"
+   AND EXISTS "${P7_HEFEI_REFERENCE_CON}")
+  add_test(NAME cteas_p7_hefei_real_firsthour_h3_receptor_diagnostic
+    COMMAND cteas_p7_hefei_firsthour_native_h3_receptors_tests
+      "${P7G_LOCKED_CASE_MET}" "${P7_HEFEI_POINT_INP}" "${P7_HEFEI_REFERENCE_CON}")
+endif()
+
 # Production native COMP post-rise calm IDOPT=1 opt-in,
 # original TURBSET minima, transaction and unsupported branch rollback.
 add_executable(cteas_p7_original_comp_calm_integrated_tests
