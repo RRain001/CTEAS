@@ -70,13 +70,16 @@ def _positive(value: object, field: str) -> float:
 
 def fit_domain(config: dict, stations: list[Station], *,
                margin_km: float = 5.0, max_horizontal_cells: int = 10000,
-               spacings_km: tuple[float,...] = SPACINGS_KM) -> dict:
+               spacings_km: tuple[float,...] = SPACINGS_KM,
+               fixed_spacing_km: float | None = None) -> dict:
     if not stations:
         raise ValueError("Explicit station positions are required to fit P6 grid")
     if not math.isfinite(margin_km) or margin_km < 0:
         raise ValueError("margin_km must be finite and nonnegative")
     if max_horizontal_cells<1 or max_horizontal_cells>4_000_000:
         raise ValueError("max_horizontal_cells outside 1..4000000")
+    if fixed_spacing_km is not None:
+        fixed_spacing_km = _positive(fixed_spacing_km, "fixed_spacing_km")
     grid=config["preprocess"]["grid"]
     center=grid["center"]
     lon=float(center["longitude"])
@@ -112,8 +115,11 @@ def fit_domain(config: dict, stations: list[Station], *,
     # Grid origin is rounded to .001km; 2m of guard avoids rounding exclusion.
     length=2*max_dx
     width=2*max_dy
-    candidates=sorted({float(s) for s in (*spacings_km,resolution)
-                       if math.isfinite(float(s)) and float(s)>=resolution})
+    if fixed_spacing_km is not None and fixed_spacing_km < resolution:
+        raise ValueError("fixed_spacing_km cannot refine an existing grid")
+    candidates=([fixed_spacing_km] if fixed_spacing_km is not None else
+                sorted({float(s) for s in (*spacings_km,resolution)
+                        if math.isfinite(float(s)) and float(s)>=resolution}))
     selected=None
     for dkm in candidates:
         nx=math.ceil(length/dkm)
@@ -154,6 +160,7 @@ def fit_domain(config: dict, stations: list[Station], *,
         "station_ids":[{"kind":s.kind,"id":s.id} for s,_,_ in observations],
         "margin_km":margin_km,
         "max_horizontal_cells":max_horizontal_cells,
+        "requested_spacing_km":fixed_spacing_km,
         "station_geometry_verified":True,
         "native_p6d_physics_accepted":False,
         "proposed_config":new,
@@ -167,6 +174,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="JSON station list: id, kind=surface/upper, lon, lat")
     ap.add_argument("--margin-km",type=float,default=5.0)
     ap.add_argument("--max-horizontal-cells",type=int,default=10000)
+    ap.add_argument("--spacing-km",type=float,default=None,
+                    help="Explicit fixed horizontal spacing (e.g. 10 for multi-site stress tests)")
     ap.add_argument("--apply",action="store_true",help="Explicitly update case.yaml/grid.cmn")
     args=ap.parse_args(argv)
     root=case_dir(args.case)
@@ -174,7 +183,8 @@ def main(argv: list[str] | None = None) -> int:
     config=yaml.safe_load(manifest.read_text(encoding="utf-8"))
     plan=fit_domain(config,read_stations(args.stations),
                     margin_km=args.margin_km,
-                    max_horizontal_cells=args.max_horizontal_cells)
+                    max_horizontal_cells=args.max_horizontal_cells,
+                    fixed_spacing_km=args.spacing_km)
     if args.apply:
         if any((root/"run/met"/name).is_file() for name in ("met.dat","MET.DAT")):
             ap.error("Refusing to mutate existing P6 outputs; clone a new G5 case")
