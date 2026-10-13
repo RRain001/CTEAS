@@ -39,7 +39,7 @@ int main_run(const std::string& file,const int expected_hours) {
     std::set<int> hours;
     std::size_t records=0,correct_new=0,wrong_new=0;
     std::size_t old_measured=0,old_postwind_differences=0;
-    int first_error_hour=0,first_error_puff=0,first_error_ns=0,first_error_pred=0;
+    int first_error_hour=0;
     int first_old_hour=0,first_old_puff=0,first_old_ns=0,first_old_pred=0;
     OriginalRecord rec;
     while(input.read(reinterpret_cast<char*>(&rec),sizeof(rec))) {
@@ -80,8 +80,7 @@ int main_run(const std::string& file,const int expected_hours) {
             else {
                 ++wrong_new;
                 if(!first_error_hour) {
-                    first_error_hour=hour;first_error_puff=puff;
-                    first_error_ns=nsam;first_error_pred=plan.sampling_steps;
+                    first_error_hour=hour;
                     std::cerr<<"P7_ORIGINAL_COMP_NEW_FIRST_DIFFERENCE"
                              <<" HOUR="<<hour<<" PUFF="<<puff
                              <<" REF_NSAM="<<nsam<<" CPP_NSAM="<<plan.sampling_steps
