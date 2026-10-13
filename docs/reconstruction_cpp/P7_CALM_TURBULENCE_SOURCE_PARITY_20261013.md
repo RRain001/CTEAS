@@ -21,7 +21,7 @@ This addition preserves the Draft PR #41 physical-acceptance boundary. It does n
 - [Original IDOPT=1 SIGTY/SIGTZ vendor parity #38407647908](https://github.com/RRain001/CTEAS/actions/runs/38407647908): 48 separate controlled cases, 288 output numbers, reported MAX_REL 0 at probe printing precision; both CTests pass. This is kernel-level parity, **not a full CALPUFF run**.
 - [Native locked-Hefei SVMIN/SWMIN source gate #38409235549](https://github.com/RRain001/CTEAS/actions/runs/38409235549): all 12 original class × land/water combinations, direct parser input, source time scales; 3/3 CTests pass.
 - [Original CALPUFF COMP ILW source inspection #38409431034](https://github.com/RRain001/CTEAS/actions/runs/38409431034): source-proven cell-choice ordering.
-- [Full real MET land-use bridge #38410307840](https://github.com/RRain001/CTEAS/actions/runs/38410307840): **PENDING when this audit entry was created**. New gate decodes immutable 143 hourly MET snapshots and checks 2,500 original grid cells × six classes against original `MAKEGEO` bounds. Treat as PASS only after successful Actions evidence.
+- [Full real MET land-use bridge #38410307840](https://github.com/RRain001/CTEAS/actions/runs/38410307840): **SUCCESS, 3/3 CTests PASS**. All 143 original meteorological hours read; across the fixed 50×50 static ILANDU grid the original MAKEGEO water range 50–55 classifies **2,500 LAND cells and 0 WATER cells**. The 2,500 original cells × 6 stability classes yielded **15,000 exact native SVMIN/SWMIN mapping checks**. This proves the selected frozen static domain uses only the original land column, **not** that water physics can be deleted from the general implementation.
 
 ## Strict remaining limits
 
