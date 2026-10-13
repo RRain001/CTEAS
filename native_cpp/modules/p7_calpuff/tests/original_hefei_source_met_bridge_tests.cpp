@@ -2,6 +2,7 @@
 // plus ORIGINAL METFM1 full hourly winds. This is not PRFIN or CALCPF parity.
 #include "cteas/puff/original_met_hours.hpp"
 #include "cteas/puff/original_release_wind.hpp"
+#include "cteas/puff/plume_rise.hpp"
 #include "cteas/puff/original_native_terrain.hpp"
 #include <algorithm>
 #include <cmath>
@@ -112,6 +113,91 @@ int main(int argc,char** argv){
                             .release_height_m=source.row[2],
                             .calm_threshold_ms=0.5F}).layer_1based;
                     const auto column=(static_cast<std::size_t>(layer)-1U)*n+cell;
+                    // POINTS1 L15454,15509,15527-15548: the locked
+                    // METFM1 2-D TEMP2D controls BOTH buoyancy and momentum
+                    // flux. The 3-D stack-level T is not this source TEMP.
+                    // PRFIN is source-ported, but SQRTS is intentionally
+                    // not fabricated: it is immaterial only at PG class A-D.
+                    const auto pg=hour.ipgt[cell];
+                    demand(pg>=1&&pg<=4,
+                        "real first-hour PRFIN requires stable SQRTS/PTLAPS port");
+                    const auto wind=cteas::puff::original_release_wind_metfm1(
+                        hour,statics,{.x_cells=x,.y_cells=y,
+                            .release_height_m=source.row[2],
+                            .calm_threshold_ms=0.5F});
+                    const auto flux=cteas::puff::stack_fluxes({
+                        .diameter_m=source.row[4],
+                        .exit_velocity_ms=source.row[5],
+                        .stack_temperature_k=source.row[6],
+                        .ambient_temperature_k=hour.tempk[cell],
+                        .temperature_excess_k=std::max(0.0F,
+                            source.row[6]-hour.tempk[cell]),
+                        .momentum_flux_factor=1.0 // frozen Group 13b FMFAC
+                    });
+                    demand(flux.buoyancy_m4s3>0&&flux.momentum_m4s2>0,
+                           "genuine HTO_STACK buoyancy/momentum flux absent");
+                    const auto tip=cteas::puff::stack_tip_downwash({
+                        .stack_height_m=source.row[2],
+                        .diameter_m=source.row[4],
+                        .momentum_flux=flux.momentum_m4s2,
+                        .exit_velocity_ms=source.row[5],
+                        .stack_wind_speed_ms=wind.wind_speed_ms
+                    });
+                    const auto rise=cteas::puff::final_plume_rise({
+                        .exit_velocity_ms=source.row[5],
+                        .diameter_m=source.row[4],
+                        .momentum_flux=flux.momentum_m4s2,
+                        .buoyancy_flux=flux.buoyancy_m4s3,
+                        .stack_wind_speed_ms=wind.wind_speed_ms,
+                        .stability_class=pg,
+                        .sqrt_stability_s=0.0 // PRFIN A-D does not read SQRTS
+                    });
+                    const float pbl=hour.zi[cell];
+                    const float stack=source.row[2];
+                    const float transition=0.67F*(pbl-stack);
+                    // Original POINTS1 L15562 calls PRFPP on A-D, positive
+                    // buoyancy even if the plume does not penetrate. PRFPP
+                    // only needs the upstream PTLAPS gradient if the final
+                    // rise exceeds 0.67*(PBL-HTSTAK); fail closed otherwise.
+                    demand(pbl>stack && rise.z_final_m<=transition,
+                        "first-hour PRFPP depends on PTLAPS: native full case held");
+                    const auto partial=cteas::puff::partial_penetration_rise({
+                        .final_rise_m=rise.z_final_m,
+                        .buoyancy_flux=flux.buoyancy_m4s3,
+                        .stack_wind_speed_ms=wind.wind_speed_ms,
+                        .stack_height_m=stack,
+                        .mixing_height_m=pbl,
+                        .ambient_temperature_k=hour.tempk[cell],
+                        .inversion_gradient_k_per_m=0.0,
+                        .inversion_jump_k=0.0
+                    });
+                    demand(partial.final_rise_m==rise.z_final_m &&
+                           partial.mass_fraction_mixed==1.0 &&
+                           partial.max_height_m==pbl,
+                           "source PRFPP no-penetration branch changed plume physics");
+                    const float heff=static_cast<float>(
+                        stack+partial.final_rise_m-tip);
+                    const auto upper=cteas::puff::original_release_wind_metfm1(
+                        hour,statics,{.x_cells=x,.y_cells=y,
+                            .release_height_m=heff,
+                            .calm_threshold_ms=0.5F});
+                    demand(std::isfinite(heff)&&heff>stack &&
+                           std::isfinite(rise.x_final_m)&&rise.x_final_m>0,
+                           "native first-hour PRFIN produced invalid effective height");
+                    std::cout<<"P7_FIRST_HOUR_NATIVE_PRFIN"
+                             <<" STACK_WS_MS="<<wind.wind_speed_ms
+                             <<" HEFF_WS_MS="<<upper.wind_speed_ms
+                             <<" TEMP2D_K="<<hour.tempk[cell]
+                             <<" FLUXB="<<flux.buoyancy_m4s3
+                             <<" FLUXM="<<flux.momentum_m4s2
+                             <<" STKTIP_M="<<tip
+                             <<" XFINAL_M="<<rise.x_final_m
+                             <<" RISE_M="<<rise.z_final_m
+                             <<" HEFF_M="<<heff
+                             <<" PRFPP_FMIX="<<partial.mass_fraction_mixed
+                             <<" PRFPP_HMAX="<<partial.max_height_m
+                             <<" PTLAPS_INDEPENDENT=YES"
+                             <<" FULL_COMP=NOT_YET_ACCEPTED\\n";
                     std::cout<<"P7_FIRST_HOUR_RELEASE_MET"
                              <<" YEAR="<<hour.begin.year
                              <<" JULIAN="<<hour.begin.julian_day
