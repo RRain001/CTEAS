@@ -6,6 +6,8 @@ on:
     paths:
       - .github/workflows/p6-native-causal-hourly.yml
       - scripts/p6_run_native_causal_hourly.py
+      - native_cpp/modules/p6_calmet/src/native_hourly_driver_main.cpp
+      - native_cpp/modules/p6_calmet/CMakeLists.txt
       - scripts/p6_diagnose_p6e_three_fields.py
       - scripts/p6_diagnose_wind_quantization.py
       - native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp
@@ -16,6 +18,8 @@ on:
     paths:
       - .github/workflows/p6-native-causal-hourly.yml
       - scripts/p6_run_native_causal_hourly.py
+      - native_cpp/modules/p6_calmet/src/native_hourly_driver_main.cpp
+      - native_cpp/modules/p6_calmet/CMakeLists.txt
       - scripts/p6_diagnose_p6e_three_fields.py
       - scripts/p6_diagnose_wind_quantization.py
       - native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp
@@ -53,7 +57,7 @@ jobs:
           cmake -S native_cpp/modules/p6_calmet \
              -B "$RUNNER_TEMP/native-p6d" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
           cmake --build "$RUNNER_TEMP/native-p6d" \
-             --target cteas_p6_realcase_wind_field cteas_p6_native_cgamma_grid_143h --parallel 2
+             --target cteas_p6_realcase_wind_field cteas_p6_native_cgamma_grid_143h cteas_p6_native_hourly_driver --parallel 2
           cmake -S native_cpp/modules/p6_calmet/p6e \
              -B "$RUNNER_TEMP/native-p6e" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
           cmake --build "$RUNNER_TEMP/native-p6e" \
@@ -62,7 +66,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/p6_run_native_causal_hourly.py \
+          "$RUNNER_TEMP/native-p6d/cteas_p6_native_hourly_driver" \
             --case "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
             --p6d "$RUNNER_TEMP/native-p6d/cteas_p6_realcase_wind_field" \
             --p6e "$RUNNER_TEMP/native-p6e/p6e_calmet_dat21" \
@@ -105,7 +109,7 @@ jobs:
           cmake -S native_cpp/modules/p6_calmet \
              -B "$RUNNER_TEMP/native-p6d" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
           cmake --build "$RUNNER_TEMP/native-p6d" \
-             --target cteas_p6_realcase_wind_field cteas_p6_native_cgamma_grid_143h --parallel 2
+             --target cteas_p6_realcase_wind_field cteas_p6_native_cgamma_grid_143h cteas_p6_native_hourly_driver --parallel 2
           cmake -S native_cpp/modules/p6_calmet/p6e \
              -B "$RUNNER_TEMP/native-p6e" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
           cmake --build "$RUNNER_TEMP/native-p6e" \
@@ -114,7 +118,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/p6_run_native_causal_hourly.py \
+          "$RUNNER_TEMP/native-p6d/cteas_p6_native_hourly_driver" \
             --case "$GITHUB_WORKSPACE/original_locked_case/project/cases/hefei5km_2022_reference_case_20261011" \
             --p6d "$RUNNER_TEMP/native-p6d/cteas_p6_realcase_wind_field" \
             --p6e "$RUNNER_TEMP/native-p6e/p6e_calmet_dat21" \
@@ -138,7 +142,7 @@ jobs:
         with:
           name: p6-causal-original-case-143h
           path: |
-            ${{ runner.temp }}/p6-native-causal-143h/native_hourly_manifest.json
+            ${{ runner.temp }}/p6-native-causal-143h/native_cpp_hourly_manifest.json
             ${{ runner.temp }}/p6-native-causal-143h/native_causal_calmet.dat
             ${{ runner.temp }}/p6-native-causal-143h/writer.log
             ${{ runner.temp }}/p6-native-causal-143h/three_field_control/p6e_three_field_wind_control.json
