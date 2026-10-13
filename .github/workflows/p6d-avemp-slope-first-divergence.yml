@@ -50,6 +50,7 @@ jobs:
           python3 scripts/p6d_forensic_avetmp_first_divergence.py cpp \
             --work "$root" \
             --header native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/avetmp.hpp
+            --main-file native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp
           cmake -S native_cpp/modules/p6_calmet -B "$root/native-build" \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-12
           cmake --build "$root/native-build" \
@@ -81,6 +82,8 @@ jobs:
             ${{ runner.temp }}/p6d-avetmp-${{ github.run_id }}-${{ github.run_attempt }}/avetmp_first_divergence.json
             ${{ runner.temp }}/p6d-avetmp-${{ github.run_id }}-${{ github.run_attempt }}/cpp_avetmp_probe.log
             ${{ runner.temp }}/p6d-avetmp-${{ github.run_id }}-${{ github.run_attempt }}/original_avetmp_probe.txt
+            ${{ runner.temp }}/p6d-avetmp-${{ github.run_id }}-${{ github.run_attempt }}/dgm_qh_pre_probe.txt
+            ${{ runner.temp }}/p6d-avetmp-${{ github.run_id }}-${{ github.run_attempt }}/dgm_qh_post_probe.txt
             ${{ runner.temp }}/p6d-avetmp-${{ github.run_id }}-${{ github.run_attempt }}/original/dgm-audit.json
           if-no-files-found: warn
           retention-days: 14
