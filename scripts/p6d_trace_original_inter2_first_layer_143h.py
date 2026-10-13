@@ -29,6 +29,8 @@ PLANE=2500
 HEADER="<5i4f"
 H_SIZE=struct.calcsize(HEADER)
 REC_SIZE=H_SIZE+4*PLANE*4
+SLOPE_HEADER='<5i'
+SLOPE_RECORD=struct.calcsize(SLOPE_HEADER)+2*PLANE*4
 # This helper only READS original COMMON state, then writes its own file;
 # it does not modify the original arrays, calls, or output stream.
 HELPER=r"""
@@ -56,11 +58,34 @@ c --- Before INTER2: the corrected FRADJ+SLOPE first-guess UG/VG.
       write(94) ((vg(i,j,1),i=1,nx),j=1,ny)
       return
       end
+c --- Independent source pre/post SLOPE wind stage. Write-only, does
+c --- not change COMMON arrays or frozen original CALMET.DAT bytes.
+      subroutine dgmfirstlayer1wind(stage)
+      include 'params.met'
+      include 'gen.met'
+      include 'grid.met'
+      include 'd1.met'
+      integer i,j,stage
+      logical opened
+      save opened
+      data opened/.false./
+      if(.not.opened)then
+         open(95,file='dgm_slope_layer1.bin',
+     1        form='unformatted',access='stream',status='replace')
+         opened=.true.
+      endif
+      write(95) stage,ndathrb,nsecb,nx,ny
+      write(95) ((ug(i,j,1),i=1,nx),j=1,ny)
+      write(95) ((vg(i,j,1),i=1,nx),j=1,ny)
+      return
+      end
 """
 STATION_COLS=("surface_u","surface_v","upper_u","upper_v")
 TOL={
     "surface_u":(2.e-5,1.e-5),"surface_v":(2.e-5,1.e-5),
     "upper_u":(2.e-5,1.e-5),"upper_v":(2.e-5,1.e-5),
+    "before_slope_u":(1.e-4,1.e-5),"before_slope_v":(1.e-4,1.e-5),
+    "after_slope_u":(1.e-4,1.e-5),"after_slope_v":(1.e-4,1.e-5),
     "pre_inter2_u":(1.e-4,1.e-5),"pre_inter2_v":(1.e-4,1.e-5),
     "inter2_u":(1.e-4,1.e-5),"inter2_v":(1.e-4,1.e-5)
 }
@@ -77,7 +102,14 @@ def patch_vendor(original,target):
         lines[6071].strip()!="ENDIF" or
         "Lake breeze region" not in lines[6075]):
         raise RuntimeError("original INTER2 call-order insertion anchors changed")
+    if ("if (ISLOPE.EQ.1)CALL SLOPE" not in lines[5721] or
+        "300 CONTINUE" not in lines[5731]):
+        raise RuntimeError("original slope-phase insertion anchors changed")
+    # Insert in reverse source-order so original line indices remain fixed.
+    # Before the SLOPE call and after the UG/VG+=USLOPE/VSLOPE loop.
     lines.insert(6072,"      call dgmfirstlayer1\n")
+    lines.insert(5732,"      call dgmfirstlayer1wind(14)\n")
+    lines.insert(5721,"      call dgmfirstlayer1wind(13)\n")
     target.write_text("".join(lines)+HELPER)
 def read_orig(path):
     raw=path.read_bytes()
@@ -97,6 +129,27 @@ def read_orig(path):
         yield dict(zip(STATION_COLS,station))|{
             "inter2_u":u,"inter2_v":v,
             "pre_inter2_u":ug,"pre_inter2_v":vg}
+def read_slope_original(path):
+    raw=path.read_bytes()
+    if len(raw)!=NH*2*SLOPE_RECORD:
+        raise RuntimeError(f"original pre/post-SLOPE record count drift: {len(raw)}")
+    result=[]
+    for h in range(NH):
+        fields={}
+        for pass_idx,kind in enumerate((13,14)):
+            start=(2*h+pass_idx)*SLOPE_RECORD
+            marker,packed,second,nx,ny=struct.unpack_from(SLOPE_HEADER,raw,start)
+            time=dt.datetime(2022,1,1)+dt.timedelta(hours=h)
+            stamp=time.year*100000+time.timetuple().tm_yday*100+time.hour
+            if (marker,packed,second,nx,ny)!=(kind,stamp,0,NX,NY):
+                raise RuntimeError(f"original SLOPE phase/hour/shape mismatch: hour {h+1} stage {kind}")
+            pos=start+struct.calcsize(SLOPE_HEADER)
+            prefix="before_slope_" if kind==13 else "after_slope_"
+            fields[prefix+"u"]=struct.unpack_from("<2500f",raw,pos)
+            fields[prefix+"v"]=struct.unpack_from("<2500f",raw,pos+PLANE*4)
+        result.append(fields)
+    return result
+
 def read_native_grid(path):
     raw=path.read_bytes()
     if len(raw)!=9*PLANE*4:
@@ -132,6 +185,10 @@ def main():
     source=run_dir/"dgm_inter2_layer1.bin"
     if not source.is_file():
         raise RuntimeError("original INTER2 first-layer trace absent")
+    slope_source=run_dir/"dgm_slope_layer1.bin"
+    if not slope_source.is_file():
+        raise RuntimeError("original pre/post-SLOPE first-layer trace absent")
+    orig_slopes=read_slope_original(slope_source)
     with (native/"station_inter2_layer1.csv").open(newline="") as f:
         rows=list(csv.DictReader(f))
     if len(rows)!=NH or list(rows[0])!=["hour_end",*STATION_COLS]:
@@ -141,13 +198,23 @@ def main():
               "source_and_native_both_missing":0}
            for k in TOL}
     for h,orig in enumerate(read_orig(source),1):
+        orig.update(orig_slopes[h-1])
         actual_row=rows[h-1]
         if actual_row["hour_end"]!=label(h):
             raise RuntimeError("native station INTER2 hour-end label drift")
         for field in TOL:
             reference=orig[field]
             native_name=(field.replace("pre_inter2_","slope_corrected_")
-                          if field.startswith("pre_inter2_") else field)
+                          .replace("after_slope_","slope_corrected_")
+                          if field.startswith(("pre_inter2_","after_slope_")) else field)
+            if field.startswith("before_slope_"):
+                comp=field[len("before_slope_"):]
+                # In this coupled second pass FRADJ may be inactive, in which
+                # case WIND1 is the exact prior stage. Never use the source
+                # field to supply the native stage.
+                correction=native/f"fradj_corrected_{comp}_{label(h)}.f32"
+                native_name=("fradj_corrected_" if correction.is_file()
+                             else "wind1_")+comp
             got=(float(actual_row[field]) if field in STATION_COLS else
                  read_native_grid(native/f"{native_name}_{label(h)}.f32"))
             rr=(reference,) if field in STATION_COLS else reference
@@ -191,9 +258,10 @@ def main():
         "source_original_sha256":vendor_audit.ORIGINAL_CALMET_SHA256,
         "frozen_met_dat_sha256":result["met_dat_sha256"],
         "trace_file_sha256":digest(source),
+        "original_pre_post_slope_trace_sha256":digest(slope_source),
         "no_original_intermediate_injected_into_native":True,
         "levels_compared":[1],"hours":NH,"grid":[NX,NY],
-        "stage":"DIAGNO original post-FRADJ/SLOPE UG/VG + post-INTER2 U/V + station US/VS level1",
+        "stage":"DIAGNO original pre-SLOPE UG/VG, post-SLOPE UG/VG, post-INTER2 U/V + station US/VS layer1",
         "missing_data_policy":"Original EDITL=900, EDIT=999 vs native EDITL=999998, EDIT=999999: both invalid upper-layer values compare as semantically missing; no numeric acceptance claim for missing data",
         "fields":stats,"tolerances":TOL,
         "full_143h_UVW_pass":False}
