@@ -1,0 +1,51 @@
+name: P7 CALPUFF original SIGTY SIGTZ calm-source inspection
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/p7-original-sigma-calm-source.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: p7-original-sigma-calm-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  original-sigma-calm-source:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /native_cpp/modules/p7_calpuff/reference/sigma_source_anchor.py
+            /native_cpp/modules/p7_calpuff/reference/sigma_source_anchor.json
+            /engine/vendor/src/CALPUFF_v7.2.1_L150618/**
+      - name: Audit original IDOPTYS and IDOPTZS 1 branches, source pinned
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p7_calpuff/reference/sigma_source_anchor.py \
+            --check native_cpp/modules/p7_calpuff/reference/sigma_source_anchor.json
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          source=Path('engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for')
+          lines=source.read_bytes().decode('latin-1').splitlines()
+          for name,lo,hi in [('SIGTY',50797,51215),('SIGTZ',51263,51752)]:
+              sub=lines[lo-1:hi]
+              hits=[i for i,s in enumerate(sub) if re.search(
+                  r'IDOPTY|IDOPTZ|TSIGV|TSIGW|TYIDR|LAGRANG|CALM|BVFS|^\s*\d{2,5}\s+CONTINUE',s,re.I)]
+              selected=set(range(min(65,len(sub))))
+              for i in hits:
+                  selected.update(range(max(0,i-12),min(len(sub),i+24)))
+              print(f'P7_VENDOR_CALM_SOURCE_START {name} lines={lo}-{hi} matches={len(hits)}')
+              previous=-10
+              for i in sorted(selected):
+                  if i>previous+1: print('... omitted ...')
+                  print(f'[{lo+i:05d}] {sub[i]}')
+                  previous=i
+              print(f'P7_VENDOR_CALM_SOURCE_END {name}')
+          PY
