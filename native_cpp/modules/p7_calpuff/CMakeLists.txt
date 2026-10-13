@@ -1323,7 +1323,7 @@ add_library(cteas_p7_original_native_terrain STATIC
 target_include_directories(cteas_p7_original_native_terrain PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(cteas_p7_original_native_terrain PUBLIC
-  cteas_p7_terrain_state cteas_p7_valley_width)
+  cteas_p7_terrain_state cteas_p7_valley_width cteas_p7_step)
 add_executable(cteas_p7_original_native_terrain_tests
   tests/original_native_terrain_tests.cpp)
 target_link_libraries(cteas_p7_original_native_terrain_tests PRIVATE
