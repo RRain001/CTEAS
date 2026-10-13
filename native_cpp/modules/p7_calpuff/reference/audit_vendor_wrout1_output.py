@@ -135,6 +135,11 @@ def audit(control: Path, original: Path, report: Path | None) -> dict:
               f" ORDINAL={item['ordinal']} BYTES={item['bytes']}"
               f" HEX={item['hex_prefix']}"
               f" TEXT={item['latin1_prefix']!r}")
+    numeric_header_pos,numeric_header_size=record_layout[2+ncomments]
+    if numeric_header_size!=300:
+        raise AssertionError("unexpected numeric WROUT1 general metadata record size")
+    header=data[numeric_header_pos+4:numeric_header_pos+304]
+    print("P7_VENDOR_WROUT1_300B_HEX="+header.hex())
     print("P7_ORIGINAL_WROUT1_PREFIX_DIAG"
           f" EMBEDDED_CONTROL_COMMENTS={ncomments}"
           f" COMMENTS_RECORD_BYTES={dict(sorted(comments_hist.items()))}"
@@ -203,6 +208,13 @@ def source_wrou1_writes(vendor: Path) -> None:
     for line_number in range(57174,57235):
         print(f"P7_VENDOR_WROUT1_RAW LINE={line_number}"
               f" CODE={source[line_number-1][:126]!r}")
+    # Print declarations visible in the original WROUT1 routine; names
+    # matter for mixed REAL4/INTEGER4/CHARACTER header serialization.
+    for line_number in range(56770,57126):
+        raw=source[line_number-1]
+        if re.search(r"^      (?:include|character|integer|real|logical|double|data)\b",raw,re.I):
+            print(f"P7_VENDOR_WROUT1_DECL LINE={line_number}"
+                  f" CODE={raw[:126]!r}")
 
 
 def main() -> int:
