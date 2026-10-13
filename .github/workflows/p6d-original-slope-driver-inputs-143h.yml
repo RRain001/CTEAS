@@ -18,8 +18,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: p6d-slope-driver-bisection-__GH_ref__
-  cancel-in-progress: true
+  # Keep strict source-scoped evidence for each immutable commit even when
+  # sibling forensic work advances the shared Draft PR head.
+  group: p6d-slope-driver-bisection-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   slope-driver-real-143h:
