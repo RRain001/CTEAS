@@ -44,17 +44,21 @@ RiseCadencedHour OriginalCompRiseMultiPuffHours::advance_hour_point_native_wsnew
     const NeutralCompControls& controls,const DispersionSetup& pg,
     bool urban,const OriginalPointHourSource& source,
     float calm_threshold_ms) {
-    // RLSMET/WINDSET at the native effective height and point's original
-    // grid cell, not ADVWND's PUFFDZ-integrated transport wind. Avoid
-    // caller-supplied WSNEW, which concealed the 143h release cadence gap.
-    const auto sample=original_release_wind_metfm1(met,statics,{
+    // Exact original POINTS1 L15448 and L15965-15970: first RLSMET at
+    // HTSTAK, then RLSMET at PRFIN effective height HEFF. WSNEW must use
+    // AMAX1(stack WS, final-rise WS), never only the final-rise wind.
+    OriginalReleaseWindRequest position{
         .x_cells=static_cast<float>(source.point.source_x_km),
         .y_cells=static_cast<float>(source.point.source_y_km),
         .release_height_m=static_cast<float>(source.point.effective_height_m),
         .calm_threshold_ms=calm_threshold_ms
-    });
+    };
+    const auto final=original_release_wind_metfm1(met,statics,position);
+    position.release_height_m=static_cast<float>(source.point.stack_height_m);
+    const auto stack=original_release_wind_metfm1(met,statics,position);
     auto native=source;
-    native.cadence.wind_speed_ms=sample.wind_speed_ms;
+    native.cadence.wind_speed_ms=std::max(
+        stack.wind_speed_ms,final.wind_speed_ms);
     return advance_hour_point_cadence(
         met,statics,controls,pg,urban,native);
 }

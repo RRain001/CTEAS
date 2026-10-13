@@ -67,10 +67,17 @@ OriginalReleaseWind original_release_wind_metfm1(
 ReleaseCadence original_points1_cadence_from_release_wind(
     const OriginalMetHour& hour,const Calmet21Static& statics,
     const OriginalReleaseWindRequest& position,
-    const ReleaseCadenceInputs& cadence) {
-    const auto release=original_release_wind_metfm1(hour,statics,position);
+    float stack_height_m,const ReleaseCadenceInputs& cadence) {
+    require(std::isfinite(stack_height_m) && stack_height_m>=0.0F,
+            "POINTS1 requires a finite original HTSTAK");
+    const auto final=original_release_wind_metfm1(hour,statics,position);
+    auto stack_position=position;
+    stack_position.release_height_m=stack_height_m;
+    const auto stack=original_release_wind_metfm1(
+        hour,statics,stack_position);
     auto native=cadence;
-    native.wind_speed_ms=release.wind_speed_ms;
+    // Original POINTS1 L15970: WSNEW=AMAX1(WS,WSFR), REAL*4.
+    native.wind_speed_ms=std::max(stack.wind_speed_ms,final.wind_speed_ms);
     return release_cadence(native);
 }
 } // namespace cteas::puff

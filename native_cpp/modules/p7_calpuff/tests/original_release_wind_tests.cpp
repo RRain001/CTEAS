@@ -39,14 +39,21 @@ void synthetic() {
     schedule.hour_seconds=3600;
     schedule.wind_speed_ms=1111; // must be overwritten by genuine wind
     const auto puff=original_points1_cadence_from_release_wind(
-        m,s,req,schedule);
+        m,s,req,50.0F,schedule);
     require(puff.puff_count==99 &&
             puff.emission_duration_s==static_cast<float>(3600.0F/99.0F),
             "native RLSMET WINDSET did not feed POINTS1 WSNEW");
     // wind 1 m/s at level 1 → INT(36)+1=37.
     auto low=req;low.release_height_m=50.0F;
-    const auto n=original_points1_cadence_from_release_wind(m,s,low,schedule);
+    const auto n=original_points1_cadence_from_release_wind(m,s,low,50.0F,schedule);
     require(n.puff_count==37,"level-dependent native NPUFFS not applied");
+    // The original explicitly selects AMAX1(stack WS, final-rise WS).
+    // Even if a final height has a lower wind, a faster stack-layer
+    // wind determines the release count.
+    const auto stack_dominant=original_points1_cadence_from_release_wind(
+        m,s,low,150.0F,schedule);
+    require(stack_dominant.puff_count==99,
+            "POINTS1 omitted stack WS in max(stack,final)");
     // A calm zero-wind must retain the original WDCALM and minimum
     // transport speed of 0.001, without forcing a 0.5 m/s substitute.
     m.u.assign(27,0);m.v.assign(27,0);
@@ -84,10 +91,18 @@ void real_first_hour(const std::string& met_path,const std::string& dgm_path){
             .calm_threshold_ms=0.5F
         });
         const float orig=first.floats[18]; // DGM WSVAR from original COMP
-        const auto rel=std::abs(observed.wind_speed_ms-orig);
+        const auto stack_wind=original_release_wind_metfm1(hour,static_met,{
+            .x_cells=first.floats[0],.y_cells=first.floats[1],
+            .release_height_m=70.8F,.calm_threshold_ms=0.5F
+        });
+        const float wsnew=std::max(stack_wind.wind_speed_ms,
+                                   observed.wind_speed_ms);
+        const auto rel=std::abs(wsnew-orig);
         std::cout<<"P7_NATIVE_RELEASE_WIND_FIRST_HOUR"
                  <<" ORIGINAL_WSVAR="<<orig
-                 <<" NATIVE_WSNEW="<<observed.wind_speed_ms
+                 <<" NATIVE_WSNEW="<<wsnew
+                 <<" STACK_WS="<<stack_wind.wind_speed_ms
+                 <<" FINAL_WS="<<observed.wind_speed_ms
                  <<" LAYER="<<observed.layer_1based
                  <<" DIFFERENCE="<<rel<<"\n";
         require(rel<0.00002F,
@@ -101,7 +116,7 @@ void real_first_hour(const std::string& met_path,const std::string& dgm_path){
             hour,static_met,{
               .x_cells=first.floats[0],.y_cells=first.floats[1],
               .release_height_m=first.floats[2],.calm_threshold_ms=0.5F
-            },schedule);
+            },70.8F,schedule);
         require(release.puff_count==54,
                 "native original source wind cannot reproduce first-hour 54 POINTS1 puffs");
         ++checked;
@@ -159,8 +174,13 @@ void full_original_release_wind_143h(
         };
         const auto native=original_release_wind_metfm1(
             hour,statics,location);
+        const auto stack=original_release_wind_metfm1(hour,statics,{
+            .x_cells=location.x_cells,.y_cells=location.y_cells,
+            .release_height_m=70.8F,.calm_threshold_ms=0.5F
+        });
+        const float wsnew=std::max(stack.wind_speed_ms,native.wind_speed_ms);
         const double delta=std::abs(static_cast<double>(orig)-
-                                    static_cast<double>(native.wind_speed_ms));
+                                    static_cast<double>(wsnew));
         max_wind_error=std::max(max_wind_error,delta);
         if(delta>2e-5){
             if(wind_errors==0)
@@ -171,7 +191,9 @@ void full_original_release_wind_143h(
                          <<" Y="<<location.y_cells
                          <<" ORIGINAL_HEIGHT="<<location.release_height_m
                          <<" ORIGINAL_WS="<<orig
-                         <<" NATIVE_WS="<<native.wind_speed_ms
+                         <<" NATIVE_WS="<<wsnew
+                         <<" STACK_WS="<<stack.wind_speed_ms
+                         <<" FINAL_WS="<<native.wind_speed_ms
                          <<" DELTA="<<delta<<"\n";
             ++wind_errors;
         }
@@ -180,7 +202,7 @@ void full_original_release_wind_143h(
         q.hour_seconds=3600.0;
         q.emission_interval=3600.0/header.dx_m;
         const auto predicted=original_points1_cadence_from_release_wind(
-            hour,statics,location,q);
+            hour,statics,location,70.8F,q);
         const int originally_scheduled=first_new.ints[10]; // new NSAM
         if(predicted.puff_count!=originally_scheduled){
             if(count_errors==0)
@@ -204,6 +226,8 @@ void full_original_release_wind_143h(
              <<" NATIVE_RELEASE_PUFFS="<<total_puffs
              <<" MAX_WS_ERROR="<<max_wind_error
              <<" ORIGINAL_PRFIN_HEIGHT_FED=YES"
+             <<" SOURCE_STACK_HEIGHT=70.8"
+             <<" WSNEW_RULE=MAX_STACK_FINAL"
              <<" AUTONOMOUS_FROZEN_COMP=NOT_YET_VALIDATED\n";
     require(wind_errors==0,"143h original release WSVAR mismatch");
     require(count_errors==0,"143h original new-puff cadence mismatch");

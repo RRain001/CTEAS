@@ -31,11 +31,14 @@ struct OriginalReleaseWind {
 [[nodiscard]] OriginalReleaseWind original_release_wind_metfm1(
     const OriginalMetHour& hour,const Calmet21Static& statics,
     const OriginalReleaseWindRequest& input);
-// POINTS1 cadence from the native original-height RLSMET/WINDSET U/V sample,
-// not a caller-supplied value of WSNEW. Original PRFIN effective height,
-// XTMP1 and other physics are still separate caller inputs.
+// POINTS1 L15965-15970: native release height WINDSET at BOTH physical
+// HTSTAK and native PRFIN HEFF, then WSNEW=AMAX1(WS_stack,WS_final).
+// Omitting the stack wind led to original 143h first divergence at hour 12
+// (83 predicted instead of 99 original puffs). The release-height HEFF
+// and stack height are explicit upstream inputs: no original PRFIN oracle
+// enters the autonomous native solver.
 [[nodiscard]] ReleaseCadence original_points1_cadence_from_release_wind(
     const OriginalMetHour& hour,const Calmet21Static& statics,
     const OriginalReleaseWindRequest& position,
-    const ReleaseCadenceInputs& cadence);
+    float stack_height_m,const ReleaseCadenceInputs& cadence);
 } // namespace cteas::puff
