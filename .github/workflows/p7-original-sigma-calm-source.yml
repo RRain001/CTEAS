@@ -48,4 +48,16 @@ jobs:
                   print(f'[{lo+i:05d}] {sub[i]}')
                   previous=i
               print(f'P7_VENDOR_CALM_SOURCE_END {name}')
+          print('P7_VENDOR_CALM_PARAMETER_SOURCE_START')
+          for lo,hi in [(50912,50936),(51495,51559),(52504,52619)]:
+              print(f'P7_EXACT_SPAN {lo}-{hi}')
+              for i in range(lo-1,hi):
+                  print(f'[{i+1:05d}] {lines[i]}')
+          pattern=re.compile(r'(?<![a-z0-9_])(tyidr|tzidr|tzisdr)\\s*=',re.I)
+          assignments=[(i+1,s) for i,s in enumerate(lines) if pattern.search(s) and not s.lstrip().lower().startswith('c')]
+          print('P7_TURBULENCE_INVERSE_TIME_ASSIGNMENTS',len(assignments))
+          for i,s in assignments[:100]:
+              for k in range(max(0,i-4),min(len(lines),i+3)):
+                  print(f'[{k+1:05d}] {lines[k]}')
+          print('P7_VENDOR_CALM_PARAMETER_SOURCE_END')
           PY
