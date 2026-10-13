@@ -8,6 +8,7 @@ import zipfile
 from pathlib import Path
 
 from engine.core.paths import current_project_path, engine_path
+from engine.run_met.station_grid import load_strict_utm_grid, lon_lat_in_utm_grid
 
 DATA_ROOT = current_project_path("met", "upperair")
 
@@ -21,18 +22,6 @@ def parse_center(center_path: Path):
     return float(lat_m.group(1)), float(lon_m.group(1))
 
 
-def parse_grid(grid_path: Path):
-    text = grid_path.read_text(encoding='utf-8', errors='ignore')
-
-    def pick(name):
-        m = re.search(rf'!\s*{name}\s*=\s*([-+]?\d+(?:\.\d+)?)', text)
-        if not m:
-            raise ValueError(f'grid.cmn 缺少 {name}')
-        return float(m.group(1))
-
-    return pick('DGRIDKM'), int(pick('NX')), int(pick('NY'))
-
-
 def haversine_km(lat1, lon1, lat2, lon2):
     r = 6371.0
     p1 = math.radians(lat1)
@@ -41,12 +30,6 @@ def haversine_km(lat1, lon1, lat2, lon2):
     dl = math.radians(lon2 - lon1)
     a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
     return 2 * r * math.asin(math.sqrt(a))
-
-
-def signed_offsets_km(lat0, lon0, lat, lon):
-    km_per_deg_lat = 111.32
-    km_per_deg_lon = 111.32 * math.cos(math.radians(lat0))
-    return (lon - lon0) * km_per_deg_lon, (lat - lat0) * km_per_deg_lat
 
 
 def load_station_list(station_list_path: Path):
@@ -67,29 +50,6 @@ def load_station_list(station_list_path: Path):
                 continue
             stations.append({'id': stn_id, 'name': name, 'lat': lat, 'lon': lon, 'elev_m': elev, 'first_year': fst, 'last_year': lst})
     return stations
-
-
-def choose_station(stations, center_lat, center_lon, dgrid_km, nx, ny):
-    half_x = dgrid_km * nx / 2.0
-    half_y = dgrid_km * ny / 2.0
-    inside = []
-    for s in stations:
-        dx, dy = signed_offsets_km(center_lat, center_lon, s['lat'], s['lon'])
-        dist = haversine_km(center_lat, center_lon, s['lat'], s['lon'])
-        row = dict(s)
-        row['dist_km'] = dist
-        if abs(dx) <= half_x and abs(dy) <= half_y:
-            inside.append(row)
-    if inside:
-        inside.sort(key=lambda x: x['dist_km'])
-        return True, inside
-    rows = []
-    for s in stations:
-        x = dict(s)
-        x['dist_km'] = haversine_km(center_lat, center_lon, s['lat'], s['lon'])
-        rows.append(x)
-    rows.sort(key=lambda x: x['dist_km'])
-    return False, rows[:3]
 
 
 def filter_by_year(stations, year):
@@ -159,20 +119,20 @@ def download_igra_data(station_id: str, out_dir: Path):
     return txt_path, False, None
 
 
-def candidate_groups(stations, center_lat, center_lon, dgrid_km, nx, ny, year):
-    """Split by the actual model domain; sort exterior candidates by chimney distance."""
-    half_x, half_y = dgrid_km * nx / 2.0, dgrid_km * ny / 2.0
+def candidate_groups(stations, center_lat, center_lon, grid, year):
+    """Use the published P1/P3/P6 UTM grid and annually eligible IGRA stations."""
     inside, outside, seen = [], [], set()
-    for s in filter_by_year(stations, year):
-        if s["id"] in seen:
+    for station in filter_by_year(stations, year):
+        if station["id"] in seen:
             continue
-        seen.add(s["id"])
-        dx, dy = signed_offsets_km(center_lat, center_lon, s["lat"], s["lon"])
-        row = dict(s)
-        row["dist_km"] = haversine_km(center_lat, center_lon, s["lat"], s["lon"])
-        (inside if abs(dx) <= half_x and abs(dy) <= half_y else outside).append(row)
-    inside.sort(key=lambda s: (s["dist_km"], s["id"]))
-    outside.sort(key=lambda s: (s["dist_km"], s["id"]))
+        seen.add(station["id"])
+        row = dict(station)
+        row["dist_km"] = haversine_km(center_lat, center_lon,
+                                       station["lat"], station["lon"])
+        in_grid = lon_lat_in_utm_grid(station["lon"], station["lat"], grid)
+        (inside if in_grid else outside).append(row)
+    inside.sort(key=lambda item: (item["dist_km"], item["id"]))
+    outside.sort(key=lambda item: (item["dist_km"], item["id"]))
     return inside, outside
 
 
@@ -196,19 +156,18 @@ def main():
     from native_cpp.modules.p4_read62.data_prep.parse_igra_to_csv import observed_year_coverage
 
     center_lat, center_lon = parse_center(current_project_path("grid", "center_location"))
-    dgrid_km, nx, ny = parse_grid(current_project_path("grid", "grid.cmn"))
+    grid = load_strict_utm_grid(current_project_path("grid", "grid.cmn"), context="P4")
     all_stations = load_station_list(engine_path("resources", "igra", "igra2-station-list.txt"))
     in_domain, out_domain = candidate_groups(all_stations, center_lat, center_lon,
-                                              dgrid_km, nx, ny, args.year)
+                                              grid, args.year)
     if args.station_id:
         matches = [s for s in filter_by_year(all_stations, args.year) if s["id"] == args.station_id]
         if not matches:
             raise SystemExit(f"Requested station not available in {args.year}: {args.station_id}")
         station = matches[0]
-        dx, dy = signed_offsets_km(center_lat, center_lon, station["lat"], station["lon"])
         row = {**station, "dist_km": haversine_km(center_lat, center_lon,
                                                   station["lat"], station["lon"])}
-        if abs(dx) <= dgrid_km * nx / 2 and abs(dy) <= dgrid_km * ny / 2:
+        if lon_lat_in_utm_grid(station["lon"], station["lat"], grid):
             in_domain, out_domain = [row], []
         else:
             in_domain, out_domain = [], [row]
@@ -222,6 +181,11 @@ def main():
         "coverage_rule": "strictly >80% valid original 00/12 UTC, before cloning",
         "chimney_assumption": "center_location is chimney in the configured case",
         "chimney_lat": center_lat, "chimney_lon": center_lon,
+        "selection_geometry": "STRICT_WGS84_UTM_GRID_CMN_SW_CORNER_CLOSED_EDGES",
+        "utm_zone": grid.iutmzn, "utm_hemisphere": grid.lsohem,
+        "utm_origin_km": [grid.xrefkm, grid.yrefkm],
+        "utm_grid_shape": [grid.nx, grid.ny],
+        "utm_grid_spacing_km": grid.dgridkm,
         "in_domain_candidates": len(in_domain),
         "outside_candidates": len(out_domain),
         "checked": [], "selected": [],
