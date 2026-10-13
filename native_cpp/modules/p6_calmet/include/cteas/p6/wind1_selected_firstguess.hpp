@@ -36,6 +36,8 @@ struct Wind1FirstGuessSelectedFields {
     std::vector<float> ug_mps,vg_mps;
     // Write-only diagnostic: actual normalized WIND1 two-station RSQWT per gridpoint.
     std::vector<float> rsq_surface,rsq_upper;
+    // Final level-one weights after BIAS and upper missing-value redistribution.
+    std::vector<float> vvw_surface1,vvw_upper1;
 };
 inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
     const Wind1SelectedStationHour& station,
@@ -92,6 +94,8 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
     out.vg_mps.assign(cells*9,0.f);
     out.rsq_surface.assign(cells,0.f);
     out.rsq_upper.assign(cells,0.f);
+    out.vvw_surface1.assign(cells,0.f);
+    out.vvw_upper1.assign(cells,0.f);
 
     // Original WIND1: DGRIDI=1./DGRID; XC=FLOAT(I)-0.5, YC likewise.
     const float dgridi=1.f/c.grid_spacing_m;
@@ -143,6 +147,10 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
                     throw std::invalid_argument("WIND1 no valid upper observation at layer");
                 vsurface=vsurface/(1.f-vupper);
                 vupper=0.f;
+            }
+            if(k==0) {
+                out.vvw_surface1[cell]=vsurface;
+                out.vvw_upper1[cell]=vupper;
             }
             const auto& s=station.surface_neutral_profile[k];
             const auto& u=station.upper_observed_profile[k];
