@@ -93,6 +93,15 @@ public:
     // real old pre-rise ADVECT WS -> NSAM, all old/new KSAM slots and
     // native physical PG/GRISE/VMASS, full-hour atomic commit. FSTEP>1,
     // CALM and off-grid stop FAIL CLOSED until original resplit/ROLLDN.
+    // Original POINTS1 HTSTAK/HEFF WINDSET -> WSNEW -> MXSAM=99 COMP.
+    // Unlike the lower-level unsplit API, ignores externally prefilled
+    // source.cadence.wind_speed_ms. Native PRFIN HEFF remains caller-provided.
+    // Still fails closed on vendor FSTEP split, calm old-puff, off-grid cases.
+    [[nodiscard]] OriginalCompMxsamHour advance_hour_point_mxsam99_native_wsnew_unsplit(
+        const OriginalMetHour& met,const Calmet21Static& statics,
+        const NeutralCompControls& controls,const DispersionSetup& pg,
+        bool urban,const OriginalPointHourSource& source,
+        float calm_threshold_ms);
     [[nodiscard]] OriginalCompMxsamHour advance_hour_point_mxsam99_unsplit(
         const OriginalMetHour& met,const Calmet21Static& statics,
         const NeutralCompControls& controls,const DispersionSetup& pg,
