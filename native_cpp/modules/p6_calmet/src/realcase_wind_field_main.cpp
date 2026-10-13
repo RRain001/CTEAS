@@ -743,8 +743,9 @@ int main(int argc,char** argv){
         // sensible heat flux, and SLOPE adds the Mahrt slope flow to the
         // step-one winds before the L5748 boundary snapshot.
         cteas::p6e::SurfaceState surface_state;
+        cteas::p6e::ObservedSurface observed_surface;
         {
-            cteas::p6e::ObservedSurface observed;
+            auto& observed=observed_surface;
             observed.nx=nx;observed.ny=ny;
             observed.station_temp_k=obs->temperature_k;
             observed.station_rh_percent=obs->humidity_pct;
@@ -947,6 +948,20 @@ int main(int argc,char** argv){
             write_f32(args.out()/("fradj_corrected_v_"+hour_label(clock)+".f32"),
                       corrected_v);
         }
+        // Original DIAGNO calls SURFVAR twice for ISURFT<0, ISFCMET=0:
+        //  L5609 initial WIND1 temperature for TOPOF2/FRADJ, then L5668
+        //  post-FRADJ update for HEATFX -> AIRDEN -> ELUSTR -> SLOPE.
+        // The original-source 143h IALL=0 trace confirms the first call's
+        // U/V is byte-identical to WIND1, but 934 cells have different U/V
+        // at the second call. Reusing the first TEMP2D causes 60 SLOPE-input
+        // temperature exceedances even though AVETMP itself is bit identical
+        // with equal inputs. Preserve the pre-FRADJ state for FRADJ above;
+        // recompute only the temperature state for downstream physics.
+        observed_surface.u_ms.assign(corrected_u.begin(),
+                                     corrected_u.begin()+plane_size);
+        observed_surface.v_ms.assign(corrected_v.begin(),
+                                     corrected_v.begin()+plane_size);
+        surface_state=cteas::p6e::surfvar_one_station(observed_surface);
         // CALMET DIAGNO L5686-5711: HEATFX/ELUSTR belong AFTER FRADJ.
         // QH is input to SLOPE, so this is not just a cosmetic move.
         std::vector<float> heat_flux;
