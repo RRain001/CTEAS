@@ -630,7 +630,7 @@ int main(int argc,char** argv){
                 for(std::size_t k=0;k<9;++k)
                     diagi_surface_column[k]=k<levels_filled
                         ? LayerWind{profile.u_mps[k],profile.v_mps[k]}
-                        : LayerWind{999999.f,999999.f};
+                        : LayerWind{999.f,999.f};
             }else{
                 // No certified EL/ZICONV: keep the neutral uncapped column and
                 // record the gap instead of inventing stability.
@@ -655,7 +655,7 @@ int main(int argc,char** argv){
         // the deck sets IEXTRP=-4, so level 1 carries the original missing
         // sentinel and is masked out of the first guess.
         if(iextrp<=0){
-            station.upper_observed_profile[0]=LayerWind{999999.f,999999.f};
+            station.upper_observed_profile[0]=LayerWind{999.f,999.f};
             settings_upper_layer_one_valid=false;
         }
 
@@ -830,7 +830,7 @@ int main(int argc,char** argv){
             for(std::size_t k=0;k<9;++k)
                 diagi_surface_column[k]=k<profile.levels_filled
                     ?LayerWind{profile.u_mps[k],profile.v_mps[k]}
-                    :LayerWind{999999.f,999999.f};
+                    :LayerWind{999.f,999.f};
             station_mixhtst_trace<<hour_label(clock)<<","<<std::setprecision(10)
                 <<stage.zii_to_similt_m<<","<<stage.ziconv_after_m<<","
                 <<stage.dptt_for_comp_k<<","<<mix.previous.zi_m<<","
@@ -851,7 +851,7 @@ int main(int argc,char** argv){
             for(std::size_t k=0;k<9;++k)
                 diagi_surface_column[k]=k<profile.levels_filled
                     ?LayerWind{profile.u_mps[k],profile.v_mps[k]}
-                    :LayerWind{999999.f,999999.f};
+                    :LayerWind{999.f,999.f};
         }
         std::vector<float> corrected_u=first.ug_mps,corrected_v=first.vg_mps;
         // Original DIAGNO MUST apply IFRADJ (L5643) before adding SLOPE
@@ -1002,7 +1002,11 @@ int main(int argc,char** argv){
             blend.lvary=lvary;
             blend.iprog=0;blend.nbar=0;blend.noobs=0;
             blend.water_first=geo.iwat1;blend.water_last=geo.iwat2;
-            blend.edit=999999.f;blend.editl=999998.f;
+            // Source CALMET DIAGNO L5185-L5188: EDIT=999, EDITL=900.
+            // IEXTRP<=0 upper level-1 missing uses this literal REAL*4
+            // sentinel; both selected kernel distance sorting and masked
+            // station values must follow that original contract.
+            blend.edit=999.f;blend.editl=900.f;
             blend.nintrp_per_layer=nintrp;
             // Station order is the original STDAT1 station index: 1 = surface.
             blend.station_x_km={static_cast<float>(surface_x_km),
@@ -1109,7 +1113,7 @@ int main(int argc,char** argv){
                      hour_label(clock)+".inp"));
                 if(!inter2)throw std::runtime_error("cannot write INTER2 fixture");
                 inter2<<"2 0 "<<rmin_km<<" "<<rmax1_km<<" "<<rmax2_km<<" "
-                      <<rmax3_km<<" "<<r1_km<<" "<<r2_km<<" 999999 999998\n";
+                      <<rmax3_km<<" "<<r1_km<<" "<<r2_km<<" 999 900\n";
                 for(std::size_t k=0;k<9;++k)
                     inter2<<nintrp[k]<<(k==8?"\n":" ");
                 inter2<<std::setprecision(17)
