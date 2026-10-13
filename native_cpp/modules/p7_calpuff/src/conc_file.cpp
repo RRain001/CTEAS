@@ -187,6 +187,47 @@ void ConcFileWriter::write_source_descriptor(const ConcSourceDescriptor& source)
     ++records_written_;
 }
 
+void ConcFileWriter::write_original_wrout1_identity(
+    const OriginalWrout1Identity& item) {
+    require_true(impl_!=nullptr && !impl_->closed,"writer is closed");
+    require_true(!item.species_name.empty() && item.species_name.size()<=8,
+                 "WROUT1 species A8 invalid");
+    require_true(item.species_index>=1 && item.species_index<=9999999,
+                 "WROUT1 species I7 invalid");
+    require_true(!item.concentration_units.empty() &&
+                 item.concentration_units.size()<=16,
+                 "WROUT1 unit A16 invalid");
+    require_true(item.source_identifier>=1,
+                 "WROUT1 source identifier invalid");
+    require_true(!item.source_name.empty() && item.source_name.size()<=16,
+                 "WROUT1 source name A16 invalid");
+    for(const auto& line:item.run_titles)
+        require_true(line.size()<=80,"WROUT1 title A80 too long");
+    // Stage and validate ALL payloads before the first sequential write.
+    std::array<std::vector<std::uint8_t>,4> records;
+    for(const auto& title:item.run_titles){
+        const auto line=padded(title,80,"WROUT1 title");
+        append_bytes(records[0],line.data(),line.size());
+    }
+    const auto label=padded(item.species_name,8,"WROUT1 species");
+    append_bytes(records[1],label.data(),label.size());
+    std::string species_index=std::to_string(item.species_index);
+    species_index.insert(0,7-species_index.size(),' ');
+    append_bytes(records[1],species_index.data(),species_index.size());
+    const auto units=padded(item.concentration_units,16,"WROUT1 units");
+    append_bytes(records[2],units.data(),units.size());
+    append_int(records[3],item.source_identifier);
+    const auto source=padded(item.source_name,16,"WROUT1 source");
+    append_bytes(records[3],source.data(),source.size());
+    require_true(records[0].size()==240 && records[1].size()==15 &&
+                 records[2].size()==16 && records[3].size()==20,
+                 "WROUT1 identity payload width drift");
+    for(const auto& rec:records){
+        write_framed(impl_->stream,rec);
+        ++records_written_;
+    }
+}
+
 void ConcFileWriter::write_grid_descriptor(const ConcGridDescriptor& descriptor) {
     // Backward-compatible TOTAL-only alias. These fields NEVER describe
     // receptor grid dimensions in vendor OUTPUT L57912-57913.

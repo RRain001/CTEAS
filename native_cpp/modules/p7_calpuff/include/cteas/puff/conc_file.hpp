@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <map>
 #include <string>
@@ -93,6 +94,20 @@ struct ConcGridDescriptor {
     float origin_x_m, float origin_y_m, int discrete_receptors = 0);
 
 
+// Four original WROUT1 metadata records after the two numeric run headers:
+// 3*CHARACTER*80 run titles (240B), CHAR*8 + I7 species (15B),
+// CHARACTER*16 concentration units (16B), I4+CHARACTER*16 source (20B).
+// This does NOT infer or write the preceding 300/52-byte numeric records
+// or reconstruct the 3218 embedded input/control echo records.
+struct OriginalWrout1Identity {
+    std::array<std::string,3> run_titles{};
+    std::string species_name="H-3";
+    int species_index=1;
+    std::string concentration_units="Bq/m3";
+    int source_identifier=1;
+    std::string source_name="HTO_STACK";
+};
+
 class ConcFileWriter {
 public:
     // `data_version` and `model_version` are written into the version record
@@ -110,6 +125,8 @@ public:
     void write_grid_descriptor(const ConcGridDescriptor& descriptor);
     // Original OUTPUT L57913: int32/int32/CHARACTER*16/REAL4/REAL4.
     void write_source_descriptor(const ConcSourceDescriptor& descriptor);
+    // Emit all four independently constructed selected-case metadata records.
+    void write_original_wrout1_identity(const OriginalWrout1Identity& identity);
     void write_species_field(const std::string& label, int species_index, int nx, int ny,
                              const std::vector<float>& values);
     void close();

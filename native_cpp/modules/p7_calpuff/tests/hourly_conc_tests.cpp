@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -125,6 +126,52 @@ void vendor_source_record_bytes(const fs::path& path) {
     }catch(const std::invalid_argument&){rejects_total=true;}
     require(rejects_total,"TOTAL record allowed invalid KTYPE/KSOURCE");
 }
+void frozen_wrout1_identifiers(const fs::path& original,
+                              const fs::path& control,
+                              const fs::path& native) {
+    using namespace cteas::puff;
+    std::ifstream deck(control);
+    require(bool(deck),"frozen puff.inp unavailable for source-derived titles");
+    OriginalWrout1Identity typed;
+    for(auto& line:typed.run_titles)
+        require(static_cast<bool>(std::getline(deck,line)),
+                "frozen input lacks three run-title lines");
+    // Selected case source list and species/units are explicit, not a copy
+    // of frozen puff.con bytes. Extract other values from the control
+    // before claiming general, multi-species WROUT1 compatibility.
+    {
+        ConcFileWriter out(native.string(),"2.2","selected typed metadata",{});
+        out.write_original_wrout1_identity(typed);
+        require(out.records_written()==4,
+                "native WROUT1 did not emit exactly four typed records");
+        out.close();
+    }
+    FortranRecordReader orig(original.string(),4,RecordByteOrder::LittleEndian);
+    FortranRecordReader generated(native.string(),4,RecordByteOrder::LittleEndian);
+    std::vector<std::uint8_t> a,b;
+    require(orig.next(a)&&a.size()==96 &&
+            orig.next(a)&&a.size()==4,
+            "original WROUT1 version/count records changed");
+    std::int32_t comments=0;
+    std::memcpy(&comments,a.data(),4);
+    require(comments==3218,"original WROUT1 embedded comment count changed");
+    for(int i=0;i<comments+2;++i)
+        require(orig.next(a),"original WROUT1 comment/numeric header truncated");
+    require(generated.next(b)&&b.size()==96 &&
+            generated.next(b)&&b.size()==4,
+            "native typed WROUT1 fixture lacks prefix");
+    for(const auto bytes:{240U,15U,16U,20U}){
+        require(orig.next(a)&&generated.next(b)&&
+                a.size()==bytes&&b.size()==bytes&&a==b,
+                "source-derived WROUT1 metadata differs from frozen original");
+    }
+    std::cout<<"P7_ORIGINAL_WROUT1_FOUR_TYPED_METADATA=PASS"
+             <<" RECORD_BYTES=240,15,16,20"
+             <<" FROZEN_BINARY_RECORDS=BITWISE_EXACT"
+             <<" PREFIX_3218_ECHO_AND_300_52=OPEN"
+             <<" FULL_PUFF_CON=NOT_YET_ACCEPTED\\n";
+}
+
 void invalid_and_year_boundary(const fs::path& path) {
     using namespace cteas::puff;
     ConcFileWriter out(path.string(), "2.2", "boundary test", {});
@@ -162,7 +209,7 @@ void invalid_and_year_boundary(const fs::path& path) {
 }
 } // namespace
 
-int main() {
+int main(int argc,char** argv) {
     const auto stamp = std::chrono::high_resolution_clock::now()
                            .time_since_epoch().count();
     const auto root = fs::temp_directory_path() /
@@ -172,6 +219,11 @@ int main() {
         original_2022_series(root / "native-143-data.con");
         vendor_source_record_bytes(root / "source-record.con");
         invalid_and_year_boundary(root / "boundary.con");
+        if(argc==4 && std::string(argv[1])=="--frozen")
+            frozen_wrout1_identifiers(argv[2],argv[3],
+                                     root / "four-wrout1-identifiers.con");
+        else if(argc!=1)
+            throw std::invalid_argument("expected --frozen puff.con puff.inp");
         fs::remove_all(root);
         std::cout << "P7E_NATIVE_143H_HOURLY_DATA=PASS HOURS=143 RECORDS=429"
                   << " GRID_CELLS=2500 REAL4_VALUES=EXACT CLOCK=CONTIGUOUS"

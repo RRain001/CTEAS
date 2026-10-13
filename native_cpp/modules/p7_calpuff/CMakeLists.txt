@@ -239,6 +239,11 @@ endif()
 add_test(NAME cteas_p7e_native_143h_hourly_data_writer_contract
          COMMAND cteas_p7_hourly_conc_tests)
 set(P7E_LOCKED_CASE_CONC "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con")
+if(EXISTS "${P7E_LOCKED_CASE_CONC}" AND EXISTS "${P7F_LOCKED_CASE_CONTROL}")
+  add_test(NAME cteas_p7e_original_wrout1_four_typed_metadata
+    COMMAND cteas_p7_hourly_conc_tests
+      --frozen "${P7E_LOCKED_CASE_CONC}" "${P7F_LOCKED_CASE_CONTROL}")
+endif()
 if(EXISTS "${P7E_LOCKED_CASE_CONC}")
   # P7H: vertical coupling coefficients (VCOUP/VCBAR/CTADJ) of the concentration path.
 add_library(cteas_p7_coupling STATIC src/coupling.cpp)

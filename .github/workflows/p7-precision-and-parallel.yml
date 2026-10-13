@@ -335,13 +335,14 @@ jobs:
           cmake -S native_cpp/modules/p7_calpuff -B "$build" \
             -DCMAKE_CXX_COMPILER="$cpp" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$build" --parallel 2 \
-            --target cteas_p7_vendor_order_tests cteas_p7_initial_dgm_tests cteas_p7_first_hour_advance_tests cteas_p7_first_hour_lifecycle_tests
+            --target cteas_p7_vendor_order_tests cteas_p7_initial_dgm_tests cteas_p7_first_hour_advance_tests cteas_p7_first_hour_lifecycle_tests cteas_p7_hourly_conc_tests
           for name in cteas_p7_vendor_substep_order_contract \
                       cteas_p7_original_initial_internal_xy \
                       cteas_p7_original_first_hour_advance_real4 \
                       cteas_p7_first_hour_state_persistence_real4 \
                       cteas_p7_original_source_dgm_execution_order \
-                      cteas_p7_original_wrout1_header_avefactor_audit; do
+                      cteas_p7_original_wrout1_header_avefactor_audit \
+                      cteas_p7e_original_wrout1_four_typed_metadata; do
             ctest --test-dir "$build" -N -R "^${name}$" |
               grep -Eq "Test[[:space:]]*#[0-9]+: ${name}" || {
                 echo "::error::Original CALPUFF order gate absent: $name"
