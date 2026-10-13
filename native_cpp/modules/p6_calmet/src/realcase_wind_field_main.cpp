@@ -277,6 +277,15 @@ int main(int argc,char** argv){
         if(it!=controls.end()&&it->second.size()>=9)
             for(std::size_t k=0;k<9;++k)bias[k]=it->second[k];
     }
+    // CALMET 6.5.0 READCF (calmet.for L26579-L26612) modifies the
+    // EFFECTIVE BIAS array after reading met.inp. For IEXTRP<0 with
+    // surface observations, level one must use surface winds only;
+    // frozen met.inp says BIAS(1)=0 but original READCF resets it to -1.
+    // This is part of original source physics, not a tolerance workaround.
+    const int noobs=deck_int(controls,"NOOBS",0);
+    if(iextrp<0&&noobs!=2)bias[0]=-1.f;
+    if(std::abs(iextrp)==1&&noobs!=2)
+        for(std::size_t k=1;k<9;++k)bias[k]=1.f;
 
     // CALMET MODE A (original input): SS1/US1 in the met.inp deck are the
     // authority for station location. REAL*4 UTM-km -> local metres is done
