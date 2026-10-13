@@ -1,8 +1,7 @@
 name: P6D SLOPE QH theta2 cancellation A/B (forensic only)
+# Negative-control experiment: source-incompatible 21,598 QH exceedances.
+# Available on explicit dispatch; not part of the accepted PR scientific gate.
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/p6d-slope-qh-theta2-ab.yml'
   workflow_dispatch:
 permissions:
   contents: read
