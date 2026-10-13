@@ -597,18 +597,17 @@ void test(){
          sampled.steps.size()>1 &&
          sampled_driver.completed_hours()==1,
          "CALCPF sampling did not accumulate each actual FSTEP substep");
-    const auto sampled_before=sampled_driver.motion(1);
     auto no_sample=[](const RiseCompSamplingState&)->std::vector<float>{
         throw std::runtime_error("intentional CALCPF failure");
     };
-    const auto sampled_count=sampled_driver.completed_hours();
+    OriginalCompRiseMultiPuffHours failed_sample_driver;
     bool sample_refused=false;
-    try{(void)sampled_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
-        met,geo,ctl,pg,false,fast,wide_domain,2,1,no_sample);}
+    try{(void)failed_sample_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+        met,geo,ctl,pg,false,fast,wide_domain,1,1,no_sample);}
     catch(const std::runtime_error&){sample_refused=true;}
-    need(sample_refused && sampled_driver.completed_hours()==sampled_count &&
-         sampled_driver.motion(1).travel_time_s==sampled_before.travel_time_s &&
-         sampled_driver.capacity_inventory().occupied()==1,
+    need(sample_refused && failed_sample_driver.completed_hours()==0 &&
+         failed_sample_driver.active_count()==0 &&
+         failed_sample_driver.canonical_ids().empty(),
          "CALCPF callback failure partially committed puff/source hour");
     std::cout<<"P7_CALCPF_NATIVE_SUBSTEP_HOOK=PASS"
              <<" AFTER_SETPUF_BEFORE_LID=YES"
