@@ -42,7 +42,7 @@ def main():
       implicit none
       real x,y,x1,y1,x2,y2,syb,sye,fclip,xttb,uavg
       real frac,xr1,xtt1,trec,rhoa,rhoc,sfrac,len,inv
-      real slgalong,slgacross,slgfrac,slglen,slginv
+      real slgalong,slgacross,slgfracval,slglen,slginv
       integer i,clip,stat
       logical lclip
       do
@@ -51,11 +51,11 @@ def main():
        if(stat.ne.0) exit
        lclip=clip.ne.0
        call slgfrac(x,y,x1,y1,x2,y2,slgalong,slgacross,
-     &              slgfrac,slglen,slginv)
+     &              slgfracval,slglen,slginv)
        call geom(x,y,x1,y1,x2,y2,syb,sye,fclip,xttb,uavg,
      &           lclip,frac,xr1,xtt1,trec,rhoa,rhoc,sfrac,len,inv)
        write(*,'(9(Z8.8,1X))') transfer(slgalong,0),
-     &   transfer(slgacross,0),transfer(slgfrac,0),
+     &   transfer(slgacross,0),transfer(slgfracval,0),
      &   transfer(slglen,0),transfer(slginv,0),
      &   transfer(frac,0),transfer(xr1,0),
      &   transfer(xtt1,0),transfer(trec,0)
