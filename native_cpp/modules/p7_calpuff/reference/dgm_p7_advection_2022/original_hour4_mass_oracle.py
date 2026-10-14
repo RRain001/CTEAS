@@ -22,9 +22,11 @@ c --- Diagnostic-only COMP MASS COMMON, not part of source/physical COMMON.
       integer ii,ksam,seq,seen,episode,substep
       real prior
       common /p7masdiag/ seq,seen,episode,substep,prior
-      save seq
-      data seq/0/
-      seq=seq+1
+      integer seq_count
+      save seq_count
+      data seq_count/0/
+      seq_count=seq_count+1
+      seq=seq_count
       seen=0
       episode=ii
       substep=ksam
