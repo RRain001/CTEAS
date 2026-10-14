@@ -73,13 +73,18 @@ def main()->None:
     source=target.read_text(encoding="latin-1")
     before="         if(mchem.ge.1)then"
     after="          call DEDAT(ndathrb,iyrss,ijulss,ihrss)"
-    if source.count(before)!=1 or source.count(after)!=1:
-        raise AssertionError("immutable original COMP QM anchors changed")
-    source=source.replace(before,
-        "         call p7massbefore(ii,ksam,qold(1))\n"+before)
-    source=source.replace(after,
+    first_qold=source.index("            qold(ipl)=qm(ipl,ii)")
+    first_qnew=source.index("            qnew(ipl)=qm(ipl,ii)")
+    pos_before=source.find(before,first_qold)
+    pos_after=source.find(after,first_qnew)
+    if not (0<pos_before-first_qold<1800 and
+            0<pos_after-first_qnew<1200):
+        raise AssertionError("original COMP QOLD/QNEW insert anchors drifted")
+    source=(source[:pos_after]+
         "         call p7massafter(ii,ksam,qnew(1),fracdry(1),\n"
-        "     &        vd(1),vdpvd(1),tsamp)\n"+after)
+        "     &        vd(1),vdpvd(1),tsamp)\n"+source[pos_after:])
+    source=(source[:pos_before]+
+        "         call p7massbefore(ii,ksam,qold(1))\n"+source[pos_before:])
     target.write_text(source+HELPERS,encoding="latin-1")
     alias=base._alias_tree(vendor,out/"include-alias")
     executable=out/"bin"/"puff-original-mass.x"
