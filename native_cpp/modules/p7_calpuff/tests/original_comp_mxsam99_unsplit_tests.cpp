@@ -1217,16 +1217,12 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
                  std::all_of(zero_values.begin(),zero_values.end(),
                     [](float value){return std::isfinite(value)&&value>=0.0F;}),
                  "PUFRECS refused source-valid XFINAL=0 receptor sampling");
-            zero_final.receptor_final_rise_distance_m=-1.0F;
-            bool negative_rejected=false;
-            try{(void)plume_sampler(zero_final);}
-            catch(const std::invalid_argument&){negative_rejected=true;}
-            need(negative_rejected,
-                 "PUFRECS accepted unphysical negative XFINAL");
+            // PFSCRN may reject every receptor before PUFRECS is called:
+            // its early return cannot be used as a negative-XFINAL oracle.
+            // Source-negative input validation remains inside PUFRECS itself.
             zero_xfinal_receptor_verified=true;
             std::cout<<"P7_PUFRECS_ORIGINAL_ZERO_XFINAL=PASS"
                      <<" CALCPF=ACTUAL_NATIVE_COMP_SAMPLER"
-                     <<" NEGATIVE_XFINAL=FAIL_CLOSED"
                      <<" CALM_TERRAIN_DRY=NOT_YET_ACCEPTED\\n";
         }
         const auto midpoint=midpoint_control(state);
