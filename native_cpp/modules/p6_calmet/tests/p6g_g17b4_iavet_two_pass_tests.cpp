@@ -9,6 +9,7 @@
 #include "cteas/p6/p6g_g18a_selected_comp_mixht.hpp"
 #include "cteas/p6/p6g_g18b3_upper_choice.hpp"
 #include "cteas/p6/p6g_g18b4_cgamma_clock.hpp"
+#include "cteas/p6/p6g_g18b5_upper_temp_faces.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -831,6 +832,8 @@ static void verify_g18b_asynchronous_upper_turnover() {
     const auto input=p6g::bind_original_calmet_station_inputs(sites,surf,upper);
     check(input.size()==30,"G18B cross-year station inputs truncated");
     p6g::OriginalWindControls controls;
+    for(std::size_t k=0;k<10;++k)
+        controls.zface_m[k]=static_cast<float>(k*100);
     p6::NativeGridMemory prior;
     prior.zi_m.assign(144,0.f);
     prior.ziconv_m.assign(144,0.f);
@@ -858,6 +861,12 @@ static void verify_g18b_asynchronous_upper_turnover() {
               observed.source_reads.size()==2 &&
               (h!=0||!clock.has_hour()),
               "G18B model-hour source preparation invalid");
+        const auto faces=p6g::g18b5_selected_native_temperature_faces(
+            frame,observed);
+        check(faces.end==frame.input.end&&
+              faces.aa_face_k.size()==20&&faces.bb_face_k.size()==20&&
+              faces.justa==observed.justa&&faces.station_ids==observed.station_ids,
+              "G18B5 physical AA/BB frozen FACET dimensions/identity mismatch");
         auto empty=p6e::MixhtObservedMcInput{};
         p6g::g18b_bind_physical_upper(empty,frame,observed);
         check(empty.justa==observed.justa &&
@@ -883,7 +892,26 @@ static void verify_g18b_asynchronous_upper_turnover() {
                   empty.sounding[1][site].temp_k[0]==
                       upper[site].soundings[bb].data[0].temperature_k,
                   "G18B physical AA/BB thermal data crossed upper station");
+            const auto physical_aa=p6::calmet_facet_temperatures(
+                upper[site].soundings[aa],faces.face_height_m);
+            const auto physical_bb=p6::calmet_facet_temperatures(
+                upper[site].soundings[bb],faces.face_height_m);
+            for(std::size_t k=0;k<10;++k)
+                check(faces.aa_face_k[site*10+k]==physical_aa[k]&&
+                      faces.bb_face_k[site*10+k]==physical_bb[k],
+                      "G18B5 different original FACET temperature due to source UP ordering");
             saw_negative_justa|=sign<0;
+        }
+        if(h==4) {
+            auto invalid_controls=controls;
+            invalid_controls.zface_m[8]=-1.f;
+            const p6g::MultiHourFrame invalid_face{
+                h,grid,sites,surf.hourly[h],input[h],upper,
+                &invalid_controls,prior,prior,{}};
+            rejects([&]{
+                (void)p6g::g18b5_selected_native_temperature_faces(
+                    invalid_face,observed);
+            },"G18B5 silently accepted malformed original layer geometry");
         }
         // The source CGAMMA kernel is original #53; each US retains its own
         // convective history, but no state may commit before G14 completes.
@@ -1058,6 +1086,7 @@ int main(int argc,char** argv){
                     "G18B_SOURCE_UP_AABB_JUSTA_TEMPORAL_PASS "
                     "G18B3_SOURCE_IUPT_CANDIDATE_NEARU_TEST_ONLY_PASS "
                     "G18B4_PER_UP_FROZEN_CGAMMA_TRANSACTIONAL_HISTORY_PASS "
+                    "G18B5_FROZEN_FACET_MULTISITE_SOURCE_FACES_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
