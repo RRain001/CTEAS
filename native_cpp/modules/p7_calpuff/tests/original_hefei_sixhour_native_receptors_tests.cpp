@@ -374,6 +374,43 @@ int main(int argc,char** argv) {
                 hour.receptor_concentrations.size()==2500U &&
                 hour.steps.size()>0U,
                 "real sixhour COMP hour transaction/cadence invalid");
+        // Keep an original-source H9 puff598 history independent of any
+        // gridded CALCPF receiver: QOLD after VMASS and QNEW after DRY.
+        // The original stage trace records these at COMP L10965/L11108.
+        if(hour_index==8U) {
+            const char* trace=std::getenv("CTEAS_P7_H9_PUFF598_MASS_TRACE");
+            if(trace && *trace) {
+                std::ofstream out(trace,std::ios::binary);
+                require(bool(out),"cannot open H9 puff598 mass diagnostic");
+                out<<std::setprecision(9);
+                std::size_t rows=0;
+                for(std::size_t n=0;n<hour.steps.size();++n){
+                    const auto& st=hour.steps[n];
+                    if(st.puff_id!=598)continue;
+                    const auto& step=st.step;
+                    require(!step.pre_dry_qold_mixed.empty() &&
+                            !step.vmass.mass_mixed.empty() &&
+                            step.dry.has_value() &&
+                            !step.dry->fraction_remaining.empty() &&
+                            step.dry_input_resistance.has_value() &&
+                            !step.dry_input_resistance->velocity_ms.empty(),
+                            "H9 puff598 native QOLD/DRY provenance missing");
+                    out<<physical_steps+n+1U<<" "<<st.puff_id<<" "
+                       <<st.ksam<<" "<<step.pre_dry_qold_mixed[0]<<" "
+                       <<step.vmass.mass_mixed[0]<<" "
+                       <<step.dry->fraction_remaining[0]<<" "
+                       <<step.dry_input_resistance->velocity_ms[0]<<" "
+                       <<step.substep.step_s<<"\n";
+                    ++rows;
+                }
+                out.flush();
+                require(bool(out)&&rows>=8U,
+                        "H9 puff598 native mass trace missing history");
+                std::cout<<"P7_NATIVE_H9_PUFF598_MASS_TRACE=SOURCE_ONLY"
+                         <<" STEPS="<<rows
+                         <<" ORIGINAL_MASS_PARITY=NOT_YET_COMPARED\n";
+            }
+        }
         if(trace_h9_cell24) {
             // H9 original/new native i13,j1 must remain zero, closing
             // the formerly spurious native puff594/KSAM5 event.

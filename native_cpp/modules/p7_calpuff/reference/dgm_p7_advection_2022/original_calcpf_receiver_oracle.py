@@ -285,6 +285,73 @@ def audit_h9_receptor_sigtz(path: Path, out: Path) -> None:
         "native_state_injected":False
     },indent=2)+"\n")
 
+# The H9 first post-SZ0 mass residual is original puff598, KSAM8.
+# Capture every original substep for this puff, without injecting any state.
+H9_PUFF598_MASS_NAME = "dgm_h9_puff598_mass.bin"
+H9_PUFF598_MASS_RECORD = struct.Struct("<3i5f")
+H9_PUFF598_MASS_HELPERS = """
+      subroutine dgmh9p598mass(qold,qnew,frac,vd,tsamp)
+      integer dgmseq,dgmid,dgmksam
+      real qold,qnew,frac,vd,tsamp
+      logical ldgm
+      common /dgmrecur/ dgmseq,dgmid,dgmksam
+      save ldgm
+      data ldgm/.false./
+      if(dgmid.ne.598.or.dgmseq.lt.16420.or.dgmseq.gt.16679)
+     &   return
+      if(.not.ldgm)then
+         open(1923,file='dgm_h9_puff598_mass.bin',
+     &        access='stream',form='unformatted',status='replace')
+         ldgm=.true.
+      endif
+      write(1923) dgmseq,dgmid,dgmksam,qold,qnew,frac,vd,tsamp
+      return
+      end
+"""
+
+def add_h9_puff598_mass_trace(source: str) -> str:
+    anchor="            qnew(ipl)=qm(ipl,ii)"
+    if source.count(anchor + "\n") != 1:
+        raise AssertionError("source COMP QNEW after DRY anchor drift")
+    call=("            if(ipl.eq.1) call dgmh9p598mass(\n"
+          "     &                  qold(ipl),qnew(ipl),\n"
+          "     &                  fracdry(ipl),vd(ipl),tsamp)\n")
+    return source.replace(anchor + "\n",anchor + "\n"+call) + H9_PUFF598_MASS_HELPERS
+
+
+def audit_h9_puff598_mass(path: Path, out: Path) -> None:
+    if not path.is_file() or path.stat().st_size % H9_PUFF598_MASS_RECORD.size:
+        raise AssertionError("original H9 puff598 mass trace absent/misaligned")
+    rows=[]
+    with path.open("rb") as fp:
+        while block:=fp.read(H9_PUFF598_MASS_RECORD.size):
+            seq,puff,ksam,*numbers=H9_PUFF598_MASS_RECORD.unpack(block)
+            if not (16420<=seq<=16679 and puff==598 and 1<=ksam<=99):
+                raise AssertionError("H9 puff598 original mass key corrupted")
+            if rows and seq<=rows[-1][0]:
+                raise AssertionError("H9 puff598 mass steps not chronological")
+            rows.append((seq,ksam,numbers))
+    if len(rows)<8:
+        raise AssertionError("original puff598 mass trace is missing KSAM8 history")
+    print("P7_ORIGINAL_H9_PUFF598_MASS_TRACE=SOURCE_ONLY"
+          f" RECORDS={len(rows)} FIRST_STEP={rows[0][0]}"
+          f" LAST_STEP={rows[-1][0]} UNMODIFIED_PUFF_CON=YES")
+    for seq,ksam,v in rows[:12]:
+        print(f"P7_ORIGINAL_H9_PUFF598_MASS STEP={seq} KSAM={ksam}"
+              f" QOLD={v[0]:.10g} QNEW={v[1]:.10g}"
+              f" FRACDRY={v[2]:.10g} VD={v[3]:.10g}"
+              f" TSAMP={v[4]:.10g}")
+    out.write_text(json.dumps({
+        "scope":"original CALPUFF H9 puff598 source mass history",
+        "status":"SOURCE_ONLY_NO_NATIVE_INJECTION",
+        "count":len(rows),
+        "rows":[{"step":i,"ksam":k,"qold":v[0],"qnew":v[1],
+                 "fracdry":v[2],"vd":v[3],"tsamp":v[4]}
+                for i,k,v in rows],
+        "sha256":original.sha256_file(path)
+    },indent=2)+"\n")
+
+
 H9_Z_ANCHORS = (
     # Original SETPUF calpuff.for L48526-48534, BEFORE terrain or clipping.
     ("            call sigtz(sigzb(ii),zero,zero,zpb(ii),szb1,vtzb1,vdzb1)",
@@ -474,6 +541,7 @@ def main() -> None:
     if args.trace_h9_setpuf:
         source=add_h9_setpuf_trace(source)
         source=add_h9_receptor_sigtz_trace(source)
+        source=add_h9_puff598_mass_trace(source)
     instrumented.write_text(source + source_helpers, encoding="latin-1")
 
     alias = original._alias_tree(vendor, out / "include-alias")
@@ -503,6 +571,8 @@ def main() -> None:
     if original.sha256_file(dgm) != DGM_SHA or dgm.stat().st_size != 254687 * 352:
         raise AssertionError("original 143h DGM changed under CALCPF instrumentation")
     if args.trace_h9_setpuf:
+        audit_h9_puff598_mass(run / H9_PUFF598_MASS_NAME,
+                             out / "original-h9-puff598-mass.json")
         audit_h9_receptor_floor(
             run / H9_RECFLOOR_NAME,
             out / "original-h9-puff594-receptor21-1-szfloor.json")
