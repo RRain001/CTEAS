@@ -64,7 +64,8 @@ jobs:
             cteas_p6g_surface_dynamic_tests cteas_p6g_upper_dynamic_tests \
             cteas_p6g_observation_input_tests cteas_p6g_g8_10km_year_tests \
             cteas_p6g_g9_multi_wind1_tests cteas_p6g_g11_terrain_tests \
-            cteas_p6g_g12_thermal_tests cteas_p6g_g13_surfvar_10km_reference --parallel 2
+            cteas_p6g_g12_thermal_tests cteas_p6g_g13_surfvar_10km_reference \
+            cteas_p6g_g14_unified_hourly_tests --parallel 2
       - name: Run 2SS+2US cross-year and 8784h CTest
         run: ctest --test-dir "$RUNNER_TEMP/p6g" --output-on-failure -R '^p6g_'
       - name: Original CALMET Fortran 2SS 10km SURFVAR 72-case strict parity
