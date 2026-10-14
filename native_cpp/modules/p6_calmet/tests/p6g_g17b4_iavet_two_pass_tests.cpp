@@ -18,6 +18,7 @@
 #include "cteas/p6/p6g_g18c3_temp3d_after_comp.hpp"
 #include "cteas/p6/p6g_g18c4_selected_hour_candidate.hpp"
 #include "cteas/p6/p6g_g18c5_selected_p6f_fields.hpp"
+#include "cteas/p6/p6g_g18c6_selected_p6f_dataset.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -55,6 +56,8 @@ struct Input {
         grid.nx=12;grid.ny=12;grid.grid_km=10.f;
         grid.zone=50;grid.hemisphere='N';
         grid.xorigin_km=510.885f;grid.yorigin_km=3531.269f;
+        grid.nlu=1;grid.valid_categories={20};
+        grid.lai.assign(144,1.5f);
         grid.z0_m.assign(144,0.5f);
         grid.albedo.assign(144,0.2f);
         grid.bowen.assign(144,0.5f);
@@ -200,7 +203,8 @@ static void verify(const p6g::G17B4SurfaceControls& controls,
 static void verify_source_staged_iavet(
     const p6g::G17B4SurfaceControls& controls,
     const p6g::OriginalWindControls& wind,
-    sys_seconds begin,const std::string& source_metinp){
+    sys_seconds begin,const std::string& source_metinp,
+    const std::string& selected_output_file){
     Input f(controls,begin);
     auto surface=f.make();
     p6g::G16ObservedProfiles profiles;
@@ -837,6 +841,70 @@ static void verify_source_staged_iavet(
     },"G18C5 incomplete real P6F output impersonated native full 45 field output");
     const auto p6f_candidate=p6g::g18c5_selected_p6f_fields(
         frame,selected,full_candidate,source_metinp,true);
+    rejects([&]{
+        (void)p6g::g18c6_selected_one_hour_dataset(
+            frame,p6f_candidate,selected.nearest_surface,source_metinp,false);
+    },"G18C6 accepted selected G14 fixture as production original meteorology");
+    const auto native_file=p6g::g18c6_selected_one_hour_dataset(
+        frame,p6f_candidate,selected.nearest_surface,source_metinp,true);
+    check(native_file.header.nssta==2&&native_file.header.nusta==2&&
+          native_file.header.nx==12&&native_file.header.ny==12&&
+          native_file.header.nz==9&&native_file.header.irlg==1&&
+          native_file.hourly.size()==45&&
+          native_file.statics.nears==
+            std::vector<std::int32_t>(selected.nearest_surface.begin(),
+                                      selected.nearest_surface.end())&&
+          native_file.statics.zface_m==
+            std::vector<float>(wind.zface_m.begin(),wind.zface_m.end())&&
+          native_file.statics.z0_m==f.grid.z0_m&&
+          native_file.statics.elev_m==f.grid.terrain_m&&
+          native_file.statics.xlai==f.grid.lai,
+          "G18C6 missing real 2SS/2US GEO and original ZFACE P6F statics");
+    const auto bytes=cteas::p6f::serialize_calmet_dat21(native_file);
+    const auto parsed=cteas::p6f::parse_calmet_dat21(bytes);
+    check(parsed.header.irlg==1&&parsed.hourly.size()==45&&
+          cteas::p6f::serialize_calmet_dat21(parsed)==bytes,
+          "G18C6 frozen P6F writer did not roundtrip selected source binary");
+    for(const auto& field:parsed.hourly) {
+        if(field.integer) {
+            check(field.integer_values==p6f_candidate.integer.at(field.label),
+                  "G18C6 P6F binary lost original IPGT/IRH integer values");
+        }else{
+            check(field.real_values==p6f_candidate.real.at(field.label),
+                  "G18C6 P6F binary changed an original meteorological value");
+        }
+    }
+    if(!selected_output_file.empty()) {
+        cteas::p6f::write_calmet_dat21(selected_output_file,native_file);
+        const auto disk=cteas::p6f::read_calmet_dat21(selected_output_file);
+        check(cteas::p6f::serialize_calmet_dat21(disk)==bytes,
+              "G18C6 selected CALMET.DAT file differed from native writer memory");
+    }
+    auto invalid_p6f=p6f_candidate;
+    invalid_p6f.real.erase("RHO     ");
+    rejects([&]{
+        (void)p6g::g18c6_selected_one_hour_dataset(
+            frame,invalid_p6f,selected.nearest_surface,source_metinp,true);
+    },"G18C6 silently restored missing RHO from MET.DAT");
+    auto invalid_nears=selected.nearest_surface;
+    invalid_nears[0]=3;
+    rejects([&]{
+        (void)p6g::g18c6_selected_one_hour_dataset(
+            frame,p6f_candidate,invalid_nears,source_metinp,true);
+    },"G18C6 accepted out-of-bounds original SETCOM nearest site");
+    auto wrong_site=p6f_candidate;
+    std::swap(wrong_site.station_ids[0],wrong_site.station_ids[1]);
+    rejects([&]{
+        (void)p6g::g18c6_selected_one_hour_dataset(
+            frame,wrong_site,selected.nearest_surface,source_metinp,true);
+    },"G18C6 crossed original SS station ordinal metadata");
+    const auto shifted_deck=std::regex_replace(
+        source_metinp,std::regex(R"(!\s*IUTMZN\s*=\s*50\s*!)"),
+        "! IUTMZN = 51 !");
+    rejects([&]{
+        (void)p6g::g18c6_selected_one_hour_dataset(
+            frame,p6f_candidate,selected.nearest_surface,shifted_deck,true);
+    },"G18C6 accepted mismatched source UTM zone");
     check(p6f_candidate.end==frame.input.end&&
           p6f_candidate.station_ids==std::vector<int>({58321,58322})&&
           p6f_candidate.real.size()==43&&p6f_candidate.integer.size()==2&&
@@ -1397,7 +1465,7 @@ static void verify_g18b3_source_iupt_choice(const std::string& deck) {
 }
 int main(int argc,char** argv){
     try{
-        check(argc==2,"G17B4 pinned met.inp required");
+        check(argc==3,"G17B4 pinned met.inp and selected output path required");
         std::ifstream file(argv[1]);
         check(static_cast<bool>(file),"G17B4 source met.inp not found");
         const std::string deck((std::istreambuf_iterator<char>(file)),
@@ -1410,8 +1478,8 @@ int main(int argc,char** argv){
               "G17B4 original Hefei wind-averaging controls diverged");
         const auto begin=sys_days{year{2024}/January/1}+hours{2};
         verify(control,begin);
-        verify_source_staged_iavet(control,wind,begin,deck);
-        verify_source_staged_iavet(control,wind,begin+hours{12},deck);
+        verify_source_staged_iavet(control,wind,begin,deck,argv[2]);
+        verify_source_staged_iavet(control,wind,begin+hours{12},deck,"");
         verify_g18b_asynchronous_upper_turnover(deck);
         verify_g18b3_source_iupt_choice(deck);
         verify(control,begin+hours{11});
@@ -1445,6 +1513,7 @@ int main(int argc,char** argv){
                     "G18C3_TRUE_UP_FACET_POST_AVEMIX_TEMP3D_PASS "
                     "G18C4_EIGHT_G14_FIELDS_UNCOMMITTED_SOURCE_CANDIDATE_PASS "
                     "G18C5_SELECTED_45_P6F_NO_REFERENCE_BACKFILL_PASS "
+                    "G18C6_SELECTED_CALMET_DAT21_BINARY_NO_REFERENCE_STATICS_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
