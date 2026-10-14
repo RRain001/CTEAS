@@ -150,10 +150,12 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     const auto clock=bind_original_calmet_station_inputs(deck,surface,upper);
     require_test(clock.size()==static_cast<std::size_t>(expected_hours),
                  "year duration not present in G8 input chain");
-    const SelectedBridgeGrid grid{
+    SelectedBridgeGrid grid{
         nx,ny,10.0f,geo.zone,geo.hemisphere,
         {0,20,40,80,160,320,640,1200,2000,3000},geo.landuse
     };
+    grid.synthetic_identity_diagno_tail=true;
+    grid.smoothing_passes={1,0,2,1,0,2,1,0,1};
     // 6x6 (60 km) short cross-year; expanded 12x12 (120 km) annual.
     require_test(grid.nx*grid.ny==nx*ny&&grid.spacing_km==10.f,
                  "G8 must test precisely 10km cells");
@@ -172,7 +174,11 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
         const auto output=selected_multisite_hour(
             deck,surface.hourly[hour],input,prepared,grid);
         require_test(output.end==input.end,
-                     "G8 selected INTER2 returned wrong hour");
+                     "G10 source-selected DIAGNO returned wrong hour");
+        require_test(output.selected_tail_exercised&&
+                     output.nonzero_w_faces>0&&
+                     std::isfinite(output.top_center_w_mps),
+                     "G10 10km selected SMOOTH/DIVCEL/W was not evaluated");
         if(hour==0)first_u=output.center_u_mps;
         if(hour>0 && output.center_u_mps!=first_u)varied=true;
         if(year_month_day{floor<days>(output.end)}.year()!=
@@ -186,13 +192,16 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
         hash=digest(hash,output.center_v_mps);
         hash=digest(hash,output.upper_u_mps);
         hash=digest(hash,output.upper_v_mps);
+        hash=digest(hash,output.final_center_u_mps);
+        hash=digest(hash,output.final_center_v_mps);
+        hash=digest(hash,output.top_center_w_mps);
     }
     require_test(varied&&total_contributions>static_cast<std::size_t>(expected_hours),
                  "G8 selected multi-observation fields not active/variable");
     require_test(!require_year_boundary||crossed,
                  "G8 did not exercise Gregorian year boundary");
     require_test(hash!=1469598103934665603ULL,"G8 digest unchanged");
-    std::cout<<"G9_10KM_SYNTHETIC_MULTISTATION_WIND1_INTER2 hours="<<expected_hours
+    std::cout<<"G10_10KM_SYNTHETIC_MULTISTATION_WIND1_INTER2_DIAGNO_TAIL hours="<<expected_hours
              <<" grid="<<nx<<"x"<<ny<<"x9 spacing_km=10 surface=2 upper=2"
              <<" contributions="<<total_contributions
              <<" signature="<<std::hex<<hash<<std::dec<<"\n";
@@ -210,7 +219,7 @@ int main(){
         // 2024 is a leap year: actual 8784 consecutive UTC hours.
         const auto annual=sys_days{year{2024}/January/1};
         exercise_period(annual,annual+hours{8784},8784,true,12,12);
-        std::cout<<"PASS P6G_G9_10KM_EXPANDED_MULTI_WIND1_INTER2_8784H\n";
+        std::cout<<"PASS P6G_G10_10KM_EXPANDED_MULTI_WIND1_INTER2_SELECTED_DIAGNO_TAIL_8784H\n";
         return 0;
     }catch(const std::exception& e){
         std::cerr<<"P6G_G8_10KM_FAIL "<<e.what()<<"\n";
