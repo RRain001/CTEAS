@@ -208,6 +208,69 @@ int main(int argc,char** argv) {
             [](const auto& left,const auto& right){
                 return std::abs(left.error)>std::abs(right.error);
             });
+        // Reconstruct the worst original/native receptor from independent
+        // native per-COMP-substep CALCPF contributions, retaining float32
+        // addition order. This is an audit of internal C++ causality,
+        // never a second source of solver input or a vendor parity claim.
+        constexpr std::size_t hotspot=2468U;  // (i=19,j=50), 0-based 2468
+        struct HotspotStep {
+            std::size_t sequence=0;
+            int puff_id=0,release_number=0,ksam=0;
+            float concentration=0.0F;
+            float post_dry_mass=0.0F;
+        };
+        std::vector<HotspotStep> hotspot_steps;
+        float hotspot_rebuilt=0.0F;
+        std::size_t hotspot_nonzero_steps=0;
+        for(std::size_t step_idx=0;step_idx<hour.steps.size();++step_idx){
+            const auto& item=hour.steps[step_idx];
+            need(item.step.receptor_increments.size()==2500U &&
+                 item.step.vmass.mass_mixed.size()==2U,
+                 "native per-step H-3 CALCPF audit missing source state");
+            const float contribution=item.step.receptor_increments[hotspot];
+            need(std::isfinite(contribution)&&contribution>=0.0F,
+                 "native per-step H-3 CALCPF hotspot invalid");
+            hotspot_rebuilt+=contribution;
+            if(contribution>0.0F){
+                ++hotspot_nonzero_steps;
+                hotspot_steps.push_back({step_idx,item.puff_id,
+                    item.release_number,item.ksam,contribution,
+                    item.step.vmass.mass_mixed[0]});
+            }
+        }
+        need(std::bit_cast<std::uint32_t>(hotspot_rebuilt)==
+             std::bit_cast<std::uint32_t>(
+                 hour.receptor_concentrations[hotspot]) &&
+             hotspot_nonzero_steps>0U,
+             "H-3 native hotspot lost REAL4 COMP substep accumulation");
+        std::sort(hotspot_steps.begin(),hotspot_steps.end(),
+            [](const auto& left,const auto& right){
+                return left.concentration>right.concentration;
+            });
+        double hotspot_top_sum=0.0;
+        for(std::size_t k=0;k<std::min<std::size_t>(hotspot_steps.size(),10U);++k){
+            const auto& s=hotspot_steps[k];
+            hotspot_top_sum+=s.concentration;
+            std::cout<<std::setprecision(9)
+                     <<"P7_HEFEI_H3_HOTSPOT_SOURCE_SUBSTEP"
+                     <<" RANK="<<k+1U
+                     <<" STEP_INDEX0="<<s.sequence
+                     <<" PUFF_ID="<<s.puff_id
+                     <<" RELEASE_NUMBER="<<s.release_number
+                     <<" KSAM="<<s.ksam
+                     <<" POST_DRY_H3_BQ="<<s.post_dry_mass
+                     <<" RECEPTOR_INCREMENT_BQ_M3="<<s.concentration<<"\\n";
+        }
+        std::cout<<std::setprecision(9)
+                 <<"P7_HEFEI_H3_HOTSPOT_SUBSTEP_AUDIT=PASS"
+                 <<" INDEX0="<<hotspot
+                 <<" TOTAL_COMP_SUBSTEPS="<<hour.steps.size()
+                 <<" CONTRIBUTING_SUBSTEPS="<<hotspot_nonzero_steps
+                 <<" TOP10_FRACTION="<<
+                    hotspot_top_sum/static_cast<double>(hotspot_rebuilt)
+                 <<" REAL4_REBUILT_BQ_M3="<<hotspot_rebuilt
+                 <<" ORIGINAL_HOURLY_BQ_M3="<<expected[hotspot]
+                 <<" ORIGINAL_STEP_ORACLE=NOT_YET_AVAILABLE\\n";
         const auto top=std::min<std::size_t>(mismatches.size(),12U);
         for(std::size_t k=0;k<top;++k){
             const auto& d=mismatches[k];
