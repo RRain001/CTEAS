@@ -1,5 +1,6 @@
 #include "cteas/p6/p6g_multi_wind1_firstguess.hpp"
 #include "cteas/p6/wind1_selected_firstguess.hpp"
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <exception>
