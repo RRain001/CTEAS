@@ -56,6 +56,11 @@ jobs:
                   if j not in shown:
                       print(f'P7_VENDOR_OLD_NEW_MASS {j+1:6d} {lines[j]}')
                       shown.add(j)
+          for a,b in ((4945,5009),(5140,5204),(5205,5276),(5277,5379)):
+              for i in range(a-1,b):
+                  line=lines[i]
+                  if line.lstrip().lower().startswith('c '):continue
+                  print(f'P7_VENDOR_PUFRECS_REAL {i+1:6d} {line}')
           print('P7_VENDOR_H3_RECEIVER_SOURCE_PIN=PASS')
           PY
       - name: Verify immutable original inputs, compile independent native solver and compare
