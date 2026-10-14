@@ -71,9 +71,11 @@ jobs:
           original=Path(sys.argv[1]).read_text()
           native=Path(sys.argv[2]).read_text()
           assert 'P7_ORIGINAL_SETPUF_END_DGM3874=PASS' in original
-          assert 'P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE RECORD=3874' in native
+          assert 'P7_HEFEI_6H_ORIGINAL_DGM_REAL4_DIAGNOSTIC=PASS' in native
+          assert 'STORED_SIGZ=11458/11458' in native
+          assert 'FIRST_DIFFERENCE_RECORD=0' in native
           line=next(x for x in native.splitlines()
-                    if x.startswith("P7_HEFEI_6H_NATIVE_SETPUF_END_FIRST_DIFFERENCE"))
+                    if x.startswith("P7_HEFEI_6H_NATIVE_SETPUF_END_DGM3874"))
           assert 'RECORD=3874' in line
           pairs={'R':'BIT_R','CTADJ2_STRAIN':'BIT_STRAIN',
                  'SZADJ':'BIT_SZADJ','SZE1_AFTER_SIGTZ':'BIT_SZE1'}
@@ -88,9 +90,12 @@ jobs:
                     ' VENDOR=0x'+old.group(1)+' NATIVE=0x'+new.group(1)+
                     ' BITWISE='+('YES' if ok else 'NO'))
               if not ok and first is None:first=vendor_key
-          assert first is not None, 'original stored SIGZ diverged but no terminal cause found'
-          print('P7_ORIGINAL_SETPUF_END_FIRST_ARITHMETIC_DIFFERENCE='+first+
-                ' SCIENTIFIC_SIXHOUR_PARITY=OPEN')
+          assert first is None, 'original CTADJ2 end REAL4 parity regressed: '+str(first)
+          print('P7_ORIGINAL_SETPUF_END_DGM3874_SOURCE_VALUES=PASS'
+                ' R_STRAIN_SZADJ_SZE1=BITWISE'
+                ' SIXHOUR_DGM_XY_SIGY_SIGZ=11458/11458'
+                ' FIRST_THREE_HOURS_H3=7500/7500'
+                ' FULL_6H_H3_CONCENTRATION_PARITY=OPEN')
           PY
       - uses: actions/upload-artifact@v4
         if: always()
