@@ -840,8 +840,10 @@ static void verify_source_staged_iavet(
             frame,selected,elustr,diagi,comp);
     },"G18A unmarked MIXHT controls could impersonate source COMP");
     comp.explicitly_test_only=true;
+    // Actual G18A COMP consumes the G18E1 G14-stage station results,
+    // not the independent direct-call G17C3 numerical oracle above.
     const auto calculated=p6g::selected_comp_mixht_with_observed_upper(
-        frame,selected,elustr,diagi,observed_upper,comp);
+        frame,selected,elustr,stheor_stage.stations(),observed_upper,comp);
     auto corrupt_source=observed_upper;
     corrupt_source.justa[1]=-1;
     rejects([&]{
@@ -1121,7 +1123,8 @@ static void verify_source_staged_iavet(
     // the final four stage results from a prefilled fixture.
     auto staged_frame=frame;
     p6g::G18D4SelectedCompStageAdapter routed_comp(
-        selected,elustr,diagi,observed_upper,comp,av_ctrl,temp_controls);
+        selected,elustr,stheor_stage.stations(),observed_upper,comp,
+        av_ctrl,temp_controls);
     check(!routed_comp.run(p6::NativeHourStage::CompGridMixht,
                            staged_frame).completed,
           "G18D4 fixture callback falsely certified production COMP");
