@@ -228,6 +228,23 @@ if(P6G_G17B_GFORTRAN AND Python3_Interpreter_FOUND)
       --out "${CMAKE_CURRENT_BINARY_DIR}/g17b_setcom_airden_source_parity.json")
 endif()
 
+# G17B4: original Hefei IAVET=1 two SURFVAR/AVETMP calls bracket FRADJ;
+# distinct source WIND1 and post-FRADJ winds must not be conflated.
+add_executable(cteas_p6g_g17b4_iavet_two_pass_tests
+               tests/p6g_g17b4_iavet_two_pass_tests.cpp)
+target_link_libraries(cteas_p6g_g17b4_iavet_two_pass_tests PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6g_g17b4_iavet_two_pass_tests PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+if(MSVC)
+  target_compile_options(cteas_p6g_g17b4_iavet_two_pass_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g17b4_iavet_two_pass_tests PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g17b4_original_iavet1_pre_and_post_fradj_surfvar
+         COMMAND cteas_p6g_g17b4_iavet_two_pass_tests
+           "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
+
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
 add_executable(cteas_p6_terset src/terrain_envelope_main.cpp)
