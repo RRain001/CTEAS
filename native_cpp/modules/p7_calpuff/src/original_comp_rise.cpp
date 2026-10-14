@@ -249,8 +249,10 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     if(lcalm){
         require(control.calm_mdisp3.has_value(),
                 "LCALM requires original MDISP3 turbulence inputs");
-        require(!sampling_kernel && !control.mctadj2 && !control.gaussian_dry,
-                "CALPUFF calm receptor/CTADJ2/DRY coupling not yet accepted");
+        // Source-port the calm PUFRECS IDOPT=1 sampler separately from
+        // the still-unvalidated real MCTADJ2/DRY coupled calm branch.
+        require(!control.mctadj2 && !control.gaussian_dry,
+                "CALPUFF calm CTADJ2/DRY coupling not yet accepted");
         require(before.total_distance_m>=state.x_final_m,
                 "calm puff still rising requires separate GRISE/SETPUF parity");
     }
@@ -296,6 +298,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         return SigmaCurvePoint{s.sigma_z_m,s.virtual_time_z_s,
                                s.virtual_distance_z_km};
     };
+    std::optional<OriginalCalmSigmaInput> native_receptor_calm;
     if(lcalm){
         // Source COMP L10695-10703 resolves midpoint IXMET/IYMET;
         // L10839-10842 selects ILW from THAT cell, not release/origin.
@@ -333,6 +336,9 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         parameters.sy0=parameters.syh;
         // SETCSIG initializes THFTY with SIGTY(SYH,0,0).
         parameters.thfty=original_calm_sigma(parameters).virty;
+        // PUFRECS reads the same live SETCSIG /CSIGMA/ parameters as
+        // SETPUF when LCALM=1. No PG re-classification at receptors.
+        native_receptor_calm=parameters;
         sigma_y=[parameters](double initial,double distance,double time){
             auto p=parameters;
             p.sy0=static_cast<float>(initial);p.sz0=0.0F;
@@ -594,7 +600,8 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             state.buoyancy_variance_m2,
             state.initial_sigma_y_squared_m2,
             state.minimum_sigma_y_m,state.minimum_sigma_z_m,
-            ctadj2_step,current_receptor_bvf,ws,original_qold_mixed
+            ctadj2_step,current_receptor_bvf,ws,original_qold_mixed,
+            native_receptor_calm
         };
         receptor_increments=sampling_kernel(at_receptor);
         for(float increment:receptor_increments){
