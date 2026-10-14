@@ -24,6 +24,19 @@ OriginalMetCell original_met_cell(float x,float y,int nx,int ny) {
             +static_cast<std::size_t>(found.i-1)};
 }
 
+OriginalMetCell original_met_cell_clamped(
+    float x,float y,int nx,int ny) {
+    if(nx<=0 || ny<=0 || !std::isfinite(x) || !std::isfinite(y))
+        throw std::invalid_argument("P7 original GETCELL: invalid midpoint inputs");
+    const auto selected=grid_cell({
+        .x_cells=x,.y_cells=y,.nx=nx,.ny=ny,
+        .domains=1,.domain=1,.nest_factor=1.0
+    });
+    return {selected.i,selected.j,
+            static_cast<std::size_t>(selected.j-1)*static_cast<std::size_t>(nx)+
+            static_cast<std::size_t>(selected.i-1)};
+}
+
 AdvectiveWind original_met_cell_advect(
     const OriginalMetHour& hour,const Calmet21Static& statics,
     OriginalMetCell cell,float bottom,float top) {
