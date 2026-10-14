@@ -340,9 +340,8 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             std::clamp(met.zi[mid_cell.offset_0based],
                 cfg.minimum_mixing_height_m,cfg.maximum_mixing_height_m):
             met.zi[mid_cell.offset_0based];
-        const int jdstab=
-            cfg.jsup>0 && mid_stability<5 && before.z_m>dpbl ?
-                cfg.jsup:mid_stability;
+        const int jdstab=original_comp_turbset_jdstab(
+            mid_stability,cfg.jsup,before.z_m,dpbl);
         const auto turb=original_turbset_mdisp3_from_cell(
             cfg.original_turbulence,statics,
             static_cast<std::size_t>(met.nx),
