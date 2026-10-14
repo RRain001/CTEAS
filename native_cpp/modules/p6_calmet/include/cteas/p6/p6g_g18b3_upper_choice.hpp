@@ -84,8 +84,8 @@ inline void g18b3_bind_test_only_upper_choice(
     const auto n=static_cast<std::size_t>(grid.nx)*
                  static_cast<std::size_t>(grid.ny);
     if(!explicitly_test_only||choice.independently_fortran_verified||
-       choice.nearu.size()!=n||choice.iupt!=-1&&
-       (choice.iupt<1||static_cast<std::size_t>(choice.iupt)>stations.upper.size()))
+       choice.nearu.size()!=n||(choice.iupt!=-1&&
+       (choice.iupt<1||static_cast<std::size_t>(choice.iupt)>stations.upper.size())))
         throw std::invalid_argument("G18B3 NEARU source parity still not accepted");
     for(const int ordinal:choice.nearu)
         if(ordinal<=0||static_cast<std::size_t>(ordinal)>stations.upper.size())
