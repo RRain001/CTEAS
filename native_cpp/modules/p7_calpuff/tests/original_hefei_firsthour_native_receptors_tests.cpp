@@ -170,7 +170,11 @@ int main(int argc,char** argv) {
                     receptors.sampling_nx,receptors.sampling_ny,position,
                     state.receptor_brunt_vaisala_s,
                     state.receptor_effective_wind_ms);
-            },true,h3_hook);
+            },true,h3_hook,
+            // Original first-hour PUFRECS receptor projection at (19,50)
+            // clips leading fractions 6.57 -> 1 and trailing -0.288 -> 0.
+            // Do not substitute CALCPF's separate NSIGMA=3 for FCLIP.
+            0.0F);
         OriginalCompRiseMultiPuffHours driver;
         const OriginalCompPuffBounds bounds{0.0F,50.0F,0.0F,50.0F};
         // Capacity is deliberately nonbinding for the first hour. The
