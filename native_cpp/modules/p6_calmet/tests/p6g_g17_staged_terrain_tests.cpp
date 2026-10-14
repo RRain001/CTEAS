@@ -196,6 +196,9 @@ int main(int argc,char** argv) {
               "G17 first pre-INTER2 WINDBC incomplete");
         reject([&]{stages.run(p6::NativeHourStage::DiagnoWindbcFirstGuess,hour);},
                "G17 incorrectly recomputed first WINDBC");
+        reject([&]{stages.run(p6::NativeHourStage::DiagnoInter2,hour);},
+               "G17 accepted INTER2 before source STHEOR DIAGI station refresh");
+        stages.provide_selected_diagi_before_inter2(profiles(end));
         res=stages.run(p6::NativeHourStage::DiagnoInter2,hour);
         check(res.completed&&res.source==p6::NativeHourSource::NativeCpp,
               "G17 INTER2 after genuine native FRADJ/SLOPE/WINDBC failed");
