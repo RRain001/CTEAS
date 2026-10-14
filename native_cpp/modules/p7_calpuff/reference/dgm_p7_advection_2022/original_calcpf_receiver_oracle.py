@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 from pathlib import Path
 import struct
 import sys
@@ -236,11 +237,11 @@ c --- Original REAL4 terrain operands for exactly three H9 CALCPF events.
       ty=(float(jbsamp)-0.5)*dgrid+10.0*delsam
       if(x.ne.tx.or.y.ne.ty) return
       if(.not.opened)then
-         open(1923,file='dgm_h9_mctadj2_receptor42_11.bin',
+         open(1933,file='dgm_h9_mctadj2_receptor42_11.bin',
      &        form='unformatted',access='stream',status='replace')
          opened=.true.
       endif
-      write(1923) dgmseq,dgmid,dgmksam,x,y,eltop,
+      write(1933) dgmseq,dgmid,dgmksam,x,y,eltop,
      &            uavg,bvf,dsel,ze,dsh,zrterr,zdiff,z,zrpole
       return
       end
@@ -692,6 +693,19 @@ def main() -> None:
     if source_helpers.count(f"if(dgmseq.lt.{first_seq}.or.dgmseq.gt.{final_seq}) return") != 2 or \
        source_helpers.count(f"if(isamp.ne.{ix}.or.jsamp.ne.{jy}.or.ipol.ne.1) return") != 2:
         raise AssertionError("original receiver instrumentation guards not exact")
+    # Avoid write-only Fortran I/O unit aliasing between diagnostic helpers.
+    # A collision silently overwrites other traces and can masquerade as a
+    # physical mismatch without changing the frozen vendor puff.con output.
+    helpers=(EXTRA_HELPERS,H9_Z_HELPERS,H9_MET_HELPERS,H9_SIGMA_HELPERS,
+             H9_RECSIG_HELPERS,H9_MCTADJ2_HELPERS,
+             H9_PUFF598_MASS_HELPERS,H9_PUFF598_VCBAR_HELPERS)
+    open_units=[]
+    for helper in helpers:
+        open_units.extend(int(u) for u in re.findall(
+            r"(?im)^\s*open\((\d+),",helper))
+    if len(open_units)!=len(set(open_units)):
+        raise AssertionError(f"original diagnostic Fortran I/O unit collision: {open_units}")
+    print(f"P7_ORIGINAL_WRITE_ONLY_FORTRAN_UNIT_CONFLICT=NONE UNITS={sorted(open_units)}")
     # The base extraction records original source assertions at each COMP
     # insertion and independently pins both original Fortran source hashes.
     original.CALLS["item7_setpuf_return"] += (
