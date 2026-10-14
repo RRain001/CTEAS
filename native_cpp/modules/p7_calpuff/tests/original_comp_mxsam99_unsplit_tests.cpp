@@ -1165,6 +1165,62 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
     const auto plume_sampler=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F,3.0F,
         OriginalFlatVerticalMethod::receptor_pg_vcoup);
+    // First real native IDOPT1 -> PUFRECS -> CALCPF integration, isolated
+    // to source-valid XFINAL=0 and a synthetic flat, no-dry/no-terrain grid.
+    // Original Hefei hour9 additionally needs MCTADJ2+MDRY=1, which MUST
+    // remain fail-closed until its independent original-source stage gate.
+    {
+        auto calm_met=met;
+        calm_met.u.assign(n*3U,0.2F);
+        calm_met.v.assign(n*3U,0.0F);
+        calm_met.el.assign(n,-100.0F);
+        auto calm_geo=geo;
+        calm_geo.present=true;
+        calm_geo.land_use.assign(n,1);
+        auto calm_control=ctl;
+        calm_control.calm_mdisp3=NativeCalmMdisp3Controls{};
+        calm_control.calm_mdisp3->iwat1=50;
+        calm_control.calm_mdisp3->iwat2=55;
+        calm_control.calm_mdisp3->original_turbulence.svmin.fill(0.5F);
+        calm_control.calm_mdisp3->original_turbulence.swmin.fill(0.06F);
+        auto calm_point=single_mass;
+        calm_point.point.x_final_m=0.0F;
+        calm_point.cadence.wind_speed_ms=0.2F;
+        const auto original_calm_receptor=make_original_flat_calcpf_sampler(
+            plume_grid,100.0F,3600.0F,3.0F,
+            OriginalFlatVerticalMethod::receptor_pg_vcoup);
+        std::size_t native_calm_sample_calls=0;
+        const RiseCompSamplingKernel calm_kernel=[&](
+                const RiseCompSamplingState& state){
+            need(state.receptor_calm_sigma.has_value() &&
+                 state.receptor_final_rise_distance_m==0.0F,
+                 "LCALM sampler lost live IDOPT1 or original XFINAL=0");
+            const auto values=original_calm_receptor(state);
+            need(values.size()==2500U &&
+                 std::all_of(values.begin(),values.end(),
+                     [](float x){return std::isfinite(x)&&x>=0.0F;}),
+                 "native calm PUFRECS CALCPF returned invalid receptor field");
+            ++native_calm_sample_calls;
+            return values;
+        };
+        OriginalCompRiseMultiPuffHours calm_driver;
+        const OriginalCompPuffBounds calm_bounds{0.0F,119.0F,0.0F,119.0F};
+        const auto calm_hour=
+            calm_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+                calm_met,calm_geo,calm_control,pg,false,calm_point,
+                calm_bounds,4096,2500,calm_kernel);
+        need(calm_driver.completed_hours()==1U &&
+             native_calm_sample_calls>0U &&
+             native_calm_sample_calls==calm_hour.steps.size() &&
+             calm_hour.receptor_concentrations.size()==2500U,
+             "synthetic native LCALM IDOPT1 CALCPF did not finish one hour");
+        std::cout<<"P7_NATIVE_CALM_IDOPT1_PUFRECS_CALCPF_1H=PASS"
+                 <<" SUBSTEPS="<<native_calm_sample_calls
+                 <<" SOURCE_XFINAL=0"
+                 <<" TURBSET=LIVE_MET"
+                 <<" CTADJ2_DRY=FAIL_CLOSED"
+                 <<" HEFEI_H9_PARITY=NOT_YET_ACCEPTED\\n";
+    }
     const auto midpoint_control=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F,3.0F,
         OriginalFlatVerticalMethod::substep_vcbar);
