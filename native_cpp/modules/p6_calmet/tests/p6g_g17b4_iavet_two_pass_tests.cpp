@@ -19,6 +19,7 @@
 #include "cteas/p6/p6g_g18c4_selected_hour_candidate.hpp"
 #include "cteas/p6/p6g_g18c5_selected_p6f_fields.hpp"
 #include "cteas/p6/p6g_g18c6_selected_p6f_dataset.hpp"
+#include "cteas/p6/p6g_g18d1_p6f_precommit.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -861,6 +862,41 @@ static void verify_source_staged_iavet(
           native_file.statics.xlai==f.grid.lai,
           "G18C6 missing real 2SS/2US GEO and original ZFACE P6F statics");
     const auto bytes=cteas::p6f::serialize_calmet_dat21(native_file);
+    // G18D1: read the native G18C4 field candidate into the SAME G14
+    // source frame the authoritative scheduler would validate after all
+    // 17 stages; no alternate time ownership or extra physics calculation.
+    auto pending_g14=frame;
+    pending_g14.next=full_candidate.candidate_memory;
+    pending_g14.fields=full_candidate.candidate_fields;
+    const auto precommitted=p6g::g18d1_validate_p6f_precommit(
+        pending_g14,native_file);
+    check(precommitted==bytes,
+          "G18D1 G14 precommit writer bytes differed from original frozen P6F");
+    auto contaminated=pending_g14;
+    contaminated.fields.u_mps[0]+=0.5f;
+    rejects([&]{
+        (void)p6g::g18d1_validate_p6f_precommit(contaminated,native_file);
+    },"G18D1 accepted MET.DAT U-field backfill not from current G14 physics");
+    contaminated=pending_g14;
+    contaminated.next.zi_m[0]+=25.f;
+    rejects([&]{
+        (void)p6g::g18d1_validate_p6f_precommit(contaminated,native_file);
+    },"G18D1 accepted stale pre-AVEMIX ZI instead of current COMP state");
+    contaminated=pending_g14;
+    contaminated.fields.w_face_mps[144]+=1.f;
+    rejects([&]{
+        (void)p6g::g18d1_validate_p6f_precommit(contaminated,native_file);
+    },"G18D1 accepted wrong 3D WFACE top-face value");
+    auto wrong_time_file=native_file;
+    wrong_time_file.header.end_hour=(wrong_time_file.header.end_hour+1)%24;
+    rejects([&]{
+        (void)p6g::g18d1_validate_p6f_precommit(pending_g14,wrong_time_file);
+    },"G18D1 published binary from wrong original model hour");
+    auto wrong_static_file=native_file;
+    wrong_static_file.statics.upper_x_m[0]+=100.f;
+    rejects([&]{
+        (void)p6g::g18d1_validate_p6f_precommit(pending_g14,wrong_static_file);
+    },"G18D1 accepted substituted original upper-station metadata");
     const auto parsed=cteas::p6f::parse_calmet_dat21(bytes);
     check(parsed.header.irlg==1&&parsed.hourly.size()==45&&
           cteas::p6f::serialize_calmet_dat21(parsed)==bytes,
@@ -1520,6 +1556,7 @@ int main(int argc,char** argv){
                     "G18C4_EIGHT_G14_FIELDS_UNCOMMITTED_SOURCE_CANDIDATE_PASS "
                     "G18C5_SELECTED_45_P6F_NO_REFERENCE_BACKFILL_PASS "
                     "G18C6_SELECTED_CALMET_DAT21_BINARY_NO_REFERENCE_STATICS_PASS "
+                    "G18D1_P6F_45_RECORDS_G14_PRECOMMIT_ORIGIN_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
