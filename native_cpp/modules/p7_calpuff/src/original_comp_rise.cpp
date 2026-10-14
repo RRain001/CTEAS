@@ -120,7 +120,8 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     require(vs.completed_substeps==state.completed &&
             vs.committed_lid_steps==state.completed,
             "native rising puff sigma/mass clock drift");
-    VendorSubstepOrder order;
+    VendorSubstepOrder order(control.gaussian_dry.has_value(),
+                            static_cast<bool>(sampling_kernel));
     const SamplingCadence cadence=sampling_cadence({
         .new_puff=state.completed==0,
         .source_type=1,
@@ -470,6 +471,8 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     // dry removal; never substitute the final post-DRY QM for both
     // CALCPF integration endpoints.
     const auto original_qold_mixed=mass.mass_mixed;
+    if(control.gaussian_dry || sampling_kernel)
+        order.captured_pre_removal_mass();
     std::optional<OriginalGaussianDryResult> dry_result;
     if(control.gaussian_dry){
         const auto& setup=control.gaussian_dry->setup;
@@ -540,6 +543,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         v.commit_dry(id,mass.mass_mixed,updated.mixed_mass_after);
         mass.mass_mixed=updated.mixed_mass_after;
         dry_result=std::move(updated);
+        order.dry_removal_completed();
     }
     // Native receptor accumulation belongs AFTER SETPUF but BEFORE COMP
     // L11391-11398. A pure sampling callback returns staged increments;
@@ -561,6 +565,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             if(!std::isfinite(increment))
                 throw std::invalid_argument("CALCPF sampler returned nonfinite increment");
         }
+        order.receptors_sampled();
     }
     v.commit_lid(id,mass.reflecting_lid_m,mass.puff_code);
     order.completed(VendorSubstepPhase::CommitNextStepHistory);
