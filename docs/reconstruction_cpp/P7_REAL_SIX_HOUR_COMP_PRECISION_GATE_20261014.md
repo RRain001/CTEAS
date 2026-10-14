@@ -9,7 +9,76 @@ and original `puff.con` as a read-only external oracle; real `MDRY=1`,
 only** (`143` hourly species DATA fields, **not** `286` fields; `286`
 are the period/grid metadata records). **MWET=0.**
 
-## 2026-10-14 CTADJ2 first-REAL4-divergence closure (latest accepted scope)
+## 2026-10-14 — real six-hour full-field H-3 REAL4 parity ACCEPTED
+
+**This section supersedes the earlier open 6h mass/concentration entries below.**
+The original Fortran source, frozen 2022 Hefei control/meteorology, original
+143-hour `puff.con` and 254,687-row DGM remain unchanged. A single native
+COMP orchestrator carries each puff and its mass/vertical state through the
+six actual consecutive MET hours. No original state initializes native physics.
+
+**Original/vendor source-first divergence closure:**
+
+1. Original [puff200 full 36-substep mass history #38538371865](https://github.com/RRain001/CTEAS/actions/runs/38538371865)
+   isolated DGM **#5823**, real hour 4, puff **200**, `KSAM=2`.
+   Original unchanged VDCOMP: `TDEGK=284.149933 K` (`0x438e1331`),
+   `QSW=522.772034 W/m²` (`0x4402b169`),
+   `PDIFF=1.50900005E-5 m²/s` (`0x377d2b0f`),
+   `B=2.19108824E-6 m` (`0x36130a9c`),
+   `RS/RF=695.630615 s/m` (`0x442de85c`).
+2. The previous native DRY path used the **pre-ADVECT starting cell 1678**,
+   `QSW=522.7593384`, giving `RF=695.646851`; the original source
+   `COMP` post-ADVECT meteorological **midpoint/end cell 1628**
+   has `QSW=522.7720337` and `TEMPK=284.1499329`, both original-exact.
+   Direct native source-cell evidence:
+   [sixhour #38538951679](https://github.com/RRain001/CTEAS/actions/runs/38538951679).
+   [`b081295`](https://github.com/RRain001/CTEAS/commit/b081295998e43bb09b9b0228b77f3e6644a11738)
+   corrected the `VDCOMP` temperature/radiation cell to original
+   post-ADVECT midpoint selection. Sixhour whole-field parity improved
+   from **14,696/15,000 to 14,987/15,000**, and puff200
+   `QOLD/QNEW/RF` became **36/36** exact.
+3. Midpoint substitution for **all** meteorological variables changed
+   original-exact aerodynamic/deposition-layer `RA/RD` from 36/36 to 14/36
+   for puff200. The original `COMP` transport/stability boundary retains
+   the **pre-ADVECT sampled wind, stability and roughness** for those
+   resistances, while `VDCOMP` stomatal `TDEGK/QSW` comes from
+   post-ADVECT midpoint. [`6991ec8`](https://github.com/RRain001/CTEAS/commit/6991ec89efd256041bb4bae632e1bb9b21544a3b)
+   preserves these stage-specific input authorities without changing the
+   original resistance formulas, user source or precision/tolerances.
+
+**Independent scientific parity at production fix `6991ec8`:**
+
+- [Real six-hour native-vendor H-3 field and DGM #38539868451](https://github.com/RRain001/CTEAS/actions/runs/38539868451):
+  **15,000/15,000** float32 concentration words identical;
+  **2,500/2,500 for each of hours 1–6**; first nonidentical hour
+  **NONE**. Episode ID/KSAM, XY, SIGY, SIGZ remain
+  **11,458/11,458** original REAL4 bitwise.
+- [Original puff200 full historical DRY/RF/RA/QM #38539868439](https://github.com/RRain001/CTEAS/actions/runs/38539868439):
+  all **36/36** REAL4 steps bitwise equal for every recorded scalar:
+  `QOLD,QNEW,FRACDRY,VD,VDPVD,TSAMP,VCBAR,CONST,RA,RD,RC,RG,RF,RCUT,XLAI`.
+  First historical mass or resistance difference: **NONE**.
+
+**Fail-closed gate strengthening (on subsequent PR-head commits):**
+`original_hefei_sixhour_native_receptors_tests.cpp` now requires all
+**15,000/15,000** field words before a test can succeed; the previously
+diagnostic-only `compare_puff200_mass.py --require-bitwise` and the
+GitHub-hosted mass-history workflow require every original mass/resistance
+word to match. Verify the new strict-gate commit SHA and final Actions state
+independently; the preceding numerical results at `6991ec8` do not by
+themselves certify uncompleted future runs.
+
+**Acceptance boundary:** selected 2022 frozen real six-hour
+`MXSAM=99/MDISP3/MCTADJ2/MDRY1` source path, H-3 concentration fields and
+documented puff states only. The complete real 143-hour autonomous
+puff inventory/calm-specific 989 original substeps, conditional
+`MXPUFF/SWAP/ROLLDN`, the **HE-3** full hourly fields,
+hour-boundary `OUTPUT` and full 3,655-record `puff.con` equivalence
+are still **OPEN**. **MWET=0** is case input, not wet deposition
+acceptance. Keep Draft PR #41 unmerged; do not alter P6 or original vendor.
+
+---
+
+## 2026-10-14 CTADJ2 first-REAL4-divergence closure (earlier accepted scope)
 
 The previous 1-ULP REAL4 difference at **DGM record 3874**, 2022 real
 meteorological hour 3, puff 138 KSAM=23 is **FIXED**, not tolerated.
