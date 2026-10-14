@@ -7,6 +7,7 @@
 #include "cteas/p6/p6g_g17c2_elustr_handoff.hpp"
 #include "cteas/p6/p6g_g17c3_station_diagi.hpp"
 #include "cteas/p6/p6g_g18a_selected_comp_mixht.hpp"
+#include "cteas/p6/p6g_g18b3_upper_choice.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -184,7 +185,7 @@ static void verify(const p6g::G17B4SurfaceControls& controls,
 static void verify_source_staged_iavet(
     const p6g::G17B4SurfaceControls& controls,
     const p6g::OriginalWindControls& wind,
-    sys_seconds begin){
+    sys_seconds begin,const std::string& source_metinp){
     Input f(controls,begin);
     auto surface=f.make();
     p6g::G16ObservedProfiles profiles;
@@ -674,7 +675,18 @@ static void verify_source_staged_iavet(
     mix.dptmin=.001f;mix.dzzi=200.f;
     mix.threshl=0.f;mix.tzicrlx=800.f;
     mix.onedte=4140.f;mix.twodte=1080.f;
-    mix.nearu.assign(144,1);
+    const auto choice=p6g::g18b3_source_deck_upper_choice(
+        f.grid,all,source_metinp);
+    check(choice.iupt==-1 && choice.nearu.size()==144 &&
+          choice.nearu[diagi[0].cell]==1 &&
+          choice.nearu[diagi[1].cell]==2,
+          "G18B3 original-deck IUPT or US geometry selection mismatched");
+    rejects([&]{
+        p6g::g18b3_bind_test_only_upper_choice(
+            mix,f.grid,all,choice,false);
+    },"G18B3 allowed unverified NEARU into production");
+    p6g::g18b3_bind_test_only_upper_choice(
+        mix,f.grid,all,choice,true);
     p6g::G18BUpperBufferClock upper_clock;
     const auto observed_upper=upper_clock.select(frame);
     p6g::g18b_bind_physical_upper(mix,frame,observed_upper);
@@ -688,7 +700,8 @@ static void verify_source_staged_iavet(
           !upper_clock.has_hour(),
           "G18B source AA/BB clock advanced before successful G14 hour");
     for(std::size_t site=0;site<diagi.size();++site)
-        mix.nearu[diagi[site].cell]=static_cast<int>(site+1);
+        check(mix.nearu[diagi[site].cell]==static_cast<int>(site+1),
+              "G18B3 geometry NEARU inconsistent with station MIXHTST ordinal");
     mix.fcori.assign(144,sc.fcori_s);
     mix.cmech.assign(144,sc.cmech);
     rejects([&]{
@@ -902,8 +915,8 @@ int main(int argc,char** argv){
               "G17B4 original Hefei wind-averaging controls diverged");
         const auto begin=sys_days{year{2024}/January/1}+hours{2};
         verify(control,begin);
-        verify_source_staged_iavet(control,wind,begin);
-        verify_source_staged_iavet(control,wind,begin+hours{12});
+        verify_source_staged_iavet(control,wind,begin,deck);
+        verify_source_staged_iavet(control,wind,begin+hours{12},deck);
         verify_g18b_asynchronous_upper_turnover();
         verify(control,begin+hours{11});
         // Accept original Fortran freeform control spacing, not a
@@ -925,6 +938,7 @@ int main(int argc,char** argv){
                     "G17D_HTFAC_SECOND_WINDBC_SMOOTH_DIVCEL_W_FROZEN_KERNEL_PASS "
                     "G18A_PRIOR_COMP_MIXHT_STATION_DPTT_WSTARR_SOURCE_PASS "
                     "G18B_SOURCE_UP_AABB_JUSTA_TEMPORAL_PASS "
+                    "G18B3_SOURCE_IUPT_CANDIDATE_NEARU_TEST_ONLY_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
