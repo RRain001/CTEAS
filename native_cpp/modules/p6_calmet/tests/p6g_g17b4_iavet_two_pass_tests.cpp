@@ -4,6 +4,7 @@
 #include "cteas/p6/p6g_g17b4_iavet_two_pass.hpp"
 #include "cteas/p6/p6g_g17_staged_terrain.hpp"
 #include "cteas/p6/p6g_g17c_iavet1_heat_handoff.hpp"
+#include "cteas/p6/p6g_g17c2_elustr_handoff.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -40,6 +41,7 @@ struct Input {
         grid.nx=12;grid.ny=12;grid.grid_km=10.f;
         grid.zone=50;grid.hemisphere='N';
         grid.xorigin_km=510.885f;grid.yorigin_km=3531.269f;
+        grid.z0_m.assign(144,0.5f);
         grid.albedo.assign(144,0.2f);
         grid.bowen.assign(144,0.5f);
         grid.hcg.assign(144,0.2f);grid.qf.assign(144,0.f);
@@ -328,6 +330,81 @@ static void verify_source_staged_iavet(
     check(stages.run(p6::NativeHourStage::DiagnoAirden,frame).completed &&
           stages.selected_air_density()==selected.density_kg_m3,
           "G17C source AIRDEN did not consume selected native second TEMP2D");
+    // ELUSTR's true input winds are the G17 source FRADJ output, before
+    // SLOPE. Keep all thermodynamic input values from G17C1 source fields.
+    p6g::G17C2SelectedElustrControls ec;
+    ec.ipsifcn=0;
+    ec.zm_m=0.5f*(wind.zface_m[0]+wind.zface_m[1]);
+    rejects([&]{
+        (void)p6g::selected_iavet1_elustr_after_heatfx(
+            f.grid,all,f.series.hourly.front(),surface,selected,fr,ec);
+    },"G17C2 certified fixture coefficient heat as production ELUSTR");
+    ec.explicitly_test_only=true;
+    auto elustr=p6g::selected_iavet1_elustr_after_heatfx(
+        f.grid,all,f.series.hourly.front(),surface,selected,fr,ec);
+    check(elustr.end==f.series.end &&
+          elustr.qh_wm2.size()==144 &&
+          elustr.ustar_mps.size()==144 &&
+          elustr.el_m.size()==144 &&
+          elustr.stable_cells+elustr.daytime_cells==144,
+          "G17C2 original ELUSTR branch contract failed");
+    // Independently call the exact two immutable PR #53 physics headers.
+    // One branch is masked out as water at each cell, as the production
+    // single-site numerical driver already does before merging the result.
+    std::vector<int> stable_mask=f.grid.landuse;
+    std::vector<int> day_mask=f.grid.landuse;
+    for(std::size_t k=0;k<144;++k) {
+        if(selected.sensible_heat_wm2[k]<0.f)day_mask[k]=f.grid.iwat1;
+        else stable_mask[k]=f.grid.iwat1;
+    }
+    p6e::StableElustr st;
+    st.nx=12;st.ny=12;st.mcloud=1;
+    st.water_first=50;st.water_last=55;st.zm=ec.zm_m;
+    st.landuse=stable_mask;st.nearest=selected.nearest_surface;
+    st.station_cloud={2,7};st.z0=f.grid.z0_m;
+    st.u1.assign(fr.u.begin(),fr.u.begin()+144);
+    st.v1.assign(fr.v.begin(),fr.v.begin()+144);
+    st.rho=selected.density_kg_m3;st.temp_k=second;
+    st.cloud_grid.assign(144,0.f);
+    st.heat_flux_initial=selected.sensible_heat_wm2;
+    const auto stable_direct=p6e::stable_elustr(st);
+    p6e::DaytimeElustrInput dy;
+    dy.nx=12;dy.ny=12;dy.water_first=50;dy.water_last=55;
+    dy.ipsifcn=0;dy.zm=ec.zm_m;dy.landuse=day_mask;
+    dy.z0=f.grid.z0_m;dy.u1=st.u1;dy.v1=st.v1;
+    dy.rho=st.rho;dy.temp_k=second;
+    dy.heat_flux_initial=selected.sensible_heat_wm2;
+    dy.initial_ustar.assign(144,0.05f);dy.initial_el.assign(144,-9.9e9f);
+    const auto day_direct=p6e::elustr_daytime(dy);
+    for(std::size_t k=0;k<144;++k) {
+        const auto stable_here=selected.sensible_heat_wm2[k]<0.f;
+        check(elustr.qh_wm2[k]==(stable_here?stable_direct.qh_wm2[k]:day_direct.qh_wm2[k]) &&
+              elustr.ustar_mps[k]==(stable_here?stable_direct.ustar_ms[k]:day_direct.ustar_ms[k]) &&
+              elustr.el_m[k]==(stable_here?stable_direct.monin_obukhov_m[k]:day_direct.monin_obukhov_m[k]),
+              "G17C2 independent frozen P6E stable/daytime ELUSTR numerical mismatch");
+    }
+    auto wrong_wind=fr;
+    wrong_wind.u[0]+=1.f;
+    rejects([&]{
+        (void)p6g::selected_iavet1_elustr_after_heatfx(
+            f.grid,all,f.series.hourly.front(),surface,selected,wrong_wind,ec);
+    },"G17C2 accepted wind other than actual G17 FRADJ source stage");
+    auto wrong_grid=f.grid;
+    wrong_grid.z0_m.clear();
+    rejects([&]{
+        (void)p6g::selected_iavet1_elustr_after_heatfx(
+            wrong_grid,all,f.series.hourly.front(),surface,selected,fr,ec);
+    },"G17C2 accepted missing source GEO roughness");
+    rejects([&]{
+        (void)p6g::selected_iavet1_elustr_after_heatfx(
+            f.grid,reordered,f.series.hourly.front(),surface,selected,fr,ec);
+    },"G17C2 accepted station reorder");
+    // ELUSTR may revise QH under stable conditions, but cannot yet
+    // certify the subsequent DIAGI stability or COMP hour as completed.
+    check(!stages.run(p6::NativeHourStage::DiagnoElustr,frame).completed,
+          "G17C2 accidentally promoted selected ELUSTR to production");
+    check(frame.next.ziconv_m==prior.ziconv_m,
+          "G17C2 ELUSTR test modified previous-hour committed state");
     auto stale_heat=selected.selected_slope_fixture();
     stale_heat.temperature_k=surface.first_temperature();
     rejects([&]{stages.provide_slope_heat(stale_heat);},
@@ -378,6 +455,7 @@ int main(int argc,char** argv){
                     "METINP_MNMDAV_HAFANG_REAL4 "
                     "WIND1_FIRST_FRADJ_SECOND DIAGNO_ORDER "
                     "G17C_SECOND_TEMP_NATIVE_SOLAR_HEATFX_AIRDEN_PASS "
+                    "G17C2_SOURCE_FRADJ_STABLE_DAYTIME_ELUSTR_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
