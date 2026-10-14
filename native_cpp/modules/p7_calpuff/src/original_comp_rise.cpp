@@ -249,12 +249,10 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     if(lcalm){
         require(control.calm_mdisp3.has_value(),
                 "LCALM requires original MDISP3 turbulence inputs");
-        // Calm SIGTY/SIGTZ is source-ported for SETPUF, CTADJ2, and
-        // sampled PUFRECS. DRY remains blocked: original VCBAR's LCALM
-        // behavior has not been verified in the real selected source.
-        // No source trace may be replaced by the noncalm VCBAR branch.
-        require(!control.gaussian_dry,
-                "CALPUFF calm DRY/VCBAR coupling not yet accepted");
+        // Vendor DRY source L26155-26159 sets LCALMF=.FALSE. and
+        // L26266-26268 calls VCBAR(...,LCALMF) irrespective of COMP's
+        // dispersion LCALM. Allow DRY to use its actual source policy
+        // without changing SETPUF/PUFRECS IDOPT=1 calm sigma physics.
         require(before.total_distance_m>=state.x_final_m,
                 "calm puff still rising requires separate GRISE/SETPUF parity");
     }
@@ -576,6 +574,9 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             vc.terrain_adjustment=control.mctadj2?2:0;
             vc.plume_path_coefficient=
                 control.gaussian_dry->plume_path_coefficient;
+            // Original DRY's VCBAR argument is LCALMF=.FALSE. even
+            // for a puff whose COMP dispersion flag is LCALM=.TRUE.
+            vc.calm=false;
             const float vbar=r4(
                 vertical_coupling_bar(vc),"native DRY original VCBAR");
             updated=original_gaussian_dry_mass(
