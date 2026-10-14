@@ -129,7 +129,7 @@ def main() -> None:
     # 196 CALCPF first-hour H-3 hotspot events. These are exact source
     # contracts, not a replacement for full concentration field acceptance.
     mandatory_fields=("qold","qnew","syrec","szrec","zpr","zrpole","f1",
-                      "xi1","xtemp")
+                      "xi1","xi2","t1","t2","xtemp","conc")
     if (len(original)!=196 or len(native)!=196 or orig_keys!=native_keys):
         raise AssertionError("frozen first-hour H3 CALCPF event set diverged")
     for field in mandatory_fields:
@@ -137,13 +137,15 @@ def main() -> None:
             raise AssertionError(
                 f"frozen H3 CALCPF mandatory original stage {field} "
                 f"only {equal_per_field[field]}/{len(both)} REAL4 equal")
-    print("P7_HEFEI_H3_PUFRECS_STAGE_REAL4=PASS"
+    print("P7_HEFEI_H3_PUFRECS_PFSAMP_CALCPF_REAL4=PASS"
           " RECEPTOR_I=19 RECEPTOR_J=50 SUBSTEPS=196"
           " MASS_QOLD_QNEW=BITWISE"
           " RECEPTOR_SIGTY_SIGTZ=BITWISE"
           " ZPR_ZRPOLE_VCOUP=BITWISE"
-          " PFSAMP_XI1=BITWISE"
-          " PFSAMP_XI2_AND_FINAL_CONCENTRATION=OPEN")
+          " PFSAMP_XI1_XI2=BITWISE"
+          " CALCPF_T1_T2_AND_CONCENTRATION=BITWISE"
+          " FULL_2500_RECEPTOR_GATE=SEPARATE"
+          " FULL_143H=NOT_YET_ACCEPTED")
     summary = {
         "status": "DIAGNOSTIC_WITH_EXACT_UPSTREAM_PARITY_GATE",
         "original_sampled_substeps": len(original),
