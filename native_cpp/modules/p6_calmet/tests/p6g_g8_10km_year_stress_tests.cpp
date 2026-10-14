@@ -238,7 +238,12 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     grid.synthetic_identity_diagno_tail=false;
     grid.source_terrain_diagno_tail=true;
     grid.terrain=prepare_g11_terrain(geo,35.0f);
-    grid.source_controls=parse_original_wind_controls(deck_text);
+    require_test(file_backed.has_original_controls()&&
+                 file_backed.original_controls().bias[0]==-1.f,
+                 "G15 source-effective READCF BIAS missing from file-backed scheduler");
+    // Single config authority is G14B's parsed original met.inp. No
+    // second deck parsing or test-driver constants for WIND1/INTER2.
+    grid.source_controls=file_backed.original_controls();
     grid.smoothing_passes.assign(grid.source_controls->nsmth.begin(),
                                  grid.source_controls->nsmth.end());
     // Selected P6E P6G G12: observed SURF.DAT 2SS temperatures enter
