@@ -312,6 +312,12 @@ int main(int argc,char** argv) {
                     sigma.dt_s=vtz;
                     sigma.dx_km=vdz;
                     const float szar=original_calm_sigma(sigma).sz;
+                    const float addbid=static_cast<float>(
+                        state.receptor_buoyancy_variance_m2);
+                    const float rawsz=addbid>0.0F ?
+                        std::sqrt(szar*szar+addbid) : szar;
+                    const float floor=static_cast<float>(
+                        state.receptor_minimum_sigma_z_m);
                     std::cout<<std::setprecision(10)
                         <<"P7_NATIVE_H9_RECEPTOR_SIGTZ_INPUT"
                         <<" PUFF="<<state.puff_id
@@ -327,6 +333,10 @@ int main(int argc,char** argv) {
                         <<" TZISDR="<<sigma.tzisdr
                         <<" UAVG="<<sigma.uavg
                         <<" SZAR="<<szar
+                        <<" ADDBID="<<addbid
+                        <<" RAW_SQRT="<<rawsz
+                        <<" SZ0_FLOOR="<<floor
+                        <<" FLOOR_APPLIED="<<(rawsz<floor?1:0)
                         <<" SZREC="<<row.sigma_z_m
                         <<" BIT_VTZ=0x"<<std::hex<<std::bit_cast<std::uint32_t>(vtz)
                         <<" BIT_SZAR=0x"<<std::bit_cast<std::uint32_t>(szar)
