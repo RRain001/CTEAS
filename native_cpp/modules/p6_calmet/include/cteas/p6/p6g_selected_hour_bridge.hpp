@@ -6,6 +6,7 @@
 // G10 adds an explicitly marked synthetic-identity DIAGNO tail audit.
 // No real FRADJ/SLOPE, P6E or P6F acceptance claim.
 #include "cteas/p6/observation_input_contract.hpp"
+#include "cteas/p6/p6g_original_wind_controls.hpp"
 #include "cteas/p6/inter2_selected.hpp"
 #include "cteas/p6/diagno_segment.hpp"
 #include "cteas/p6/p6g_terrain_hour.hpp"
@@ -66,6 +67,9 @@ struct SelectedBridgeGrid {
     // explicitly passed, time-stamped test thermodynamics per input hour.
     bool source_terrain_diagno_tail=false;
     std::optional<TerrainStaticG11> terrain{};
+    // Mandatory for any selected-source wind computation: read from the
+    // same original CALMET met.inp that declares SS/US and numerical grid.
+    std::optional<OriginalWindControls> source_controls{};
 };
 struct SelectedBridgeHour {
     std::chrono::sys_seconds end{};
@@ -94,6 +98,9 @@ inline SelectedBridgeHour selected_multisite_hour(
        grid.landuse.size()!=static_cast<std::size_t>(grid.nx)*
                             static_cast<std::size_t>(grid.ny))
         throw std::invalid_argument("G8 bridge source-hour/grid/array mismatch");
+    if(!grid.source_controls)
+        throw std::invalid_argument("G15 wind bridge refuses missing met.inp numerical controls");
+    const auto& controls=*grid.source_controls;
     if(grid.synthetic_identity_diagno_tail&&grid.source_terrain_diagno_tail)
         throw std::invalid_argument("G11 identity and terrain DIAGNO audit modes conflict");
     if((thermal_hour!=nullptr)!=grid.source_terrain_diagno_tail ||
@@ -111,11 +118,18 @@ inline SelectedBridgeHour selected_multisite_hour(
     inter.nstations=static_cast<int>(stations);
     inter.dx_m=grid.spacing_km*1000.f;
     inter.dy_m=inter.dx_m;
-    inter.rmin_km=0.5f;
-    // Synthetic driver settings. Do NOT reuse for production CALMET physics.
-    inter.rmax1_km=150.f;inter.rmax2_km=150.f;inter.rmax3_km=150.f;
-    inter.r1_km=50.f;inter.r2_km=80.f;
-    inter.nintrp_per_layer.assign(9,inter.nstations);
+    // Numeric influence weights and station-selection limits from the
+    // SAME original source met.inp, never G8/G10 experimental constants.
+    inter.rmin_km=controls.rmin_km;
+    inter.rmax1_km=controls.rmax1_km;
+    inter.rmax2_km=controls.rmax2_km;
+    inter.rmax3_km=controls.rmax3_km;
+    inter.r1_km=controls.r1_km;inter.r2_km=controls.r2_km;
+    inter.lvary=controls.lvary;
+    inter.nintrp_per_layer.resize(9);
+    for(std::size_t k=0;k<9;++k)
+        inter.nintrp_per_layer[k]=std::min(
+            controls.nintr2[k],inter.nstations);
     const std::size_t cells=static_cast<std::size_t>(grid.nx)*
                             static_cast<std::size_t>(grid.ny);
     inter.landuse=grid.landuse;
@@ -197,7 +211,8 @@ inline SelectedBridgeHour selected_multisite_hour(
     wind.station_u_mps=su;
     wind.station_v_mps=sv;
     wind.present.assign(levels*stations,1);
-    wind.vertical_bias.assign(levels,0.f);
+    wind.icalm=controls.icalm;
+    wind.vertical_bias.assign(controls.bias.begin(),controls.bias.end());
     wind.station_x_m.reserve(stations);
     wind.station_y_m.reserve(stations);
     for(const auto& st:deck.surface){
@@ -233,9 +248,11 @@ inline SelectedBridgeHour selected_multisite_hour(
     // UG/VG. Explicit synthetic-identity audit only; no hidden fallback.
     p6::FinalWindSegment tail;
     if(grid.synthetic_identity_diagno_tail||grid.source_terrain_diagno_tail) {
-        if(grid.smoothing_passes.size()!=levels)
+        if(grid.smoothing_passes.size()!=levels||
+           !std::equal(grid.smoothing_passes.begin(),grid.smoothing_passes.end(),
+                       controls.nsmth.begin()))
             throw std::invalid_argument(
-                "G10 DIAGNO synthetic tail requires all nine smoothing passes");
+                "G15 SMOOTH passes must agree with original met.inp NSMTH");
         p6::SmoothInput sm;
         sm.nx=grid.nx;sm.ny=grid.ny;sm.nz=static_cast<int>(levels);
         sm.lake_breeze=false;
