@@ -52,6 +52,7 @@ jobs:
           test -s "$root/vendor/case/run/puff/dgm_puffstep.bin"
           test -s "$root/vendor/original-h9-puff588-setpuf-z.json"
           test -s "$root/vendor/original-h9-puff594-receptor21-1-sigtz.json"
+          test -s "$root/vendor/original-h9-puff594-receptor21-1-szfloor.json"
           test -s "$root/vendor/original-calcpf-h3-21-1-hour9.json"
           python3 - "$root/vendor/original-calcpf-h3-21-1-hour9.json" <<'PY'
           import json
@@ -140,6 +141,7 @@ jobs:
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-same-step-audit.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/native-h9-21-1.tsv
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/vendor/original-h9-puff594-receptor21-1-sigtz.json
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/vendor/original-h9-puff594-receptor21-1-szfloor.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/original-h9-calm.json
           retention-days: 7
           if-no-files-found: warn
