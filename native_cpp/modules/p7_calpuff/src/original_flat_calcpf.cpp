@@ -113,7 +113,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     OriginalFlatVerticalMethod vertical_method,
     OriginalMctadj2TerrainLookup terrain_lookup,
     bool selected_h3_from_multispecies,
-    OriginalCalcpfIntermediateHook trace_hook) {
+    OriginalCalcpfIntermediateHook trace_hook,
+    float receptor_clip_extension_sigma) {
     if(!receptors.gridded || !receptors.discrete.empty() ||
        receptors.mesh_down!=1 || receptors.sampling_nx<=0 ||
        receptors.sampling_ny<=0 || receptors.ibsamp<1 ||
@@ -129,6 +130,9 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
         throw std::invalid_argument(
             "flat CALCPF supports only validated MESHDN=1 gridded ground receptors");
     }
+    if(!std::isfinite(receptor_clip_extension_sigma) ||
+       receptor_clip_extension_sigma<0.0F)
+        throw std::invalid_argument("PUFRECS FCLIP must be finite and nonnegative");
     const bool terrain_mode=
         vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2;
     if(trace_hook && vertical_method!=OriginalFlatVerticalMethod::receptor_pg_vcoup &&
@@ -143,7 +147,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     const float grid_y=static_cast<float>(receptors.jbsamp)-0.5F;
     return [nrecs,nx,grid_x,grid_y,met_spacing_m,averaging_period_s,
             impact_sigma_multiple,vertical_method,terrain_lookup,
-            selected_h3_from_multispecies,trace_hook](
+            selected_h3_from_multispecies,trace_hook,
+             receptor_clip_extension_sigma](
             const RiseCompSamplingState& s) {
         const bool terrain_mode=
             vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2;
@@ -279,7 +284,9 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             grid_step.jbsamp=static_cast<int>(grid_y+0.5F);
             grid_step.sampling_nx=static_cast<int>(nx);
             grid_step.sampling_ny=static_cast<int>(nrecs/nx);
-            grid_step.fclip=impact_sigma_multiple;
+            // Original PUFRECS /COMPARM/ FCLIP is independent of
+            // CALCPF's RCONST screening radius.
+            grid_step.fclip=receptor_clip_extension_sigma;
             grid_step.clip=true;
         }
         for(std::size_t i=0;i<nrecs;++i) {
