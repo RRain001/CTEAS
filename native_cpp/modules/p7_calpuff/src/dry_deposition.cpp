@@ -406,7 +406,15 @@ void finalize_dry_deposition_setup(DryDepositionSetup& setup) {
                      "mesophyll resistance must not be negative for " + species.name);
         require_true(species.gas.henry_law_coefficient >= 0.0,
                      "Henry's law coefficient must not be negative for " + species.name);
-        const R diffusivity = static_cast<R>(species.gas.diffusivity_cm2_s * kCentimetreToMetre);
+        // Original DRYI calpuff.for L26969:
+        //   PDIFF(I)=PDIFF(I)*1.E-4   (both operands REAL*4).
+        // The deck's H-3 value .1509 has different binary32 results for
+        // REAL4(.1509)*REAL4(1E-4) and REAL4(.1509*1E-4).
+        // The latter one-ULP conversion perturbs RS -> RF -> RC -> VD,
+        // propagating into puff200 DRY QM and original H3 concentration.
+        const R diffusivity=static_cast<R>(
+            static_cast<R>(species.gas.diffusivity_cm2_s) *
+            static_cast<R>(kCentimetreToMetre));
         const R mesophyll =
             static_cast<R>(species.gas.mesophyll_resistance_s_cm * kMetrePerCentimetre);
         const R schmidt = kAirViscosity / diffusivity;
