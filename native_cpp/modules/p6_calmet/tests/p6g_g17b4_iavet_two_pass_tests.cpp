@@ -704,6 +704,12 @@ static void verify_source_staged_iavet(
         (void)p6g::selected_comp_mixht_with_observed_upper(
             frame,selected,elustr,diagi,corrupt_source,comp);
     },"G18B accepted stale JUSTA from a different source UP slot");
+    corrupt_source=observed_upper;
+    corrupt_source.physical_sounding[0][1].temp_k[0]+=5.f;
+    rejects([&]{
+        (void)p6g::selected_comp_mixht_with_observed_upper(
+            frame,selected,elustr,diagi,corrupt_source,comp);
+    },"G18B accepted fabricated same-ID AA thermal observation");
     check(calculated.end==frame.input.end&&
           calculated.candidate_next.zi_m.size()==144&&
           calculated.candidate_next.ziconv_m.size()==144&&
