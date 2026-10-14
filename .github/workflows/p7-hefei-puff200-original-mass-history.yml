@@ -34,6 +34,16 @@ jobs:
             /project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con
+      - name: Audit original VDCOMP REAL4 stomatal and RF expressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          vendor=engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
+          test "$(sha256sum "$vendor" | cut -d' ' -f1)" = \\
+            da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568
+          echo 'P7_VENDOR_VDCOMP_RF_SOURCE_BEGIN line=26350'
+          sed -n '26350,26555p' "$vendor"
+          echo 'P7_VENDOR_VDCOMP_RF_SOURCE_END (read-only, original immutable)'
       - name: Pin original Fortran 143h and capture original puff200 mass every substep
         shell: bash
         run: |
