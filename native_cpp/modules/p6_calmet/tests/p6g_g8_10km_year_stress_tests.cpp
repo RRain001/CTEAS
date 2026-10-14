@@ -162,6 +162,34 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     const std::vector<float> zface(
         grid.zface_m.begin(),grid.zface_m.end());
     const auto prepared=prepare_upper_original_selected(upper,zface);
+    // Stage-gate negative controls run once per scenario: no invisible tail
+    // when disabled, and no physical computation with malformed smoothing.
+    {
+        auto no_tail=grid;
+        no_tail.synthetic_identity_diagno_tail=false;
+        no_tail.smoothing_passes.clear();
+        const auto first=selected_multisite_hour(
+            deck,surface.hourly.front(),clock.front(),prepared,no_tail);
+        require_test(!first.selected_tail_exercised&&first.nonzero_w_faces==0,
+                     "G10 DIAGNO tail must be opt-in, never silently inferred");
+        auto malformed=grid;
+        malformed.smoothing_passes.pop_back();
+        bool denied=false;
+        try {
+            (void)selected_multisite_hour(
+                deck,surface.hourly.front(),clock.front(),prepared,malformed);
+        }catch(const std::invalid_argument&){denied=true;}
+        require_test(denied,
+                     "G10 short/missing SMOOTH pass vector accepted");
+        malformed=grid;
+        malformed.smoothing_passes[0]=-1;
+        denied=false;
+        try {
+            (void)selected_multisite_hour(
+                deck,surface.hourly.front(),clock.front(),prepared,malformed);
+        }catch(const std::invalid_argument&){denied=true;}
+        require_test(denied,"G10 negative SMOOTH pass count accepted");
+    }
     std::uint64_t hash=1469598103934665603ULL;
     bool varied=false, crossed=false;
     float first_u=0.f;
