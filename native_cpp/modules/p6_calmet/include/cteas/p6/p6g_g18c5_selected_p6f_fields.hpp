@@ -116,14 +116,15 @@ inline G18C5SelectedHourFields g18c5_selected_p6f_fields(
         const auto end=begin+static_cast<std::ptrdiff_t>(n);
         const auto wbegin=static_cast<std::ptrdiff_t>(k)*static_cast<std::ptrdiff_t>(n);
         result.real[g18c5_level_label("U-LEV",k)]=
-            {fields.u_mps.begin()+begin,fields.u_mps.begin()+end};
+            std::vector<float>(fields.u_mps.begin()+begin,fields.u_mps.begin()+end);
         result.real[g18c5_level_label("V-LEV",k)]=
-            {fields.v_mps.begin()+begin,fields.v_mps.begin()+end};
+            std::vector<float>(fields.v_mps.begin()+begin,fields.v_mps.begin()+end);
         result.real[g18c5_level_label("WFACE",k)]=
-            {fields.w_face_mps.begin()+wbegin,
-             fields.w_face_mps.begin()+wbegin+static_cast<std::ptrdiff_t>(n)};
+            std::vector<float>(fields.w_face_mps.begin()+wbegin,
+             fields.w_face_mps.begin()+wbegin+static_cast<std::ptrdiff_t>(n));
         result.real[g18c5_level_label("T-LEV",k)]=
-            {fields.temperature_k.begin()+begin,fields.temperature_k.begin()+end};
+            std::vector<float>(fields.temperature_k.begin()+begin,
+                               fields.temperature_k.begin()+end);
     }
     result.real["USTAR   "]=fields.ustar_mps;
     result.real["ZI      "]=candidate.candidate_memory.zi_m;
