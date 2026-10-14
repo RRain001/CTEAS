@@ -118,6 +118,39 @@ int main(){
         const auto near_ss2=static_cast<std::size_t>(10*12+10);
         check(four.u_mps[near_ss1]>four.u_mps[near_ss2],
               "expanded domain does not respond to station location");
+        // The original L36292-L36345 sequential calm and upper-missing
+        // loops cannot be replaced by a single total-weight normalization.
+        auto calm=multiple;
+        calm.surface_speeds_mps={0.f,0.f};
+        for(std::size_t k=0;k<9;++k){
+            for(std::size_t l=0;l<2;++l){
+                calm.station_u_mps[k*4+l]=0.f;
+                calm.station_v_mps[k*4+l]=0.f;
+            }
+        }
+        const auto excluded=p6g::multi_station_wind1_firstguess(calm);
+        calm.icalm=1;
+        const auto included=p6g::multi_station_wind1_firstguess(calm);
+        const auto upper_cell=144u+near_ss1;
+        check(std::isfinite(excluded.u_mps[upper_cell])&&
+              excluded.u_mps[upper_cell]>included.u_mps[upper_cell],
+              "original sequential two-calm-surface exclusion missing");
+        auto both_missing=multiple;
+        both_missing.present[2u*4u+2u]=0;
+        both_missing.present[2u*4u+3u]=0;
+        const auto surface_only=p6g::multi_station_wind1_firstguess(both_missing);
+        check(std::isfinite(surface_only.u_mps[2u*144u+near_ss1])&&
+              surface_only.u_mps[2u*144u+near_ss1]<=3.001f&&
+              surface_only.u_mps[2u*144u+near_ss1]>=-4.001f,
+              "sequential two-upper-missing redistribution to surface");
+        auto first_surface_missing=multiple;
+        first_surface_missing.present[0]=0;
+        for(std::size_t k=1;k<9;++k)
+            first_surface_missing.present[k*4]=0;
+        const auto fallback=p6g::multi_station_wind1_firstguess(
+            first_surface_missing);
+        check(fallback.u_mps[near_ss1]!=four.u_mps[near_ss1],
+              "missing ground station must be excluded at bulk weight stage");
         multiple.vertical_bias[0]=1.f;
         const auto upper_forced=p6g::multi_station_wind1_firstguess(multiple);
         check(upper_forced.u_mps[near_ss1]!=four.u_mps[near_ss1],
