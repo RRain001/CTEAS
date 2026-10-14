@@ -352,6 +352,87 @@ int main(){
               station_clocks.latest_upper_hour()==jan1+hours{2}&&
               station_clocks.latest_gamma_hour()==jan1+hours{2},
               "G18D2 second accepted AA/BB/CGAMMA rollover lost source time");
+        // G18E4: the same PREPDI is now evaluated INSIDE G14's real
+        // stage-zero callback, not on an independently driven clock.
+        // The rest of this test remains explicitly SYNTHETIC G14 physics.
+        // Traverse actual 12h/24h AA/BB turnover and reject a failed P6F
+        // hour before publication of either of the two upper clocks.
+        p6g::UnifiedMultistationHourlyScheduler routed(
+            geo(),stations(),surface(jan1,26),upper(jan1,26),
+            deck_controls);
+        p6g::G18D2StationClockAuthority routed_clocks;
+        SyntheticNativePhysics routed_mock;
+        routed_mock.expect_source_controls=true;
+        for(std::size_t h=0;h<26;++h) {
+            if(h==12) {
+                p6g::G18E4SelectedPrepdiStageAdapter rejected(
+                    routed,routed_clocks,synthetic_deck);
+                routed_mock.selected_prepdi=&rejected;
+                must_reject([&]{
+                    routed.advance_with_precommit(
+                        routed_mock,[](const p6g::MultiHourFrame&){
+                            throw std::runtime_error("synthetic P6F rollback at US turnover");
+                        });
+                },"G18E4 PREPDI turnover published despite failed P6F output");
+                check(rejected.staged()&&!rejected.published()&&
+                      routed.completed_hours()==h&&
+                      routed.committed_memory().ziconv_m[0]==12.f&&
+                      routed_clocks.latest_upper_hour()==jan1+hours{12}&&
+                      routed_clocks.latest_gamma_hour()==jan1+hours{12},
+                      "G18E4 source 2US clock leaked after failed G14 transaction");
+                must_reject([&]{rejected.publish_after_completed_g14_hour();},
+                            "G18E4 published source clocks after P6F failure");
+            }
+            p6g::G18E4SelectedPrepdiStageAdapter selected(
+                routed,routed_clocks,synthetic_deck);
+            routed_mock.selected_prepdi=&selected;
+            auto preview=routed.preview_next_hour();
+            check(!selected.run(
+                      p6::NativeHourStage::PrepdiPreviousZiconv,
+                      preview).completed,
+                  "G18E4 test-only PREPDI masqueraded as production");
+            must_reject([&]{
+                selected.run_selected(
+                    p6::NativeHourStage::DiagnoWind1,
+                    preview,true);
+            },"G18E4 allowed PREPDI after original WIND1");
+            must_reject([&]{selected.publish_after_completed_g14_hour();},
+                        "G18E4 published unexecuted PREPDI");
+            routed.advance_with_precommit(
+                routed_mock,[&](const p6g::MultiHourFrame& live){
+                    const auto& up=selected.selected_upper_for(live);
+                    const auto& gamma=selected.selected_gamma_for(live);
+                    check(live.hour_index==h&&up.end==live.input.end&&
+                          gamma.hour_index==h&&gamma.station_ids==up.station_ids&&
+                          up.chronological_older.size()==2&&
+                          up.physical_aa_index.size()==2&&
+                          up.source_reads.size()==2,
+                          "G18E4 PREPDI/CGAMMA missing real G14 stage provenance");
+                    const auto expected_slot=h+1>=24?3U:(h+1>=12?2U:1U);
+                    for(std::size_t station=0;station<2;++station) {
+                        check(up.chronological_older[station]==expected_slot&&
+                              up.justa[station]==(expected_slot%2==0?1:-1)&&
+                              up.turnovers[station]==static_cast<int>(expected_slot),
+                              "G18E4 multi-US 12h/24h physical AA/BB turnover wrong");
+                    }
+                    auto clone=live;
+                    must_reject([&]{
+                        (void)selected.selected_upper_for(clone);
+                    },"G18E4 allowed PREPDI source state from copied G14 frame");
+                });
+            check(selected.staged()&&!selected.published()&&
+                  routed.completed_hours()==h+1,
+                  "G18E4 G14 hour accepted before source clock publication");
+            selected.publish_after_completed_g14_hour();
+            check(selected.published()&&
+                  routed_clocks.latest_upper_hour()==jan1+hours{static_cast<int>(h+1)}&&
+                  routed_clocks.latest_gamma_hour()==jan1+hours{static_cast<int>(h+1)},
+                  "G18E4 source upper/CGAMMA commits not atomic after G14 hour");
+            must_reject([&]{selected.publish_after_completed_g14_hour();},
+                        "G18E4 allowed double publish of source PREPDI clocks");
+            routed_mock.selected_prepdi=nullptr;
+        }
+        routed.require_complete();
         auto bad=surface(jan1,6);
         bad.station_ids={58322,58321};
         must_reject([&]{
