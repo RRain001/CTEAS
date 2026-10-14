@@ -156,6 +156,8 @@ c --- not the zero SETPUF entry formal parameters for MDISP3.
 # Captured from the actual /CSIGMA/ after SETCSIG, not synthesized by C++.
 H9_RECSIG_NAME = "dgm_h9_puff594_receptor21_1_sigtz.bin"
 H9_RECSIG_RECORD = struct.Struct("<4i16f")
+H9_RECFLOOR_NAME = "dgm_h9_puff594_receptor21_1_szfloor.bin"
+H9_RECFLOOR_RECORD = struct.Struct("<3i5f")
 H9_RECSIG_HELPERS = """
       subroutine dgmh9recvzt(x,y,vtz,vdz,zb1,szar,frac,
      &                addbid,vtzb,vtze,vdzb,vdze)
@@ -183,6 +185,28 @@ H9_RECSIG_HELPERS = """
      &       vtzb,vtze,vdzb,vdze,tsigws,els,tzisdr,uavgs
       return
       end
+      subroutine dgmh9recvfloor(x,y,szar,addbid,sz0p,szr)
+      include 'params.puf'
+      include 'grid.puf'
+      integer dgmseq,dgmid,dgmksam
+      real x,y,szar,addbid,sz0p,szr,rawsz
+      logical ldgm
+      common /dgmrecur/ dgmseq,dgmid,dgmksam
+      save ldgm
+      data ldgm/.false./
+      if(dgmseq.ne.16476.or.dgmid.ne.594.or.dgmksam.ne.5) return
+      if(x.ne.((float(ibsamp)-0.5)*dgrid+20.0*delsam)) return
+      if(y.ne.((float(jbsamp)-0.5)*dgrid)) return
+      if(.not.ldgm)then
+         open(1922,file='dgm_h9_puff594_receptor21_1_szfloor.bin',
+     &        access='stream',form='unformatted',status='replace')
+         ldgm=.true.
+      endif
+      rawsz=szar
+      if(addbid.gt.0.0) rawsz=sqrt(szar**2+addbid)
+      write(1922) dgmseq,dgmid,dgmksam,szar,addbid,rawsz,sz0p,szr
+      return
+      end
 """
 
 def add_h9_receptor_sigtz_trace(source: str) -> str:
@@ -192,7 +216,40 @@ def add_h9_receptor_sigtz_trace(source: str) -> str:
     call = ("            call dgmh9recvzt(x,y,vtz,vdz,zb1,szar,frac,\n"
             "     &                           addbid,vtzb1,vtze1,\n"
             "     &                           vdzb1,vdze1)\n")
-    return source.replace(anchor + "\n", anchor + "\n" + call) + H9_RECSIG_HELPERS
+    source=source.replace(anchor + "\n", anchor + "\n" + call)
+    floor_anchor="      if(szr.LT.sz0(ipnum)) szr=sz0(ipnum)"
+    if source.count(floor_anchor + "\n") != 1:
+        raise AssertionError("H9 original PUFRECS SZ0 floor anchor changed")
+    floor_call=("      call dgmh9recvfloor(x,y,szar,addbid,\n"
+                "     &                       sz0(ipnum),szr)\n")
+    return source.replace(floor_anchor + "\n",
+                          floor_anchor + "\n" + floor_call) + H9_RECSIG_HELPERS
+
+
+def audit_h9_receptor_floor(path: Path, out: Path) -> None:
+    if not path.is_file() or path.stat().st_size != H9_RECFLOOR_RECORD.size:
+        raise AssertionError("original H9 receptor SZ0 floor trace missing/misaligned")
+    step,puff,ksam,szar,addbid,rawsz,sz0p,szr = H9_RECFLOOR_RECORD.unpack(
+        path.read_bytes())
+    if (step,puff,ksam)!=(16476,594,5):
+        raise AssertionError("original H9 receptor SZ0 floor step key changed")
+    def bits(v: float) -> str:
+        return f"0x{struct.unpack('<I',struct.pack('<f',v))[0]:08x}"
+    print("P7_ORIGINAL_H9_RECEPTOR_SZ0_FLOOR=SOURCE_ONLY"
+          f" STEP={step} PUFF={puff} KSAM={ksam}"
+          f" SZAR={szar:.10g} ADDBID={addbid:.10g}"
+          f" RAW_SQRT={rawsz:.10g} SZ0={sz0p:.10g} SZREC={szr:.10g}"
+          f" BIT_RAW={bits(rawsz)} BIT_SZ0={bits(sz0p)} BIT_SZREC={bits(szr)}"
+          " UNMODIFIED_OUTPUT=YES")
+    out.write_text(json.dumps({
+        "status":"SOURCE_ONLY_NOT_NATIVE_PARITY",
+        "step":step,"puff":puff,"ksam":ksam,
+        "szar":szar,"addbid":addbid,"pre_floor_sz":rawsz,
+        "sz0":sz0p,"post_floor_szrec":szr,
+        "bits":{"pre_floor":bits(rawsz),"sz0":bits(sz0p),"szrec":bits(szr)},
+        "sha256":original.sha256_file(path),
+        "native_state_injected":False
+    },indent=2)+"\n")
 
 
 def audit_h9_receptor_sigtz(path: Path, out: Path) -> None:
@@ -438,6 +495,9 @@ def main() -> None:
     if original.sha256_file(dgm) != DGM_SHA or dgm.stat().st_size != 254687 * 352:
         raise AssertionError("original 143h DGM changed under CALCPF instrumentation")
     if args.trace_h9_setpuf:
+        audit_h9_receptor_floor(
+            run / H9_RECFLOOR_NAME,
+            out / "original-h9-puff594-receptor21-1-szfloor.json")
         audit_h9_receptor_sigtz(
             run / H9_RECSIG_NAME,
             out / "original-h9-puff594-receptor21-1-sigtz.json")
