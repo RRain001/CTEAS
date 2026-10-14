@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -44,15 +45,16 @@ struct OriginalDgmStep {
 };
 static_assert(sizeof(OriginalDgmStep)==352U);
 static_assert(std::endian::native==std::endian::little);
-std::vector<OriginalDgmStep> read_sixhour_dgm(const std::string& path) {
+std::vector<OriginalDgmStep> read_original_dgm(const std::string& path, bool full_143h) {
     std::ifstream input(path,std::ios::binary);
     require(bool(input),"original pinned sixhour DGM oracle missing");
     std::vector<OriginalDgmStep> rows;
     OriginalDgmStep row;
     while(input.read(reinterpret_cast<char*>(&row),sizeof(row)))
         rows.push_back(row);
-    require(input.eof() && input.gcount()==0 && rows.size()==11458U,
-            "original first sixhour DGM slice length or record count drifted");
+    require(input.eof() && input.gcount()==0 &&
+                rows.size()==(full_143h?254687U:11458U),
+            "original frozen DGM row count or record length drifted");
     return rows;
 }
 bool equal_real4(float a,float b) {
@@ -66,9 +68,18 @@ int main(int argc,char** argv) {
             "usage: sixhour_real_h3 MET.DAT puff.inp puff.con [original-DGM.bin] [hour2-25-28.tsv] [hour4-47-13.tsv] [native-puff200-mass.tsv]");
     require(argc<6 || std::string(argv[4]).size()>0U,
             "hour2 CALCPF trace requires an original DGM provenance input");
+    // The accepted six-hour strict gate remains the DEFAULT. A seven-hour
+    // follow-on probe is an explicit opt-in, never a silent acceptance change.
+    const char* extended=std::getenv("CTEAS_P7_PROBE_HOURS");
+    const std::size_t probe_hours=
+        extended && std::string(extended)=="7" ? 7U : 6U;
+    require(extended==nullptr || std::string(extended)=="7",
+            "CTEAS_P7_PROBE_HOURS only accepts 7; 6h is immutable default");
     // Optional native stage trace (argv[5]) must never disable the
     // independent original DGM step oracle carried in argv[4].
-    const auto dgm=argc>=5?read_sixhour_dgm(argv[4]):
+    require(probe_hours==6U || argc>=5,
+            "hour7 source probe requires the FULL original 143h DGM file");
+    const auto dgm=argc>=5?read_original_dgm(argv[4],probe_hours==7U):
                            std::vector<OriginalDgmStep>{};
     require(argc!=6 || !dgm.empty(),
             "hour2 source trace must retain pinned original sixhour DGM gate");
@@ -142,13 +153,26 @@ int main(int argc,char** argv) {
     const auto summary=OriginalMetHourlyReader::read(argv[1],
        [&](const Calmet21Header& header,const Calmet21Static& static_met,
            const OriginalMetHour& met) {
-        if(completed>=6U)return;
+        if(completed>=probe_hours)return;
         const std::size_t hour_index=completed;
         require(met.begin.year==2022 && met.begin.julian_day==1 &&
-                met.begin.hour==static_cast<int>(hour_index) &&
+                met.begin.hour==static_cast<int>(hour_index%24U) &&
+                met.begin.julian_day==1+static_cast<int>(hour_index/24U) &&
                 header.nx==50&&header.ny==50&&header.nz==9&&
                 header.dx_m==100.0F,
                 "Hefei consecutive original MET time/grid drift");
+        if(hour_index>=6U) {
+            require(matching_words==15000U &&
+                    first_mismatched_hour==0U &&
+                    matched_step_keys==11458U &&
+                    matched_new_xy==11458U &&
+                    matched_stored_sigy==11458U &&
+                    matched_stored_sigz==11458U,
+                    "extended probe may not bypass accepted first-sixhour REAL4 gate");
+            std::cout<<"P7_REAL_EXTENDED_PROBE_ENTER_HOUR="<<hour_index+1U
+                     <<" ACTIVE_BEFORE="<<driver.active_count()
+                     <<" ORIGINAL_FULL_DGM_ROWS="<<dgm.size()<<"\n";
+        }
         const auto active_before=driver.canonical_ids();
         OriginalPointPrfinRequest request;
         request.x_cells=static_cast<float>(
@@ -249,10 +273,11 @@ int main(int argc,char** argv) {
                 hour.receptor_concentrations.size()==2500U &&
                 hour.steps.size()>0U,
                 "real sixhour COMP hour transaction/cadence invalid");
-        require(hour.steps.size()==original_hour_steps[hour_index] &&
-                hour.steps.front().puff_id==original_first_puff[hour_index] &&
-                hour.steps.back().puff_id==original_last_puff[hour_index],
-                "real COMP old/new puff chronology differs from pinned original DGM");
+        if(hour_index<6U)
+            require(hour.steps.size()==original_hour_steps[hour_index] &&
+                    hour.steps.front().puff_id==original_first_puff[hour_index] &&
+                    hour.steps.back().puff_id==original_last_puff[hour_index],
+                    "real COMP old/new puff chronology differs from pinned original DGM");
         if(!dgm.empty()) {
             for(std::size_t n=0;n<hour.steps.size();++n){
                 const std::size_t global=physical_steps+n;
@@ -548,13 +573,17 @@ int main(int argc,char** argv) {
                     "original/native first two hours of puff history diverged");
         ++completed;
        },true);
-    require(summary.intervals==143U&&completed==6U&&
-            driver.completed_hours()==6U&&physical_steps==11458U,
-            "full 143-hour frozen MET and 6 native consecutive hours required");
+    require(summary.intervals==143U&&completed==probe_hours&&
+            driver.completed_hours()==probe_hours&&
+            physical_steps>=11458U&&
+            (probe_hours>6U||physical_steps==11458U),
+            "frozen MET and requested contiguous native COMP hours required");
     if(!dgm.empty()) {
-        require(matched_step_keys==11458U && matched_new_xy==11458U &&
-                matched_stored_sigy==11458U && matched_stored_sigz==11458U,
-                "6h original REAL4 COMP puff identity/XY/SIGY/SIGZ parity regressed");
+        require(matched_step_keys==physical_steps &&
+                matched_new_xy==physical_steps &&
+                matched_stored_sigy==physical_steps &&
+                matched_stored_sigz==physical_steps,
+                "requested-hour original REAL4 COMP puff identity/XY/SIGY/SIGZ parity regressed");
         std::cout<<"P7_HEFEI_6H_ORIGINAL_DGM_REAL4_DIAGNOSTIC=PASS"
                  <<" KEYS="<<matched_step_keys<<"/11458"
                  <<" ADVECT_XY="<<matched_new_xy<<"/11458"
@@ -568,16 +597,21 @@ int main(int argc,char** argv) {
     // The frozen native/original six-hour numerical equivalence is now
     // an acceptance gate, not a diagnostic trend. Do not silently reduce
     // it to first-three-hour parity or a floating-point tolerance.
-    require(every_hour_real4 && matching_words==15000U &&
+    require(every_hour_real4 && matching_words==2500U*probe_hours &&
             first_mismatched_hour==0U && first_mismatched_cell==0U,
-            "real 6h original/native H-3 must match all 15000 REAL4 bits");
-    std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
+            "real original/native H-3 must match every requested hour in REAL4 bits");
+    if(probe_hours==7U)
+        std::cout<<"P7_HEFEI_REAL_HOUR7_SOURCE_PROBE=PASS"
+                 <<" ORIGINAL_DGM_ROWS="<<physical_steps
+                 <<" H3_REAL4_WORDS="<<matching_words<<"/17500"
+                 <<" FIRST_DIFFERENCE=NONE 143H_ACCEPTED=NO\n";
+    if(probe_hours==6U)std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
              <<" ORIGINAL_DGM_ROWS=11458/11458"
              <<" HOURLY_ROWS=1275,2242,1906,2132,1742,2161"
              <<" FIRST_AND_LAST_EPISODE_IDS=SOURCE_EQUIVALENT"
              <<" DGM_EXPORTED_XY_SIGY_SIGZ=BITWISE_11458_OF_11458"
              <<" OTHER_INTERNAL_STAGES=NOT_YET_ALL_BITWISE"<<"\n";
-    std::cout<<"P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=PASS"
+    if(probe_hours==6U)std::cout<<"P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=PASS"
              <<" HOURS=6 METFM1=ORIGINAL"
              <<" COMP_AUTHORITY=SINGLE_STATEFUL_DRIVER"
              <<" REAL4_WORDS_MATCHED="<<matching_words<<"/15000"
@@ -588,7 +622,7 @@ int main(int argc,char** argv) {
              <<(every_hour_real4?"PASS":"OPEN")
              <<" ORIGINAL_143H=NOT_ACCEPTED"
              <<" WROUT1_FULL_OUTPUT=NOT_ACCEPTED\n";
-    return 0; // Strict complete six-hour REAL4 concentration and DGM gate.
+    return 0; // Strict requested-hour REAL4 concentration and DGM gate.
   }catch(const std::exception& e){
     std::cerr<<"P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=FAIL "
              <<e.what()<<"\n";
