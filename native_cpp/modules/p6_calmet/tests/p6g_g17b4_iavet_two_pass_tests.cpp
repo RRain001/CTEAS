@@ -709,6 +709,19 @@ static void verify_source_staged_iavet(
           mix.tzicrlx==800.f&&mix.timestep_s==3600&&
           mix.onedte==4140.f&&mix.twodte==1080.f,
           "G18D5 original met.inp/SETCOM COMP READCF scalar mismatch");
+    const auto modified_source_constn=std::regex_replace(
+        source_metinp,
+        std::regex(R"(!\s*CONSTN\s*=\s*2400\.\s*!)",
+                   std::regex_constants::icase),
+        "! CONSTN = 2600. !");
+    check(modified_source_constn!=source_metinp,
+          "G18D5 original CONSTN not found in pinned source met.inp");
+    auto modified_comp=comp;
+    p6g::g18d5_bind_original_mixht_scalars(
+        modified_source_constn,modified_comp);
+    check(modified_comp.grid_mixht.constn==2600.f&&
+          comp.grid_mixht.constn==2400.f,
+          "G18D5 still hardcoded MIXHT CONSTN instead of reading source deck");
     rejects([&]{
         auto altered=comp;
         p6g::g18d5_bind_original_mixht_scalars(
