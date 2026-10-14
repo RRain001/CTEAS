@@ -56,6 +56,14 @@ jobs:
                   if j not in shown:
                       print(f'P7_VENDOR_OLD_NEW_MASS {j+1:6d} {lines[j]}')
                       shown.add(j)
+          # Source-first isolation for the final 137 non-equal H-3 receptor
+          # words: expose the exact vendor horizontal integral and floating
+          # operation order, without changing the native solver or reference.
+          for a,b in ((4188,4233),(4280,4313),(4680,4755)):
+              for i in range(a-1,b):
+                  print(f'P7_VENDOR_PFSAMP_CALCPF_REAL {i+1:6d} {lines[i]}')
+          assert any('subroutine pfsamp' in lines[i].lower() for i in range(4675,4710))
+          print('P7_VENDOR_PFSAMP_CALCPF_SOURCE_ANCHOR=PASS')
           for a,b in ((4945,5009),(5140,5204),(5205,5276),(5277,5379)):
               for i in range(a-1,b):
                   line=lines[i]
