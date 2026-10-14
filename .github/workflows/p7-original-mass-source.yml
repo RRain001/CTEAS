@@ -30,7 +30,8 @@ jobs:
           lines=raw.decode('latin-1').splitlines()
           for left,right,label in (
               (10835,10880,'VMASS'),(10948,10992,'QOLD'),
-              (11032,11148,'DRY-QNEW'),(26180,26296,'DRY-GAUSSIAN')):
+              (11032,11148,'DRY-QNEW'),(26180,26296,'DRY-GAUSSIAN'),
+              (26300,26850,'VDCOMP')):
               for i in range(left-1,right):
                   print(f'P7_VENDOR_{label} {i+1:6d} {lines[i]}')
           print('P7_ORIGINAL_MASS_SOURCE_ANCHOR=PASS')
