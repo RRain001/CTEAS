@@ -42,6 +42,7 @@ inline G17CSelectedHeatResult selected_iavet1_heat_after_fradj(
     if(!fixture.explicitly_test_only||
        !source.first_ready()||!source.second_ready()||
        source.end()!=hour.end||
+       !source.matches_source_geometry(grid,stations)||
        hour.end-hour.start!=hours{1}||
        grid.nx<2||grid.ny<2||grid.nx>400||grid.ny>400||
        !std::isfinite(grid.grid_km)||grid.grid_km<=0.f||
