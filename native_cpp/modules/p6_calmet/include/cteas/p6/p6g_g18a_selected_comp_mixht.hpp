@@ -5,6 +5,7 @@
 // this is NOT a production COMP stage or complete multi-hour acceptance.
 // The scheduler alone owns committing NativeGridMemory after ALL 17 stages.
 #include "cteas/p6/p6g_g17c3_station_diagi.hpp"
+#include "cteas/p6/p6g_g18b_upper_buffer_clock.hpp"
 #include "cteas/p6e/mixht_observed_mc.hpp"
 #include "cteas/p6e/wstarr.hpp"
 #include <chrono>
@@ -121,5 +122,19 @@ inline G18ASelectedCompResult selected_comp_mixht_wstarr_from_previous(
     conv.initial_wstar_ms=ctrl.initial_wstar_mps;
     const auto velocity=p6e::wstarr(conv);
     return {frame.input.end,{mixed.zi,mixed.ziconv,mixed.dptt},velocity};
+}
+// In G18B, physical AA/BB/JUSTA are now derived from the actual model-hour
+// original UP station brackets, not copied from a stale fixture. NEARU,
+// IUPT, CGAMMA and the other P6E parameters still need source attribution.
+inline G18ASelectedCompResult selected_comp_mixht_with_observed_upper(
+    const MultiHourFrame& frame,
+    const G17CSelectedHeatResult& source_heat,
+    const G17C2SelectedElustrResult& source_elustr,
+    const std::vector<G17C3StationDiagi>& source_station,
+    const G18BUpperHour& observed_upper,
+    G18ASelectedCompControls ctrl) {
+    g18b_bind_physical_upper(ctrl.grid_mixht,frame,observed_upper);
+    return selected_comp_mixht_wstarr_from_previous(
+        frame,source_heat,source_elustr,source_station,ctrl);
 }
 } // namespace cteas::calmet::p6g
