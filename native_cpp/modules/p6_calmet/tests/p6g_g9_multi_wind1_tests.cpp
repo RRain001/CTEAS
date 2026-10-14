@@ -49,7 +49,7 @@ static p6::Wind1SelectedStationHour frozen_pair_hour(const p6g::Wind1MultiInput&
     }
     return h;
 }
-static void compare_frozen_pair(const p6g::Wind1MultiInput& in,float tol=1.0e-4f) {
+static void compare_frozen_pair(const p6g::Wind1MultiInput& in,float tol=1.0e-6f) {
     p6::Wind1FirstGuessSelectedControls ref;
     ref.nx=50;ref.ny=50;ref.nz=9;
     ref.grid_spacing_m=in.spacing_m;
