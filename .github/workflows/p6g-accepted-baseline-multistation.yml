@@ -70,7 +70,8 @@ jobs:
             cteas_p6g_g16_staged_wind_tests \
             cteas_p6g_g17_staged_terrain_tests \
             cteas_p6g_g17b_observed_solar_heat_tests \
-            cteas_p6g_g17b_setcom_airden_reference --parallel 2
+            cteas_p6g_g17b_setcom_airden_reference \
+            cteas_p6g_g17b4_iavet_two_pass_tests --parallel 2
       - name: Run 2SS+2US cross-year and 8784h CTest
         run: ctest --test-dir "$RUNNER_TEMP/p6g" --output-on-failure -R '^p6g_'
       - name: Original CALMET Fortran 2SS 10km SURFVAR 72-case strict parity
