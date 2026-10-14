@@ -26,6 +26,7 @@ jobs:
             /project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp
             /project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con
+            /project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp
       - name: Verify original 143-hour sources and historical H3 concentration
         shell: bash
         run: |
@@ -57,14 +58,15 @@ jobs:
           cmake -S native_cpp/modules/p7_calpuff -B "$root/build" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$root/build" --parallel 2 --target cteas_p7_hefei_sixhour_native_h3_receptors_tests
           set +e
-          CTEAS_P7_PROBE_HOURS=24 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
+          CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
+            CTEAS_P7_PROBE_HOURS=24 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
             project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
             project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
             "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/hour7-probe.log" 2>&1
           code=$?
           set -e
-          grep -E 'P7_REAL_EXTENDED_PROBE|P7_REAL_EXTENDED_PRFIN_INPUT|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE' "$root/hour7-probe.log" || true
+          grep -E 'P7_REAL_EXTENDED_PROBE|P7_REAL_EXTENDED_PRFIN_INPUT|P7_REAL_EXTENDED_CALM_SOURCE_DECK|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE' "$root/hour7-probe.log" || true
           if [ "$code" -eq 0 ]; then
             echo "P7_EXTENDED_PROBE_STATUS=TWENTY_FOUR_HOURS_BITWISE_ACCEPTED 143H=OPEN WROUT1=OPEN"
           else
