@@ -135,24 +135,24 @@ jobs:
           # Pure after-the-fact comparator; no original mass enters C++.
           old_mass="$root/vendor/case/run/puff/dgm_h9_puff598_mass.bin"
           new_mass="$root/native-h9-puff598-mass.tsv"
-          if [ -s "$old_mass" ] && [ -s "$new_mass" ]; then
-            python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/compare_h9_puff598_mass.py \
-              --original "$old_mass" --native "$new_mass" \
-              --out "$root/h9-puff598-mass-audit.json" \
-              >"$root/h9-puff598-mass-compare.log" 2>&1 || true
-            grep -E 'P7_H9_PUFF598_' "$root/h9-puff598-mass-compare.log" || \
-              { echo "P7_H9_PUFF598_MASS_DIAGNOSTIC_ERROR"; cat "$root/h9-puff598-mass-compare.log"; }
-          else
-            echo "P7_H9_PUFF598_MASS_DIAGNOSTIC_MISSING original=$([ -s "$old_mass" ] && echo YES || echo NO) native=$([ -s "$new_mass" ] && echo YES || echo NO)"
-          fi
+          # Mass regression is now separately source-accepted. Reject any
+          # future recurrence even while full H9 concentration remains open.
+          test -s "$old_mass" && test -s "$new_mass"
+          python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/compare_h9_puff598_mass.py \
+            --original "$old_mass" --native "$new_mass" \
+            --out "$root/h9-puff598-mass-audit.json" --require-bitwise \
+            >"$root/h9-puff598-mass-compare.log" 2>&1 || \
+              { cat "$root/h9-puff598-mass-compare.log"; exit 1; }
+          grep -F "P7_H9_PUFF598_MASS_BITWISE=PASS" "$root/h9-puff598-mass-compare.log"
+          echo "P7_REAL_H9_PUFF598_MASS_GATE=PASS QOLD_QNEW_FRACDRY_VD_TSAMP_ALL_8_REAL4 H9_CONCENTRATION=OPEN"
           if [ "$code" -eq 0 ]; then
             echo "P7_EXTENDED_PROBE_STATUS=TWENTY_FOUR_HOURS_BITWISE_ACCEPTED 143H=OPEN WROUT1=OPEN"
           else
             echo "P7_EXTENDED_PROBE_STATUS=BLOCKED DIAGNOSTIC_ONLY=YES EXIT_CODE=$code"
             tail -n 24 "$root/hour7-probe.log"
           fi
-          # This exploratory diagnostic is intentionally non-gating.
-          # Only the separate 6h original equivalence is formally accepted.
+          # Full H9-H24 concentrations remain exploratory/non-gating.
+          # Strict separate gates: H1-H8 REAL4 and H9 puff598 mass 8x5.
           exit 0
       - uses: actions/upload-artifact@v4
         if: always()

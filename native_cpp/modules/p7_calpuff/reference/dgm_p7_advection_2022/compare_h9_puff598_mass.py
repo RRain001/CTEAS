@@ -45,6 +45,8 @@ def main()->None:
     p.add_argument("--original",type=Path,required=True)
     p.add_argument("--native",type=Path,required=True)
     p.add_argument("--out",type=Path,required=True)
+    p.add_argument("--require-bitwise",action="store_true",
+                   help="fail closed unless every original H9 puff598 mass field is exact")
     a=p.parse_args()
     o=original(a.original)
     n=native(a.native)
@@ -87,6 +89,11 @@ def main()->None:
           f" FIRST={json.dumps(first,sort_keys=True) if first else 'NONE'}")
     print("P7_H9_PUFF598_MASS_REAL4 "+
           " ".join(f"{f}={equal[f]}/{aligned}" for f in FIELDS))
+    if a.require_bitwise:
+        if first is not None or len(o)!=8 or len(n)!=8 or aligned!=8 or \
+           any(equal[f]!=8 for f in FIELDS):
+            raise AssertionError("H9 puff598 original/native eight-step mass not bitwise exact")
+        print("P7_H9_PUFF598_MASS_BITWISE=PASS STEPS=8 FIELDS=QOLD,QNEW,FRACDRY,VD,TSAMP 9H_H3=OPEN")
 
 if __name__=="__main__":
     main()
