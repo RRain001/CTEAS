@@ -9,6 +9,7 @@
 #include "cteas/p6/similt_profile.hpp"
 #include "cteas/p6/upper_hourly_wind.hpp"
 #include "cteas/p6/vertical_wind_average.hpp"
+#include "cteas/p6e/coordlib_pj09z0.hpp"
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -47,6 +48,8 @@ inline PreparedUpper prepare_upper_original_selected(
 struct SelectedBridgeGrid {
     int nx=0,ny=0;
     float spacing_km=0.0f;
+    int utm_zone=0;
+    char hemisphere='N';
     std::array<float,10> zface_m{};
     std::vector<int> landuse; // Read from P6G READGE GEO.DAT, not hardcoded.
 };
@@ -62,6 +65,7 @@ inline SelectedBridgeHour selected_multisite_hour(
     const SelectedBridgeGrid& grid) {
     if(grid.nx<2||grid.ny<2||grid.nx>400||grid.ny>400||
        grid.spacing_km<=0.f||!std::isfinite(grid.spacing_km)||
+       grid.utm_zone<1||grid.utm_zone>60||grid.hemisphere!='N'||
        surface.end!=input.end||surface.by_station.size()!=deck.surface.size()||
        prepared.profiles.size()!=deck.upper.size()||
        prepared.layers.size()!=deck.upper.size()||
@@ -100,6 +104,7 @@ inline SelectedBridgeHour selected_multisite_hour(
     }
     const std::size_t levels=9;
     std::vector<float> su(levels*stations,0.f),sv(levels*stations,0.f);
+    const auto projection=cteas::p6e::utm_north_projection(grid.utm_zone);
     for(std::size_t s=0;s<deck.surface.size();++s){
         const auto& o=surface.by_station[s];
         if(!o.wind_valid)
@@ -108,7 +113,17 @@ inline SelectedBridgeHour selected_multisite_hour(
         const float u=-o.wind_speed_mps*std::sin(rad);
         const float v=-o.wind_speed_mps*std::cos(rad);
         p6::SimiltProfileInput profile;
-        profile.station_lat_deg=31.94f; // synthetic UTM50N test case only
+        // Original READCF/GLOBE uses the deck's absolute REAL*4 UTM km,
+        // not case centre latitude or independently rounded CSV metadata.
+        double lat=0.,lon=0.;
+        cteas::p6e::utm_north_to_latlon_deg(
+            projection,
+            static_cast<double>(deck.surface[s].utm_x_km)*1000.0,
+            static_cast<double>(deck.surface[s].utm_y_km)*1000.0,
+            lat,lon);
+        if(!std::isfinite(lat)||!std::isfinite(lon)||std::abs(lat)>90.)
+            throw std::invalid_argument("G8 station GLOBE projection invalid");
+        profile.station_lat_deg=static_cast<float>(lat);
         profile.anemometer_height_m=deck.surface[s].anemometer_height_m;
         profile.roughness_m=0.1f;
         profile.anemometer_u_mps=u;profile.anemometer_v_mps=v;
