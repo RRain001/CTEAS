@@ -683,8 +683,10 @@ static void verify_source_staged_iavet(
           observed_upper.physical_aa_index==std::vector<std::size_t>({0,0}) &&
           observed_upper.physical_bb_index==std::vector<std::size_t>({1,1}),
           "G18B first model-hour AA/BB source allocation mismatched");
-    rejects([&]{(void)upper_clock.select(frame);},
-            "G18B accepted repeated model hour, not source continuous COMP");
+    const auto uncommitted_again=upper_clock.select(frame);
+    check(uncommitted_again.justa==observed_upper.justa &&
+          !upper_clock.has_hour(),
+          "G18B source AA/BB clock advanced before successful G14 hour");
     for(std::size_t site=0;site<diagi.size();++site)
         mix.nearu[diagi[site].cell]=static_cast<int>(site+1);
     mix.fcori.assign(144,sc.fcori_s);
@@ -830,8 +832,8 @@ static void verify_g18b_asynchronous_upper_turnover() {
         check(observed.end==input[h].end &&
               observed.justa.size()==2 &&
               observed.source_reads.size()==2 &&
-              clock.last_hour()==input[h].end,
-              "G18B hourly clock or source UP count failed");
+              (h!=0||!clock.has_hour()),
+              "G18B model-hour source preparation invalid");
         auto empty=p6e::MixhtObservedMcInput{};
         p6g::g18b_bind_physical_upper(empty,frame,observed);
         check(empty.justa==observed.justa &&
@@ -859,6 +861,18 @@ static void verify_g18b_asynchronous_upper_turnover() {
                   "G18B physical AA/BB thermal data crossed upper station");
             saw_negative_justa|=sign<0;
         }
+        rejects([&]{
+            clock.commit_after_completed_g14_hour(frame,observed,h);
+        },"G18B accepted a source cache commit before G14 completed this hour");
+        const auto second_prepare=clock.select(frame);
+        check(second_prepare.justa==observed.justa,
+              "G18B failed to retry the same source hour after later COMP failure");
+        clock.commit_after_completed_g14_hour(frame,observed,h+1);
+        check(clock.last_hour()==input[h].end,
+              "G18B successful G14 hour did not advance source AA/BB clock");
+        rejects([&]{
+            clock.commit_after_completed_g14_hour(frame,observed,h+1);
+        },"G18B accepted a duplicate already committed G14 hour");
         saw_different_turnover|=observed.chronological_older[0]!=
                                 observed.chronological_older[1];
     }
