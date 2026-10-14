@@ -892,6 +892,12 @@ static void verify_source_staged_iavet(
         (void)p6g::g18c6_selected_one_hour_dataset(
             frame,p6f_candidate,invalid_nears,source_metinp,true);
     },"G18C6 accepted out-of-bounds original SETCOM nearest site");
+    auto wrong_but_valid_nears=selected.nearest_surface;
+    wrong_but_valid_nears[0]=selected.nearest_surface[0]==1?2:1;
+    rejects([&]{
+        (void)p6g::g18c6_selected_one_hour_dataset(
+            frame,p6f_candidate,wrong_but_valid_nears,source_metinp,true);
+    },"G18C6 accepted fabricated in-range NEARS instead of SETCOM geometry");
     auto wrong_site=p6f_candidate;
     std::swap(wrong_site.station_ids[0],wrong_site.station_ids[1]);
     rejects([&]{
