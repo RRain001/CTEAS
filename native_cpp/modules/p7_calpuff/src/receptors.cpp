@@ -270,8 +270,17 @@ SamplingIntegrals puff_sampling_integrals(double x_old_km, double y_old_km, doub
                    static_cast<R>(erf_difference(static_cast<double>((a + b) / sqrt2a),
                                                  static_cast<double>(b / sqrt2a)));
     const R b2da = b * b / a;
-    integrals.i2 = -b * integrals.i1 / a +
-                   (xxexp / a) * (std::exp(-0.5F * b2da) - std::exp(-0.5F * (a + 2.0F * b + b2da)));
+    // Vendor PFSAMP L4746-4748: XI1 and XI2 are distinct default REAL*4
+    // variables. SamplingIntegrals exposes double storage at the public
+    // C++ boundary, so using integrals.i1 here promotes -B*XI1/A to REAL*8
+    // and loses the intermediate REAL*4 rounding performed by Fortran.
+    // Keep XI1 and the entire XI2 expression in float before widening only
+    // the finished result to the interface type.
+    const R xi1 = static_cast<R>(integrals.i1);
+    const R xi2 = (-b * xi1 / a) +
+                  (xxexp / a) * (std::exp(-0.5F * b2da) -
+                                std::exp(-0.5F * (a + 2.0F * b + b2da)));
+    integrals.i2 = static_cast<double>(xi2);
     return integrals;
 }
 
