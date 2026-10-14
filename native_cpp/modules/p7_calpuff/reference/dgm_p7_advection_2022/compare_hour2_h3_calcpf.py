@@ -67,11 +67,13 @@ def main() -> None:
     p.add_argument("--original",type=Path,required=True)
     p.add_argument("--native",type=Path,required=True)
     p.add_argument("--out",type=Path,required=True)
-    p.add_argument("--hour",type=int,choices=(2,4),default=2)
+    p.add_argument("--hour",type=int,choices=(2,4,9),default=2)
     a=p.parse_args()
     lower,upper,puff_max,ix,jy={
         2:(1276,3517,137,25,28),
-        4:(5424,7555,272,47,13)
+        4:(5424,7555,272,47,13),
+        # First residual after source-exact 8 contiguous hours.
+        9:(16420,16679,618,21,1)
     }[a.hour]
     source=read_original(a.original,lower,upper,puff_max)
     native=read_native(a.native,lower,upper)
