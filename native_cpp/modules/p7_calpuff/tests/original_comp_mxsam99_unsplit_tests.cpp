@@ -819,6 +819,9 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
     known.vmass.mass_above={0.0F};
     known.sigmas.step.sigma_y_mid_m=50.0;
     known.sigmas.step.sigma_y_end_m=50.0;
+    // SETPUF supplies the adjusted end-of-step SIGTY read by PUFRECS.
+    // Keep this synthetic known-puff fixture consistent with that contract.
+    known.sigmas.adjust.sigma_y_end_m=50.0;
     known.sigmas.step.sigma_z_mid_m=30.0;
     known.step_seconds=60.0F;
     const auto known_cells=planar_kernel(known);
