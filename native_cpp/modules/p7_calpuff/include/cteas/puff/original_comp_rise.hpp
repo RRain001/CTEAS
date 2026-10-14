@@ -69,6 +69,9 @@ struct RiseCompStep {
     // Native QM after original DRY, before CALCPF, for scientific
     // audit/retirement. Empty if MDRY=0 or not enabled.
     std::optional<OriginalGaussianDryResult> dry;
+    // Exact copied REAL4 COMP QOLD before DRY; read-only per-step provenance.
+    // Never inferred by dividing QNEW by FRACDRY (would round differently).
+    std::vector<float> pre_dry_qold_mixed;
 };
 
 // COMP KSAM/NSAM context (vendor L10417, 10553-10581). Defaults reproduce
