@@ -9,6 +9,8 @@ on:
       - "native_cpp/modules/p6_calmet/include/cteas/p6/p6g_multi_wind1_firstguess.hpp"
       - "native_cpp/modules/p6_calmet/include/cteas/p6/p6g_selected_hour_bridge.hpp"
       - "native_cpp/modules/p6_calmet/tests/p6g_g9_multi_wind1_tests.cpp"
+      - "native_cpp/modules/p6_calmet/tests/p6g_g9_original_wind1_probe.cpp"
+      - "native_cpp/modules/p6_calmet/reference/compare_g9_original_wind1_multisite.py"
       - "native_cpp/modules/p6_calmet/tests/p6g_g8_10km_year_stress_tests.cpp"
       - "native_cpp/modules/p6_calmet/CMakeLists.txt"
       - ".github/workflows/p6g-g9-10km-wind1.yml"
@@ -34,6 +36,10 @@ jobs:
           cmake --build "${{ runner.temp }}/p6g-g9" --target \
             cteas_p6g_g9_multi_wind1_tests cteas_p6g_g8_10km_year_tests \
             cteas_p6_wind1_firstguess_tests cteas_p6_inter2_tests -j2
+      - name: Compile unchanged original vendor Fortran WIND1 source and compare multi-site U/V
+        run: |
+          command -v gfortran || (sudo apt-get update -qq && sudo apt-get install -y -qq gfortran)
+          python3 native_cpp/modules/p6_calmet/reference/compare_g9_original_wind1_multisite.py --mode ${{ matrix.build }}
       - name: Run frozen pair and 60-120km 10km multi-station WIND1+INTER2 tests
         run: |
           ctest --test-dir "${{ runner.temp }}/p6g-g9" --output-on-failure \
