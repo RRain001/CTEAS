@@ -247,6 +247,27 @@ add_test(NAME p6g_g17b4_original_iavet1_pre_and_post_fradj_surfvar
          COMMAND cteas_p6g_g17b4_iavet_two_pass_tests
            "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
 
+# Source-selected G17B4 must retain the independently audited original
+# AVETMP Fortran parity (40 cases, source calmet.for unmodified).
+add_executable(cteas_p6g_g17b4_avetmp_reference
+               p6e/src/avetmp_reference_main.cpp)
+target_link_libraries(cteas_p6g_g17b4_avetmp_reference PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g17b4_avetmp_reference PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g17b4_avetmp_reference PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(P6G_G17B_GFORTRAN AND Python3_Interpreter_FOUND)
+  add_test(NAME p6g_g17b4_original_vendor_avetmp_40_case_source_parity
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/p6e/reference/compare_original_avetmp.py"
+      --vendor "${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for"
+      --cpp "$<TARGET_FILE:cteas_p6g_g17b4_avetmp_reference>"
+      --gfortran "${P6G_G17B_GFORTRAN}"
+      --out "${CMAKE_CURRENT_BINARY_DIR}/g17b4_avetmp_original_source_parity.json")
+endif()
+
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
 add_executable(cteas_p6_terset src/terrain_envelope_main.cpp)
