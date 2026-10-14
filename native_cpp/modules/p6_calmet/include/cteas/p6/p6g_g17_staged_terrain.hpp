@@ -138,6 +138,15 @@ public:
         heat_=std::move(source);
     }
 
+    // Attach the original STHEOR/ELUSTR2/MIXHTST-capped SS columns only
+    // after first WINDBC and before INTER2; neutral WIND1 is unchanged.
+    void provide_selected_diagi_before_inter2(
+        const G16ObservedProfiles& selected) {
+        if(!first_windbc_||wind_.selected_result().inter2_complete)
+            throw std::logic_error("G17 DIAGI not after source first WINDBC");
+        wind_.provide_selected_diagi_after_wind1(selected);
+    }
+
     p6::NativeHourStageResult run(p6::NativeHourStage stage,
                                   MultiHourFrame& frame) override {
         if(stage==p6::NativeHourStage::DiagnoWind1){
