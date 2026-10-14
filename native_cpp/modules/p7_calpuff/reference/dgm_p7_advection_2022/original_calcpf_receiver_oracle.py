@@ -151,6 +151,75 @@ c --- not the zero SETPUF entry formal parameters for MDISP3.
       return
       end
 """
+# Read-only original PUFRECS -> SIGTZ real H9 first receptor discrepancy:
+# global DGM 16476, puff594 KSAM5, original sampling grid (21,1).
+# Captured from the actual /CSIGMA/ after SETCSIG, not synthesized by C++.
+H9_RECSIG_NAME = "dgm_h9_puff594_receptor21_1_sigtz.bin"
+H9_RECSIG_RECORD = struct.Struct("<4i16f")
+H9_RECSIG_HELPERS = """
+      subroutine dgmh9recvzt(x,y,vtz,vdz,zb1,szar,frac,
+     &                addbid,vtzb,vtze,vdzb,vdze)
+      include 'params.puf'
+      include 'grid.puf'
+      include 'csigma.puf'
+      integer dgmseq,dgmid,dgmksam
+      real x,y,vtz,vdz,zb1,szar,frac,addbid
+      real vtzb,vtze,vdzb,vdze,tx,ty
+      logical ldgm
+      common /dgmrecur/ dgmseq,dgmid,dgmksam
+      save ldgm
+      data ldgm/.false./
+      if(dgmseq.ne.16476.or.dgmid.ne.594.or.dgmksam.ne.5) return
+      tx=(float(ibsamp)-0.5)*dgrid+20.0*delsam
+      ty=(float(jbsamp)-0.5)*dgrid
+      if(x.ne.tx.or.y.ne.ty) return
+      if(.not.ldgm)then
+         open(1921,file='dgm_h9_puff594_receptor21_1_sigtz.bin',
+     &        access='stream',form='unformatted',status='replace')
+         ldgm=.true.
+      endif
+      write(1921) dgmseq,dgmid,dgmksam,idoptzs,
+     &       x,y,vtz,vdz,zb1,szar,frac,addbid,
+     &       vtzb,vtze,vdzb,vdze,tsigws,els,tzisdr,uavgs
+      return
+      end
+"""
+
+def add_h9_receptor_sigtz_trace(source: str) -> str:
+    anchor = "            call sigtz(dum0,vdz,vtz,zb1,szar,dum1,dum2)"
+    if source.count(anchor + "\n") != 1:
+        raise AssertionError("H9 source PUFRECS SIGTZ anchor missing/drifted")
+    call = ("            call dgmh9recvzt(x,y,vtz,vdz,zb1,szar,frac,\n"
+            "     &                           addbid,vtzb1,vtze1,\n"
+            "     &                           vdzb1,vdze1)\n")
+    return source.replace(anchor + "\n", anchor + "\n" + call) + H9_RECSIG_HELPERS
+
+
+def audit_h9_receptor_sigtz(path: Path, out: Path) -> None:
+    if not path.is_file() or path.stat().st_size != H9_RECSIG_RECORD.size:
+        raise AssertionError("H9 original same-step PUFRECS SIGTZ trace missing/misaligned")
+    rec = H9_RECSIG_RECORD.unpack(path.read_bytes())
+    seq,puff,ksam,idopt,*values = rec
+    if (seq,puff,ksam,idopt) != (16476,594,5,1):
+        raise AssertionError("H9 original CALCPF receptor SIGTZ key/option changed")
+    labels = ("x","y","vtz","vdz","zb1","szar","frac","addbid",
+              "vtzb","vtze","vdzb","vdze","sigw","el","tzisdr","uavg")
+    data = dict(zip(labels,values))
+    if struct.unpack("<I",struct.pack("<f",data["frac"]))[0] != 0x3F000000:
+        raise AssertionError("original H9 PUFRECS FRAC is not exactly 0.5")
+    print("P7_ORIGINAL_H9_RECEPTOR_SIGTZ_SOURCE=PASS"
+          f" GLOBAL_STEP={seq} PUFF={puff} KSAM={ksam} IDOPTZ={idopt}"
+          + " ".join(f" {k.upper()}={v:.10g}" for k,v in data.items())
+          + " ORIGINAL_VENDOR_OUTPUT_UNCHANGED=YES"
+          " NATIVE_PARITY=NOT_CLAIMED")
+    out.write_text(json.dumps({
+        "scope":"original H9 PUFRECS receptor (21,1) source-only SIGTZ",
+        "key":{"global_step":seq,"puff":puff,"ksam":ksam,"idoptz":idopt},
+        "inputs":data, "source_sha256":original.ORIGINAL_CALPUFF_SHA256,
+        "binary_sha256":original.sha256_file(path),
+        "native_state_injected":False
+    },indent=2)+"\n")
+
 H9_Z_ANCHORS = (
     # Original SETPUF calpuff.for L48526-48534, BEFORE terrain or clipping.
     ("            call sigtz(sigzb(ii),zero,zero,zpb(ii),szb1,vtzb1,vdzb1)",
@@ -339,6 +408,7 @@ def main() -> None:
                             CALCPF_ANCHOR + "\n" + CALL)
     if args.trace_h9_setpuf:
         source=add_h9_setpuf_trace(source)
+        source=add_h9_receptor_sigtz_trace(source)
     instrumented.write_text(source + source_helpers, encoding="latin-1")
 
     alias = original._alias_tree(vendor, out / "include-alias")
@@ -368,6 +438,9 @@ def main() -> None:
     if original.sha256_file(dgm) != DGM_SHA or dgm.stat().st_size != 254687 * 352:
         raise AssertionError("original 143h DGM changed under CALCPF instrumentation")
     if args.trace_h9_setpuf:
+        audit_h9_receptor_sigtz(
+            run / H9_RECSIG_NAME,
+            out / "original-h9-puff594-receptor21-1-sigtz.json")
         audit_h9_setpuf_trace(run / H9_Z_TRACE_NAME,
                              out / "original-h9-puff588-setpuf-z.json")
         audit_h9_met_trace(run / H9_MET_TRACE_NAME,
