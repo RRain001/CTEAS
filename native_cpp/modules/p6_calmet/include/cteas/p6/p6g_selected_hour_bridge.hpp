@@ -101,6 +101,9 @@ inline SelectedBridgeHour selected_multisite_hour(
     if(!grid.source_controls)
         throw std::invalid_argument("G15 wind bridge refuses missing met.inp numerical controls");
     const auto& controls=*grid.source_controls;
+    if(grid.zface_m!=controls.zface_m)
+        throw std::invalid_argument(
+            "G15 stage ZFACE not equal to original met.inp vertical grid");
     if(grid.synthetic_identity_diagno_tail&&grid.source_terrain_diagno_tail)
         throw std::invalid_argument("G11 identity and terrain DIAGNO audit modes conflict");
     if((thermal_hour!=nullptr)!=grid.source_terrain_diagno_tail ||
