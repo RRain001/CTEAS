@@ -5,6 +5,7 @@
 #include "cteas/p6/p6g_unified_hourly.hpp"
 #include "cteas/p6/p6g_g18d7_source_station_cell.hpp"
 #include "cteas/p6/p6g_g18d2_station_clock_transaction.hpp"
+#include "cteas/p6/p6g_g18e4_prepdi_stage_adapter.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -125,6 +126,7 @@ static std::vector<p6g::UpperSeries> upper(sys_seconds begin,
 struct SyntheticNativePhysics final : p6g::MultiHourPhysics {
     bool throw_at_mixht=false,inject_oracle=false,omit_w=false;
     bool expect_source_controls=false;
+    p6g::G18E4SelectedPrepdiStageAdapter* selected_prepdi=nullptr;
     std::size_t runs=0;
     std::vector<p6::NativeHourStage> order;
     p6::NativeHourStageResult run(p6::NativeHourStage stage,
@@ -146,6 +148,19 @@ struct SyntheticNativePhysics final : p6g::MultiHourPhysics {
         check(f.previous.ziconv_m.size()==n,"n-1 native thermal state absent");
         check(f.previous.ziconv_m[0]==static_cast<float>(f.hour_index),
               "previous hour ZICONV was not used");
+        if(stage==p6::NativeHourStage::PrepdiPreviousZiconv&&selected_prepdi) {
+            // G14, not the test caller, executes selected multi-US PREPDI.
+            selected_prepdi->run_selected(stage,f,true);
+            const auto& up=selected_prepdi->selected_upper_for(f);
+            const auto& gamma=selected_prepdi->selected_gamma_for(f);
+            check(up.station_ids==std::vector<int>({58424,58425})&&
+                  gamma.station_ids==up.station_ids&&
+                  gamma.lapse.size()==2&&up.justa.size()==2,
+                  "G18E4 2US PREPDI AA/BB + CGAMMA not joined to G14");
+            for(const auto& lapse:gamma.lapse)
+                check(std::isfinite(lapse.kelvin_per_m),
+                      "G18E4 source CGAMMA invalid lapse");
+        }
         if(stage==p6::NativeHourStage::DiagnoStheorElustr2Mixhtst)
             f.next.dptt_k[0]=static_cast<float>(f.hour_index+7);
         if(stage==p6::NativeHourStage::CompGridMixht){
