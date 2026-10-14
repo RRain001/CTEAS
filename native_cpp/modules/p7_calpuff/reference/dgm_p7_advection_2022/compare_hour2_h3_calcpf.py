@@ -73,7 +73,7 @@ def main() -> None:
         2:(1276,3517,137,25,28),
         4:(5424,7555,272,47,13),
         # First residual after source-exact 8 contiguous hours.
-        9:(16420,16679,618,21,1)
+        9:(16420,16679,618,25,1)
     }[a.hour]
     source=read_original(a.original,lower,upper,puff_max)
     native=read_native(a.native,lower,upper)
