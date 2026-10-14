@@ -3,6 +3,7 @@
 #include "cteas/puff/original_comp_neutral.hpp"
 #include "cteas/puff/original_rise_met.hpp"
 #include "cteas/puff/original_puffct2.hpp"
+#include "cteas/puff/original_calm_sigma.hpp"
 #include <cstddef>
 #include <functional>
 #include <optional>
@@ -50,6 +51,10 @@ struct RiseCompSamplingState {
     // before DRY/CHEM/WET mass removal; QNEW is post removal.
     // This is solver-owned state, never sampled from original puff.con.
     std::vector<float> receptor_qold_mixed;
+    // Original COMP LCALM=1 selects SIGTY/SIGTZ IDOPT=1, including inside
+    // receptor-specific PUFRECS. Do not silently fall back to PG IDOPT=3.
+    // Derived from live SETCSIG/TURBSET meteorology, never from DGM.
+    std::optional<OriginalCalmSigmaInput> receptor_calm_sigma;
 };
 using RiseCompSamplingKernel=std::function<std::vector<float>(
     const RiseCompSamplingState&)>;
