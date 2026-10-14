@@ -87,6 +87,8 @@ FIELD_NAMES = ("syrec", "szrec", "zpr", "zrpole", "f1", "xi1", "xi2",
 H9_Z_TRACE_NAME = "dgm_h9_puff588_setpuf_z.bin"
 H9_MET_TRACE_NAME = "dgm_h9_puff588_setpuf_met.bin"
 H9_MET_RECORD = struct.Struct("<3i3f")
+H9_SIGMA_TRACE_NAME = "dgm_h9_puff588_csigma.bin"
+H9_SIGMA_RECORD = struct.Struct("<3i4f")
 H9_Z_RECORD = struct.Struct("<3i8f")
 H9_Z_HELPERS = """
 c --- Write-only exact H9 vertical SETPUF source state, no state mutation
@@ -128,6 +130,27 @@ c --- Original H9 actual input to SETPUF from COMP/TURBSET, write only
       return
       end
 """
+H9_SIGMA_HELPERS = """
+c --- Capture ACTUAL original /CSIGMA/ values consumed by SIGTZ,
+c --- not the zero SETPUF entry formal parameters for MDISP3.
+      subroutine dgmh9csigma(ii)
+      include 'params.puf'
+      include 'datehr.puf'
+      include 'csigma.puf'
+      integer ii
+      logical ldgm
+      save ldgm
+      data ldgm/.false./
+      if(ii.ne.588.or.ndathrb.ne.202200108) return
+      if(.not.ldgm)then
+         open(1919,file='dgm_h9_puff588_csigma.bin',
+     &        access='stream',form='unformatted',status='replace')
+         ldgm=.true.
+      endif
+      write(1919) ii,idoptzs,ndathrb,tsigws,els,tzisdr,uavgs
+      return
+      end
+"""
 H9_Z_ANCHORS = (
     # Original SETPUF calpuff.for L48526-48534, BEFORE terrain or clipping.
     ("            call sigtz(sigzb(ii),zero,zero,zpb(ii),szb1,vtzb1,vdzb1)",
@@ -165,12 +188,38 @@ def add_h9_setpuf_trace(source: str) -> str:
             # SETPUF receives JDSTAB/TSIGV/TSIGW/EL as *call arguments*.
             # Record these BEFORE the first inversion; do not infer them
             # from COMP IPGT or from the original post-step DGM output.
-            met_call="            call dgmh9met(ii,jdstab,tsigv,tsigw,el)\n"
+            met_call=("            call dgmh9met(ii,jdstab,tsigv,tsigw,el)\n"
+                      "            call dgmh9csigma(ii)\n")
             source=source.replace(anchor + "\n",
                                   met_call+anchor + "\n" + statement)
         else:
             source=source.replace(anchor + "\n",anchor + "\n" + statement)
-    return source + H9_Z_HELPERS + H9_MET_HELPERS
+    return source + H9_Z_HELPERS + H9_MET_HELPERS + H9_SIGMA_HELPERS
+
+def audit_h9_csigma_trace(path: Path, out: Path) -> None:
+    if not path.is_file() or path.stat().st_size % H9_SIGMA_RECORD.size:
+        raise AssertionError("original H9 /CSIGMA/ data missing/misaligned")
+    rows=[]
+    with path.open("rb") as inp:
+        while raw:=inp.read(H9_SIGMA_RECORD.size):
+            ii,idoptzs,packed,tsigws,els,tzisdr,uavgs=H9_SIGMA_RECORD.unpack(raw)
+            if ii!=588 or packed!=202200108:
+                raise AssertionError("original source /CSIGMA/ trace key mismatch")
+            rows.append((idoptzs,tsigws,els,tzisdr,uavgs))
+    if not rows:
+        raise AssertionError("no original H9 /CSIGMA/ source state")
+    for idoptzs,tsigws,els,tzisdr,uavgs in rows[:5]:
+        print("P7_ORIGINAL_H9_EFFECTIVE_CSIGMA=SOURCE_ONLY"
+              f" IDOPTZS={idoptzs} TSIGWS={tsigws:.10g}"
+              f" ELS={els:.10g} TZISDR={tzisdr:.10g}"
+              f" UAVGS={uavgs:.10g}"
+              " NATIVE_CSIGMA_PARITY=OPEN")
+    out.write_text(json.dumps({
+        "scope":"original effective H9 /CSIGMA/ consumed by SIGTZ",
+        "values":rows,"source_sha256":original.ORIGINAL_CALPUFF_SHA256,
+        "trace_sha256":original.sha256_file(path),
+        "native_solver_inputs_unchanged":True
+    },indent=2)+"\n")
 
 def audit_h9_met_trace(path: Path, out: Path) -> None:
     if not path.is_file() or path.stat().st_size % H9_MET_RECORD.size:
@@ -318,6 +367,8 @@ def main() -> None:
                              out / "original-h9-puff588-setpuf-z.json")
         audit_h9_met_trace(run / H9_MET_TRACE_NAME,
                            out / "original-h9-puff588-setpuf-met.json")
+        audit_h9_csigma_trace(run / H9_SIGMA_TRACE_NAME,
+                             out / "original-h9-puff588-effective-csigma.json")
     trace = run / trace_name
     if not trace.is_file() or trace.stat().st_size % (RECORD.size+16):
         raise AssertionError("missing or misaligned original CALCPF H3 trace")
