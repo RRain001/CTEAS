@@ -217,7 +217,7 @@ def add_h9_receptor_sigtz_trace(source: str) -> str:
             "     &                           addbid,vtzb1,vtze1,\n"
             "     &                           vdzb1,vdze1)\n")
     source=source.replace(anchor + "\n", anchor + "\n" + call)
-    floor_anchor="      if(szr.LT.sz0(ipnum)) szr=sz0(ipnum)"
+    floor_anchor="      if(szr .LT. sz0(ipnum)) szr=sz0(ipnum)"
     if source.count(floor_anchor + "\n") != 1:
         raise AssertionError("H9 original PUFRECS SZ0 floor anchor changed")
     floor_call=("      call dgmh9recvfloor(x,y,szar,addbid,\n"
