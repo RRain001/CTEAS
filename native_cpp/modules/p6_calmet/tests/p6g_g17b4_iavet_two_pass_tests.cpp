@@ -509,13 +509,54 @@ static void verify_source_staged_iavet(
         stheor.albedo=f.grid.albedo[z];stheor.bowen=f.grid.bowen[z];
         stheor.hcg=f.grid.hcg[z];stheor.qf=f.grid.qf[z];
         const auto expected=p6::station_elustr2_flux(stheor);
+        p6::StationMixhtstInput direct_mix;
+        direct_mix.previous={prior.zi_m[z],prior.ziconv_m[z],prior.dptt_k[z]};
+        const auto& src_upper=upper[i].soundings.front();
+        for(const auto& level:src_upper.data) {
+            direct_mix.older_sounding.height_m.push_back(level.height_lgl_m);
+            direct_mix.older_sounding.temp_k.push_back(level.temperature_k);
+        }
+        direct_mix.qh_wm2=expected.sensible_wm2;
+        direct_mix.ustar_mps=expected.friction_velocity_mps;
+        direct_mix.el_m=expected.monin_obukhov_m;
+        direct_mix.rho_kg_m3=stheor.rho_kg_m3;
+        direct_mix.zimin_m=sc.zimin_m;direct_mix.zimax_m=sc.zimax_m;
+        direct_mix.constn=sc.constn;direct_mix.dptmin_kperm=sc.dptmin_kperm;
+        direct_mix.dzzi_m=sc.dzzi_m;direct_mix.threshl=sc.threshl;
+        direct_mix.onedte_s=sc.onedte_s;direct_mix.twodte_s=sc.twodte_s;
+        direct_mix.tzicrlx_s=sc.tzicrlx_s;direct_mix.imixh=sc.imixh;
+        direct_mix.izicrlx=sc.izicrlx;direct_mix.fcori_s=sc.fcori_s;
+        direct_mix.cmech=sc.cmech;direct_mix.landuse=f.grid.landuse[z];
+        direct_mix.water_first=f.grid.iwat1;direct_mix.water_last=f.grid.iwat2;
+        const auto expected_mix=p6::station_mixhtst(direct_mix);
         check(state.station_flux.sensible_wm2==expected.sensible_wm2 &&
               state.station_flux.friction_velocity_mps==expected.friction_velocity_mps &&
               state.station_flux.monin_obukhov_m==expected.monin_obukhov_m &&
-              state.levels_filled>=1&&state.levels_filled<=9 &&
-              std::isfinite(state.station_mixing.zii_to_similt_m) &&
-              std::isfinite(state.station_mixing.dptt_for_comp_k),
-              "G17C3 original station ELUSTR2/MIXHTST output mismatch");
+              state.station_mixing.zii_to_similt_m==expected_mix.zii_to_similt_m &&
+              state.station_mixing.ziconv_after_m==expected_mix.ziconv_after_m &&
+              state.station_mixing.dptt_for_comp_k==expected_mix.dptt_for_comp_k &&
+              state.levels_filled>=1&&state.levels_filled<=9,
+              "G17C3 original station ELUSTR2/MIXHTST source parity mismatch");
+        const auto projection=cteas::p6e::utm_north_projection(f.grid.zone);
+        double latitude=0.,longitude=0.;
+        cteas::p6e::utm_north_to_latlon_deg(
+            projection,static_cast<double>(station.utm_x_km)*1000.0,
+            static_cast<double>(station.utm_y_km)*1000.0,latitude,longitude);
+        p6::SimiltProfileInput direct_diagi;
+        direct_diagi.station_lat_deg=static_cast<float>(latitude);
+        direct_diagi.anemometer_height_m=station.anemometer_height_m;
+        direct_diagi.roughness_m=f.grid.z0_m[z];
+        direct_diagi.anemometer_u_mps=stheor.surface_u_mps;
+        direct_diagi.anemometer_v_mps=stheor.surface_v_mps;
+        direct_diagi.obukhov_length_m=expected.monin_obukhov_m;
+        direct_diagi.mixing_height_m=expected_mix.zii_to_similt_m;
+        direct_diagi.minimum_mixing_height_m=sc.zimin_m;
+        direct_diagi.zface_m=wind.zface_m;
+        const auto source_diagi=p6::original_similt_profile(direct_diagi);
+        check(state.levels_filled==source_diagi.levels_filled &&
+              state.diagi_profile.u_mps==source_diagi.u_mps &&
+              state.diagi_profile.v_mps==source_diagi.v_mps,
+              "G17C3 source DIAGI SIMILT cap/values disagree elementwise");
     }
     auto modified=sc;
     modified.upper_ordinal_for_surface={2,0};
