@@ -12,6 +12,7 @@ from pathlib import Path
 import struct
 
 RECORD = struct.Struct("<3i13f")
+VIRTUAL = struct.Struct("<3i9f")
 NAMES = ("syrec", "szrec", "zpr", "zrpole", "f1", "xi1", "xi2",
          "t1", "t2", "qold", "qnew", "xtemp", "conc")
 SOURCE_ORDER = ("qold", "qnew", "syrec", "szrec", "zpr", "zrpole", "f1",
@@ -41,7 +42,13 @@ def load_original(path: Path) -> dict:
         while chunk := fp.read(RECORD.size):
             if len(chunk) != RECORD.size:
                 raise ValueError("truncated vendor receiver record")
+            extra = fp.read(VIRTUAL.size)
+            if len(extra) != VIRTUAL.size:
+                raise ValueError("truncated paired PUFRECS virtual trace")
             seq, ii, ksam, *floats = RECORD.unpack(chunk)
+            vseq, vid, vksam, *_values = VIRTUAL.unpack(extra)
+            if (seq, ii, ksam) != (vseq, vid, vksam):
+                raise ValueError("vendor PUFRECS virtual trace key does not match CALCPF")
             rows.append((seq, ii, ksam, floats))
     return check(rows, "ORIGINAL")
 
