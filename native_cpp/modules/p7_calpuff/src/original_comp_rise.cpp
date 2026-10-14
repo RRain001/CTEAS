@@ -547,7 +547,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             state.buoyancy_variance_m2,
             state.initial_sigma_y_squared_m2,
             state.minimum_sigma_y_m,state.minimum_sigma_z_m,
-            ctadj2_step,current_receptor_bvf,ws
+            ctadj2_step,current_receptor_bvf,ws,original_qold_mixed
         };
         receptor_increments=sampling_kernel(at_receptor);
         for(float increment:receptor_increments){
