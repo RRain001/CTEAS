@@ -265,6 +265,10 @@ int main(int argc,char** argv){
                              <<" NAT_END_XY="<<n.after.x_cells<<","<<n.after.y_cells
                              <<" ORIG_XTOT="<<b.f[40]
                              <<" NAT_XTOT="<<n.after.total_distance_m
+                             <<" ORIG_SYB1_SYM1_SYE1_OUT="<<b.f[53]<<","<<b.f[54]<<","<<b.f[55]
+                             <<" NAT_SYB1_SYM1_SYE1_OUT="<<n.sigma.adjust.sigma_y_begin_m<<","<<n.sigma.adjust.sigma_y_mid_m<<","<<n.sigma.adjust.sigma_y_end_m
+                             <<" ORIG_SIGY_STORED="<<b.f[42]
+                             <<" NAT_SIGY_STORED="<<n.vertical_after.sigma_y_m
                              <<" ORIG_SZB1_SZM1_SZE1_OUT="<<b.f[56]<<","<<b.f[57]<<","<<b.f[58]
                              <<" NAT_SZB1_SZM1_SZE1_OUT="<<n.sigma.adjust.sigma_z_begin_m<<","<<n.sigma.adjust.sigma_z_mid_m<<","<<n.sigma.adjust.sigma_z_end_m
                              <<" ORIG_SIGZ_OUT="<<b.f[43]
