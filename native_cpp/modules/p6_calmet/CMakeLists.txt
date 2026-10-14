@@ -349,6 +349,28 @@ if(P6G_G17B_GFORTRAN AND Python3_Interpreter_FOUND)
       --out "${CMAKE_CURRENT_BINARY_DIR}/g18d6_setcom_nearu_source_parity.json")
 endif()
 
+# G18D7: preserve DIAGI XSSTA/DX+1 REAL*4 semantics before INTEGER
+# assignment; independently compile the literal original DIAGI and
+# DIAGNO/STHEOR bound clamps. Frozen #53 physics remains unchanged.
+add_executable(cteas_p6g_g18d7_diagi_cell_reference
+               src/p6g_g18d7_diagi_cell_reference_main.cpp)
+target_link_libraries(cteas_p6g_g18d7_diagi_cell_reference PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g18d7_diagi_cell_reference PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g18d7_diagi_cell_reference PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(P6G_G17B_GFORTRAN AND Python3_Interpreter_FOUND)
+  add_test(NAME p6g_g18d7_literal_vendor_diagi_stheor_real4_site_cell_parity
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_original_g18d7_diagi_cell.py"
+      --vendor "${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for"
+      --cpp "$<TARGET_FILE:cteas_p6g_g18d7_diagi_cell_reference>"
+      --gfortran "${P6G_G17B_GFORTRAN}"
+      --out "${CMAKE_CURRENT_BINARY_DIR}/g18d7_diagi_cell_source_parity.json")
+endif()
+
 # G17B4: original Hefei IAVET=1 two SURFVAR/AVETMP calls bracket FRADJ;
 # distinct source WIND1 and post-FRADJ winds must not be conflated.
 add_executable(cteas_p6g_g17b4_iavet_two_pass_tests
