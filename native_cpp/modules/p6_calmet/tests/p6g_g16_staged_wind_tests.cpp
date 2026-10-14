@@ -43,16 +43,28 @@ static p6g::StationSet station_set() {
 static p6g::G16ObservedProfiles inputs(sys_seconds end) {
     p6g::G16ObservedProfiles p;
     p.end=end;p.station_ids={58321,58322,58424,58425};
-    p.u_mps.resize(36);p.v_mps.resize(36);p.present.assign(36,1);
+    p.wind1_u_mps.resize(36);p.wind1_v_mps.resize(36);
+    p.wind1_present.assign(36,1);
     for(std::size_t k=0;k<9;++k) {
-        p.u_mps[k*4]=0.f;p.v_mps[k*4]=0.f;
-        p.u_mps[k*4+1]=3.f;p.v_mps[k*4+1]=4.f;
-        p.u_mps[k*4+2]=5.f;p.v_mps[k*4+2]=-2.f;
-        p.u_mps[k*4+3]=9.f;p.v_mps[k*4+3]=10.f;
+        p.wind1_u_mps[k*4]=0.f;p.wind1_v_mps[k*4]=0.f;
+        p.wind1_u_mps[k*4+1]=3.f;p.wind1_v_mps[k*4+1]=4.f;
+        p.wind1_u_mps[k*4+2]=5.f;p.wind1_v_mps[k*4+2]=-2.f;
+        p.wind1_u_mps[k*4+3]=9.f;p.wind1_v_mps[k*4+3]=10.f;
     }
-    p.present[1*4+3]=0;
-    p.u_mps[1*4+3]=999999.f;
-    p.v_mps[1*4+3]=999999.f;
+    p.wind1_present[1*4+3]=0;
+    p.wind1_u_mps[1*4+3]=999999.f;
+    p.wind1_v_mps[1*4+3]=999999.f;
+    // Controlled DIFFERENT DIAGI source profiles; stability/cutoff
+    // prevents the surface profile above ZI from reaching INTER2.
+    // These are fixtures, NOT accepted original multi-site P6E ZI.
+    p.inter2_u_mps=p.wind1_u_mps;
+    p.inter2_v_mps=p.wind1_v_mps;
+    p.inter2_present=p.wind1_present;
+    for(std::size_t k=4;k<9;++k) {
+        p.inter2_present[k*4]=0;
+        p.inter2_u_mps[k*4]=999.f;
+        p.inter2_v_mps[k*4]=999.f;
+    }
     return p;
 }
 static p6g::GeoGrid geo() {
@@ -124,9 +136,9 @@ int main(int argc,char** argv) {
         expected.station_x_m={10000.f,30000.f,20000.f,50000.f};
         expected.station_y_m={10000.f,40000.f,20000.f,50000.f};
         expected.surface_speeds_mps={0.f,5.f};
-        expected.station_u_mps=profiles.u_mps;
-        expected.station_v_mps=profiles.v_mps;
-        expected.present=profiles.present;
+        expected.station_u_mps=profiles.wind1_u_mps;
+        expected.station_v_mps=profiles.wind1_v_mps;
+        expected.present=profiles.wind1_present;
         expected.vertical_bias.assign(controls.bias.begin(),controls.bias.end());
         expected.icalm=controls.icalm;
         const auto comparison=p6g::multi_station_wind1_firstguess(expected);
@@ -166,15 +178,29 @@ int main(int argc,char** argv) {
         inter.station_y_km={10.f,40.f,20.f,50.f};
         inter.nintrp_per_layer.assign(9,4);
         inter.observation_weight=corrected.observation_weight;
-        inter.station_component_mps=profiles.u_mps;
+        inter.station_component_mps=profiles.inter2_u_mps;
         for(std::size_t k=0;k<9;++k)
             for(std::size_t l=0;l<4;++l)
-                if(!profiles.present[k*4+l])
+                if(!profiles.inter2_present[k*4+l])
                     inter.station_component_mps[k*4+l]=inter.edit;
         inter.step1_mps=corrected.u_mps;
         const auto direct=p6::original_inter2_selected(inter);
         need(direct.component_mps==stages.selected_result().blended_u.component_mps,
              "G16 INTER2 stage and accepted source kernel differ");
+        // Prove that accidentally supplying WIND1's neutral, uncapped
+        // station profile to INTER2 materially changes higher-layer winds.
+        auto wrong_neutral=inter;
+        wrong_neutral.station_component_mps=profiles.wind1_u_mps;
+        for(std::size_t k=0;k<9;++k)
+            for(std::size_t l=0;l<4;++l)
+                if(!profiles.wind1_present[k*4+l])
+                    wrong_neutral.station_component_mps[k*4+l]=wrong_neutral.edit;
+        const auto wrong_u=p6::original_inter2_selected(wrong_neutral);
+        bool differs=false;
+        for(std::size_t k=4;k<9;++k)
+            for(std::size_t p=0;p<9;++p)
+                differs|=wrong_u.component_mps[k*9+p]!=direct.component_mps[k*9+p];
+        need(differs,"G16 neutral WIND1 and capped DIAGI INTER2 were incorrectly conflated");
         refuse([&]{(void)stages.run(p6::NativeHourStage::DiagnoInter2,hour);},
                "G16 accepted second INTER2 with stale corrected data");
         need(!stages.run(p6::NativeHourStage::CompGridMixht,hour).completed,
