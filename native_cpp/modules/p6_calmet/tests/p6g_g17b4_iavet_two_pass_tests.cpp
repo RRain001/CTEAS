@@ -3,6 +3,7 @@
 // physics is NOT accepted; WIND1/FRADJ arrays are controlled stage fixtures.
 #include "cteas/p6/p6g_g17b4_iavet_two_pass.hpp"
 #include "cteas/p6/p6g_g17_staged_terrain.hpp"
+#include "cteas/p6/p6g_g17c_iavet1_heat_handoff.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -37,6 +38,11 @@ struct Input {
     explicit Input(const p6g::G17B4SurfaceControls& source,
                    sys_seconds begin) : controls(source){
         grid.nx=12;grid.ny=12;grid.grid_km=10.f;
+        grid.zone=50;grid.hemisphere='N';
+        grid.xorigin_km=510.885f;grid.yorigin_km=3531.269f;
+        grid.albedo.assign(144,0.2f);
+        grid.bowen.assign(144,0.5f);
+        grid.hcg.assign(144,0.2f);grid.qf.assign(144,0.f);
         grid.iwat1=50;grid.iwat2=55;grid.landuse.assign(144,20);
         for(int j=0;j<12;++j)for(int i=0;i<12;++i)
             grid.terrain_m.push_back(100.f+150.f*i+100.f*j);
@@ -51,6 +57,8 @@ struct Input {
         hour.by_station[0].wind_speed_mps=5.f;
         hour.by_station[0].pressure_valid=true;
         hour.by_station[0].pressure_mb=1013.f;
+        hour.by_station[0].cloud_valid=true;
+        hour.by_station[0].opaque_cloud_tenths=2;
         hour.by_station[0].temperature_valid=true;
         hour.by_station[0].temperature_k=281.f;
         hour.by_station[0].humidity_valid=true;
@@ -59,6 +67,8 @@ struct Input {
         hour.by_station[1].wind_speed_mps=6.f;
         hour.by_station[1].pressure_valid=true;
         hour.by_station[1].pressure_mb=997.f;
+        hour.by_station[1].cloud_valid=true;
+        hour.by_station[1].opaque_cloud_tenths=7;
         hour.by_station[1].temperature_valid=true;
         hour.by_station[1].temperature_k=302.f;
         hour.by_station[1].humidity_valid=true;
@@ -249,25 +259,71 @@ static void verify_source_staged_iavet(
     for(std::size_t i=0;i<144;++i)
         changed|=(second[i]!=surface.first_temperature()[i]);
     check(changed,"G17B4 physical G17 FRADJ did not alter source TEMP2D");
+    p6g::G17CSelectedHeatInputs ancillary;
+    ancillary.coefficients={990.f,-30.f,-0.75f,3.4f,0.f,0.f,1.f};
+    ancillary.initial_water_qh_wm2.assign(144,0.f);
+    rejects([&]{
+        (void)p6g::selected_iavet1_heat_after_fradj(
+            f.grid,all,f.series.hourly.front(),surface,ancillary);
+    },"G17C accepted unmarked heat coefficients as production state");
+    ancillary.explicitly_test_only=true;
+    const auto selected=p6g::selected_iavet1_heat_after_fradj(
+        f.grid,all,f.series.hourly.front(),surface,ancillary);
+    check(selected.end==f.series.end &&
+          selected.temperature_k==second &&
+          selected.sun_sine.size()==144 &&
+          selected.sensible_heat_wm2.size()==144 &&
+          selected.nearest_surface==p6g::source_setcom_nears(f.grid,all),
+          "G17C failed to bind the exact post-FRADJ observed temperature");
+    // Independent direct invocation of the immutable PR #53 HEATFX kernel:
+    // second-pass TEMP2D, actual solar and cloud from 2SS, never the first.
+    p6e::HeatFluxInput hi;
+    hi.nx=12;hi.ny=12;hi.mcloud=1;hi.water_first=50;hi.water_last=55;
+    hi.ha1=990.f;hi.ha2=-30.f;hi.hb1=-0.75f;hi.hb2=3.4f;
+    hi.hc1=0.f;hi.hc2=0.f;hi.hc3p1=1.f;
+    hi.station_cloud={2,7};hi.nearest=selected.nearest_surface;
+    hi.landuse=f.grid.landuse;hi.sun=selected.sun_sine;
+    hi.temp_k=second;hi.cloud_grid.assign(144,0.f);
+    hi.albedo=f.grid.albedo;hi.bowen=f.grid.bowen;hi.soil_heat_fraction=f.grid.hcg;
+    hi.anthropogenic_wm2=f.grid.qf;hi.initial_qh=ancillary.initial_water_qh_wm2;
+    const auto direct_flux=p6e::heatfx(hi);
+    check(selected.shortwave_wm2==direct_flux.shortwave_wm2 &&
+          selected.sensible_heat_wm2==direct_flux.sensible_wm2,
+          "G17C source HEATFX differs from identical PR #53 immutable kernel");
+    hi.temp_k=surface.first_temperature();
+    const auto wrong_flux=p6e::heatfx(hi);
+    check(wrong_flux.sensible_wm2!=selected.sensible_heat_wm2,
+          "G17C test cannot distinguish stale first vs final temperature");
+    check(selected.density_kg_m3==
+          p6g::source_airden_nears(selected.nearest_surface,second,
+                                  f.series.hourly.front()),
+          "G17C AIRDEN not sourced from the same final temperature");
+    auto stale=f.series.hourly.front();
+    stale.end+=hours{1};
+    rejects([&]{
+        (void)p6g::selected_iavet1_heat_after_fradj(
+            f.grid,all,stale,surface,ancillary);
+    },"G17C accepted mismatched source hour");
+    stale=f.series.hourly.front();stale.by_station[0].cloud_valid=false;
+    rejects([&]{
+        (void)p6g::selected_iavet1_heat_after_fradj(
+            f.grid,all,stale,surface,ancillary);
+    },"G17C invented unavailable station cloud");
     rejects([&]{
         stages.prepare_selected_airden(frame,surface.first_temperature());
-    },"G17B4 AIRDEN incorrectly reuses pre-FRADJ TEMP2D");
-    stages.prepare_selected_airden(frame,second);
-    check(stages.run(p6::NativeHourStage::DiagnoAirden,frame).completed,
-          "G17B4 source AIRDEN did not consume final observed TEMP2D");
-    const auto& rho=stages.selected_air_density();
-    for(std::size_t i=0;i<144;++i)
-        check(rho[i]>0.f&&std::isfinite(rho[i]),
-              "G17B4 AIRDEN invalid after two original SURFVAR passes");
-    p6g::G17SlopeHeatSource heat;
-    heat.end=f.series.end;
-    heat.provenance=p6g::TerrainHourProvenance::SyntheticReferenceFixture;
-    heat.temperature_k=surface.first_temperature();
-    heat.sensible_heat_w_m2.assign(144,-120.f);
-    rejects([&]{stages.provide_slope_heat(heat);},
-            "G17B4 SLOPE accepted obsolete first TEMP2D");
-    heat.temperature_k=second;
-    stages.provide_slope_heat(heat);
+    },"G17C AIRDEN incorrectly reuses pre-FRADJ TEMP2D");
+    stages.prepare_selected_airden(frame,selected.temperature_k);
+    check(stages.run(p6::NativeHourStage::DiagnoAirden,frame).completed &&
+          stages.selected_air_density()==selected.density_kg_m3,
+          "G17C source AIRDEN did not consume selected native second TEMP2D");
+    auto stale_heat=selected.selected_slope_fixture();
+    stale_heat.temperature_k=surface.first_temperature();
+    rejects([&]{stages.provide_slope_heat(stale_heat);},
+            "G17C SLOPE accepted obsolete first TEMP2D");
+    stages.provide_slope_heat(selected.selected_slope_fixture());
+    // Scoped inputs are still test-only: do not claim production HEATFX/COMP.
+    check(!stages.run(p6::NativeHourStage::DiagnoHeatfx,frame).completed,
+          "G17C marked experimental coefficient-controlled heat as production");
     check(stages.run(p6::NativeHourStage::DiagnoSlope,frame).completed,
           "G17B4 SLOPE failed with original post-FRADJ TEMP2D");
     check(stages.run(p6::NativeHourStage::DiagnoWindbcFirstGuess,frame).completed,
@@ -277,7 +333,7 @@ static void verify_source_staged_iavet(
     check(!stages.run(p6::NativeHourStage::CompGridMixht,frame).completed,
           "G17B4 invented native multi-station COMP acceptance");
     check(frame.next.ziconv_m==prior.ziconv_m,
-          "G17B4 selected two-pass test modified n-1 accepted P6E state");
+          "G17C selected heat bridge modified n-1 accepted P6E state");
 }
 int main(int argc,char** argv){
     try{
@@ -309,7 +365,8 @@ int main(int argc,char** argv){
         std::cout<<"PASS_G17B4_SOURCE_IAVET1_TWO_PASS "
                     "METINP_MNMDAV_HAFANG_REAL4 "
                     "WIND1_FIRST_FRADJ_SECOND DIAGNO_ORDER "
-                    "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
+                    "G17C_SECOND_TEMP_NATIVE_SOLAR_HEATFX_AIRDEN_PASS "
+                    "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\\n";
         return 0;
     }catch(const std::exception& e){
         std::cerr<<"FAIL_G17B4 "<<e.what()<<"\n";
