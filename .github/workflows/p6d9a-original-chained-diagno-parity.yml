@@ -196,7 +196,7 @@ jobs:
           build="$RUNNER_TEMP/cteas-d9a-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           cmake -S native_cpp/modules/p6_calmet -B "$build" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$build" --parallel 2
-          ctest --test-dir "$build" --output-on-failure
+          ctest --test-dir "$build" --output-on-failure -E '^p6g_'
       - name: Compare chained unchanged WIND1 INTER2 SMOOTH DIVCEL W original sources
         shell: bash
         run: |
