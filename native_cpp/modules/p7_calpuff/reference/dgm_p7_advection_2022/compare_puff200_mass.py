@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 import struct
 
-REC=struct.Struct("<3i6f")
+REC=struct.Struct("<3i8f")
 def bits(v:float)->str:
     return f"0x{struct.unpack('<I',struct.pack('<f',v))[0]:08x}"
 
@@ -25,28 +25,31 @@ def main()->None:
         raise AssertionError("Fortran original puff200 mass trace missing or malformed")
     original={}
     for off in range(0,len(binary),REC.size):
-        seq,ep,ks,qold,qnew,frac,vd,ratio,tsamp=REC.unpack(binary[off:off+REC.size])
+        seq,ep,ks,qold,qnew,frac,vd,ratio,tsamp,vcbar,const=REC.unpack(binary[off:off+REC.size])
         if ep!=200 or seq in original or not 1<=seq<=11458:
             raise AssertionError("original historical puff200 record identity malformed")
         original[seq]=(ep,ks,dict(qold=qold,qnew=qnew,frac=frac,
-                                   tsamp=tsamp,vd=vd,ratio=ratio))
+                                   tsamp=tsamp,vd=vd,ratio=ratio,
+                                   vcbar=vcbar,const=const))
     native={}
     for line in a.native.read_text().splitlines():
         words=line.split()
-        if len(words)!=8:
-            raise AssertionError("native 8-column float32 trace malformed: "+line)
+        if len(words)!=11:
+            raise AssertionError("native 11-column float32 trace malformed: "+line)
         seq,ep,ks=map(int,words[:3])
         if seq in native or ep!=200:
             raise AssertionError("native historical puff200 step identity malformed")
         vals=list(map(float,words[3:]))
-        native[seq]=(ep,ks,dict(zip(("qold","qnew","frac","tsamp","vcbar"),vals)))
+        native[seq]=(ep,ks,dict(zip(
+            ("qold","qnew","frac","vd","ratio","tsamp","vcbar","const"),vals)))
     if set(original)!=set(native):
         raise AssertionError("original/native puff200 coverage differs: "+
               f"oldOnly={sorted(set(original)-set(native))[:8]} "+
               f"nativeOnly={sorted(set(native)-set(original))[:8]}")
     if 5847 not in original:
         raise AssertionError("source first hour4 receptor disagreement step missing")
-    counts={key:0 for key in ("qold","qnew","frac","tsamp")}
+    counts={key:0 for key in
+            ("qold","vd","ratio","vcbar","const","frac","qnew","tsamp")}
     first=None
     for seq in sorted(original):
         ep,ks,ov=original[seq]
