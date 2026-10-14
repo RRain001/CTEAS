@@ -5,6 +5,132 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(cteas_p6a_contracts INTERFACE)
 target_include_directories(cteas_p6a_contracts INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# G6 independent arbitrary-NX/NY GEO reader; frozen p6_read_geo/50 is unchanged.
+add_executable(cteas_p6g_dynamic_geo_tests tests/p6g_dynamic_geo_tests.cpp)
+target_link_libraries(cteas_p6g_dynamic_geo_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_dynamic_geo_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_dynamic_geo_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_dynamic_geo_utm_and_frozen_field_parity COMMAND cteas_p6g_dynamic_geo_tests)
+
+# Source-compatible dynamic station deck, segregated from frozen SS1/US1.
+add_executable(cteas_p6g_station_set_tests tests/p6g_station_set_tests.cpp)
+target_link_libraries(cteas_p6g_station_set_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_station_set_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_station_set_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_multistation_readcf_real4_parity COMMAND cteas_p6g_station_set_tests)
+
+# G7: native SURF.DAT v2.1 formatted multi-station and cross-year input.
+# Frozen read_surface_2022 stays separate for independent 143h comparison.
+add_executable(cteas_p6g_surface_dynamic_tests tests/p6g_surface_dynamic_tests.cpp)
+target_link_libraries(cteas_p6g_surface_dynamic_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_surface_dynamic_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_surface_dynamic_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_surface_multi_site_multiyear_frozen_143h_parity COMMAND cteas_p6g_surface_dynamic_tests)
+
+# G7b: native READ62/RDUPN upper-air file-per-station, multiple soundings.
+add_executable(cteas_p6g_upper_dynamic_tests tests/p6g_upper_dynamic_tests.cpp)
+target_link_libraries(cteas_p6g_upper_dynamic_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_upper_dynamic_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_upper_dynamic_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_upper_multi_site_multiyear_frozen_rdupn_parity COMMAND cteas_p6g_upper_dynamic_tests)
+
+# G7c: SOURCE INPUT CONTRACT ONLY. No WIND1/COMP production physics.
+add_executable(cteas_p6g_observation_input_tests tests/p6g_observation_input_tests.cpp)
+target_link_libraries(cteas_p6g_observation_input_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_observation_input_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_observation_input_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_multistation_surface_upper_hourly_input_contract COMMAND cteas_p6g_observation_input_tests)
+
+# G8: 10 km multi-SURF/multi-UP cross-year and full 8784h leap-year
+# source-selected INTER2/SIMILT/VERTAV/PREPDI computational integration only.
+# This is NOT full CALMET WIND1/DIAGNO physical equivalence.
+add_executable(cteas_p6g_g8_10km_year_tests tests/p6g_g8_10km_year_stress_tests.cpp)
+target_link_libraries(cteas_p6g_g8_10km_year_tests PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6g_g8_10km_year_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+if(MSVC)
+  target_compile_options(cteas_p6g_g8_10km_year_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g8_10km_year_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g8_multisite_10km_8784h_selected_source_bridge COMMAND cteas_p6g_g8_10km_year_tests)
+
+# G9 independent multi-station WIND1 source-selected regression.
+add_executable(cteas_p6g_g9_multi_wind1_tests tests/p6g_g9_multi_wind1_tests.cpp)
+target_link_libraries(cteas_p6g_g9_multi_wind1_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g9_multi_wind1_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g9_multi_wind1_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g9_expanded_10km_multi_wind1_frozen_pair_parity COMMAND cteas_p6g_g9_multi_wind1_tests)
+
+# G11 source-selected genuine TERSET→FRADJ→SLOPE, dynamic 10km grid.
+# All thermodynamics are test-synthetic, NOT independently verified P6E.
+add_executable(cteas_p6g_g11_terrain_tests tests/p6g_g11_source_terrain_tests.cpp)
+target_link_libraries(cteas_p6g_g11_terrain_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g11_terrain_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g11_terrain_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g11_original_terrain_dynamic_10km_source_contract COMMAND cteas_p6g_g11_terrain_tests)
+
+# G12 native source P6E selected SURFVAR+HEATFX 2-SS thermal bridge
+# with hourly station identity, solar and gamma fail-closed contracts.
+add_executable(cteas_p6g_g12_thermal_tests tests/p6g_g12_observed_p6e_thermal_tests.cpp)
+target_link_libraries(cteas_p6g_g12_thermal_tests PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6g_g12_thermal_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+if(MSVC)
+  target_compile_options(cteas_p6g_g12_thermal_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g12_thermal_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g12_10km_2surface_observed_temp_selected_heatfx_contract COMMAND cteas_p6g_g12_thermal_tests)
+
+
+
+# G13 separate 10km original-source SURFVAR reference: do not reuse the old
+# P6E 100m reference driver which silently defaults its DGRID to 100m.
+add_executable(cteas_p6g_g13_surfvar_10km_reference src/p6g_g13_surfvar_10km_reference_main.cpp)
+target_link_libraries(cteas_p6g_g13_surfvar_10km_reference PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6g_g13_surfvar_10km_reference PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+if(MSVC)
+  target_compile_options(cteas_p6g_g13_surfvar_10km_reference PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g13_surfvar_10km_reference PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
+# G10 original-Fortran 10km selected DIAGNO tail source-lift reference.
+# Distinct from frozen 100m DIAGNO and from any real terrain/heat acceptance.
+add_executable(cteas_p6g_g10_diagno_reference src/p6g_g10_10km_diagno_reference_main.cpp)
+target_link_libraries(cteas_p6g_g10_diagno_reference PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g10_diagno_reference PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g10_diagno_reference PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
+
+set_tests_properties(p6g_g8_multisite_10km_8784h_selected_source_bridge PROPERTIES TIMEOUT 900)
+
+
+
+
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
 add_executable(cteas_p6_terset src/terrain_envelope_main.cpp)

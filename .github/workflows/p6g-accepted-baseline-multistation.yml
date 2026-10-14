@@ -1,0 +1,72 @@
+name: P6G multistation on accepted single-station baseline
+on:
+  push:
+    branches: [codex/p6g-multistation-on-accepted-p6a-p6f-20261014]
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/**'
+      - '.github/workflows/p6g-accepted-baseline-multistation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  frozen-science-ownership:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Accepted Hefei baseline ancestor and native physics unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=8d6642272d0abb77153880591e150f93e14d4479
+          git merge-base --is-ancestor "$base" HEAD
+          git diff --exit-code "$base" HEAD -- \
+            native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp \
+            native_cpp/modules/p6_calmet/src/native_hourly_driver_main.cpp \
+            native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp \
+            native_cpp/modules/p6_calmet/include/cteas/p6/hourly_comp_scheduler.hpp \
+            native_cpp/modules/p6_calmet/include/cteas/p6/inter2_selected.hpp \
+            native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp \
+            native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/native_hourly_comp_steps.hpp \
+            native_cpp/modules/p6_calmet/p6f/src/calmet_dat21_writer.cpp \
+            scripts/p6_run_native_causal_hourly.py
+  selected-multisite-tests:
+    name: G6-G13 10km selected tests (${{ matrix.mode }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check vendor source and compilers
+        run: |
+          test -s engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for
+          command -v gfortran
+          command -v g++
+      - name: Build multi-station kernels without altering Hefei source
+        run: |
+          cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/p6g" -DCMAKE_BUILD_TYPE=${{ matrix.mode }}
+          cmake --build "$RUNNER_TEMP/p6g" --target \
+            cteas_p6g_dynamic_geo_tests cteas_p6g_station_set_tests \
+            cteas_p6g_surface_dynamic_tests cteas_p6g_upper_dynamic_tests \
+            cteas_p6g_observation_input_tests cteas_p6g_g8_10km_year_tests \
+            cteas_p6g_g9_multi_wind1_tests cteas_p6g_g11_terrain_tests \
+            cteas_p6g_g12_thermal_tests cteas_p6g_g13_surfvar_10km_reference --parallel 2
+      - name: Run 2SS+2US cross-year and 8784h CTest
+        run: ctest --test-dir "$RUNNER_TEMP/p6g" --output-on-failure -R '^p6g_'
+      - name: Original CALMET Fortran 2SS 10km SURFVAR 72-case strict parity
+        run: |
+          python3 native_cpp/modules/p6_calmet/reference/compare_g13_original_surfvar_10km.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --cpp "$RUNNER_TEMP/p6g/cteas_p6g_g13_surfvar_10km_reference" \
+            --out "$RUNNER_TEMP/surfvar-${{ matrix.mode }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g13-source-10km-${{ matrix.mode }}
+          path: ${{ runner.temp }}/surfvar-${{ matrix.mode }}.json
+          if-no-files-found: warn
