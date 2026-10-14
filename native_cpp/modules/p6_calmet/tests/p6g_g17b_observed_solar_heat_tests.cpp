@@ -213,6 +213,21 @@ static void verify_selected_slope_bridge(
     check(fradj.completed,"G17B observed SURFVAR TEMP2D failed FRADJ");
     check(!stages.run(p6::NativeHourStage::DiagnoHeatfx,frame).completed,
           "G17B falsely approved complete native P6E HEATFX controls");
+    check(!stages.run(p6::NativeHourStage::DiagnoAirden,frame).completed,
+          "G17B accepted AIRDEN before original observed-temperature handoff");
+    auto incorrect_temp=result.observed.temp2d_k;
+    incorrect_temp[0]+=1.f;
+    reject([&]{
+        stages.prepare_selected_airden(frame,incorrect_temp);
+    },"G17B accepted AIRDEN temperature differing from source SURFVAR/FRADJ");
+    stages.prepare_selected_airden(frame,result.observed.temp2d_k);
+    const auto air=stages.run(p6::NativeHourStage::DiagnoAirden,frame);
+    check(air.completed&&air.source==p6::NativeHourSource::NativeCpp&&
+          stages.selected_air_density()==result.density_kg_m3,
+          "G17B source SETCOM/RDSN AIRDEN did not reach native stage");
+    reject([&]{
+        stages.prepare_selected_airden(frame,result.observed.temp2d_k);
+    },"G17B accepted duplicate AIRDEN source handoff");
     stages.provide_slope_heat(result.slope_fixture);
     const auto slope=stages.run(p6::NativeHourStage::DiagnoSlope,frame);
     check(slope.completed,"G17B computed solar HEATFX QH did not enter SLOPE");
