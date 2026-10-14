@@ -16,22 +16,31 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Accepted Hefei baseline ancestor and native physics unchanged
+      - name: Verify all 163 accepted P6 physics files retain exact #53 blobs
         shell: bash
         run: |
           set -euo pipefail
           base=8d6642272d0abb77153880591e150f93e14d4479
           git merge-base --is-ancestor "$base" HEAD
-          git diff --exit-code "$base" HEAD -- \
-            native_cpp/modules/p6_calmet/src/realcase_wind_field_main.cpp \
-            native_cpp/modules/p6_calmet/src/native_hourly_driver_main.cpp \
-            native_cpp/modules/p6_calmet/src/cgamma_from_p6e_143h_main.cpp \
-            native_cpp/modules/p6_calmet/include/cteas/p6/hourly_comp_scheduler.hpp \
-            native_cpp/modules/p6_calmet/include/cteas/p6/inter2_selected.hpp \
-            native_cpp/modules/p6_calmet/p6e/src/calmet_dat21_tool_main.cpp \
-            native_cpp/modules/p6_calmet/p6e/include/cteas/p6e/native_hourly_comp_steps.hpp \
-            native_cpp/modules/p6_calmet/p6f/src/calmet_dat21_writer.cpp \
-            scripts/p6_run_native_causal_hourly.py
+          # Derive the complete immutable file set from the ACCEPTED parent,
+          # rather than a hand-selected 9-file list that misses future changes.
+          # Newly added P6G test adapters are not baseline physics.
+          mapfile -t accepted_files < <(git ls-tree -r --name-only "$base" -- \
+            native_cpp/modules/p6_calmet/src \
+            native_cpp/modules/p6_calmet/include/cteas/p6 \
+            native_cpp/modules/p6_calmet/p6e \
+            native_cpp/modules/p6_calmet/p6f \
+            scripts/p6_run_native_causal_hourly.py)
+          if [ "${#accepted_files[@]}" -ne 163 ]; then
+            echo "::error::Accepted #53 P6 core inventory drift: expected 163, found ${#accepted_files[@]}"
+            exit 1
+          fi
+          if ! git diff --quiet "$base" HEAD -- "${accepted_files[@]}"; then
+            echo "::error::PR #63 changed existing accepted P6 physics or scheduler files"
+            git diff --name-status "$base" HEAD -- "${accepted_files[@]}"
+            exit 1
+          fi
+          echo "PASS_P6G_INHERITS_ALL_163_ACCEPTED_P6_CORE_FILES"
   selected-multisite-tests:
     name: G6-G13 10km selected tests (${{ matrix.mode }})
     runs-on: ubuntu-22.04
