@@ -221,6 +221,7 @@ H9_MCTADJ2_HELPERS = """
 c --- Original REAL4 terrain operands for exactly three H9 CALCPF events.
       subroutine dgmh9mctadj2(x,y,eltop,uavg,bvf,dsel,
      &                        ze,dsh,zrterr,zdiff,z,zrpole)
+      include 'params.puf'
       include 'grid.puf'
       integer dgmseq,dgmid,dgmksam
       real x,y,eltop,uavg,bvf,dsel,ze,dsh,zrterr,zdiff,z,zrpole
