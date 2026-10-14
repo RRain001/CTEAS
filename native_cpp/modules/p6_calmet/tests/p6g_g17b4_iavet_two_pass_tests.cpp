@@ -21,6 +21,7 @@
 #include "cteas/p6/p6g_g18c6_selected_p6f_dataset.hpp"
 #include "cteas/p6/p6g_g18d1_p6f_precommit.hpp"
 #include "cteas/p6/p6g_g18d3_heat_source_defaults.hpp"
+#include "cteas/p6/p6g_g18d4_comp_stage_adapter.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -1015,6 +1016,62 @@ static void verify_source_staged_iavet(
         (void)p6g::g18c5_selected_p6f_fields(
             frame,bad_heat,full_candidate,source_metinp,true);
     },"G18C5 filled missing QSW from reference or omitted required field");
+    // G18D4: run the SAME accepted COMP physical kernels only at their
+    // exact original G14 stage boundary, never by directly shortcutting
+    // the final four stage results from a prefilled fixture.
+    auto staged_frame=frame;
+    p6g::G18D4SelectedCompStageAdapter routed_comp(
+        selected,elustr,diagi,observed_upper,comp,av_ctrl,temp_controls);
+    check(!routed_comp.run(p6::NativeHourStage::CompGridMixht,
+                           staged_frame).completed,
+          "G18D4 fixture callback falsely certified production COMP");
+    rejects([&]{
+        routed_comp.run_selected(
+            p6::NativeHourStage::CompAvemix,staged_frame,true);
+    },"G18D4 AVEMIX ran before original MIXHT");
+    rejects([&]{
+        routed_comp.run_selected(
+            p6::NativeHourStage::CompGridMixht,staged_frame,false);
+    },"G18D4 test fixture COMP entered production G14 without scientific parity");
+    routed_comp.run_selected(
+        p6::NativeHourStage::CompGridMixht,staged_frame,true);
+    check(!routed_comp.selected_complete()&&
+          staged_frame.next.ziconv_m==prior.ziconv_m,
+          "G18D4 MIXHT prematurely committed prior ZICONV");
+    rejects([&]{
+        routed_comp.run_selected(
+            p6::NativeHourStage::CompWstarr,staged_frame,true);
+    },"G18D4 WSTARR executed before AVEMIX averaged ZICONV");
+    routed_comp.run_selected(
+        p6::NativeHourStage::CompAvemix,staged_frame,true);
+    routed_comp.run_selected(
+        p6::NativeHourStage::CompWstarr,staged_frame,true);
+    check(!routed_comp.selected_complete()&&
+          staged_frame.next.ziconv_m==prior.ziconv_m,
+          "G18D4 partial COMP WSTARR mutated previous committed state");
+    routed_comp.run_selected(
+        p6::NativeHourStage::CompTemp3d,staged_frame,true);
+    check(routed_comp.selected_complete()&&
+          staged_frame.next.zi_m==full_candidate.candidate_memory.zi_m&&
+          staged_frame.next.ziconv_m==full_candidate.candidate_memory.ziconv_m&&
+          staged_frame.next.dptt_k==full_candidate.candidate_memory.dptt_k&&
+          staged_frame.fields.u_mps==full_candidate.candidate_fields.u_mps&&
+          staged_frame.fields.v_mps==full_candidate.candidate_fields.v_mps&&
+          staged_frame.fields.w_face_mps==full_candidate.candidate_fields.w_face_mps&&
+          staged_frame.fields.temperature_k==full_candidate.candidate_fields.temperature_k&&
+          staged_frame.fields.qh_wm2==full_candidate.candidate_fields.qh_wm2&&
+          staged_frame.fields.ustar_mps==full_candidate.candidate_fields.ustar_mps&&
+          staged_frame.fields.el_m==full_candidate.candidate_fields.el_m&&
+          staged_frame.fields.wstar_mps==full_candidate.candidate_fields.wstar_mps&&
+          routed_comp.selected_candidate().end==frame.input.end,
+          "G18D4 four real COMP-stage executions diverged from vetted G18C4 outputs");
+    rejects([&]{
+        routed_comp.run_selected(
+            p6::NativeHourStage::CompTemp3d,staged_frame,true);
+    },"G18D4 duplicated original COMP TEMP3D stage");
+    check(frame.next.ziconv_m==prior.ziconv_m&&
+          frame.next.zi_m==prior.zi_m,
+          "G18D4 second stage executor contaminated original G14 previous state");
     check(full_candidate.end==frame.input.end&&
           full_candidate.candidate_fields.u_mps==frame.fields.u_mps&&
           full_candidate.candidate_fields.v_mps==frame.fields.v_mps&&
@@ -1568,6 +1625,7 @@ int main(int argc,char** argv){
                     "G18C6_SELECTED_CALMET_DAT21_BINARY_NO_REFERENCE_STATICS_PASS "
                     "G18D1_P6F_45_RECORDS_G14_PRECOMMIT_ORIGIN_PASS "
                     "G18D3_LITERAL_VENDOR_HFLUX_DEFAULTS_SOURCE_PASS "
+                    "G18D4_ORIGINAL_COMP_FOUR_STAGES_SOURCE_CANDIDATE_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
