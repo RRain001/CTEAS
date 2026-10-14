@@ -25,7 +25,22 @@ Expanded station envelope deliberately places the remote surface station approx.
 
 ### Numeric investigation
 
-G9 first attempt showed `1.4e-4 m/s` maximum discrepancy against the frozen single-pair WIND1 for selected test controls. This was attributed to the multi-site code adding an extra normalization after the original's near-calm `ICALM=0` reweight step. Corrected the pair algebra in the generic kernel (single SS + single US regardless of NX/NY) to preserve the frozen REAL*4 sequence rather than loosening acceptance thresholds. Additional Debug/Release CI includes frozen comparison with strict tolerance. Full original-vendor multi-station numerical parity remains **NOT PASS**.
+Before directly auditing the original multi-station loop, G9 first attempt showed `1.4e-4 m/s` maximum discrepancy against the frozen single-pair WIND1 for selected test controls. This was attributed to the multi-site code adding an extra normalization after the original's near-calm `ICALM=0` reweight step. Corrected the pair algebra in the generic kernel (single SS + single US regardless of NX/NY) to preserve the frozen REAL*4 sequence rather than loosening acceptance thresholds. Additional Debug/Release CI includes frozen comparison with strict tolerance. Full original-vendor multi-station numerical parity remains **NOT PASS**.
+
+### Independent direct original-Fortran WIND1 numerical gate — PASS for selected route
+
+Source forensic workflow located the original vendor CALMET WIND1 multi-station arithmetic at `calmet.for` **L36204–L36397**. Crucially, the vendor removes invalid surface stations *before* bulk 1/r² normalization, applies BIAS by station class, excludes calm surface stations one at a time (for ICALM=0), and then excludes missing upper stations sequentially, with each adjustment renormalizing the remaining stations in REAL*4. Replacing those sequential per-station steps with one combined renormalization was incorrect. G9 was changed to reproduce the original order.
+
+CI now runs `reference/compare_g9_original_wind1_multisite.py` which lifts **unchanged Fortran statements from the bundled vendor file**, links a deterministic test driver, and separately compiles the C++ G9 kernel. Tests include 2 SS, 2 US, calm station, upper missing station, BIAS=0/+0.3/-0.2, and both wind vector components. The original source SHA256 is `430381b4fb87f15127e20b13cc3e99be8a0e0fccf1d5821110af7f980558d134`.
+
+| Scope | Original Fortran vs C++ | Debug | Release |
+|---|---|---|---|
+| 10km grid 3×3×3, 27 3D cells | max printed absolute U/V delta = 0 | PASS | PASS |
+| **10km expanded 12×12×9, 1,296 3D cells** | **max printed absolute U/V delta = 0** | **PASS** | **PASS** |
+| 100m frozen 50×50×9, 1 SS + 1 US | original scoped C++ 1+1 regression at 0 tolerance | PASS | PASS |
+| Full multi-station CALMET DIAGNO + P6E/F | no independent original full model field parity | NOT ACCEPTED | NOT ACCEPTED |
+
+The direct original-Fortran outputs are text-formatted at 9-digit precision; the reported zero is at that output precision, not a claim of binary-identical in-memory state across compilers. The scientific proof is **specific to the selected WIND1 interpolation branch and controlled synthetic inputs**; it does not establish that the overall CALMET model has been reproduced.
 
 ### Scientific and computational limits
 
