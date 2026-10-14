@@ -286,7 +286,7 @@ inline SelectedBridgeHour selected_multisite_hour(
     out.center_v_mps=v.component_mps[center];
     out.upper_u_mps=u.component_mps[8*cells+center];
     out.upper_v_mps=v.component_mps[8*cells+center];
-    if(grid.synthetic_identity_diagno_tail){
+    if(grid.synthetic_identity_diagno_tail||grid.source_terrain_diagno_tail){
         out.selected_tail_exercised=true;
         out.final_center_u_mps=tail.u_mps[center];
         out.final_center_v_mps=tail.v_mps[center];
