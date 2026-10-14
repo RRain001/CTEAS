@@ -282,17 +282,18 @@ int main(int argc,char** argv) {
         // First new physical failure after strict H1-H8: H9 i=13,j=1.
         // Original source emits NO CALCPF receiver-stage rows for this cell.
         // Trace native CALCPF events without changing any sampler arithmetic.
-        const bool trace_h9_cell20=hour_index==8U && probe_hours>=9U;
-        const std::size_t trace_cell=trace_h9_cell20 ? 20U :
+        // Next H9 first residual following exact (21,1) source parity.
+        const bool trace_h9_cell24=hour_index==8U && probe_hours>=9U;
+        const std::size_t trace_cell=trace_h9_cell24 ? 24U :
             (hour_index==1U?1374U:646U);
         std::vector<NativeH3ReceptorRow> trace_rows;
         OriginalCalcpfIntermediateHook stage_hook;
-        if(trace_this_hour || trace_h9_cell20) {
-            stage_hook=[&trace_rows,trace_cell,trace_h9_cell20](
+        if(trace_this_hour || trace_h9_cell24) {
+            stage_hook=[&trace_rows,trace_cell,trace_h9_cell24](
                 const RiseCompSamplingState& state,
                 const OriginalCalcpfReceiverIntermediate& row){
                 if(row.receptor_index!=trace_cell)return;
-                if(trace_h9_cell20 && state.puff_id==594) {
+                if(trace_h9_cell24 && state.puff_id==594) {
                     require(state.receptor_calm_sigma.has_value(),
                             "H9 source residual requires native LCALM CSIGMA");
                     const auto& v=state.sigmas.step;
@@ -373,7 +374,7 @@ int main(int argc,char** argv) {
                 hour.receptor_concentrations.size()==2500U &&
                 hour.steps.size()>0U,
                 "real sixhour COMP hour transaction/cadence invalid");
-        if(trace_h9_cell20) {
+        if(trace_h9_cell24) {
             // H9 original/new native i13,j1 must remain zero, closing
             // the formerly spurious native puff594/KSAM5 event.
             require(equal_real4(hour.receptor_concentrations.at(12),
@@ -414,13 +415,13 @@ int main(int argc,char** argv) {
             require(bool(stage_file),"H9 native receiver stages not flushed");
             std::cout<<std::setprecision(10)
                      <<"P7_REAL_H9_NATIVE_CALCPF_FIRST_DIFFERENT_CELL"
-                     <<" GRID_I=21 GRID_J=1"
+                     <<" GRID_I=25 GRID_J=1"
                      <<" SOURCE_RECEPTOR_CELL12_PARITY=PASS"
                      <<" STAGE_RECORDS="<<total
                      <<" NATIVE_HOURLY_CELL_CONC="
-                     <<hour.receptor_concentrations.at(20)
+                     <<hour.receptor_concentrations.at(24)
                      <<" ORIGINAL_HOURLY_CELL_CONC="
-                     <<original.at(hour_index).values.at(20)
+                     <<original.at(hour_index).values.at(24)
                      <<" ORIGINAL_STAGE_PARITY=NOT_YET_COMPARED\n";
         }
         if(hour_index<6U)
