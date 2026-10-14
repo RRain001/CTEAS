@@ -59,7 +59,7 @@ struct SelectedBridgeGrid {
     // processing has NOT been run, so the initial WIND1 field is passed
     // as an explicit identity substitute to DIAGNO's selected tail.
     bool synthetic_identity_diagno_tail=false;
-    std::vector<int> smoothing_passes; // 9 source SMOOTH passes, 0..1000
+    std::vector<int> smoothing_passes{}; // 9 source SMOOTH passes, 0..1000
 };
 struct SelectedBridgeHour {
     std::chrono::sys_seconds end{};
