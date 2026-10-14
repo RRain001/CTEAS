@@ -104,6 +104,17 @@ int main(int argc,char** argv) {
             "original COMP start cell unexpectedly accepts out-of-grid puffs");
     const auto control=bytes(argv[2]);
     const auto deck=ControlFile::read_file(argv[2]);
+    std::optional<NativeCalmMdisp3Controls> genuine_calm;
+    if(probe_hours>6U){
+        const char* makegeo=std::getenv("CTEAS_P7_MAKEGEO_INP");
+        require(makegeo!=nullptr && *makegeo!='\\0',
+                "real extended calm trace requires original MAKEGEO control");
+        genuine_calm=original_calm_mdisp3_from_decks(
+            deck,ControlFile::read_file(makegeo));
+        std::cout<<"P7_REAL_EXTENDED_CALM_SOURCE_DECK=PASS"
+                 <<" IWAT1="<<genuine_calm->iwat1
+                 <<" IWAT2="<<genuine_calm->iwat2<<"\\n";
+    }
     require(deck.required_int("METFM")==1 &&
             deck.required_int("NPT1")==1 &&
             deck.required_int("NSPEC")==2 &&
@@ -251,6 +262,7 @@ int main(int argc,char** argv) {
         controls.mctadj2=mctadj2;
         controls.gaussian_dry=NativeGaussianDryControls{
             dry_deposition_setup_from_control(control),1.0F};
+        if(genuine_calm)controls.calm_mdisp3=*genuine_calm;
         DispersionSetup pg;
         pg.mdisp=3;
         pg.averaging_factor=1;
