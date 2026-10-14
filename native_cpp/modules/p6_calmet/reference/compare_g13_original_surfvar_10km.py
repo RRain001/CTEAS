@@ -100,7 +100,9 @@ def fixture():
     temps=(270.0,279.5,285.0,290.25,295.75,302.0,310.0)
     rh=(10,15,45,65,70,85,99,100)
     trad=(0.15,0.75,1.5,3.5,12.)
-    rows=[f"{CASES} {NX} {NY} {NS}"]
+    # The unmodified Fortran driver reads four header values and discards the
+    # extra DGRID column. The independent C++ G13 driver MUST consume all five.
+    rows=[f"{CASES} {NX} {NY} {NS} 10000"]
     counts={"radius_outside":0,"irad1":0,"irad2":0,"rh_all_missing_cases":0}
     for c in range(CASES):
         mode=1+c%2
