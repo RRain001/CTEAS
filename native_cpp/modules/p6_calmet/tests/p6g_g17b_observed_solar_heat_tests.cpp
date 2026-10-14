@@ -203,7 +203,7 @@ static void verify_selected_slope_bridge(
     p6g::MultiHourFrame frame{0,f.geo,all,surface,slot,upper,
                              &controls,previous,previous,{}};
     p6g::G17SelectedTerrainFixturePhysics stages(
-        std::move(profiles),terrain,result.fradj_fixture);
+        profiles,terrain,result.fradj_fixture);
     const auto wind=stages.run(p6::NativeHourStage::DiagnoWind1,frame);
     check(wind.completed&&wind.source==p6::NativeHourSource::NativeCpp,
           "G17B computed source hour failed to reach WIND1");
