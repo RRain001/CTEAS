@@ -237,7 +237,8 @@ static void verify_source_staged_iavet(
         ss.anemometer_height_m=10.f;
     }
     p6g::InputHour slot{};
-    slot.end=f.series.end;slot.upper.resize(2);
+    slot.end=f.series.end;
+    slot.upper.assign(2,p6g::UpperBracket{0,1,8*3600,3*3600,5*3600});
     std::vector<p6g::UpperSeries> upper(2);
     upper[0].station_id=58424;upper[1].station_id=58425;
     for(std::size_t idx=0;idx<upper.size();++idx) {
@@ -673,22 +674,19 @@ static void verify_source_staged_iavet(
     mix.dptmin=.001f;mix.dzzi=200.f;
     mix.threshl=0.f;mix.tzicrlx=800.f;
     mix.onedte=4140.f;mix.twodte=1080.f;
-    mix.justa={1,1};mix.nearu.assign(144,1);
-    for(std::size_t site=0;site<diagi.size();++site) {
-        const auto upper_index=site;
-        p6e::MixdtSounding older,newer;
-        for(const auto& layer:upper[upper_index].soundings.front().data){
-            older.height_m.push_back(layer.height_lgl_m);
-            older.temp_k.push_back(layer.temperature_k);
-        }
-        for(const auto& layer:upper[upper_index].soundings.back().data){
-            newer.height_m.push_back(layer.height_lgl_m);
-            newer.temp_k.push_back(layer.temperature_k);
-        }
-        mix.sounding[0].push_back(older);
-        mix.sounding[1].push_back(newer);
-        mix.nearu[diagi[site].cell]=static_cast<int>(upper_index+1);
-    }
+    mix.nearu.assign(144,1);
+    p6g::G18BUpperBufferClock upper_clock;
+    const auto observed_upper=upper_clock.select(frame);
+    p6g::g18b_bind_physical_upper(mix,frame,observed_upper);
+    check(observed_upper.station_ids==std::vector<int>({58424,58425}) &&
+          observed_upper.justa==std::vector<int>({1,1}) &&
+          observed_upper.physical_aa_index==std::vector<std::size_t>({0,0}) &&
+          observed_upper.physical_bb_index==std::vector<std::size_t>({1,1}),
+          "G18B first model-hour AA/BB source allocation mismatched");
+    rejects([&]{(void)upper_clock.select(frame);},
+            "G18B accepted repeated model hour, not source continuous COMP");
+    for(std::size_t site=0;site<diagi.size();++site)
+        mix.nearu[diagi[site].cell]=static_cast<int>(site+1);
     mix.fcori.assign(144,sc.fcori_s);
     mix.cmech.assign(144,sc.cmech);
     rejects([&]{
@@ -696,8 +694,14 @@ static void verify_source_staged_iavet(
             frame,selected,elustr,diagi,comp);
     },"G18A unmarked MIXHT controls could impersonate source COMP");
     comp.explicitly_test_only=true;
-    const auto calculated=p6g::selected_comp_mixht_wstarr_from_previous(
-        frame,selected,elustr,diagi,comp);
+    const auto calculated=p6g::selected_comp_mixht_with_observed_upper(
+        frame,selected,elustr,diagi,observed_upper,comp);
+    auto corrupt_source=observed_upper;
+    corrupt_source.justa[1]=-1;
+    rejects([&]{
+        (void)p6g::selected_comp_mixht_with_observed_upper(
+            frame,selected,elustr,diagi,corrupt_source,comp);
+    },"G18B accepted stale JUSTA from a different source UP slot");
     check(calculated.end==frame.input.end&&
           calculated.candidate_next.zi_m.size()==144&&
           calculated.candidate_next.ziconv_m.size()==144&&
@@ -799,6 +803,7 @@ int main(int argc,char** argv){
                     "G17C3_STHEOR_ELUSTR2_MIXHTST_DIAGI_SOURCE_SELECTED_PASS "
                     "G17D_HTFAC_SECOND_WINDBC_SMOOTH_DIVCEL_W_FROZEN_KERNEL_PASS "
                     "G18A_PRIOR_COMP_MIXHT_STATION_DPTT_WSTARR_SOURCE_PASS "
+                    "G18B_SOURCE_UP_AABB_JUSTA_TEMPORAL_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
