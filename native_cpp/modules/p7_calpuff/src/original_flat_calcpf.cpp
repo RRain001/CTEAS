@@ -257,7 +257,14 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
         if(!std::isfinite(radius)||radius<=0.0F ||
            !std::isfinite(at_rec)||at_rec<=0.0F)
             throw std::invalid_argument("flat CALCPF sampling radius overflow");
-        const float frac=s.step_seconds/averaging_period_s;
+        // Original COMP calpuff.for L10342, L10447 and L10563/10569:
+        //   TAVGI=1.0/TAVG  (REAL*4, computed once)
+        //   TFRACT=TSAMP*TAVGI
+        // Do not replace the two single-precision operations with
+        // TSAMP/TAVG: the first real hour-2 receptor difference at DGM
+        // seq1607 is 1 ULP in XTEMP=F1*TFRACT (upstream 11 fields exact).
+        const float original_tavgi=1.0F/averaging_period_s;
+        const float frac=s.step_seconds*original_tavgi;
         const bool pg_receiver=
             (vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup ||
              terrain_mode);
