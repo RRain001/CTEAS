@@ -143,7 +143,8 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     require_test(clock.size()==static_cast<std::size_t>(expected_hours),
                  "year duration not present in G8 input chain");
     const SelectedBridgeGrid grid{
-        6,6,10.0f,{0,20,40,80,160,320,640,1200,2000,3000},geo.landuse
+        6,6,10.0f,geo.zone,geo.hemisphere,
+        {0,20,40,80,160,320,640,1200,2000,3000},geo.landuse
     };
     // Published conceptual G8 test grid: 6x6 cells, 10km spacing,
     // 60x60 km footprint, 9 Z layers, 4 observation stations.
