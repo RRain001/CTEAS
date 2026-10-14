@@ -352,6 +352,66 @@ def audit_h9_puff598_mass(path: Path, out: Path) -> None:
     },indent=2)+"\n")
 
 
+# Vendor VCBAR inputs and result, independently observed after the last
+# VCOUP call and before DRY applies the Gaussian removal fraction.
+H9_PUFF598_VCBAR_NAME = "dgm_h9_puff598_vcbar.bin"
+H9_PUFF598_VCBAR_REC = struct.Struct("<3i7f")
+H9_PUFF598_VCBAR_HELPERS = """
+      subroutine dgmh9p598vbar(ip,f1,zb,ze,szb,szm,sze,lid)
+      integer ip,dgmseq,dgmid,dgmksam
+      real f1,zb,ze,szb,szm,sze,lid
+      logical ldgm
+      common /dgmrecur/ dgmseq,dgmid,dgmksam
+      save ldgm
+      data ldgm/.false./
+      if(ip.ne.598.or.dgmseq.lt.16420.or.dgmseq.gt.16679)
+     &   return
+      if(.not.ldgm)then
+         open(1924,file='dgm_h9_puff598_vcbar.bin',
+     &        access='stream',form='unformatted',status='replace')
+         ldgm=.true.
+      endif
+      write(1924) dgmseq,ip,dgmksam,f1,zb,ze,szb,szm,sze,lid
+      return
+      end
+"""
+
+def add_h9_puff598_vcbar_trace(source: str) -> str:
+    anchor="            vcbar=vcbar+third*vcoup(icode,zgr,zp,sze1,hlid,hlidmax)"
+    if source.count(anchor+"\n")!=1:
+        raise AssertionError("original VCBAR final Gaussian VCOUP anchor drift")
+    call=("            call dgmh9p598vbar(ip,vcbar,zb1,ze1,\n"
+          "     &                           szb1,szm1,sze1,hlid)\n")
+    return (source.replace(anchor+"\n",anchor+"\n"+call)
+            +H9_PUFF598_VCBAR_HELPERS)
+
+
+def audit_h9_puff598_vcbar(path: Path, out: Path) -> None:
+    if not path.is_file() or path.stat().st_size%H9_PUFF598_VCBAR_REC.size:
+        raise AssertionError("original H9 puff598 VCBAR trace missing/malformed")
+    rows=[]
+    with path.open("rb") as inp:
+        while raw:=inp.read(H9_PUFF598_VCBAR_REC.size):
+            seq,puff,ksam,*vals=H9_PUFF598_VCBAR_REC.unpack(raw)
+            if not (16420<=seq<=16679 and puff==598 and 1<=ksam<=99):
+                raise AssertionError("original H9 puff598 VCBAR key malformed")
+            if rows and seq<=rows[-1]["seq"]:
+                raise AssertionError("original H9 puff598 VCBAR order broken")
+            fields=("vcbar","zb","ze","szb","szm","sze","lid")
+            rows.append({"seq":seq,"ksam":ksam,**dict(zip(fields,vals))})
+    if len(rows)!=8:
+        raise AssertionError(f"original puff598 VCBAR records {len(rows)} not 8")
+    for entry in rows:
+        print("P7_ORIGINAL_H9_PUFF598_VCBAR=SOURCE_ONLY"
+              + " ".join(f" {k.upper()}={v:.10g}" for k,v in entry.items()))
+    out.write_text(json.dumps({
+        "scope":"original H9 puff598 VCBAR input/output",
+        "status":"SOURCE_ONLY_NOT_NATIVE_PARITY",
+        "rows":rows,"sha256":original.sha256_file(path),
+        "native_state_injected":False
+    },indent=2)+"\n")
+
+
 H9_Z_ANCHORS = (
     # Original SETPUF calpuff.for L48526-48534, BEFORE terrain or clipping.
     ("            call sigtz(sigzb(ii),zero,zero,zpb(ii),szb1,vtzb1,vdzb1)",
@@ -542,6 +602,7 @@ def main() -> None:
         source=add_h9_setpuf_trace(source)
         source=add_h9_receptor_sigtz_trace(source)
         source=add_h9_puff598_mass_trace(source)
+        source=add_h9_puff598_vcbar_trace(source)
     instrumented.write_text(source + source_helpers, encoding="latin-1")
 
     alias = original._alias_tree(vendor, out / "include-alias")
@@ -571,6 +632,8 @@ def main() -> None:
     if original.sha256_file(dgm) != DGM_SHA or dgm.stat().st_size != 254687 * 352:
         raise AssertionError("original 143h DGM changed under CALCPF instrumentation")
     if args.trace_h9_setpuf:
+        audit_h9_puff598_vcbar(run / H9_PUFF598_VCBAR_NAME,
+                              out / "original-h9-puff598-vcbar.json")
         audit_h9_puff598_mass(run / H9_PUFF598_MASS_NAME,
                              out / "original-h9-puff598-mass.json")
         audit_h9_receptor_floor(

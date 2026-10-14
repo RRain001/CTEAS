@@ -401,6 +401,22 @@ int main(int argc,char** argv) {
                        <<step.dry->fraction_remaining[0]<<" "
                        <<step.dry_input_resistance->velocity_ms[0]<<" "
                        <<step.substep.step_s<<"\n";
+                    // VCBAR uses the current SETPUF /CURRENT/ endpoints
+                    // and vertical sigmas, not historical puff state.
+                    const auto& zz=step.sigma.adjust;
+                    std::cout<<std::setprecision(10)
+                             <<"P7_NATIVE_H9_PUFF598_VCBAR"
+                             <<" SEQ="<<physical_steps+n+1U
+                             <<" KSAM="<<st.ksam
+                             <<" VCBAR="<<step.dry->vcbar_m_inverse
+                             <<" ZB="<<step.before.z_m
+                             <<" ZE="<<step.after.z_m
+                             <<" SZB="<<zz.sigma_z_begin_m
+                             <<" SZM="<<zz.sigma_z_mid_m
+                             <<" SZE="<<zz.sigma_z_end_m
+                             <<" LID="<<step.vmass.reflecting_lid_m
+                             <<" FRACDRY="<<step.dry->fraction_remaining[0]
+                             <<" READ_ONLY=YES\n";
                     ++rows;
                 }
                 out.flush();
