@@ -26,7 +26,7 @@ FORTRAN_HEAD = """      program original_wind1_probe
       implicit none
       integer nx,ny,nz,nssta,nowsta,nusta,nstat
       parameter(nx=3,ny=3,nz=3,nssta=2,nowsta=0,nusta=2,nstat=4)
-      integer i,j,k,l,ll,iu,nbar,kbar,io6
+      integer i,j,k,l,ll,iu,nbar,kbar,io6,icalm
       real dgrid,dgridi,xc,yc,xr2,wgt,sumwt
       real sumwsfold,sumwupold,beta,gamma,unext,vnext
       real x,y,ok,editl
@@ -42,6 +42,7 @@ FORTRAN_HEAD = """      program original_wind1_probe
       io6=6
       nbar=0
       kbar=0
+      icalm=0
       xssta(1)=10000.
       yssta(1)=10000.
       xssta(2)=30000.
