@@ -84,6 +84,17 @@ jobs:
           root="${RUNNER_TEMP}/p7-hour7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           cmake -S native_cpp/modules/p7_calpuff -B "$root/build" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$root/build" --parallel 2 --target cteas_p7_hefei_sixhour_native_h3_receptors_tests
+          # The same production COMP executor must close ALL 8 real hours
+          # before continuing to the non-gating H9/H24 divergence probe.
+          # No fitted tolerance and no historical state supplied to native.
+          CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
+            CTEAS_P7_PROBE_HOURS=8 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
+            project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
+            "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/eighthour-strict.log" 2>&1
+          grep -F 'P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS HOURS=8' "$root/eighthour-strict.log"
+          echo "P7_REAL_FIRST_8H_SCIENTIFIC_GATE=PASS H3_WORDS=20000/20000 DGM=BITWISE 143H=OPEN"
           set +e
           CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
             CTEAS_P7_PROBE_HOURS=24 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
@@ -108,6 +119,7 @@ jobs:
         with:
           name: p7-real-first-24h-divergence-log
           path: |
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/eighthour-strict.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour7-probe.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/original-h9-calm.json
           retention-days: 7
