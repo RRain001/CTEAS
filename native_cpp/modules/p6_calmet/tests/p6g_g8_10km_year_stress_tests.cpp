@@ -92,39 +92,41 @@ static std::uint64_t digest(std::uint64_t value,float sample) {
     value^=std::bit_cast<std::uint32_t>(sample);
     return value*1099511628211ULL;
 }
-static void write_geo(const std::string& path) {
+static void write_geo(const std::string& path,int nx,int ny) {
     std::ofstream out(path);
     require_test(static_cast<bool>(out),"cannot open synthetic G8 GEO.DAT");
     out<<"GEO.DAT         2.1             original GEO grid fixture\n"
        <<"1\nG8 UTM50N 10km input fixture\nUTM\n50N\nWGS-84\n"
-       <<"6 6 510.885 3531.269 10.000 10.000\nKM  M\n"
+       <<nx<<" "<<ny<<" 510.885 3531.269 10.000 10.000\nKM  M\n"
        <<"1 - land use custom categories\n"
        <<"14 50 55 - NLU/IWAT\n"
        <<"10 -20 20 30 40 51 54 55 60 61 62 70 80 90 - categories\n";
-    for(int j=5;j>=0;--j)
-        for(int i=0;i<6;++i)out<<"20"<<(i==5?"\n":",");
+    for(int j=ny-1;j>=0;--j)
+        for(int i=0;i<nx;++i)out<<"20"<<(i==nx-1?"\n":",");
     out<<"1 - terrain height factor\n";
-    for(int j=5;j>=0;--j)
-        for(int i=0;i<6;++i)out<<"100"<<(i==5?"\n":",");
+    for(int j=ny-1;j>=0;--j)
+        for(int i=0;i<nx;++i)out<<"100"<<(i==nx-1?"\n":",");
     for(int k=0;k<6;++k){
         out<<"2 - gridded property\n";
-        for(int j=5;j>=0;--j)
-            for(int i=0;i<6;++i)
-                out<<(k==0?0.1:0.2)<<(i==5?"\n":",");
+        for(int j=ny-1;j>=0;--j)
+            for(int i=0;i<nx;++i)
+                out<<(k==0?0.1:0.2)<<(i==nx-1?"\n":",");
     }
     require_test(static_cast<bool>(out),"G8 GEO.DAT fixture write incomplete");
 }
 static void exercise_period(sys_seconds begin,sys_seconds end,
-                            int expected_hours,bool require_year_boundary) {
+                            int expected_hours,bool require_year_boundary,
+                            int nx,int ny) {
     const std::string surface_file="p6g_g8_10km_surf.dat";
     const std::string upper1_file="p6g_g8_10km_upper1.dat";
     const std::string upper2_file="p6g_g8_10km_upper2.dat";
     const std::string geo_file="p6g_g8_10km_geo.dat";
-    write_geo(geo_file);
+    write_geo(geo_file,nx,ny);
     const auto geo=cteas::calmet::p6g::read_geo_dynamic(
-        geo_file,{6,6,50,'N',510.885,3531.269,10.0});
-    require_test(geo.nx==6&&geo.ny==6&&geo.grid_km==10.f&&
-                 geo.landuse.size()==36&&geo.terrain_m.size()==36,
+        geo_file,{nx,ny,50,'N',510.885,3531.269,10.0});
+    require_test(geo.nx==nx&&geo.ny==ny&&geo.grid_km==10.f&&
+                 geo.landuse.size()==static_cast<std::size_t>(nx*ny)&&
+                 geo.terrain_m.size()==static_cast<std::size_t>(nx*ny),
                  "G8 dynamic 10km READGE grid was not parsed");
     write_surface(surface_file,begin,end);
     write_upper(upper1_file,58424,begin,end);
@@ -132,9 +134,15 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     const auto surface=read_surface_dynamic(surface_file,{58321,58322});
     const auto upper=read_upper_station_set(
         {upper1_file,upper2_file},{58424,58425});
+    // Expand geographic station separation from 35km to 100km in the
+    // 120km annual test, while keeping the short 60km case unchanged.
     const std::string deck_text=
-        "! SS2 = 'S2' 58322 545.885 3566.269 0 10.0 !\n"
-        "! US2 = 'U2' 58425 540.885 3561.269 0 !\n"
+        (nx>6 ? std::string(
+            "! SS2 = 'S2' 58322 610.885 3631.269 0 10.0 !\n"
+            "! US2 = 'U2' 58425 600.885 3621.269 0 !\n") :
+            std::string(
+            "! SS2 = 'S2' 58322 545.885 3566.269 0 10.0 !\n"
+            "! US2 = 'U2' 58425 540.885 3561.269 0 !\n"))+
         "! SS1 = 'S1' 58321 515.885 3536.269 0 10.0 !\n"
         "! US1 = 'U1' 58424 520.885 3541.269 0 !\n";
     const auto deck=original_calmet_multi_station_deck(
@@ -143,12 +151,11 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     require_test(clock.size()==static_cast<std::size_t>(expected_hours),
                  "year duration not present in G8 input chain");
     const SelectedBridgeGrid grid{
-        6,6,10.0f,geo.zone,geo.hemisphere,
+        nx,ny,10.0f,geo.zone,geo.hemisphere,
         {0,20,40,80,160,320,640,1200,2000,3000},geo.landuse
     };
-    // Published conceptual G8 test grid: 6x6 cells, 10km spacing,
-    // 60x60 km footprint, 9 Z layers, 4 observation stations.
-    require_test(grid.nx*grid.ny==36&&grid.spacing_km==10.f,
+    // 6x6 (60 km) short cross-year; expanded 12x12 (120 km) annual.
+    require_test(grid.nx*grid.ny==nx*ny&&grid.spacing_km==10.f,
                  "G8 must test precisely 10km cells");
     const std::vector<float> zface(
         grid.zface_m.begin(),grid.zface_m.end());
@@ -173,6 +180,8 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
             crossed=true;
         last=output.end;
         total_contributions+=output.observed_contributions;
+        hash=digest(hash,output.firstguess_center_u_mps);
+        hash=digest(hash,output.firstguess_center_v_mps);
         hash=digest(hash,output.center_u_mps);
         hash=digest(hash,output.center_v_mps);
         hash=digest(hash,output.upper_u_mps);
@@ -183,8 +192,8 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     require_test(!require_year_boundary||crossed,
                  "G8 did not exercise Gregorian year boundary");
     require_test(hash!=1469598103934665603ULL,"G8 digest unchanged");
-    std::cout<<"G8_10KM_SYNTHETIC_SELECTED_INTER2 hours="<<expected_hours
-             <<" grid=6x6x9 spacing_km=10 surface=2 upper=2"
+    std::cout<<"G9_10KM_SYNTHETIC_MULTISTATION_WIND1_INTER2 hours="<<expected_hours
+             <<" grid="<<nx<<"x"<<ny<<"x9 spacing_km=10 surface=2 upper=2"
              <<" contributions="<<total_contributions
              <<" signature="<<std::hex<<hash<<std::dec<<"\n";
     std::remove(surface_file.c_str());
@@ -197,11 +206,11 @@ int main(){
         // Dec 2023 to Jan 2024 verifies leap-year transition and
         // both two-station readers with the original hour-24 record encoding.
         const auto cross=sys_days{year{2023}/December/31};
-        exercise_period(cross,cross+hours{48},48,true);
+        exercise_period(cross,cross+hours{48},48,true,6,6);
         // 2024 is a leap year: actual 8784 consecutive UTC hours.
         const auto annual=sys_days{year{2024}/January/1};
-        exercise_period(annual,annual+hours{8784},8784,true);
-        std::cout<<"PASS P6G_G8_10KM_MULTI_SITE_FULL_LEAP_YEAR_SELECTED_KERNELS\n";
+        exercise_period(annual,annual+hours{8784},8784,true,12,12);
+        std::cout<<"PASS P6G_G9_10KM_EXPANDED_MULTI_WIND1_INTER2_8784H\n";
         return 0;
     }catch(const std::exception& e){
         std::cerr<<"P6G_G8_10KM_FAIL "<<e.what()<<"\n";
