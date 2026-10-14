@@ -67,6 +67,12 @@ public:
         require_array(source.temperature_k,n);
         for(float t:source.temperature_k)
             if(t<=0.f)throw std::invalid_argument("G17 invalid surface T");
+        // SURFVAR creates the same TEMP2D before FRADJ and HEATFX.
+        // A different field injected between stages would falsely alter
+        // SLOPE even if both isolated physical kernels were correct.
+        if(source.temperature_k!=fradj_.temperature_k)
+            throw std::invalid_argument(
+                "G17 FRADJ/SLOPE use different source SURFVAR TEMP2D");
         heat_=std::move(source);
     }
 
@@ -77,7 +83,10 @@ public:
                 throw std::logic_error("G17 WIND1 reused");
             if(terrain_.nx!=frame.grid.nx||terrain_.ny!=frame.grid.ny ||
                terrain_.spacing_m!=frame.grid.grid_km*1000.f ||
-               terrain_.landuse!=frame.grid.landuse)
+               terrain_.landuse!=frame.grid.landuse ||
+               terrain_.terrain_m!=frame.grid.terrain_m ||
+               terrain_.water_first!=frame.grid.iwat1 ||
+               terrain_.water_last!=frame.grid.iwat2)
                 throw std::invalid_argument("G17 TERSET not from current GEO");
             auto result=wind_.run(stage,frame);
             if(result.completed)current_hour_=frame.input.end;
