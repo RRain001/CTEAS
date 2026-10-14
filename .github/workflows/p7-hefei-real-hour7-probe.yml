@@ -44,6 +44,21 @@ jobs:
           test -s "$met" && test -s "$con"
           echo "b1823cda92280888d70b00961ab39486036a3086e18637fff21efb4f4b237d30  $met" | sha256sum -c -
           echo "0d51bdb68ff1a5798048bc41067107d3ffe10dc6222f25336df856bcbf48ba10  $con" | sha256sum -c -
+      - name: Audit pinned vendor MCTADJ2 source statements (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          p=Path("engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for")
+          data=p.read_bytes()
+          assert hashlib.sha256(data).hexdigest()=="da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568"
+          source=data.decode("latin-1").splitlines()
+          print("P7_H9_ORIGINAL_MCTADJ2_SOURCE_SHA256=PASS")
+          for n in range(5310,5380):
+              print(f"P7_H9_VENDOR_PUFRECS_L{n}: {source[n-1]}")
+          PY
       - name: Generate independent full 143h original Fortran DGM
         shell: bash
         run: |
