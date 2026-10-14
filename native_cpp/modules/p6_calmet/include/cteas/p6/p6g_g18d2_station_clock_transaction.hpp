@@ -1,0 +1,93 @@
+#pragma once
+// G18D2: transactional original upper PREPDI AA/BB and per-US CGAMMA
+// clocks for the SAME existing G14 scheduler. Prepare on the G14 next-hour
+// snapshot, preflight both clock commits on detached copies, and publish
+// them ONLY after G14::advance_with_precommit has returned successfully.
+// Selected/test-only while native multi-station full 17-stage physics is
+// not yet independently original-CALMET 45-field accepted.
+#include "cteas/p6/p6g_g18b9_original_gamma_controls.hpp"
+#include "cteas/p6/p6g_g18b_upper_buffer_clock.hpp"
+#include <chrono>
+#include <cstddef>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <utility>
+
+namespace cteas::calmet::p6g {
+struct G18D2StagedStationClocks {
+    const UnifiedMultistationHourlyScheduler* owner=nullptr;
+    std::size_t hour_index=0;
+    std::chrono::sys_seconds source_end{};
+    G18BUpperHour observed;
+    G18B4CGammaPrepared cgamma;
+    G18BUpperBufferClock new_upper;
+    G18B4CGammaClock new_gamma;
+    bool published=false;
+};
+class G18D2StationClockAuthority {
+public:
+    [[nodiscard]] G18D2StagedStationClocks prepare_selected(
+        const UnifiedMultistationHourlyScheduler& scheduler,
+        const std::string& original_metinp,bool explicitly_test_only) const {
+        if(!explicitly_test_only||!scheduler.has_original_controls())
+            throw std::invalid_argument("G18D2 full native production upper history not yet accepted");
+        const auto f=scheduler.preview_next_hour();
+        const auto source=g18b9_parse_original_gamma_controls(
+            original_metinp,f.stations.upper.size());
+        G18D2StagedStationClocks prepared;
+        prepared.owner=&scheduler;
+        prepared.hour_index=f.hour_index;
+        prepared.source_end=f.input.end;
+        prepared.observed=upper_.select(f);
+        prepared.cgamma=g18b7_prepare_source_grid_cgamma(
+            gamma_,f,prepared.observed,source.zupt_m,true);
+        prepared.new_upper=upper_;
+        prepared.new_gamma=gamma_;
+        // PRE-FLIGHT exact source AA/BB thermal and convective clock
+        // transition on *copies* before starting any G14 physics.
+        // A malformed second US cannot partially commit the first.
+        prepared.new_upper.commit_after_completed_g14_hour(
+            f,prepared.observed,f.hour_index+1);
+        prepared.new_gamma.commit_after_completed_g14_hour(
+            prepared.cgamma,f.hour_index+1);
+        return prepared;
+    }
+
+    void publish_only_after_completed_g14(
+        const UnifiedMultistationHourlyScheduler& scheduler,
+        G18D2StagedStationClocks& prepared) {
+        if(prepared.published||prepared.owner!=&scheduler||
+           !prepared.new_upper.has_hour()||
+           !prepared.new_gamma.has_committed_hour()||
+           prepared.new_upper.last_hour()!=prepared.source_end||
+           prepared.new_gamma.committed_end()!=prepared.source_end||
+           scheduler.completed_hours()!=prepared.hour_index+1||
+           (has_published_&&prepared.hour_index!=last_hour_+1)||
+           (!has_published_&&prepared.hour_index!=0))
+            throw std::invalid_argument("G18D2 G14 hour not accepted; refuse PREPDI/CGAMMA publish");
+        // Both detached clock moves are noexcept. The original frozen
+        // state kernels are unchanged, and the scheduler is sole hour owner.
+        static_assert(std::is_nothrow_move_assignable_v<G18BUpperBufferClock>);
+        static_assert(std::is_nothrow_move_assignable_v<G18B4CGammaClock>);
+        upper_=std::move(prepared.new_upper);
+        gamma_=std::move(prepared.new_gamma);
+        last_hour_=prepared.hour_index;
+        has_published_=true;
+        prepared.published=true;
+    }
+
+    [[nodiscard]] bool has_published_hour() const noexcept {return has_published_;}
+    [[nodiscard]] std::chrono::sys_seconds latest_upper_hour() const noexcept {
+        return upper_.last_hour();
+    }
+    [[nodiscard]] std::chrono::sys_seconds latest_gamma_hour() const noexcept {
+        return gamma_.committed_end();
+    }
+private:
+    G18BUpperBufferClock upper_;
+    G18B4CGammaClock gamma_;
+    std::size_t last_hour_=0;
+    bool has_published_=false;
+};
+} // namespace cteas::calmet::p6g
