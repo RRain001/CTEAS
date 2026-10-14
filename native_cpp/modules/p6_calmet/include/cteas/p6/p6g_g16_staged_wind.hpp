@@ -105,7 +105,7 @@ public:
            observed.wind1_present!=profiles_.wind1_present)
             throw std::invalid_argument("G16 source DIAGI/WIND1 identity or ordering invalid");
         const auto total=profiles_.station_ids.size();
-        const auto ns=stage_.first_guess.nsurface;
+        const auto ns=surface_count_;
         if(ns==0||ns>=total||
            observed.inter2_u_mps.size()!=9*total||
            observed.inter2_v_mps.size()!=9*total||
@@ -208,6 +208,7 @@ private:
         const auto result=multi_station_wind1_firstguess(input);
         stage_.end=hour.input.end;
         stage_.first_guess=result;
+        surface_count_=ns;
         stage_.wind1_complete=true;
         return {p6::NativeHourSource::NativeCpp,true};
     }
@@ -280,5 +281,6 @@ private:
     G16WindStages stage_{};
     std::optional<G16PostSlopeFields> corrected_;
     bool diagi_refreshed_=false;
+    std::size_t surface_count_=0;
 };
 } // namespace cteas::calmet::p6g
