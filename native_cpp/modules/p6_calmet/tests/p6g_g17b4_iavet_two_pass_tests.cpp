@@ -275,6 +275,18 @@ static void verify_source_staged_iavet(
           selected.sensible_heat_wm2.size()==144 &&
           selected.nearest_surface==p6g::source_setcom_nears(f.grid,all),
           "G17C failed to bind the exact post-FRADJ observed temperature");
+    auto reordered=all;
+    std::swap(reordered.surface[0],reordered.surface[1]);
+    rejects([&]{
+        (void)p6g::selected_iavet1_heat_after_fradj(
+            f.grid,reordered,f.series.hourly.front(),surface,ancillary);
+    },"G17C silently accepted a different original surface station order");
+    auto translated=f.grid;
+    translated.xorigin_km+=1.f;
+    rejects([&]{
+        (void)p6g::selected_iavet1_heat_after_fradj(
+            translated,all,f.series.hourly.front(),surface,ancillary);
+    },"G17C accepted HEATFX geometry shifted from source SURFVAR");
     // Independent direct invocation of the immutable PR #53 HEATFX kernel:
     // second-pass TEMP2D, actual solar and cloud from 2SS, never the first.
     p6e::HeatFluxInput hi;
@@ -366,7 +378,7 @@ int main(int argc,char** argv){
                     "METINP_MNMDAV_HAFANG_REAL4 "
                     "WIND1_FIRST_FRADJ_SECOND DIAGNO_ORDER "
                     "G17C_SECOND_TEMP_NATIVE_SOLAR_HEATFX_AIRDEN_PASS "
-                    "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\\n";
+                    "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
         std::cerr<<"FAIL_G17B4 "<<e.what()<<"\n";
