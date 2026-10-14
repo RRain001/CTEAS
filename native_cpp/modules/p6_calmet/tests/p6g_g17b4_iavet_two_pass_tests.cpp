@@ -521,8 +521,11 @@ static void verify_source_staged_iavet(
         (void)p6g::selected_station_diagi_from_previous_comp(
             frame,surface,selected,modified);
     },"G17C3 silently invented missing third UP station");
-    auto broken_frame=frame;
-    broken_frame.upper[0].soundings.front().end=f.series.end+hours{1};
+    auto future_upper=upper;
+    future_upper[0].soundings.front().end=f.series.end+hours{1};
+    const p6g::MultiHourFrame broken_frame{
+        0,f.grid,all,f.series.hourly.front(),slot,future_upper,
+        &wind,prior,prior,{}};
     rejects([&]{
         (void)p6g::selected_station_diagi_from_previous_comp(
             broken_frame,surface,selected,sc);
