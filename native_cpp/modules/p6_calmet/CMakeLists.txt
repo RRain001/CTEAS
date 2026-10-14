@@ -90,6 +90,19 @@ else()
 endif()
 add_test(NAME p6g_g11_original_terrain_dynamic_10km_source_contract COMMAND cteas_p6g_g11_terrain_tests)
 
+# G12 native source P6E selected SURFVAR+HEATFX 2-SS thermal bridge
+# with hourly station identity, solar and gamma fail-closed contracts.
+add_executable(cteas_p6g_g12_thermal_tests tests/p6g_g12_observed_p6e_thermal_tests.cpp)
+target_link_libraries(cteas_p6g_g12_thermal_tests PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6g_g12_thermal_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+if(MSVC)
+  target_compile_options(cteas_p6g_g12_thermal_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g12_thermal_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g12_10km_2surface_observed_temp_selected_heatfx_contract COMMAND cteas_p6g_g12_thermal_tests)
+
+
 
 # G10 original-Fortran 10km selected DIAGNO tail source-lift reference.
 # Distinct from frozen 100m DIAGNO and from any real terrain/heat acceptance.
