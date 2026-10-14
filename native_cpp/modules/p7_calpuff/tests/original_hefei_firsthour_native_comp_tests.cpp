@@ -347,6 +347,10 @@ int main(int argc,char** argv){
                    bitwise_trajectory==original.size() &&
                    bitwise_sigz==original.size() &&
                    bitwise_sigz_triplet==original.size() &&
+                   bitwise_sigy==original.size() &&
+                   bitwise_sigy_triplet==original.size() &&
+                   bitwise_z==original.size() &&
+                   first_horizontal_sigma_difference==0 &&
                    first_sigma_difference==0 && first==0,
                    "real Hefei first-hour motion/sigma REAL4 parity regressed");
             std::cout<<"P7_HEFEI_FIRSTHOUR_1275_MOTION_SIGZ_REAL4=PASS"
