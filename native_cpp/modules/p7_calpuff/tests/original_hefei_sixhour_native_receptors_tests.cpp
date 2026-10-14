@@ -253,6 +253,27 @@ int main(int argc,char** argv) {
                 const std::size_t global=physical_steps+n;
                 const auto& ref=dgm.at(global);
                 const auto& stage=hour.steps[n];
+                // Pinned original SETPUF #3874: record the native CTADJ2
+                // end calculation even after full SIGZ parity is achieved.
+                if(global+1U==3874U){
+                    require(stage.step.sigma.terrain.has_value() &&
+                            stage.puff_id==138 && stage.ksam==23,
+                            "original CTADJ2 DGM3874 physical key missing");
+                    const auto& t=*stage.step.sigma.terrain;
+                    std::cout<<std::setprecision(10)
+                        <<"P7_HEFEI_6H_NATIVE_SETPUF_END_DGM3874"
+                        <<" RECORD=3874"
+                        <<" R="<<t.end_ratio
+                        <<" SIGTZ_END_INPUT="<<t.end_sigma_before_strain_m
+                        <<" CTADJ2_STRAIN="<<t.end_strain
+                        <<" SZADJ="<<t.end_sigma_adjusted_m
+                        <<" SIGTZ_END_OUTPUT="<<t.end_sigma_after_sigtz_m
+                        <<" BIT_R=0x"<<std::hex<<std::bit_cast<std::uint32_t>(t.end_ratio)
+                        <<" BIT_STRAIN=0x"<<std::bit_cast<std::uint32_t>(t.end_strain)
+                        <<" BIT_SZADJ=0x"<<std::bit_cast<std::uint32_t>(t.end_sigma_adjusted_m)
+                        <<" BIT_SZE1=0x"<<std::bit_cast<std::uint32_t>(t.end_sigma_after_sigtz_m)
+                        <<std::dec<<"\n";
+                }
                 const bool keys=stage.puff_id==ref.integers[3] &&
                     stage.ksam==ref.integers[16] &&
                     ref.integers[1]==202200100+static_cast<int>(hour_index);
@@ -425,8 +446,8 @@ int main(int argc,char** argv) {
                  <<"\n";
         // Both first two source-real hours are now scientifically accepted.
         // This gate must not loosen when investigating the hour3 SIGZ.
-        require(hour_index>=2U || matches==2500U,
-                "first two real H3 concentration fields lost REAL4 parity");
+        require(hour_index>=3U || matches==2500U,
+                "first three real H3 concentration fields lost REAL4 parity");
         if(hour_index==1U && !dgm.empty())
             require(first_dgm_mismatch_record==0U,
                     "original/native first two hours of puff history diverged");
@@ -436,8 +457,9 @@ int main(int argc,char** argv) {
             driver.completed_hours()==6U&&physical_steps==11458U,
             "full 143-hour frozen MET and 6 native consecutive hours required");
     if(!dgm.empty()) {
-        require(matched_step_keys==11458U,
-                "6h COMP first actual original DGM puff identity or KSAM deviated");
+        require(matched_step_keys==11458U && matched_new_xy==11458U &&
+                matched_stored_sigy==11458U && matched_stored_sigz==11458U,
+                "6h original REAL4 COMP puff identity/XY/SIGY/SIGZ parity regressed");
         std::cout<<"P7_HEFEI_6H_ORIGINAL_DGM_REAL4_DIAGNOSTIC=PASS"
                  <<" KEYS="<<matched_step_keys<<"/11458"
                  <<" ADVECT_XY="<<matched_new_xy<<"/11458"
@@ -452,7 +474,8 @@ int main(int argc,char** argv) {
              <<" ORIGINAL_DGM_ROWS=11458/11458"
              <<" HOURLY_ROWS=1275,2242,1906,2132,1742,2161"
              <<" FIRST_AND_LAST_EPISODE_IDS=SOURCE_EQUIVALENT"
-             <<" NATIVE_EPISODE_PHYSICS_VALUES=NOT_YET_ALL_BITWISE"<<"\n";
+             <<" DGM_EXPORTED_XY_SIGY_SIGZ=BITWISE_11458_OF_11458"
+             <<" OTHER_INTERNAL_STAGES=NOT_YET_ALL_BITWISE"<<"\n";
     std::cout<<"P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=PASS"
              <<" HOURS=6 METFM1=ORIGINAL"
              <<" COMP_AUTHORITY=SINGLE_STATEFUL_DRIVER"
