@@ -1,11 +1,13 @@
 #pragma once
-// P6G G8 SELECTED-KERNEL exercise, not the complete CALMET DIAGNO.
+// P6G G9 SELECTED-KERNEL exercise, not the complete CALMET DIAGNO.
 // Source-backed SIMILT (surface neutral profile), VERTAV/PREPDI (upper
 // profiles) and INTER2 (all stations) operate for a single UTC hour.
-// WIND1 first-guess uses a controlled zero field here: no original
-// multi-station WIND1, terrain FRADJ/SLOPE, P6E or P6F acceptance claim.
+// WIND1 now uses the G9 multiple-source candidate first-guess kernel,
+// still awaiting direct Fortran multi-SS/US numerical equivalence.
+// No original terrain FRADJ/SLOPE, P6E or P6F acceptance claim.
 #include "cteas/p6/observation_input_contract.hpp"
 #include "cteas/p6/inter2_selected.hpp"
+#include "cteas/p6/p6g_multi_wind1_firstguess.hpp"
 #include "cteas/p6/similt_profile.hpp"
 #include "cteas/p6/upper_hourly_wind.hpp"
 #include "cteas/p6/vertical_wind_average.hpp"
@@ -57,6 +59,7 @@ struct SelectedBridgeHour {
     std::chrono::sys_seconds end{};
     float center_u_mps{},center_v_mps{};
     float upper_u_mps{},upper_v_mps{};
+    float firstguess_center_u_mps{},firstguess_center_v_mps{};
     std::size_t observed_contributions{};
 };
 inline SelectedBridgeHour selected_multisite_hour(
@@ -104,11 +107,14 @@ inline SelectedBridgeHour selected_multisite_hour(
     }
     const std::size_t levels=9;
     std::vector<float> su(levels*stations,0.f),sv(levels*stations,0.f);
+    std::vector<float> surface_speeds;
+    surface_speeds.reserve(deck.surface.size());
     const auto projection=cteas::p6e::utm_north_projection(grid.utm_zone);
     for(std::size_t s=0;s<deck.surface.size();++s){
         const auto& o=surface.by_station[s];
         if(!o.wind_valid)
             throw std::invalid_argument("G8 selected test needs real SURF wind, not invented");
+        surface_speeds.push_back(o.wind_speed_mps);
         const float rad=0.0174533f*o.wind_direction_deg;
         const float u=-o.wind_speed_mps*std::sin(rad);
         const float v=-o.wind_speed_mps*std::cos(rad);
@@ -155,12 +161,35 @@ inline SelectedBridgeHour selected_multisite_hour(
             sv[k*stations+index]=hr.winds.at(k).v_mps;
         }
     }
-    // Only exercise the SOURCE-SELECTED INTER2 kernel. WIND1 first-guess,
-    // observation weights and land-use here are synthetic controls.
-    inter.step1_mps.assign(cells*levels,0.f);
+    // G9 joins the candidate multi-SS/US WIND1 to the already selected
+    // objective analysis. BIAS=0, ICALM=0 remain explicitly controlled.
+    // Actual CALMET BIAS/radius/terrain data still require parity acceptance.
+    Wind1MultiInput wind;
+    wind.nx=grid.nx;wind.ny=grid.ny;wind.nz=static_cast<int>(levels);
+    wind.spacing_m=grid.spacing_km*1000.f;
+    wind.surface_count=static_cast<int>(deck.surface.size());
+    wind.upper_count=static_cast<int>(deck.upper.size());
+    wind.surface_speeds_mps=std::move(surface_speeds);
+    wind.station_u_mps=su;
+    wind.station_v_mps=sv;
+    wind.present.assign(levels*stations,1);
+    wind.vertical_bias.assign(levels,0.f);
+    wind.station_x_m.reserve(stations);
+    wind.station_y_m.reserve(stations);
+    for(const auto& st:deck.surface){
+        wind.station_x_m.push_back(st.local_x_m);
+        wind.station_y_m.push_back(st.local_y_m);
+    }
+    for(const auto& st:deck.upper){
+        wind.station_x_m.push_back(st.local_x_m);
+        wind.station_y_m.push_back(st.local_y_m);
+    }
+    const auto guess=multi_station_wind1_firstguess(wind);
     inter.observation_weight.assign(cells*levels,1.f);
+    inter.step1_mps=guess.u_mps;
     inter.station_component_mps=std::move(su);
     const auto u=p6::original_inter2_selected(inter);
+    inter.step1_mps=guess.v_mps;
     inter.station_component_mps=std::move(sv);
     const auto v=p6::original_inter2_selected(inter);
     const auto center=static_cast<std::size_t>(grid.ny/2)*
@@ -168,6 +197,8 @@ inline SelectedBridgeHour selected_multisite_hour(
                       static_cast<std::size_t>(grid.nx/2);
     SelectedBridgeHour out;
     out.end=input.end;
+    out.firstguess_center_u_mps=guess.u_mps[center];
+    out.firstguess_center_v_mps=guess.v_mps[center];
     out.center_u_mps=u.component_mps[center];
     out.center_v_mps=v.component_mps[center];
     out.upper_u_mps=u.component_mps[8*cells+center];
@@ -175,6 +206,8 @@ inline SelectedBridgeHour selected_multisite_hour(
     for(const auto n:u.contributing_station_count)
         out.observed_contributions+=static_cast<std::size_t>(n);
     if(out.observed_contributions==0||
+       !std::isfinite(out.firstguess_center_u_mps)||
+       !std::isfinite(out.firstguess_center_v_mps)||
        !std::isfinite(out.center_u_mps)||!std::isfinite(out.center_v_mps)||
        !std::isfinite(out.upper_u_mps)||!std::isfinite(out.upper_v_mps))
         throw std::invalid_argument("G8 source INTER2 nonfinite/empty selected field");
