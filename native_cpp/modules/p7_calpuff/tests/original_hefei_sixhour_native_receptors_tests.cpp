@@ -68,18 +68,23 @@ int main(int argc,char** argv) {
             "usage: sixhour_real_h3 MET.DAT puff.inp puff.con [original-DGM.bin] [hour2-25-28.tsv] [hour4-47-13.tsv] [native-puff200-mass.tsv]");
     require(argc<6 || std::string(argv[4]).size()>0U,
             "hour2 CALCPF trace requires an original DGM provenance input");
-    // The accepted six-hour strict gate remains the DEFAULT. A seven-hour
-    // follow-on probe is an explicit opt-in, never a silent acceptance change.
+    // The accepted six-hour strict gate remains the DEFAULT. Longer
+    // source-first probes are explicit opt-ins, never silent acceptance.
     const char* extended=std::getenv("CTEAS_P7_PROBE_HOURS");
-    const std::size_t probe_hours=
-        extended && std::string(extended)=="7" ? 7U : 6U;
-    require(extended==nullptr || std::string(extended)=="7",
-            "CTEAS_P7_PROBE_HOURS only accepts 7; 6h is immutable default");
+    std::size_t probe_hours=6U;
+    if(extended){
+        char* end=nullptr;
+        const long requested=std::strtol(extended,&end,10);
+        require(end && end!=extended && *end=='\\0' &&
+                requested>=7L && requested<=143L,
+                "CTEAS_P7_PROBE_HOURS must be a whole number in 7..143");
+        probe_hours=static_cast<std::size_t>(requested);
+    }
     // Optional native stage trace (argv[5]) must never disable the
     // independent original DGM step oracle carried in argv[4].
     require(probe_hours==6U || argc>=5,
-            "hour7 source probe requires the FULL original 143h DGM file");
-    const auto dgm=argc>=5?read_original_dgm(argv[4],probe_hours==7U):
+            "extended source probe requires the FULL original 143h DGM file");
+    const auto dgm=argc>=5?read_original_dgm(argv[4],probe_hours>6U):
                            std::vector<OriginalDgmStep>{};
     require(argc!=6 || !dgm.empty(),
             "hour2 source trace must retain pinned original sixhour DGM gate");
@@ -162,13 +167,13 @@ int main(int argc,char** argv) {
                 header.dx_m==100.0F,
                 "Hefei consecutive original MET time/grid drift");
         if(hour_index>=6U) {
-            require(matching_words==15000U &&
+            require(matching_words==2500U*hour_index &&
                     first_mismatched_hour==0U &&
-                    matched_step_keys==11458U &&
-                    matched_new_xy==11458U &&
-                    matched_stored_sigy==11458U &&
-                    matched_stored_sigz==11458U,
-                    "extended probe may not bypass accepted first-sixhour REAL4 gate");
+                    matched_step_keys==physical_steps &&
+                    matched_new_xy==physical_steps &&
+                    matched_stored_sigy==physical_steps &&
+                    matched_stored_sigz==physical_steps,
+                    "extended probe cannot bypass preceding contiguous REAL4 gate");
             std::cout<<"P7_REAL_EXTENDED_PROBE_ENTER_HOUR="<<hour_index+1U
                      <<" ACTIVE_BEFORE="<<driver.active_count()
                      <<" ORIGINAL_FULL_DGM_ROWS="<<dgm.size()<<"\n";
@@ -600,11 +605,12 @@ int main(int argc,char** argv) {
     require(every_hour_real4 && matching_words==2500U*probe_hours &&
             first_mismatched_hour==0U && first_mismatched_cell==0U,
             "real original/native H-3 must match every requested hour in REAL4 bits");
-    if(probe_hours==7U)
-        std::cout<<"P7_HEFEI_REAL_HOUR7_SOURCE_PROBE=PASS"
+    if(probe_hours>6U)
+        std::cout<<"P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS"
+                 <<" HOURS="<<probe_hours
                  <<" ORIGINAL_DGM_ROWS="<<physical_steps
-                 <<" H3_REAL4_WORDS="<<matching_words<<"/17500"
-                 <<" FIRST_DIFFERENCE=NONE 143H_ACCEPTED=NO\n";
+                 <<" H3_REAL4_WORDS="<<matching_words<<"/"<<2500U*probe_hours
+                 <<" FIRST_DIFFERENCE=NONE 143H_ACCEPTED=NO\\n";
     if(probe_hours==6U)std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
              <<" ORIGINAL_DGM_ROWS=11458/11458"
              <<" HOURLY_ROWS=1275,2242,1906,2132,1742,2161"
