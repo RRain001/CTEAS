@@ -478,6 +478,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     if(control.gaussian_dry || sampling_kernel)
         order.captured_pre_removal_mass();
     std::optional<OriginalGaussianDryResult> dry_result;
+    std::optional<DryDepositionStep> dry_input_resistance;
     if(control.gaussian_dry){
         const auto& setup=control.gaussian_dry->setup;
         const auto index=sampled.cell.offset_0based;
