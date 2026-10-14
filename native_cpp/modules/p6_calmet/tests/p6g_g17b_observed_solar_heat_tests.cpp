@@ -268,10 +268,36 @@ int main(int argc,char** argv) {
         const std::string text((std::istreambuf_iterator<char>(deck)),
                                std::istreambuf_iterator<char>());
         const auto control=p6g::parse_original_wind_controls(text);
+        const auto real_surfvar=p6g::parse_original_surfvar_controls(text);
+        check(real_surfvar.irad==1&&real_surfvar.trad_km==500.f&&
+              real_surfvar.numts==5&&real_surfvar.iavet==1&&
+              real_surfvar.itprog==0&&real_surfvar.irhprog==0&&
+              real_surfvar.npsta==0,
+              "G17B pinned Hefei real SURFVAR controls not parsed correctly");
         const auto noon=sys_days{year{2024}/January/1}+hours{4};
         Fixture winter_day(noon);
         verify_real_solar(winter_day);
         verify_selected_slope_bridge(winter_day,control);
+        // Pinned real Hefei requests IAVET=1. The current multi-station
+        // SURFVAR source kernel only implements IAVET=0, and MUST reject
+        // attempts to call that path complete/physically original.
+        auto original_case=winter_day;
+        original_case.anc.original_surfvar_controls=real_surfvar;
+        reject([&]{(void)original_case.calculate();},
+               "G17B silently accepted real Hefei IAVET=1 as selected IAVET=0");
+        // An explicitly transformed *test-only* IAVET=0 configuration
+        // can execute exactly if ALL original influence controls match.
+        auto selected_case=winter_day;
+        auto selected_controls=real_surfvar;
+        selected_controls.iavet=0;
+        selected_case.anc.original_surfvar_controls=selected_controls;
+        selected_case.anc.numts=5;
+        selected_case.anc.trad_grid=50.f;
+        check(selected_case.calculate().observed.temp2d_k.size()==144,
+              "G17B rejected correctly source-bounded IAVET=0 test path");
+        selected_case.anc.trad_grid=20.f;
+        reject([&]{(void)selected_case.calculate();},
+               "G17B accepted incorrect original TRADKM/Grid resolution");
         Fixture winter_night(noon+hours{12});
         verify_real_solar(winter_night);
         const auto daylight=winter_day.calculate();
