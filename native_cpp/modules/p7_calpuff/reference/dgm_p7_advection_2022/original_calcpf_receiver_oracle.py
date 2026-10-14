@@ -87,8 +87,27 @@ def main() -> None:
     ap.add_argument("--case", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--compiler", default="gfortran-11")
+    ap.add_argument("--hour", type=int, choices=(1, 2), default=1)
+    ap.add_argument("--receptor-i", type=int, default=None)
+    ap.add_argument("--receptor-j", type=int, default=None)
     args = ap.parse_args()
     vendor, case, out = (p.resolve() for p in (args.vendor, args.case, args.out))
+    ix = args.receptor_i if args.receptor_i is not None else (19 if args.hour == 1 else 25)
+    jy = args.receptor_j if args.receptor_j is not None else (50 if args.hour == 1 else 28)
+    if not (1 <= ix <= 50 and 1 <= jy <= 50):
+        raise ValueError("Hefei original receptor coordinates outside frozen grid")
+    first_seq, final_seq = ((1, 1275) if args.hour == 1 else (1276, 3517))
+    trace_name = (f"dgm_calcpf_h3_{ix}_{jy}.bin" if args.hour == 1 else
+                  f"dgm_calcpf_h3_{ix}_{jy}_hour2.bin")
+    source_helpers = (EXTRA_HELPERS
+        .replace("if(dgmseq.gt.1275) return",
+                 f"if(dgmseq.lt.{first_seq}.or.dgmseq.gt.{final_seq}) return")
+        .replace("if(isamp.ne.19.or.jsamp.ne.50.or.ipol.ne.1) return",
+                 f"if(isamp.ne.{ix}.or.jsamp.ne.{jy}.or.ipol.ne.1) return")
+        .replace("dgm_calcpf_h3_19_50.bin",trace_name))
+    if source_helpers.count(f"if(dgmseq.lt.{first_seq}.or.dgmseq.gt.{final_seq}) return") != 2 or \
+       source_helpers.count(f"if(isamp.ne.{ix}.or.jsamp.ne.{jy}.or.ipol.ne.1) return") != 2:
+        raise AssertionError("original receiver instrumentation guards not exact")
     # The base extraction records original source assertions at each COMP
     # insertion and independently pins both original Fortran source hashes.
     original.CALLS["item7_setpuf_return"] += (
@@ -101,7 +120,7 @@ def main() -> None:
         raise AssertionError("original CALCPF mass-weighting anchor changed")
     source = source.replace(CALCPF_ANCHOR + "\n",
                             CALCPF_ANCHOR + "\n" + CALL)
-    instrumented.write_text(source + EXTRA_HELPERS, encoding="latin-1")
+    instrumented.write_text(source + source_helpers, encoding="latin-1")
 
     alias = original._alias_tree(vendor, out / "include-alias")
     executable = out / "bin" / "puff-h3-receiver.x"
@@ -129,7 +148,7 @@ def main() -> None:
     dgm = run / "dgm_puffstep.bin"
     if original.sha256_file(dgm) != DGM_SHA or dgm.stat().st_size != 254687 * 352:
         raise AssertionError("original 143h DGM changed under CALCPF instrumentation")
-    trace = run / "dgm_calcpf_h3_19_50.bin"
+    trace = run / trace_name
     if not trace.is_file() or trace.stat().st_size % (RECORD.size+16):
         raise AssertionError("missing or misaligned original CALCPF H3 trace")
     samples = []
@@ -144,8 +163,8 @@ def main() -> None:
             vseq, vid, vksam, frec = struct.unpack("<3if",fraction_block)
             if (seq,puff,ksam)!=(vseq,vid,vksam):
                 raise AssertionError("original CALCPF stage/virtual identity mismatch")
-            if not (1 <= seq <= 1275 and 1 <= puff <= 54 and
-                    1 <= ksam <= 54 and all(math.isfinite(x) for x in values+[frec])):
+            if not (first_seq <= seq <= final_seq and 1 <= puff <= (54 if args.hour==1 else 137) and
+                    1 <= ksam <= 99 and all(math.isfinite(x) for x in values+[frec])):
                 raise AssertionError("original CALCPF key or value corrupted")
             samples.append((seq, puff, ksam, values))
             if len(samples) <= 8:
@@ -157,7 +176,7 @@ def main() -> None:
         raise AssertionError("original receiver substep trace order incorrect")
     total = sum(v[12] for _, _, _, v in samples)
     audit = {
-        "scope": "original CALPUFF first-hour H3 receptor (19,50), source-only",
+        "scope": f"original CALPUFF hour {args.hour} H3 receptor ({ix},{jy}), source-only",
         "vendor_sha256": original.ORIGINAL_CALPUFF_SHA256,
         "frozen_puff_con_sha256": result["puff_con_sha256"],
         "frozen_dgm_sha256": original.sha256_file(dgm),
@@ -174,9 +193,11 @@ def main() -> None:
         "trace_contribution_sum": total,
         "numeric_native_parity": "NOT_CLAIMED",
     }
-    (out / "original-calcpf-h3-19-50.json").write_text(
+    (out / (f"original-calcpf-h3-19-50.json" if args.hour==1 and ix==19 and jy==50 else
+            f"original-calcpf-h3-{ix}-{jy}-hour{args.hour}.json")).write_text(
         json.dumps(audit, indent=2) + "\n")
     print("P7_ORIGINAL_H3_CALCPF_RECEIVER_ORACLE=PASS"
+          f" HOUR={args.hour} RECEPTOR_I={ix} RECEPTOR_J={jy}"
           f" SAMPLES={len(samples)}"
           f" FIRST_STEP={samples[0][0]}"
           f" SOURCE_CONC_SUM={total:.9g}"
