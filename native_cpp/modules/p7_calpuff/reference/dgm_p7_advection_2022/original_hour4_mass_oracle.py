@@ -7,6 +7,7 @@ SHA exact, and emits DGM-sequenced historical QM without feeding native C++.
 from __future__ import annotations
 import argparse
 import hashlib
+import re
 from pathlib import Path
 import struct
 import sys
@@ -75,11 +76,16 @@ def main()->None:
     after="          call DEDAT(ndathrb,iyrss,ijulss,ihrss)"
     first_qold=source.index("            qold(ipl)=qm(ipl,ii)")
     first_qnew=source.index("            qnew(ipl)=qm(ipl,ii)")
-    pos_before=source.find(before,first_qold)
-    pos_after=source.find(after,first_qnew)
-    if not (0<pos_before-first_qold<1800 and
-            0<pos_after-first_qnew<1200):
-        raise AssertionError("original COMP QOLD/QNEW insert anchors drifted")
+    before_match=re.search(r"(?m)^ {6,}[ ]*if\\(mchem\\.ge\\.1\\)then",source[first_qold:first_qold+1900])
+    after_match=re.search(r"(?m)^ {6,}[ ]*call DEDAT\\(ndathrb,iyrss,ijulss,ihrss\\)",
+                          source[first_qnew:first_qnew+1400])
+    if before_match is None or after_match is None:
+        raise AssertionError(
+            "original COMP QOLD/QNEW insert anchors drifted: "+
+            f"before={before_match is not None} after={after_match is not None} "+
+            f"qm_at={first_qold} qnew_at={first_qnew}")
+    pos_before=first_qold+before_match.start()
+    pos_after=first_qnew+after_match.start()
     source=(source[:pos_after]+
         "         call p7massafter(ii,ksam,qnew(1),fracdry(1),\n"
         "     &        vd(1),vdpvd(1),tsamp)\n"+source[pos_after:])
