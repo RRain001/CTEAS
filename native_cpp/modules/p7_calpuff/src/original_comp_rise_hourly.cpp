@@ -39,7 +39,15 @@ OriginalPointHourSource original_point_hour_from_prfin(
             [](double q){return std::isfinite(q)&&q>=0.0;})||
        !(rise.stability_class>=1 && rise.stability_class<=4)||
        !(rise.effective_height_m>in.stack_height_m)||
-       !(rise.x_final_m>0.0F)||
+       // Original CALPUFF PRFIN explicitly sets XFINAL=0 at
+       // WSSTK < WSSTK0=1.0 m/s while still producing a nonzero
+       // vertical rise and genuine POINTS1 releases. Accept ONLY that
+       // source-verified zero-distance branch, not arbitrary invalid
+       // negative/non-finite rise data.
+       !(rise.x_final_m>0.0F ||
+         (rise.x_final_m==0.0F && rise.stack_wind_ms<1.0F &&
+          rise.brigg.x_final_buoyancy_m==0.0 &&
+          rise.brigg.x_final_momentum_m==0.0))||
        !(rise.buoyancy_variance_m2>=0.0F)||
        !(rise.release_wind_ms>=0.0F))
         throw std::invalid_argument("POINTS1 native admission lacks supported source physical data");
