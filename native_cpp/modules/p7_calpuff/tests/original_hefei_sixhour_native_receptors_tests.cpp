@@ -387,11 +387,6 @@ int main(int argc,char** argv) {
                     const float dsh=std::max(0.0F,dsel-
                         t.terrain_under_puff_msl);
                     const float zdiff=t.receptor_ground_elevation_msl-dsel;
-                    const auto adjusted=original_mctadj2_receptor_height(
-                        pos,static_cast<float>(
-                            state.receptor_rise.final_rise_m),
-                        static_cast<float>(
-                            state.receptor_rise.final_rise_m),t);
                     std::cout<<std::setprecision(10)
                         <<"P7_NATIVE_H9_MCTADJ2_TERRAIN"
                         <<" PUFF="<<state.puff_id
@@ -407,10 +402,8 @@ int main(int argc,char** argv) {
                         <<" POLE0="<<t.receptor_height_m
                         <<" DSEL="<<dsel<<" DSH="<<dsh
                         <<" ZDIFF="<<zdiff
-                        <<" ZRPOLE_NATIVE="<<adjusted.pole_height_m
-                        <<" BIT_ZRPOLE=0x"<<std::hex
-                        <<std::bit_cast<std::uint32_t>(
-                            adjusted.pole_height_m)<<std::dec
+                        <<" BIT_DSEL=0x"<<std::hex
+                        <<std::bit_cast<std::uint32_t>(dsel)<<std::dec
                         <<" SOURCE_PARITY=NOT_YET_VERIFIED\\n";
                 }
                 return t;
