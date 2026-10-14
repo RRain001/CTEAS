@@ -68,7 +68,8 @@ jobs:
           # Isolate original JDSTAB/EL/TSIGW authorities at the genuine
           # Hefei H9 /CSIGMA/ discrepancy (0.03 vs native PGT3 0.08).
           # This is SOURCE INSPECTION ONLY and must not feed the solver.
-          for label,lo,hi in [('H9_COMP_STABILITY',10680,10735),
+          for label,lo,hi in [('H9_COMP_HTMET',10464,10503),
+                              ('H9_COMP_STABILITY',10680,10735),
                               ('H9_COMP_SETCSIG',10800,10890),
                               ('H9_TURBSET',52030,52190),
                               ('H9_SETCSIG',52500,52620)]:
