@@ -6,6 +6,7 @@
 #include "cteas/p6/p6g_g17c_iavet1_heat_handoff.hpp"
 #include "cteas/p6/p6g_g17c2_elustr_handoff.hpp"
 #include "cteas/p6/p6g_g17c3_station_diagi.hpp"
+#include "cteas/p6/p6g_g18a_selected_comp_mixht.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -660,8 +661,105 @@ static void verify_source_staged_iavet(
     rejects([&]{
         (void)stages.run(p6::NativeHourStage::DiagnoSmoothDivcelW,frame);
     },"G17D repeated mass segment in same source hour");
+    p6g::G18ASelectedCompControls comp;
+    comp.initial_wstar_mps.assign(144,0.f);
+    auto& mix=comp.grid_mixht;
+    mix.nx=12;mix.ny=12;
+    mix.water_first=f.grid.iwat1;mix.water_last=f.grid.iwat2;
+    mix.landuse=f.grid.landuse;
+    mix.imixh=1;mix.iupt=-1;mix.izicrlx=1;
+    mix.timestep_s=3600;mix.constn=2400.f;
+    mix.zimin=50.f;mix.zimax=3000.f;
+    mix.dptmin=.001f;mix.dzzi=200.f;
+    mix.threshl=0.f;mix.tzicrlx=800.f;
+    mix.onedte=4140.f;mix.twodte=1080.f;
+    mix.justa={1,1};mix.nearu.assign(144,1);
+    for(std::size_t site=0;site<diagi.size();++site) {
+        const auto upper_index=site;
+        p6e::MixdtSounding older,newer;
+        for(const auto& layer:upper[upper_index].soundings.front().data){
+            older.height_m.push_back(layer.height_lgl_m);
+            older.temp_k.push_back(layer.temperature_k);
+        }
+        for(const auto& layer:upper[upper_index].soundings.back().data){
+            newer.height_m.push_back(layer.height_lgl_m);
+            newer.temp_k.push_back(layer.temperature_k);
+        }
+        mix.sounding[0].push_back(older);
+        mix.sounding[1].push_back(newer);
+        mix.nearu[diagi[site].cell]=static_cast<int>(upper_index+1);
+    }
+    mix.fcori.assign(144,sc.fcori_s);
+    mix.cmech.assign(144,sc.cmech);
+    rejects([&]{
+        (void)p6g::selected_comp_mixht_wstarr_from_previous(
+            frame,selected,elustr,diagi,comp);
+    },"G18A unmarked MIXHT controls could impersonate source COMP");
+    comp.explicitly_test_only=true;
+    const auto calculated=p6g::selected_comp_mixht_wstarr_from_previous(
+        frame,selected,elustr,diagi,comp);
+    check(calculated.end==frame.input.end&&
+          calculated.candidate_next.zi_m.size()==144&&
+          calculated.candidate_next.ziconv_m.size()==144&&
+          calculated.candidate_next.dptt_k.size()==144&&
+          calculated.wstar_mps.size()==144,
+          "G18A source-staged COMP MIXHT/WSTARR result incomplete");
+    // Independent execution of the *unchanged* frozen P6E source
+    // physics with the same explicitly selected 2-UP AA/BB/JUSTA inputs.
+    auto direct_input=mix;
+    direct_input.qh=elustr.qh_wm2;
+    direct_input.ustar=elustr.ustar_mps;
+    direct_input.el=elustr.el_m;
+    direct_input.rho=selected.density_kg_m3;
+    direct_input.initial_zi=prior.zi_m;
+    direct_input.initial_ziconv=prior.ziconv_m;
+    direct_input.initial_dptt=prior.dptt_k;
+    for(const auto& st:diagi)
+        direct_input.initial_dptt[st.cell]=st.station_mixing.dptt_for_comp_k;
+    const auto expected_mix=p6e::mixht_observed_mc(direct_input);
+    p6e::WstarrInput direct_wstar;
+    direct_wstar.nx=12;direct_wstar.ny=12;
+    direct_wstar.water_first=f.grid.iwat1;
+    direct_wstar.water_last=f.grid.iwat2;
+    direct_wstar.landuse=f.grid.landuse;
+    direct_wstar.zi_conv_m=expected_mix.ziconv;
+    direct_wstar.heat_flux_wm2=elustr.qh_wm2;
+    direct_wstar.temp_k=selected.temperature_k;
+    direct_wstar.rho_kgm3=selected.density_kg_m3;
+    direct_wstar.initial_wstar_ms=comp.initial_wstar_mps;
+    const auto expected_wstar=p6e::wstarr(direct_wstar);
+    check(calculated.candidate_next.zi_m==expected_mix.zi &&
+          calculated.candidate_next.ziconv_m==expected_mix.ziconv &&
+          calculated.candidate_next.dptt_k==expected_mix.dptt &&
+          calculated.wstar_mps==expected_wstar,
+          "G18A differs from unchanged PR #53 MIXHT/WSTARR kernels");
+    auto wrong_sources=comp;
+    wrong_sources.grid_mixht.nearu[diagi[1].cell]=1;
+    rejects([&]{
+        (void)p6g::selected_comp_mixht_wstarr_from_previous(
+            frame,selected,elustr,diagi,wrong_sources);
+    },"G18A accepted station MIXHTST/COMP upper-sounding mismatch");
+    auto bad_sites=diagi;
+    bad_sites[1].cell=bad_sites[0].cell;
+    rejects([&]{
+        (void)p6g::selected_comp_mixht_wstarr_from_previous(
+            frame,selected,elustr,bad_sites,comp);
+    },"G18A accepted two SS MIXHTST writes into the same COMP cell");
+    auto fake_fields=frame.fields;
+    fake_fields.w_face_mps.clear();
+    const p6g::MultiHourFrame fake_frame{
+        0,f.grid,all,f.series.hourly.front(),slot,upper,
+        &wind,prior,prior,std::move(fake_fields)};
+    rejects([&]{
+        (void)p6g::selected_comp_mixht_wstarr_from_previous(
+            fake_frame,selected,elustr,diagi,comp);
+    },"G18A used MIXHT without the source-complete DIAGNO W segment");
+    check(frame.next.zi_m==prior.zi_m &&
+          frame.next.ziconv_m==prior.ziconv_m &&
+          frame.next.dptt_k==prior.dptt_k,
+          "G18A prematurely committed fixture MIXHT to the G14 hourly scheduler");
     check(!stages.run(p6::NativeHourStage::CompGridMixht,frame).completed,
-          "G17B4 invented native multi-station COMP acceptance");
+          "G18A misrepresented partial selected MIXHT as complete COMP");
     check(frame.next.ziconv_m==prior.ziconv_m,
           "G17C selected heat bridge modified n-1 accepted P6E state");
 }
@@ -700,6 +798,7 @@ int main(int argc,char** argv){
                     "G17C2_SOURCE_FRADJ_STABLE_DAYTIME_ELUSTR_PASS "
                     "G17C3_STHEOR_ELUSTR2_MIXHTST_DIAGI_SOURCE_SELECTED_PASS "
                     "G17D_HTFAC_SECOND_WINDBC_SMOOTH_DIVCEL_W_FROZEN_KERNEL_PASS "
+                    "G18A_PRIOR_COMP_MIXHT_STATION_DPTT_WSTARR_SOURCE_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
