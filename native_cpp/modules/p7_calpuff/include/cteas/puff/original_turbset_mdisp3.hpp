@@ -48,6 +48,18 @@ struct OriginalTurbsetMinimum {
  const auto i=static_cast<std::size_t>(stability-1+6*(ilw-1));
  return {p.svmin[i],p.swmin[i],stability,ilw};
 }
+// CALPUFF COMP L10863-10867: JDSTAB normally equals the sampled
+// PGT ISTAB but uses original deck JSUP above the bounded mixed layer
+// for PGT A-D. That changes MDISP3 SWMIN even though PGT stays unchanged.
+[[nodiscard]] inline int original_comp_turbset_jdstab(
+    int istab,int jsup,float htmet_m,float dpbl_m){
+    if(istab<1||istab>6||jsup<0||jsup>6||
+       !std::isfinite(htmet_m)||!std::isfinite(dpbl_m)||
+       htmet_m<0.0F||dpbl_m<=0.0F)
+        throw std::invalid_argument(
+            "COMP JDSTAB requires valid PGT/JSUP and HTMET/DPBL");
+    return jsup>0&&istab<5&&htmet_m>dpbl_m ? jsup:istab;
+}
 // CALPUFF COMP L10839-10842: ILW comes from the current CALMET
 // ILANDU(ixmet,iymet,md) and IWAT1/IWAT2 originally written by MAKEGEO.
 // Do not classify land/water by latitude, grid index, or PG stability.
