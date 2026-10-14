@@ -109,6 +109,51 @@ int main(){
         !post.vmass_pending,
         "native VMASS/SETPUF/CALCPF history was not atomic");
 
+  // Cross-hour source-ordered rising -> calm: the latest short-lived
+  // POINTS1 episodes begin H2 with XTOTB<XFINAL, unlike older fully risen
+  // puffs. COMP must run their RISEWIND/GRISE before LCALM SETPUF cancels
+  // further horizontal rise, and preserve every hourly state atomically.
+  {
+    auto late_source=source();
+    late_source.cadence.emission_interval=36.0;
+    OriginalCompRiseMultiPuffHours rising_driver;
+    const auto previous=rising_driver.advance_hour_point_mxsam99_adaptive(
+        met,st,ctrl,pg,false,late_source);
+    std::size_t still_rising=0;
+    for(const int puff_id:rising_driver.canonical_ids()){
+      if(rising_driver.motion(puff_id).total_distance_m<
+         late_source.point.x_final_m)++still_rising;
+    }
+    check(previous.active_puffs>1 && still_rising>0,
+          "cross-hour fixture has no unfinished rising puffs");
+    const auto calm_rising_hour=rising_driver.advance_hour_existing_mxsam99_adaptive(
+        low,st,ctrl,pg,false);
+    std::size_t calm_rising_substeps=0;
+    for(const auto& sub:calm_rising_hour.steps){
+      const auto& p=sub.step;
+      if(!(p.bookkeeping.calm &&
+           p.before.total_distance_m<late_source.point.x_final_m))
+        continue;
+      ++calm_rising_substeps;
+      check(p.bookkeeping.dispersion_y_option==1 &&
+            p.bookkeeping.dispersion_z_option==1 &&
+            p.bookkeeping.x_final_m==0.0F &&
+            p.after.total_distance_m>=p.before.total_distance_m &&
+            p.sigma.adjust.minimum_sigma_y_m>0 &&
+            p.sigma.adjust.minimum_sigma_z_m>0,
+            "rising-to-calm RISEWIND GRISE SETPUF state invalid");
+    }
+    check(rising_driver.completed_hours()==2U &&
+          calm_rising_substeps>0 &&
+          calm_rising_hour.active_puffs==previous.active_puffs,
+          "rising-to-calm original COMP transition did not commit");
+    std::cout<<"P7_ORIGINAL_COMP_RISING_TO_CALM_2H=PASS"
+             <<" UNFINISHED_BEFORE="<<still_rising
+             <<" ACTUAL_CALM_RISING_SUBSTEPS="<<calm_rising_substeps
+             <<" GRISE_BEFORE_SETPUF=YES"
+             <<" HEFEI_H9_REAL4=NOT_YET_ACCEPTED\\n";
+  }
+
   // Unsupported downstream modes MUST continue to fail closed and roll
   // back the whole hour, even with a valid original turbulence adapter.
   auto unsupported=ctrl;
