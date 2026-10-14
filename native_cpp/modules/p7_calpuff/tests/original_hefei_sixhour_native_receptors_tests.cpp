@@ -365,17 +365,55 @@ int main(int argc,char** argv) {
         const auto sampling=make_original_flat_calcpf_sampler(
             receptors,header.dx_m,3600.0F,3.0F,
             OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2,
-            [&terrain,&receptors](const RiseCompSamplingState& state,
+            [&terrain,&receptors,hour_index,trace_cell](
+                const RiseCompSamplingState& state,
                 std::size_t receiver,const OriginalPuffct2Result& pos){
                 require(state.original_ctadj2_step.has_value() &&
                         state.receptor_effective_wind_ms>0.0F &&
                         std::isfinite(state.receptor_brunt_vaisala_s),
                         "Hefei receptor terrain state is not native");
-                return terrain.receptor(
+                const auto t=terrain.receptor(
                     receiver,receptors.ibsamp,receptors.jbsamp,
                     receptors.sampling_nx,receptors.sampling_ny,pos,
                     state.receptor_brunt_vaisala_s,
                     state.receptor_effective_wind_ms);
+                // H9 first real receptor residual (42,11): print native
+                // MCTADJ2 operands in REAL4. Pure read-only provenance; do
+                // not change terrain, sampler, or original stage arithmetic.
+                if(hour_index==8U && receiver==trace_cell) {
+                    const float dsel=t.brunt_vaisala_s>0.0F ?
+                        t.terrain_peak_elevation_msl-
+                        t.wind_speed_ms/t.brunt_vaisala_s : 0.0F;
+                    const float dsh=std::max(0.0F,dsel-
+                        t.terrain_under_puff_msl);
+                    const float zdiff=t.receptor_ground_elevation_msl-dsel;
+                    const auto adjusted=original_mctadj2_receptor_height(
+                        pos,static_cast<float>(
+                            state.receptor_rise.final_rise_m),
+                        static_cast<float>(
+                            state.receptor_rise.final_rise_m),t);
+                    std::cout<<std::setprecision(10)
+                        <<"P7_NATIVE_H9_MCTADJ2_TERRAIN"
+                        <<" PUFF="<<state.puff_id
+                        <<" RECEIVER_I="<<(receiver%50U+1U)
+                        <<" RECEIVER_J="<<(receiver/50U+1U)
+                        <<" X="<<pos.x_m<<" Y="<<pos.y_m
+                        <<" PUFFZ="<<pos.z_m
+                        <<" ELEV="<<t.receptor_ground_elevation_msl
+                        <<" TOP="<<t.terrain_peak_elevation_msl
+                        <<" UNDER="<<t.terrain_under_puff_msl
+                        <<" BVF="<<t.brunt_vaisala_s
+                        <<" UAVG="<<t.wind_speed_ms
+                        <<" POLE0="<<t.receptor_height_m
+                        <<" DSEL="<<dsel<<" DSH="<<dsh
+                        <<" ZDIFF="<<zdiff
+                        <<" ZRPOLE_NATIVE="<<adjusted.pole_height_m
+                        <<" BIT_ZRPOLE=0x"<<std::hex
+                        <<std::bit_cast<std::uint32_t>(
+                            adjusted.pole_height_m)<<std::dec
+                        <<" SOURCE_PARITY=NOT_YET_VERIFIED\\n";
+                }
+                return t;
             },true,stage_hook,0.0F);
         // 4096 capacity is intentionally non-binding in this SIX-HOUR
         // instrumented gate. MXPUFF-pressure acceptance is a distinct test.
