@@ -9,12 +9,14 @@
 #include "cteas/p6/p6g_g17_staged_terrain.hpp"
 #include "cteas/p6/p6g_observed_thermal_hour.hpp"
 #include "cteas/p6/p6g_g17b_setcom_airden.hpp"
+#include "cteas/p6/p6g_original_surfvar_controls.hpp"
 #include "cteas/p6e/surface_solar.hpp"
 #include "cteas/p6e/surfvar_multistation.hpp"
 #include "cteas/p6e/heatfx.hpp"
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 #include <utility>
@@ -25,6 +27,10 @@ struct G17BExplicitAncillaryFixture {
     // across arbitrary multistation cases. No magic default is permitted.
     int irad=0,numts=0;
     float trad_grid=0.f;
+    // Optional authentic original met.inp control binding. If supplied,
+    // reject IAVET=1 (not implemented), and exact IRAD/NUMTS/TRAD mismatch.
+    // Absence remains legal ONLY in fixture-marked selected tests.
+    std::optional<OriginalSurfvarControls> original_surfvar_controls;
     G12HeatCoefficients coefficients{};
     int isurft=-1;
     float domain_temperature_k=0.f,critfn=0.f;
@@ -68,6 +74,10 @@ inline G17BObservedSolarResult observed_solar_heat_selected(
        fixture.domain_temperature_k<=0.f||
        !std::isfinite(fixture.critfn)||fixture.critfn<0.f)
         throw std::invalid_argument("G17B original-format SURF/SOLAR scope invalid");
+    if(fixture.original_surfvar_controls)
+        require_selected_iavet0(*fixture.original_surfvar_controls,
+                                grid.grid_km,fixture.irad,
+                                fixture.numts,fixture.trad_grid);
     const auto count=nx*ny;
     if(grid.landuse.size()!=count||grid.albedo.size()!=count||
        grid.bowen.size()!=count||grid.hcg.size()!=count||
