@@ -24,7 +24,7 @@ def u32(number: float) -> int:
     return struct.unpack("<I",struct.pack("<f",number))[0]
 
 
-def read_original(path: Path) -> dict[int, tuple]:
+def read_original(path: Path, lower: int, upper: int, puff_max: int) -> dict[int, tuple]:
     result = {}
     with path.open("rb") as handle:
         while block := handle.read(SOURCE.size):
@@ -37,7 +37,7 @@ def read_original(path: Path) -> dict[int, tuple]:
             seq2,episode2,ksam2,frac=FREC.unpack(block2)
             if (seq,episode,ksam)!=(seq2,episode2,ksam2):
                 raise ValueError("source paired CALCPF/FREC physical keys differ")
-            if not 1276<=seq<=3517 or not 1<=episode<=137 or not 1<=ksam<=99:
+            if not lower<=seq<=upper or not 1<=episode<=puff_max or not 1<=ksam<=99:
                 raise ValueError(f"bad original real hour2 physical key {seq}/{episode}/{ksam}")
             if seq in result:
                 raise ValueError("original physical substep duplicated")
@@ -47,14 +47,14 @@ def read_original(path: Path) -> dict[int, tuple]:
     return result
 
 
-def read_native(path: Path) -> dict[int, tuple]:
+def read_native(path: Path, lower: int, upper: int) -> dict[int, tuple]:
     result={}
     for row in path.read_text().splitlines():
         words=row.split()
         if len(words)!=16:
             raise ValueError(f"native hour2 must have 3 keys +13 REAL4 stages: {row}")
         seq,episode,ksam=map(int,words[:3])
-        if seq in result or not 1276<=seq<=3517:
+        if seq in result or not lower<=seq<=upper:
             raise ValueError(f"duplicate/invalid native step {seq}")
         result[seq]=(episode,ksam,dict(zip(NAMES,(float(v) for v in words[3:]))))
     if not result or list(result)!=sorted(result):
@@ -67,8 +67,14 @@ def main() -> None:
     p.add_argument("--original",type=Path,required=True)
     p.add_argument("--native",type=Path,required=True)
     p.add_argument("--out",type=Path,required=True)
+    p.add_argument("--hour",type=int,choices=(2,4),default=2)
     a=p.parse_args()
-    source,native=read_original(a.original),read_native(a.native)
+    lower,upper,puff_max,ix,jy={
+        2:(1276,3517,137,25,28),
+        4:(5424,7555,272,47,13)
+    }[a.hour]
+    source=read_original(a.original,lower,upper,puff_max)
+    native=read_native(a.native,lower,upper)
     common=sorted(source.keys() & native.keys())
     if not common:
         raise AssertionError("original/native hour2 receptor has no common physical substeps")
@@ -108,7 +114,7 @@ def main() -> None:
                     break
     outcome={
         "status":"DIAGNOSTIC; REAL4_ACCEPTANCE_NOT_YET_CLAIMED",
-        "hour":2,"receptor_i":25,"receptor_j":28,
+        "hour":a.hour,"receptor_i":ix,"receptor_j":jy,
         "original_sampled":len(source),"native_sampled":len(native),
         "aligned_physical_substeps":len(common),
         "first_source_order_difference":first,
@@ -121,12 +127,12 @@ def main() -> None:
     }
     a.out.parent.mkdir(parents=True,exist_ok=True)
     a.out.write_text(json.dumps(outcome,indent=2)+"\n")
-    print("P7_HEFEI_HOUR2_H3_25_28_FIRST_SOURCE_DIFFERENCE=DIAGNOSTIC"
+    print(f"P7_HEFEI_HOUR{a.hour}_H3_{ix}_{jy}_FIRST_SOURCE_DIFFERENCE=DIAGNOSTIC"
           f" ORIGINAL_SAMPLES={len(source)} NATIVE_SAMPLES={len(native)}"
           f" ALIGNED={len(common)}"
           f" FIRST={json.dumps(first,sort_keys=True) if first else 'NONE'}"
           " FULL_6H_CONCENTRATION_PARITY=OPEN")
-    print("P7_HEFEI_HOUR2_25_28_STAGE_BITWISE "+
+    print(f"P7_HEFEI_HOUR{a.hour}_{ix}_{jy}_STAGE_BITWISE "+
           " ".join(f"{key}={counts[key]}/{len(common)}" for key in PRIORITY))
 
 
