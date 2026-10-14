@@ -29,10 +29,12 @@ int main(){
             0,20,40,80,160,320,640,1200,2000,3000
         };
         cteas::calmet::p6::WindUV raw;
-        raw.u.assign(1296,-3.f);
-        raw.v.assign(1296,-1.f);
+        raw.u.assign(1296,3.f);
+        raw.v.assign(1296,1.f);
         const auto output=apply_g11_terrain_after_wind1(
             terrain,hourly,zface,std::move(raw));
+        if(output.froude_modified==0||output.slope_modified==0)
+            throw std::runtime_error("G11 original-source fixture did not exercise both FRADJ and SLOPE");
         std::cout<<std::scientific<<std::setprecision(9);
         for(int k=0;k<9;++k)for(int j=0;j<12;++j)for(int i=0;i<12;++i){
             const auto n=static_cast<std::size_t>(k*144+j*12+i);
