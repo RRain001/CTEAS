@@ -55,14 +55,14 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/original_calcpf_receiver_oracle.py \
             --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618 \
             --case "$root/frozen" --out "$root/vendor" --compiler /usr/bin/gfortran-11 \
-            --hour 9 --receptor-i 21 --receptor-j 1 \
+            --hour 9 --receptor-i 25 --receptor-j 1 \
             --trace-h9-setpuf --allow-no-receptor-events
           test -s "$root/vendor/case/run/puff/dgm_puffstep.bin"
           test -s "$root/vendor/original-h9-puff588-setpuf-z.json"
           test -s "$root/vendor/original-h9-puff594-receptor21-1-sigtz.json"
           test -s "$root/vendor/original-h9-puff594-receptor21-1-szfloor.json"
-          test -s "$root/vendor/original-calcpf-h3-21-1-hour9.json"
-          python3 - "$root/vendor/original-calcpf-h3-21-1-hour9.json" <<'PY'
+          test -s "$root/vendor/original-calcpf-h3-25-1-hour9.json"
+          python3 - "$root/vendor/original-calcpf-h3-25-1-hour9.json" <<'PY'
           import json
           import sys
           from pathlib import Path
@@ -72,10 +72,10 @@ jobs:
           if audit["records"] == 0:
               assert audit["status"] == "NO_CALCPF_RECEIVER_EVENTS_RECORDED"
               assert audit["numeric_native_parity"] == "NOT_CLAIMED"
-              print("P7_ORIGINAL_H9_H3_RECEPTOR21_1=NO_SOURCE_EVENTS_NO_PARITY_CLAIM")
+              print("P7_ORIGINAL_H9_H3_RECEPTOR25_1=NO_SOURCE_EVENTS_NO_PARITY_CLAIM")
           else:
               assert audit["numeric_native_parity"] == "NOT_CLAIMED"
-              print("P7_ORIGINAL_H9_H3_RECEPTOR21_1=SOURCE_EVENTS_RECORDED")
+              print("P7_ORIGINAL_H9_H3_RECEPTOR25_1=SOURCE_EVENTS_RECORDED")
           PY
           echo "P7_H9_ORIGINAL_SETPUF_7_PHASE_SOURCE_ONLY=PASS"
           echo "P7_EXTENDED_ORIGINAL_DGM=PINNED_VENDOR_FULL_143H_ORACLE"
@@ -106,7 +106,7 @@ jobs:
           grep -F 'P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS HOURS=8' "$root/eighthour-strict.log"
           echo "P7_REAL_FIRST_8H_SCIENTIFIC_GATE=PASS H3_WORDS=20000/20000 DGM=BITWISE 143H=OPEN"
           set +e
-          CTEAS_P7_H9_RECEIVER_TRACE="$root/native-h9-21-1.tsv" \
+          CTEAS_P7_H9_RECEIVER_TRACE="$root/native-h9-25-1.tsv" \
             CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
             CTEAS_P7_PROBE_HOURS=24 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
@@ -118,13 +118,13 @@ jobs:
           grep -E 'P7_REAL_EXTENDED_PROBE|P7_REAL_EXTENDED_PRFIN_INPUT|P7_REAL_EXTENDED_CALM_SOURCE_DECK|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE|P7_REAL_H9_CALM_SIGTZ_FIRST_DIVERGENCE|P7_REAL_H9_CALM_SIGTZ_MET_AUTHORITIES|P7_REAL_H9_NATIVE_CALCPF_CELL12|P7_NATIVE_H9_RECEPTOR_SIGTZ_INPUT' "$root/hour7-probe.log" || true
           # Compare the actual first remaining H9 receptor same-step stages.
           # This is read-only and diagnostic: a mismatch cannot turn into PASS.
-          original_h9="$root/vendor/case/run/puff/dgm_calcpf_h3_21_1_hour9.bin"
-          native_h9="$root/native-h9-21-1.tsv"
+          original_h9="$root/vendor/case/run/puff/dgm_calcpf_h3_25_1_hour9.bin"
+          native_h9="$root/native-h9-25-1.tsv"
           if [ -s "$original_h9" ] && [ -s "$native_h9" ]; then
             python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/compare_hour2_h3_calcpf.py \
               --hour 9 --original "$original_h9" --native "$native_h9" \
               --out "$root/h9-same-step-audit.json" >"$root/h9-compare.log" 2>&1 || true
-            grep -E 'P7_HEFEI_HOUR9|P7_HEFEI_HOUR9_21_1_STAGE_BITWISE' "$root/h9-compare.log" || \
+            grep -E 'P7_HEFEI_HOUR9|P7_HEFEI_HOUR9_25_1_STAGE_BITWISE' "$root/h9-compare.log" || \
               { echo "P7_H9_STAGE_COMPARISON=DIAGNOSTIC_ERROR"; cat "$root/h9-compare.log"; }
           else
             echo "P7_H9_STAGE_COMPARISON=NO_ALIGNED_EVENTS ORIGINAL_FILE_PRESENT=$([ -s "$original_h9" ] && echo YES || echo NO) NATIVE_FILE_PRESENT=$([ -s "$native_h9" ] && echo YES || echo NO)"
@@ -147,7 +147,7 @@ jobs:
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour7-probe.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-compare.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-same-step-audit.json
-            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/native-h9-21-1.tsv
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/native-h9-25-1.tsv
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/vendor/original-h9-puff594-receptor21-1-sigtz.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/vendor/original-h9-puff594-receptor21-1-szfloor.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/original-h9-calm.json
