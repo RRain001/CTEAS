@@ -3,6 +3,7 @@
 // This test's physical callback is explicitly SYNTHETIC. It does not qualify
 // a multi-station CALMET physics implementation or original field parity.
 #include "cteas/p6/p6g_unified_hourly.hpp"
+#include "cteas/p6/p6g_g18d2_station_clock_transaction.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -71,6 +72,18 @@ static std::vector<p6g::UpperSeries> upper(sys_seconds begin,
             p6::UpperSounding u;
             u.station_id=v.station_id;
             u.start=begin+std::chrono::hours{h};u.end=u.start;
+            // Selected PREPDI/CGAMMA test needs true per-US thermal
+            // soundings; these are explicitly SYNTHETIC, not vendor
+            // multi-station meteorological acceptance inputs.
+            for(int k=0;k<4;++k) {
+                p6::UpperLevel level;
+                level.height_valid=true;
+                level.temperature_valid=true;
+                level.height_lgl_m=static_cast<float>(k*500);
+                level.temperature_k=285.f+static_cast<float>(st+k*2)+
+                    static_cast<float>(h)*.001f;
+                u.data.push_back(level);
+            }
             v.soundings.push_back(std::move(u));
         }
     }
@@ -216,6 +229,80 @@ int main(){
         check(rollback.completed_hours()==2&&
               rollback.committed_memory().ziconv_m[0]==2.f,
               "G18D1 successive 2SS/2US native hours lacked isolated histories");
+        // G18D2: PREPDI AA/BB and per-US CGAMMA history are staged
+        // from G14's *own* next-hour preview and cannot publish
+        // on a failed precommit/oracle or to a foreign scheduler.
+        p6g::OriginalWindControls deck_controls;
+        deck_controls.bias[0]=-1.f;deck_controls.rmax1_km=100.f;
+        p6g::UnifiedMultistationHourlyScheduler source(
+            geo(),stations(),surface(jan1,6),upper(jan1,6),
+            deck_controls);
+        p6g::G18D2StationClockAuthority station_clocks;
+        const std::string synthetic_deck=
+            "! IUPT = -1 !\n! IDIOPT2 = 0 !\n! ZUPT = 200. !\n";
+        must_reject([&]{
+            (void)station_clocks.prepare_selected(source,synthetic_deck,false);
+        },"G18D2 selected upper thermal clock misrepresented production acceptance");
+        auto stage0=station_clocks.prepare_selected(source,synthetic_deck,true);
+        check(stage0.hour_index==0&&stage0.observed.station_ids.size()==2&&
+              stage0.cgamma.lapse.size()==2&&
+              !station_clocks.has_published_hour(),
+              "G18D2 source station transaction was not prepared off committed G14");
+        must_reject([&]{
+            station_clocks.publish_only_after_completed_g14(source,stage0);
+        },"G18D2 source upper/CGAMMA published before G14 completed hour");
+        SyntheticNativePhysics source_mock;
+        source_mock.expect_source_controls=true;
+        must_reject([&]{
+            source.advance_with_precommit(source_mock,
+              [](const p6g::MultiHourFrame&) {
+                  throw std::runtime_error("G18D2 injected P6F write/read failure");
+              });
+        },"G18D2 stage accepted failed P6F original output");
+        check(source.completed_hours()==0&&
+              !station_clocks.has_published_hour()&&
+              source.committed_memory().ziconv_m[0]==0.f,
+              "G18D2 leaked upper/CGAMMA or previous ZICONV after P6F failure");
+        must_reject([&]{
+            station_clocks.publish_only_after_completed_g14(source,stage0);
+        },"G18D2 accepted station history despite failed P6F barrier");
+        source.advance_with_precommit(source_mock,
+          [](const p6g::MultiHourFrame& accepted) {
+              check(accepted.hour_index==0&&
+                    accepted.previous.ziconv_m[0]==0.f,
+                    "G18D2 P6F retry read tentative ZICONV");
+          });
+        station_clocks.publish_only_after_completed_g14(source,stage0);
+        check(station_clocks.has_published_hour()&&
+              station_clocks.latest_upper_hour()==jan1+hours{1}&&
+              station_clocks.latest_gamma_hour()==jan1+hours{1}&&
+              source.completed_hours()==1,
+              "G18D2 did not publish both accepted upper/CGAMMA clocks");
+        must_reject([&]{
+            station_clocks.publish_only_after_completed_g14(source,stage0);
+        },"G18D2 published source AA/BB/CGAMMA history twice");
+        auto stage1=station_clocks.prepare_selected(source,synthetic_deck,true);
+        source_mock.inject_oracle=true;
+        must_reject([&]{source.advance(source_mock);},
+                    "G18D2 source-oracle injection bypassed strict G14 native gate");
+        must_reject([&]{
+            station_clocks.publish_only_after_completed_g14(source,stage1);
+        },"G18D2 staged second UP clock after rejected Fortran-oracle hour");
+        check(source.completed_hours()==1&&
+              station_clocks.latest_gamma_hour()==jan1+hours{1},
+              "G18D2 failed second hour altered committed thermal history");
+        source_mock.inject_oracle=false;
+        source.advance_with_precommit(source_mock,
+          [](const p6g::MultiHourFrame& accepted) {
+              check(accepted.hour_index==1&&
+                    accepted.previous.ziconv_m[0]==1.f,
+                    "G18D2 second source CGAMMA hour did not read committed prior");
+          });
+        station_clocks.publish_only_after_completed_g14(source,stage1);
+        check(source.completed_hours()==2&&
+              station_clocks.latest_upper_hour()==jan1+hours{2}&&
+              station_clocks.latest_gamma_hour()==jan1+hours{2},
+              "G18D2 second accepted AA/BB/CGAMMA rollover lost source time");
         auto bad=surface(jan1,6);
         bad.station_ids={58322,58321};
         must_reject([&]{
@@ -232,6 +319,7 @@ int main(){
                      "17_accepted_stages prior_ZICONV DPTT rollback "
                      "oracle_rejected WFACE_required "
                      "G18D1_P6F_PRECOMMIT_ROLLBACK_AND_RETRY_PASS "
+                     "G18D2_UPPER_CGAMMA_SAME_G14_COMMIT_PASS "
                      "FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
