@@ -43,16 +43,16 @@ jobs:
           set -euo pipefail
           root="${RUNNER_TEMP}/p7-h3-6h-dgm-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           mkdir -p "$root/frozen/run/puff" "$root/frozen/deliverables/met"
-          cp project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \\
+          cp project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
             "$root/frozen/run/puff/puff.inp"
-          ln -s "${GITHUB_WORKSPACE}/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat" \\
+          ln -s "${GITHUB_WORKSPACE}/project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat" \
             "$root/frozen/deliverables/met/met.dat"
-          python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/original_puff_step_dump.py audit \\
-            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618 \\
+          python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/original_puff_step_dump.py audit \
+            --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618 \
             --case "$root/frozen" --out "$root/vendor" --compiler /usr/bin/gfortran-11
-          python3 native_cpp/modules/p7_calpuff/reference/extract_original_six_hours.py \\
-            --full "$root/vendor/case/run/puff/dgm_puffstep.bin" \\
-            --metadata native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep.json \\
+          python3 native_cpp/modules/p7_calpuff/reference/extract_original_six_hours.py \
+            --full "$root/vendor/case/run/puff/dgm_puffstep.bin" \
+            --metadata native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep.json \
             --out "$root/original-sixhour-dgm.bin"
           echo "P7_6H_ORIGINAL_FORTRAN_DGM=FROZEN_SHA_VERIFIED ROWS=11458"
       - name: Compile and replay six contiguous real COMP hours
@@ -62,9 +62,9 @@ jobs:
           build="${RUNNER_TEMP}/p7-hefei-sixhour-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           cmake -S native_cpp/modules/p7_calpuff -B "$build" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$build" --parallel 2 --target cteas_p7_hefei_sixhour_native_h3_receptors_tests
-          "$build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \\
-            project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \\
-            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \\
-            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \\
+          "$build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
+            project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
             "${RUNNER_TEMP}/p7-h3-6h-dgm-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/original-sixhour-dgm.bin"
           echo 'P7_6H_DIAGNOSTIC_EXECUTED=YES SCIENTIFIC_PARITY=AS_REPORTED_PER_HOUR'
