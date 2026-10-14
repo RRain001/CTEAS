@@ -43,7 +43,7 @@ class G18BUpperBufferClock {
 public:
     // A fresh instance belongs to exactly one chronological G14 simulation.
     // It never consumes an independently selected hour or oracle data.
-    G18BUpperHour select(const MultiHourFrame& frame) {
+    [[nodiscard]] G18BUpperHour select(const MultiHourFrame& frame) const {
         using namespace std::chrono;
         if(frame.upper.empty()||frame.upper.size()!=frame.stations.upper.size()||
            frame.input.upper.size()!=frame.upper.size()||
@@ -114,12 +114,38 @@ public:
             result.turnovers.push_back(static_cast<int>(bound.earlier));
             result.source_reads.push_back(static_cast<int>(bound.later)+1);
         }
-        // Only after all station sources pass does the time axis advance.
-        last_older_=result.chronological_older;
+        // PREPDI/DIAGI may succeed and later COMP/P6F may fail.
+        // Do not advance source AA/BB clocks until G14 has committed ALL
+        // 17 original stages and completed an entire native hour.
+        return result;
+    }
+    // The production caller must invoke commit only AFTER the corresponding
+    // UnifiedMultistationHourlyScheduler::advance() has returned successfully.
+    // An explicitly supplied accepted scheduler counter prevents accidental
+    // commit from partial selected fixture adapters.
+    void commit_after_completed_g14_hour(
+        const MultiHourFrame& frame,const G18BUpperHour& prepared,
+        std::size_t completed_g14_hours) {
+        if(completed_g14_hours!=frame.hour_index+1)
+            throw std::invalid_argument("G18B refuses premature or stale hour cache commit");
+        const auto source=select(frame);
+        if(prepared.end!=source.end||
+           prepared.station_ids!=source.station_ids||
+           prepared.justa!=source.justa||
+           prepared.physical_aa_index!=source.physical_aa_index||
+           prepared.physical_bb_index!=source.physical_bb_index||
+           prepared.chronological_older!=source.chronological_older||
+           prepared.chronological_newer!=source.chronological_newer||
+           prepared.past_seconds!=source.past_seconds||
+           prepared.to_go_seconds!=source.to_go_seconds||
+           prepared.gap_seconds!=source.gap_seconds||
+           prepared.turnovers!=source.turnovers||
+           prepared.source_reads!=source.source_reads)
+            throw std::invalid_argument("G18B stale or fabricated source buffer commit");
+        last_older_=source.chronological_older;
         previous_end_=frame.input.end;
         previous_hour_=frame.hour_index;
         visited_=true;
-        return result;
     }
     [[nodiscard]] bool has_hour() const noexcept {return visited_;}
     [[nodiscard]] std::chrono::sys_seconds last_hour() const noexcept {
