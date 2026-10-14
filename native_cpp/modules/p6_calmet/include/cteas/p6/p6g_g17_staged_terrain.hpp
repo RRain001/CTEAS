@@ -7,6 +7,7 @@
 #include "cteas/p6/p6g_g16_staged_wind.hpp"
 #include "cteas/p6/p6g_terrain_hour.hpp"
 #include "cteas/p6/p6g_g17b_setcom_airden.hpp"
+#include "cteas/p6/p6g_g17b4_iavet_two_pass.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -51,6 +52,28 @@ public:
         if(!after_slope_)throw std::logic_error("G17 SLOPE not yet computed");
         return *after_slope_;
     }
+    // Original CALMET performs two different IAVET=1 SURFVAR calls:
+    // 1. immediately after WIND1 and before FRADJ;
+    // 2. using the corrected FRADJ wind before HEATFX/AIRDEN.
+    // The first temperature MUST match the FRADJ input and the stored
+    // source WIND1. The second temperature is calculated HERE using this
+    // stage's actual FRADJ-adjusted U/V, not an unrelated fixture.
+    void finish_original_iavet1_after_fradj(G17B4TwoPassSurfvar& source) {
+        if(!after_fradj_||after_slope_||heat_||airden_||iavet1_final_)
+            throw std::logic_error("G17B4 second SURFVAR outside FRADJ→HEATFX");
+        if(source.end()!=current_hour_||!source.first_ready()||
+           source.second_ready()||
+           source.first_temperature()!=fradj_.temperature_k||
+           !source.first_stage_wind_matches(
+               wind_.selected_result().first_guess.u_mps,
+               wind_.selected_result().first_guess.v_mps))
+            throw std::invalid_argument(
+                "G17B4 first original SURFVAR does not match the current native WIND1/FRADJ");
+        source.after_fradj_before_heatfx(
+            current_hour_,after_fradj_->u,after_fradj_->v);
+        iavet1_final_=source.final_temperature();
+    }
+
     // Selected source AIRDEN L2094-L2098 is now available when the caller
     // explicitly supplies the SAME validated SURFVAR temperature used by
     // FRADJ. Without this real-observation handoff AIRDEN remains false.
@@ -59,9 +82,11 @@ public:
         if(!after_fradj_||after_slope_||airden_)
             throw std::logic_error("G17B AIRDEN outside FRADJ→SLOPE window");
         verify_hour(frame);
-        if(surfvar_temperature_k!=fradj_.temperature_k)
+        const auto& correct_final=iavet1_final_
+            ?*iavet1_final_:fradj_.temperature_k;
+        if(surfvar_temperature_k!=correct_final)
             throw std::invalid_argument(
-                "G17B AIRDEN TEMP2D differs from the source FRADJ field");
+                "G17B AIRDEN TEMP2D differs from final source SURFVAR");
         const auto nearest=source_setcom_nears(frame.grid,frame.stations);
         airden_=source_airden_nears(
             nearest,surfvar_temperature_k,frame.surface);
@@ -87,12 +112,14 @@ public:
         require_array(source.temperature_k,n);
         for(float t:source.temperature_k)
             if(t<=0.f)throw std::invalid_argument("G17 invalid surface T");
-        // SURFVAR creates the same TEMP2D before FRADJ and HEATFX.
-        // A different field injected between stages would falsely alter
-        // SLOPE even if both isolated physical kernels were correct.
-        if(source.temperature_k!=fradj_.temperature_k)
+        // IAVET=0 reuses one SURFVAR TEMP2D. Original IAVET=1 uses the
+        // WIND1 TEMP2D for FRADJ and a DIFFERENT post-FRADJ TEMP2D for
+        // HEATFX/AIRDEN/SLOPE; require verified second-pass state.
+        const auto& required_final=iavet1_final_
+            ?*iavet1_final_:fradj_.temperature_k;
+        if(source.temperature_k!=required_final)
             throw std::invalid_argument(
-                "G17 FRADJ/SLOPE use different source SURFVAR TEMP2D");
+                "G17 heat TEMP2D differs from correct final source SURFVAR");
         heat_=std::move(source);
     }
 
@@ -252,6 +279,7 @@ private:
     G17FradjSource fradj_;
     std::chrono::sys_seconds current_hour_{};
     std::optional<p6::WindUV> after_fradj_,after_slope_;
+    std::optional<std::vector<float>> iavet1_final_;
     std::optional<G17SlopeHeatSource> heat_;
     std::optional<std::vector<float>> airden_;
     bool first_windbc_=false;
