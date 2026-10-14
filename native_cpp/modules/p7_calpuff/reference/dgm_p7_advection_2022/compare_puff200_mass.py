@@ -19,6 +19,8 @@ def main()->None:
     p.add_argument("--original",type=Path,required=True)
     p.add_argument("--native",type=Path,required=True)
     p.add_argument("--out",type=Path,required=True)
+    p.add_argument("--require-bitwise",action="store_true",
+                   help="fail if any original puff200 mass or resistance float32 bit differs")
     a=p.parse_args()
     binary=a.original.read_bytes()
     if not binary or len(binary)%REC.size:
@@ -76,7 +78,7 @@ def main()->None:
     report={"scope":"full puff200 history across first six REAL CALPUFF MET hours",
             "all_substeps":len(original),"stage_equal":counts,
             "first_historical_difference":first,"source_step5847":first_5847,
-            "full_hour4_h3_parity":"OPEN"}
+            "full_sixhour_h3_parity":"CHECK_SEPARATE_COMPLETE_FIELD_GATE"}
     a.out.parent.mkdir(parents=True,exist_ok=True)
     a.out.write_text(json.dumps(report,indent=2)+"\n")
     print("P7_ORIGINAL_NATIVE_PUFF200_FIRST_MASS_DIVERGENCE=DIAGNOSTIC"
@@ -85,5 +87,11 @@ def main()->None:
     print("P7_PUFF200_HISTORICAL_QOLD_QNEW_FRAC_TSAMP_BITWISE "+
           " ".join(f"{key}={counts[key]}/{len(original)}" for key in counts))
     print("P7_PUFF200_DGM5847="+json.dumps(first_5847,sort_keys=True))
+    if a.require_bitwise:
+        if first is not None or any(n!=len(original) for n in counts.values()):
+            raise AssertionError("original/native puff200 36-step REAL4 source parity regressed")
+        print("P7_PUFF200_ORIGINAL_FULL_MASS_HISTORY=PASS"
+              f" STEPS={len(original)} FIELDS={len(counts)}"
+              " ALL_REAL4_BITWISE=YES FIRST_DIFFERENCE=NONE")
 if __name__=="__main__":
     main()
