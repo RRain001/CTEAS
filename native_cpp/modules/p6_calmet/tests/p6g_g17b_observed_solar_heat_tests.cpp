@@ -53,6 +53,8 @@ struct Fixture {
         h.by_station.resize(2);
         h.by_station[0].wind_valid=true;
         h.by_station[0].wind_speed_mps=5.f;
+        h.by_station[0].pressure_mb=1013.f;
+        h.by_station[0].pressure_valid=true;
         h.by_station[0].temperature_k=281.f;
         h.by_station[0].temperature_valid=true;
         h.by_station[0].humidity_pct=60;
@@ -61,6 +63,8 @@ struct Fixture {
         h.by_station[0].opaque_cloud_tenths=2;
         h.by_station[1].wind_valid=true;
         h.by_station[1].wind_speed_mps=5.f;
+        h.by_station[1].pressure_mb=997.f;
+        h.by_station[1].pressure_valid=true;
         h.by_station[1].temperature_k=302.f;
         h.by_station[1].temperature_valid=true;
         h.by_station[1].humidity_pct=73;
@@ -72,9 +76,9 @@ struct Fixture {
         anc.irad=1;anc.numts=2;anc.trad_grid=20.f;
         anc.isurft=-1;anc.domain_temperature_k=285.f;anc.critfn=10.f;
         anc.coefficients={990.f,-30.f,-0.75f,3.4f,0.f,0.f,1.f};
-        anc.nearest_surface.resize(144);
-        for(int j=0;j<12;++j)for(int i=0;i<12;++i)
-            anc.nearest_surface[static_cast<std::size_t>(j*12+i)]=i<6?1:2;
+        // Only an independent comparison oracle: the source-calculated
+        // SETCOM NEARS grid, NOT a physical input to G17B HEATFX/AIRDEN.
+        anc.nearest_surface=p6g::source_setcom_nears(geo,deck);
         anc.initial_water_qh_wm2.assign(144,0.f);
         anc.initial_water_qh_wm2[0]=7.f;
         anc.lapse_k_per_m.assign(144,0.002f);
@@ -87,6 +91,9 @@ struct Fixture {
 static void verify_real_solar(const Fixture& f) {
     const auto r=f.calculate();
     check(r.end==f.surface.end &&
+          r.nearest_surface.size()==144&&
+          r.density_kg_m3.size()==144&&
+          r.nearest_surface==p6g::source_setcom_nears(f.geo,f.deck)&&
           r.sun_sine.size()==144&&r.observed.temp2d_k.size()==144&&
           r.sensible_heat_wm2.size()==144,"G17B source array geometry");
     check(r.fradj_fixture.temperature_k==r.slope_fixture.temperature_k &&
@@ -108,6 +115,13 @@ static void verify_real_solar(const Fixture& f) {
     check(observed.temp2d_k==r.observed.temp2d_k&&
           observed.rh2d_pct==r.observed.rh2d_pct,
           "G17B SURFVAR station source numerical mismatch");
+    for(std::size_t cell=0;cell<144;++cell) {
+        const auto k=static_cast<std::size_t>(r.nearest_surface[cell]-1);
+        const float pressure=f.surface.hourly.front().by_station[k].pressure_mb;
+        const float source_rho=0.3484321f*pressure/r.observed.temp2d_k[cell];
+        check(r.density_kg_m3[cell]==source_rho,
+              "G17B AIRDEN differs from original source pressure/TEMP2D");
+    }
     check(r.observed.temp2d_k[13]<r.observed.temp2d_k[130],
           "G17B does not honor two distinct surface stations");
 
@@ -278,7 +292,14 @@ int main(int argc,char** argv) {
                "G17B fabricated missing station cloud");
         altered=winter_day;altered.anc.nearest_surface[30]=3;
         reject([&]{(void)altered.calculate();},
-               "G17B accepted invalid external NEARS site");
+               "G17B accepted spoofed external NEARS site");
+        altered=winter_day;altered.anc.nearest_surface.clear();
+        check(altered.calculate().nearest_surface==daylight.nearest_surface,
+              "G17B source SETCOM depends on an external NEARS fixture");
+        altered=winter_day;
+        altered.surface.hourly.front().by_station[0].pressure_valid=false;
+        reject([&]{(void)altered.calculate();},
+               "G17B AIRDEN fabricated missing nearest RDSN station pressure");
         altered=winter_day;altered.anc.coefficients.hc3p1=0.f;
         reject([&]{(void)altered.calculate();},
                "G17B silently supplied missing source heat coefficients");
