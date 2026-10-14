@@ -26,9 +26,7 @@ CALCPF_ANCHOR = "                  conc=vdpvd(ipol)*xtemp*(qold(ipol)*t1+qnew(ip
 CALL = """                  call dgmrecv(isamp,jsamp,ipol,syrec,szrec,zpr,
      &                 zrpole,f1,xi1,xi2,t1,t2,qold(ipol),
      &                 qnew(ipol),xtemp,conc)
-                  call dgmrecvvirt(isamp,jsamp,ipol,frec,
-     &                 vtyb1,vtye1,vdyb1,vdye1,
-     &                 vtzb1,vtze1,vdzb1,vdze1)
+                  call dgmrecvfrac(isamp,jsamp,ipol,frec)
 """
 
 # Helpers are appended AFTER all original modules; no COMMON values are
@@ -69,16 +67,13 @@ c ---- Write-only receiver-stage provenance, original first hour only.
      &          qold,qnew,xtemp,conc
       return
       end
-      subroutine dgmrecvvirt(isamp,jsamp,ipol,frac,
-     &                       vtyb,vtye,vdyb,vdye,
-     &                       vtzb,vtze,vdzb,vdze)
+      subroutine dgmrecvfrac(isamp,jsamp,ipol,frac)
       integer isamp,jsamp,ipol,dgmseq,dgmid,dgmksam
-      real frac,vtyb,vtye,vdyb,vdye,vtzb,vtze,vdzb,vdze
+      real frac
       common /dgmrecur/ dgmseq,dgmid,dgmksam
       if(dgmseq.gt.1275) return
       if(isamp.ne.19.or.jsamp.ne.50.or.ipol.ne.1) return
-      write(97) dgmseq,dgmid,dgmksam,
-     &          frac,vtyb,vtye,vdyb,vdye,vtzb,vtze,vdzb,vdze
+      write(97) dgmseq,dgmid,dgmksam,frac
       return
       end
 """
@@ -135,30 +130,27 @@ def main() -> None:
     if original.sha256_file(dgm) != DGM_SHA or dgm.stat().st_size != 254687 * 352:
         raise AssertionError("original 143h DGM changed under CALCPF instrumentation")
     trace = run / "dgm_calcpf_h3_19_50.bin"
-    if not trace.is_file() or trace.stat().st_size % RECORD.size:
+    if not trace.is_file() or trace.stat().st_size % (RECORD.size+16):
         raise AssertionError("missing or misaligned original CALCPF H3 trace")
     samples = []
     with trace.open("rb") as fd:
         while chunk := fd.read(RECORD.size):
             if len(chunk) != RECORD.size:
                 raise AssertionError("truncated H-3 receptor record")
-            virtual_block = fd.read(48)
-            if len(virtual_block) != 48:
-                raise AssertionError("missing paired PUFRECS virtual record")
+            fraction_block = fd.read(16)
+            if len(fraction_block) != 16:
+                raise AssertionError("missing paired PUFRECS fraction record")
             seq, puff, ksam, *values = RECORD.unpack(chunk)
-            vseq, vid, vksam, *stage = struct.unpack("<3i9f",virtual_block)
+            vseq, vid, vksam, frec = struct.unpack("<3if",fraction_block)
             if (seq,puff,ksam)!=(vseq,vid,vksam):
                 raise AssertionError("original CALCPF stage/virtual identity mismatch")
             if not (1 <= seq <= 1275 and 1 <= puff <= 54 and
-                    1 <= ksam <= 54 and all(math.isfinite(x) for x in values+stage)):
+                    1 <= ksam <= 54 and all(math.isfinite(x) for x in values+[frec])):
                 raise AssertionError("original CALCPF key or value corrupted")
             samples.append((seq, puff, ksam, values))
             if len(samples) <= 8:
-                print("P7_VENDOR_H3_PUFRECS_VIRTUAL"
-                      f" SEQ={vseq} II={vid} KSAM={vksam}"
-                      + " ".join(f" {name}={value:.9g}" for name, value in zip(
-                          ("frac", "vtyb", "vtye", "vdyb", "vdye",
-                           "vtzb", "vtze", "vdzb", "vdze"),stage)))
+                print(f"P7_VENDOR_H3_PUFRECS_FRAC SEQ={vseq}"
+                      f" II={vid} KSAM={vksam} FRAC={frec:.9g}")
     if not samples:
         raise AssertionError("original first-hour H3 hotspot never sampled")
     if any(a[0] >= b[0] for a, b in zip(samples, samples[1:])):
@@ -173,7 +165,7 @@ def main() -> None:
         "record_bytes": RECORD.size,
         "trace_sha256": original.sha256_file(trace),
         "trace_path": str(trace),
-        "virtual_trace_layout": "paired 3i13f stage + 3i9f virtual in one unit97 stream",
+        "projection_fraction_layout": "paired 3i13f CALCPF stage + 3i1f original FREC in unit97 stream",
         "first_receptor_contribution": {
             "seq": samples[0][0], "puff": samples[0][1],
             "ksam": samples[0][2],
