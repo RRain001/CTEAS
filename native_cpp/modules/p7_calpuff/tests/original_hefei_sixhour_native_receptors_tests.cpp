@@ -265,7 +265,7 @@ int main(int argc,char** argv) {
                             stage.step.dry_input_resistance.has_value() &&
                             controls.gaussian_dry.has_value(),
                             "native #5823 source key or DRY provenance missing");
-                    const auto cell=stage.step.sampled.cell.offset_0based;
+                    const auto cell=stage.step.initial_met.cell.offset_0based;
                     const float t=met.tempk.at(cell);
                     const float sw=met.qsw.at(cell);
                     const float pd=static_cast<float>(
