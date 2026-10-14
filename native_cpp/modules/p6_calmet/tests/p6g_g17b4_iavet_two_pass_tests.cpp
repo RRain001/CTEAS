@@ -840,7 +840,9 @@ static void verify_source_staged_iavet(
     check(p6f_candidate.end==frame.input.end&&
           p6f_candidate.station_ids==std::vector<int>({58321,58322})&&
           p6f_candidate.real.size()==43&&p6f_candidate.integer.size()==2&&
-          p6f_candidate.real.at("T-LEV  1")==selected_temp.temperature_k/* first plane? */,
+          p6f_candidate.real.at("T-LEV  1")==
+              std::vector<float>(selected_temp.temperature_k.begin(),
+                                 selected_temp.temperature_k.begin()+144),
           "G18C5 invalid source 45-field record mapping");
     check(p6f_candidate.real.at("TEMPK   ")==selected.temperature_k&&
           p6f_candidate.real.at("RHO     ")==selected.density_kg_m3&&
