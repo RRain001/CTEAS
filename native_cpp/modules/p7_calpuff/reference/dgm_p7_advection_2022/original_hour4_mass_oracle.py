@@ -143,9 +143,9 @@ def main()->None:
     vd_anchor="vd(j)=1.0/(ra+rd+rc)"
     vdpos=source.index(vd_anchor)
     endpos=source.index("\n",vdpos)+1
-    source=source[:endpos]+
-        "      call p7massres(j,ra,rd,rc,rg,rf,rcut(j),xlai)\n"+
-        source[endpos:]
+    source=(source[:endpos]+
+            "      call p7massres(j,ra,rd,rc,rg,rf,rcut(j),xlai)\n"+
+            source[endpos:])
     target.write_text(source+HELPERS,encoding="latin-1")
     alias=base._alias_tree(vendor,out/"include-alias")
     executable=out/"bin"/"puff-original-mass.x"
