@@ -23,6 +23,7 @@ struct G16ObservedProfiles {
     // Must be supplied by source-validated SIMILT/VERTAV/PREPDI upstream.
     std::vector<float> u_mps,v_mps;
     std::vector<unsigned char> present;
+    std::vector<int> station_ids; // matching met.inp SS/US ordinal identities
 };
 struct G16PostSlopeFields {
     std::chrono::sys_seconds end{};
@@ -96,8 +97,14 @@ private:
             throw std::invalid_argument("G16 WIND1 station/time mismatch");
         require_finite(profiles_.u_mps,count,"station U");
         require_finite(profiles_.v_mps,count,"station V");
-        if(profiles_.present.size()!=count)
-            throw std::invalid_argument("G16 WIND1 missing station flags");
+        if(profiles_.present.size()!=count||profiles_.station_ids.size()!=total)
+            throw std::invalid_argument("G16 WIND1 missing station IDs or flags");
+        for(std::size_t i=0;i<ns;++i)
+            if(profiles_.station_ids[i]!=hour.stations.surface[i].id)
+                throw std::invalid_argument("G16 WIND1 shuffled SURF identity");
+        for(std::size_t i=0;i<nu;++i)
+            if(profiles_.station_ids[ns+i]!=hour.stations.upper[i].id)
+                throw std::invalid_argument("G16 WIND1 shuffled UP identity");
         Wind1MultiInput input;
         input.nx=hour.grid.nx;input.ny=hour.grid.ny;input.nz=9;
         input.spacing_m=hour.grid.grid_km*1000.f;
