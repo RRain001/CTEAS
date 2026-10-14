@@ -58,6 +58,7 @@ struct Input {
         hour.by_station.resize(2);
         hour.by_station[0].wind_valid=true;
         hour.by_station[0].wind_speed_mps=5.f;
+        hour.by_station[0].wind_direction_deg=90.f;
         hour.by_station[0].pressure_valid=true;
         hour.by_station[0].pressure_mb=1013.f;
         hour.by_station[0].cloud_valid=true;
@@ -68,6 +69,7 @@ struct Input {
         hour.by_station[0].humidity_pct=60;
         hour.by_station[1].wind_valid=true;
         hour.by_station[1].wind_speed_mps=6.f;
+        hour.by_station[1].wind_direction_deg=180.f;
         hour.by_station[1].pressure_valid=true;
         hour.by_station[1].pressure_mb=997.f;
         hour.by_station[1].cloud_valid=true;
