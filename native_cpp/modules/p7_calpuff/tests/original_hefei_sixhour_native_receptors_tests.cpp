@@ -397,15 +397,21 @@ int main(int argc,char** argv) {
                 const auto& step=stage.step;
                 require(step.pre_dry_qold_mixed.size()>=1 &&
                         step.vmass.mass_mixed.size()>=1 && step.dry.has_value() &&
-                        step.dry->fraction_remaining.size()>=1,
-                        "puff200 original dry mass source provenance missing");
+                        step.dry->fraction_remaining.size()>=1 &&
+                        step.dry_input_resistance.has_value() &&
+                        !step.dry_input_resistance->velocity_ms.empty(),
+                        "puff200 original dry mass/VD source provenance missing");
                 mass_trace<<physical_steps+n+1U<<" "
                     <<stage.puff_id<<" "<<stage.ksam<<" "
                     <<step.pre_dry_qold_mixed[0]<<" "
                     <<step.vmass.mass_mixed[0]<<" "
                     <<step.dry->fraction_remaining[0]<<" "
+                    <<step.dry_input_resistance->velocity_ms[0]<<" "
+                    <<1.0F<<" "
                     <<step.substep.step_s<<" "
-                    <<step.dry->vcbar_m_inverse<<"\n";
+                    <<step.dry->vcbar_m_inverse<<" "
+                    <<static_cast<float>(step.substep.step_s*
+                                        step.dry->vcbar_m_inverse)<<"\n";
             }
             mass_trace.flush();
             require(bool(mass_trace),"native original puff200 mass trace failed");
