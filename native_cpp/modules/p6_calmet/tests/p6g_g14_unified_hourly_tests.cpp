@@ -78,12 +78,21 @@ static std::vector<p6g::UpperSeries> upper(sys_seconds begin,
 }
 struct SyntheticNativePhysics final : p6g::MultiHourPhysics {
     bool throw_at_mixht=false,inject_oracle=false,omit_w=false;
+    bool expect_source_controls=false;
     std::size_t runs=0;
     std::vector<p6::NativeHourStage> order;
     p6::NativeHourStageResult run(p6::NativeHourStage stage,
                                   p6g::MultiHourFrame& f) override {
         order.push_back(stage);
         const auto n=static_cast<std::size_t>(f.grid.nx)*f.grid.ny;
+        if(expect_source_controls)
+            check(f.source_controls!=nullptr&&
+                  f.source_controls->bias[0]==-1.f&&
+                  f.source_controls->rmax1_km==100.f,
+                  "G15 did not deliver source-effective controls into CALMET stage");
+        else
+            check(f.source_controls==nullptr,
+                  "in-memory G14 test unexpectedly received forged original met.inp");
         check(f.surface.by_station.size()==2 && f.input.upper.size()==2 &&
               f.stations.surface.size()==2 && f.stations.upper.size()==2,
               "2SS+2US were not bound into the hourly stage frame");
@@ -121,10 +130,15 @@ struct SyntheticNativePhysics final : p6g::MultiHourPhysics {
     }
 };
 static void case_hours(sys_seconds begin,std::size_t count){
+    // Synthetic callback values remain synthetic. But the stage receives a
+    // typed original-source control object through the SAME G14 authority.
+    p6g::OriginalWindControls config;
+    config.bias[0]=-1.f;config.rmax1_km=100.f;
     p6g::UnifiedMultistationHourlyScheduler sched(
-        geo(),stations(),surface(begin,count),upper(begin,count));
+        geo(),stations(),surface(begin,count),upper(begin,count),config);
     check(sched.planned_hours()==count,"declared hour count was truncated");
     SyntheticNativePhysics synthetic;
+    synthetic.expect_source_controls=true;
     for(std::size_t hour=0;hour<count;++hour){
         synthetic.order.clear();
         sched.advance(synthetic);
