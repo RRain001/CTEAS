@@ -254,6 +254,30 @@ if(P6G_G17B_GFORTRAN AND Python3_Interpreter_FOUND)
       --out "${CMAKE_CURRENT_BINARY_DIR}/g18b6_setcom_nearu_source_parity.json")
 endif()
 
+# G18B8: literal CALMET v6.5.0 IUPT GAMMA 1/R^2 and CMPD2 source
+# fragments compiled with gfortran, REAL*4 bit-for-bit against production
+# multi-site G18B8 C++ in both selected IUPT source branches.
+add_executable(cteas_p6g_g18b8_gamma_grid_reference
+               src/p6g_g18b8_gamma_grid_reference_main.cpp)
+target_link_libraries(cteas_p6g_g18b8_gamma_grid_reference PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6g_g18b8_gamma_grid_reference PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+if(MSVC)
+  target_compile_options(cteas_p6g_g18b8_gamma_grid_reference PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g18b8_gamma_grid_reference PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(P6G_G17B_GFORTRAN AND Python3_Interpreter_FOUND)
+  add_test(NAME p6g_g18b8_literal_vendor_diagno_gamma_cmpd2_real4_parity
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_original_g18b8_gamma_grid.py"
+      --vendor "${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for"
+      --cpp "$<TARGET_FILE:cteas_p6g_g18b8_gamma_grid_reference>"
+      --gfortran "${P6G_G17B_GFORTRAN}"
+      --out "${CMAKE_CURRENT_BINARY_DIR}/g18b8_gamma_source_parity.json")
+endif()
+
 # G17B4: original Hefei IAVET=1 two SURFVAR/AVETMP calls bracket FRADJ;
 # distinct source WIND1 and post-FRADJ winds must not be conflated.
 add_executable(cteas_p6g_g17b4_iavet_two_pass_tests
