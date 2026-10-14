@@ -47,8 +47,11 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/original_calcpf_receiver_oracle.py \
             --vendor engine/vendor/src/CALPUFF_v7.2.1_L150618 \
             --case "$root/frozen" --out "$root/vendor" --compiler /usr/bin/gfortran-11 \
-            --hour 2 --receptor-i 25 --receptor-j 28
+            --hour 2 --receptor-i 25 --receptor-j 28 \
+            --trace-h9-setpuf
           test -s "$root/vendor/case/run/puff/dgm_puffstep.bin"
+          test -s "$root/vendor/original-h9-puff588-setpuf-z.json"
+          echo "P7_H9_ORIGINAL_SETPUF_7_PHASE_SOURCE_ONLY=PASS"
           echo "P7_EXTENDED_ORIGINAL_DGM=PINNED_VENDOR_FULL_143H_ORACLE"
       - name: Decode original H9 P585 KSAM1 calm stage without native state injection
         shell: bash
