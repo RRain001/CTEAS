@@ -52,6 +52,21 @@ public:
         if(!after_slope_)throw std::logic_error("G17 SLOPE not yet computed");
         return *after_slope_;
     }
+    // Bind the actual stage WIND1 vector to the FIRST original SURFVAR
+    // before FRADJ. Do not let a separately prepared wind or temperature
+    // array masquerade as this model hour.
+    void prepare_original_iavet1_before_fradj(G17B4TwoPassSurfvar& source) {
+        if(!wind_.selected_result().wind1_complete||after_fradj_||
+           heat_||airden_||iavet1_final_||
+           source.first_ready()||source.second_ready()||
+           source.end()!=current_hour_)
+            throw std::logic_error(
+                "G17B4 first SURFVAR outside source WIND1→FRADJ stage");
+        const auto& first=wind_.selected_result().first_guess;
+        source.after_wind1_before_fradj(current_hour_,first.u_mps,first.v_mps);
+        fradj_.temperature_k=source.first_temperature();
+    }
+
     // Original CALMET performs two different IAVET=1 SURFVAR calls:
     // 1. immediately after WIND1 and before FRADJ;
     // 2. using the corrected FRADJ wind before HEATFX/AIRDEN.
