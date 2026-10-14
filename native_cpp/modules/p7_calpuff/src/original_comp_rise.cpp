@@ -320,11 +320,29 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         require(mid_stability==sampled.stability_class,
                 "calm COMP cross-cell stability transition not yet accepted");
         const auto& cfg=*control.calm_mdisp3;
+        // Original COMP calpuff.for L10863-10883:
+        // JDSTAB = ISTAB; when above the bounded mixed layer, an unstable
+        // PGT class 1-4 is replaced by the original deck's JSUP (5 in the
+        // frozen Hefei case). MDISP=3 then selects
+        // TSIGW=SWMIN(JDSTAB,ILW), NOT SWMIN(ISTAB,ILW).
+        // This is the original H9 #16426 source cause: 0.03 vs 0.08 m/s.
+        // HTMET=ZOLD=ZPB(II) for a Gaussian puff (COMP L10465-10489);
+        // use actual native pre-ADVECT state and the original mid MET cell.
+        require(mid_cell.offset_0based<met.zi.size() &&
+                cfg.minimum_mixing_height_m>0.0F &&
+                cfg.maximum_mixing_height_m>=cfg.minimum_mixing_height_m &&
+                cfg.jsup>=0&&cfg.jsup<=6,
+                "original JSUP/PBL source selection requires deck-derived bounds");
+        const float dpbl=std::clamp(met.zi[mid_cell.offset_0based],
+            cfg.minimum_mixing_height_m,cfg.maximum_mixing_height_m);
+        const int jdstab=
+            cfg.jsup>0 && mid_stability<5 && before.z_m>dpbl ?
+                cfg.jsup:mid_stability;
         const auto turb=original_turbset_mdisp3_from_cell(
             cfg.original_turbulence,statics,
             static_cast<std::size_t>(met.nx),
             static_cast<std::size_t>(met.ny),
-            mid_cell.offset_0based,mid_stability,
+            mid_cell.offset_0based,jdstab,
             cfg.iwat1,cfg.iwat2);
         OriginalCalmSigmaInput parameters;
         parameters.uavg=ws;
