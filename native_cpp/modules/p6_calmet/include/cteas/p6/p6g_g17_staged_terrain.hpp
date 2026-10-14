@@ -200,9 +200,13 @@ public:
             return wind_.run(stage,frame);
         }
         if(stage==p6::NativeHourStage::DiagnoWindbcPostInter2Htfac1)
-            return second_windbc(frame);
+            return htfac_selected_
+                ?second_windbc(frame)
+                :p6::NativeHourStageResult{p6::NativeHourSource::Unknown,false};
         if(stage==p6::NativeHourStage::DiagnoSmoothDivcelW)
-            return final_mass_w(frame);
+            return htfac_selected_
+                ?final_mass_w(frame)
+                :p6::NativeHourStageResult{p6::NativeHourSource::Unknown,false};
         // Full HEATFX/ELUSTR and DIAGI stability-dependent SIMILT are
         // NOT implemented; neither are COMP, P6F, final mass-consistency.
         return {p6::NativeHourSource::Unknown,false};
