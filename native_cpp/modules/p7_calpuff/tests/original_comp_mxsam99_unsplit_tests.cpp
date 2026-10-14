@@ -1225,6 +1225,55 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
                  <<" TURBSET=LIVE_MET"
                  <<" CTADJ2_DRY=FAIL_CLOSED"
                  <<" HEFEI_H9_PARITY=NOT_YET_ACCEPTED\\n";
+
+        // Reuse the identical low-wind synthetic puff/MET with a genuine
+        // native CALMET-derived terrain lookup. This tests IDOPT1 with
+        // CTADJ2 and receptor PUFFCT2, but does NOT permit real MDRY=1.
+        calm_geo.elevation_m.assign(n,10.0F);
+        const auto native_calm_terrain=OriginalNativeTerrain::from_calmet(
+            calm_geo,120,120,100.0F);
+        auto terrain_calm_control=calm_control;
+        NativeMctadj2Controls calm_ctadj2;
+        calm_ctadj2.terrain=native_calm_terrain.constraint_lookup();
+        calm_ctadj2.brunt_vaisala_s=0.0F;
+        terrain_calm_control.mctadj2=calm_ctadj2;
+        const auto calm_terrain_receptors=make_original_flat_calcpf_sampler(
+            plume_grid,100.0F,3600.0F,3.0F,
+            OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2,
+            [&native_calm_terrain](const RiseCompSamplingState& state,
+                std::size_t receiver,const OriginalPuffct2Result& pos){
+                return native_calm_terrain.receptor(
+                    receiver,1,1,50,50,pos,0.0F,
+                    state.receptor_effective_wind_ms);
+            });
+        std::size_t calm_terrain_calls=0;
+        const RiseCompSamplingKernel terrain_calm_kernel=[&](
+                const RiseCompSamplingState& state){
+            need(state.receptor_calm_sigma.has_value() &&
+                 state.original_ctadj2_step.has_value(),
+                 "native LCALM CTADJ2 did not reach receptor sampling");
+            const auto values=calm_terrain_receptors(state);
+            need(values.size()==2500U &&
+                 std::all_of(values.begin(),values.end(),
+                     [](float x){return std::isfinite(x)&&x>=0.0F;}),
+                 "calm CTADJ2 PUFFCT2 returned invalid concentrations");
+            ++calm_terrain_calls;
+            return values;
+        };
+        OriginalCompRiseMultiPuffHours calm_terrain_driver;
+        const auto calm_terrain_hour=
+            calm_terrain_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+                calm_met,calm_geo,terrain_calm_control,pg,false,calm_point,
+                calm_bounds,4096,2500,terrain_calm_kernel);
+        need(calm_terrain_driver.completed_hours()==1U &&
+             calm_terrain_calls>0U &&
+             calm_terrain_calls==calm_terrain_hour.steps.size(),
+             "synthetic LCALM CTADJ2 PUFRECS CALCPF hour did not commit");
+        std::cout<<"P7_NATIVE_CALM_IDOPT1_CTADJ2_PUFRECS_CALCPF_1H=PASS"
+                 <<" SUBSTEPS="<<calm_terrain_calls
+                 <<" TERRAIN=SYNTHETIC_NATIVE"
+                 <<" DRY_VCBAR=FAIL_CLOSED"
+                 <<" HEFEI_H9_PARITY=NOT_YET_ACCEPTED\\n";
     }
     const auto midpoint_control=make_original_flat_calcpf_sampler(
         plume_grid,100.0F,3600.0F,3.0F,
