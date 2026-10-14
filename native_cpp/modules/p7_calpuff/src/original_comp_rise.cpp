@@ -249,10 +249,12 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     if(lcalm){
         require(control.calm_mdisp3.has_value(),
                 "LCALM requires original MDISP3 turbulence inputs");
-        // Source-port the calm PUFRECS IDOPT=1 sampler separately from
-        // the still-unvalidated real MCTADJ2/DRY coupled calm branch.
-        require(!control.mctadj2 && !control.gaussian_dry,
-                "CALPUFF calm CTADJ2/DRY coupling not yet accepted");
+        // Calm SIGTY/SIGTZ is source-ported for SETPUF, CTADJ2, and
+        // sampled PUFRECS. DRY remains blocked: original VCBAR's LCALM
+        // behavior has not been verified in the real selected source.
+        // No source trace may be replaced by the noncalm VCBAR branch.
+        require(!control.gaussian_dry,
+                "CALPUFF calm DRY/VCBAR coupling not yet accepted");
         require(before.total_distance_m>=state.x_final_m,
                 "calm puff still rising requires separate GRISE/SETPUF parity");
     }
