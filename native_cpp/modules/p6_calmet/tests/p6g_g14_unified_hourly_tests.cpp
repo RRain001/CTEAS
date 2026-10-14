@@ -126,6 +126,7 @@ static std::vector<p6g::UpperSeries> upper(sys_seconds begin,
 struct SyntheticNativePhysics final : p6g::MultiHourPhysics {
     bool throw_at_mixht=false,inject_oracle=false,omit_w=false;
     bool expect_source_controls=false;
+    bool varied_upper_ziconv=false;
     p6g::G18E4SelectedPrepdiStageAdapter* selected_prepdi=nullptr;
     std::size_t runs=0;
     std::vector<p6::NativeHourStage> order;
@@ -171,6 +172,22 @@ struct SyntheticNativePhysics final : p6g::MultiHourPhysics {
                       static_cast<float>(f.hour_index+2));
             std::fill(f.next.ziconv_m.begin(),f.next.ziconv_m.end(),
                       static_cast<float>(f.hour_index+1));
+            if(varied_upper_ziconv) {
+                // The two USs must read *independent* prior ZICONV cells
+                // through frozen #53 upper_reference_cell, not SS NEARU.
+                for(std::size_t i=0;i<f.stations.upper.size();++i) {
+                    const auto& site=f.stations.upper[i];
+                    const auto pos=p6::upper_reference_cell(
+                        {site.local_x_m,site.local_y_m},
+                        f.grid.nx,f.grid.ny,f.grid.grid_km*1000.f);
+                    const auto index=static_cast<std::size_t>(pos.j-1)*
+                        static_cast<std::size_t>(f.grid.nx)+
+                        static_cast<std::size_t>(pos.i-1);
+                    f.next.ziconv_m.at(index)=
+                        static_cast<float>(f.hour_index+1)+
+                        (i==0?0.25f:0.75f);
+                }
+            }
         }
         if(stage==p6::NativeHourStage::CommitOutput) {
             // Fabricated data only for testing the full-field gate, never a
@@ -363,6 +380,7 @@ int main(){
         p6g::G18D2StationClockAuthority routed_clocks;
         SyntheticNativePhysics routed_mock;
         routed_mock.expect_source_controls=true;
+        routed_mock.varied_upper_ziconv=true;
         for(std::size_t h=0;h<26;++h) {
             if(h==12) {
                 p6g::G18E4SelectedPrepdiStageAdapter rejected(
@@ -408,6 +426,13 @@ int main(){
                           up.physical_aa_index.size()==2&&
                           up.source_reads.size()==2,
                           "G18E4 PREPDI/CGAMMA missing real G14 stage provenance");
+                    const auto previous_samples=
+                        p6g::g18b7_source_previous_station_ziconv(live,up);
+                    const float base=static_cast<float>(h);
+                    check(previous_samples.size()==2&&
+                          previous_samples[0]==(h==0?0.f:base+0.25f)&&
+                          previous_samples[1]==(h==0?0.f:base+0.75f),
+                          "G18E4 used current ZICONV or confused two upper-site previous histories");
                     const auto expected_slot=h+1>=24?3U:(h+1>=12?2U:1U);
                     for(std::size_t station=0;station<2;++station) {
                         check(up.chronological_older[station]==expected_slot&&
