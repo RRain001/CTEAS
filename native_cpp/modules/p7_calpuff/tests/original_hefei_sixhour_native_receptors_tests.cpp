@@ -295,6 +295,23 @@ int main(int argc,char** argv) {
                                                <<stage.step.sigma.adjust.sigma_z_mid_m<<","
                                                <<stage.step.sigma.adjust.sigma_z_end_m
                         <<" FIRST_BME_SOURCE_STAGE_DIAGNOSTIC=YES"<<"\n";
+                    if(stage.step.sigma.terrain.has_value()){
+                        const auto& t=*stage.step.sigma.terrain;
+                        std::cout<<std::setprecision(10)
+                            <<"P7_HEFEI_6H_NATIVE_SETPUF_END_FIRST_DIFFERENCE"
+                            <<" RECORD="<<global+1U
+                            <<" R="<<t.end_ratio
+                            <<" SIGTZ_END_INPUT="<<t.end_sigma_before_strain_m
+                            <<" CTADJ2_STRAIN="<<t.end_strain
+                            <<" SZADJ="<<t.end_sigma_adjusted_m
+                            <<" SIGTZ_END_OUTPUT="<<t.end_sigma_after_sigtz_m
+                            <<" VDZE1="<<t.end_virtual_distance_km
+                            <<" BIT_R=0x"<<std::hex<<std::bit_cast<std::uint32_t>(t.end_ratio)
+                            <<" BIT_STRAIN=0x"<<std::bit_cast<std::uint32_t>(t.end_strain)
+                            <<" BIT_SZADJ=0x"<<std::bit_cast<std::uint32_t>(t.end_sigma_adjusted_m)
+                            <<" BIT_SZE1=0x"<<std::bit_cast<std::uint32_t>(t.end_sigma_after_sigtz_m)
+                            <<std::dec<<"\n";
+                    }
                 }
             }
         }
