@@ -219,6 +219,13 @@ static void verify_source_staged_iavet(
     const auto initial_profiles=profiles;
     p6g::G17SelectedTerrainFixturePhysics stages(
         std::move(profiles),terrain,std::move(forcing));
+    rejects([&]{stages.provide_selected_readge_htfac_fixture(1.f,false);},
+            "G17D silently accepted source HTFAC from unproven GEO provenance");
+    rejects([&]{stages.provide_selected_readge_htfac_fixture(0.f,true);},
+            "G17D allowed HTFAC<=0 second boundary mode to masquerade as HTFAC=1");
+    stages.provide_selected_readge_htfac_fixture(1.f,true);
+    rejects([&]{stages.provide_selected_readge_htfac_fixture(1.f,true);},
+            "G17D allowed duplicate GEO HTFAC source selection");
     p6g::StationSet all=f.station_set;
     all.upper={station(58424,20000.f,20000.f),
                station(58425,50000.f,50000.f)};
@@ -589,8 +596,70 @@ static void verify_source_staged_iavet(
     stages.provide_selected_diagi_before_inter2(combined);
     rejects([&]{stages.provide_selected_diagi_before_inter2(combined);},
             "G17C3 duplicated source DIAGI station-profile handoff");
+    rejects([&]{
+        (void)stages.run(p6::NativeHourStage::DiagnoSmoothDivcelW,frame);
+    },"G17D ran final W before second WINDBC source stage");
     check(stages.run(p6::NativeHourStage::DiagnoInter2,frame).completed,
           "G17C3 original selected INTER2 rejected real MIXHTST-capped DIAGI");
+    const auto first_ub=stages.wind_stages().original_ub_west_east_mps;
+    const auto first_vb=stages.wind_stages().original_vb_south_north_mps;
+    check(stages.run(p6::NativeHourStage::DiagnoWindbcPostInter2Htfac1,frame).completed,
+          "G17D source original HTFAC=1 post-INTER2 WINDBC not run");
+    const auto& input=stages.selected_post_inter2_windbc();
+    const auto& blend=stages.wind_stages();
+    check(input.passes_per_layer==std::vector<int>(wind.nsmth.begin(),wind.nsmth.end()) &&
+          input.u_mps==blend.blended_u.component_mps &&
+          input.v_mps==blend.blended_v.component_mps,
+          "G17D post-INTER2 stage used old step-one field or wrong NSMTH");
+    for(std::size_t k=0;k<9;++k) {
+        for(std::size_t j=0;j<12;++j) {
+            const auto r=k*144+j*12;
+            check(input.ub_west_east_mps[k*24+j]==input.u_mps[r] &&
+                  input.ub_west_east_mps[k*24+12+j]==input.u_mps[r+11],
+                  "G17D source second WINDBC U uses previous stage boundary");
+        }
+        for(std::size_t i=0;i<12;++i) {
+            const auto r=k*144+i;
+            check(input.vb_south_north_mps[k*24+i]==input.v_mps[r] &&
+                  input.vb_south_north_mps[k*24+12+i]==input.v_mps[r+132],
+                  "G17D source second WINDBC V uses previous stage boundary");
+        }
+    }
+    rejects([&]{
+        (void)stages.run(p6::NativeHourStage::DiagnoWindbcPostInter2Htfac1,frame);
+    },"G17D duplicated post-INTER2 boundary before final W");
+    check(stages.run(p6::NativeHourStage::DiagnoSmoothDivcelW,frame).completed,
+          "G17D final SMOOTH/DIVCEL/W failed in native selected-stage chain");
+    const auto& tail=stages.selected_final_wind();
+    std::vector<float> dz;
+    for(std::size_t k=0;k<9;++k)
+        dz.push_back(wind.zface_m[k+1]-wind.zface_m[k]);
+    const auto independent=p6::original_smooth_divcel_w(
+        input,f.grid.grid_km*1000.f,f.grid.grid_km*1000.f,dz,false);
+    check(tail.u_mps==independent.u_mps &&
+          tail.v_mps==independent.v_mps &&
+          tail.w_face_mps==independent.w_face_mps &&
+          tail.divergence_per_s==independent.divergence_per_s &&
+          tail.ub_west_east_mps==independent.ub_west_east_mps &&
+          tail.vb_south_north_mps==independent.vb_south_north_mps,
+          "G17D mismatch against frozen original CALMET SMOOTH/DIVCEL/W kernel");
+    check(frame.fields.u_mps==tail.u_mps &&
+          frame.fields.v_mps==tail.v_mps &&
+          frame.fields.w_face_mps==tail.w_face_mps &&
+          tail.w_face_mps.size()==144*10 &&
+          tail.divergence_per_s.size()==144*9,
+          "G17D output not connected to native current-hour U/V/W fields");
+    for(std::size_t cell=0;cell<144;++cell)
+        check(tail.w_face_mps[cell]==0.f,
+              "G17D original W bottom boundary is nonzero");
+    for(float x:tail.w_face_mps)
+        check(std::isfinite(x),"G17D final source W contains nonfinite value");
+    check(blend.original_ub_west_east_mps==first_ub &&
+          blend.original_vb_south_north_mps==first_vb,
+          "G17D overwrote original pre-INTER2 WINDBC provenance");
+    rejects([&]{
+        (void)stages.run(p6::NativeHourStage::DiagnoSmoothDivcelW,frame);
+    },"G17D repeated mass segment in same source hour");
     check(!stages.run(p6::NativeHourStage::CompGridMixht,frame).completed,
           "G17B4 invented native multi-station COMP acceptance");
     check(frame.next.ziconv_m==prior.ziconv_m,
@@ -630,6 +699,7 @@ int main(int argc,char** argv){
                     "G17C_SECOND_TEMP_NATIVE_SOLAR_HEATFX_AIRDEN_PASS "
                     "G17C2_SOURCE_FRADJ_STABLE_DAYTIME_ELUSTR_PASS "
                     "G17C3_STHEOR_ELUSTR2_MIXHTST_DIAGI_SOURCE_SELECTED_PASS "
+                    "G17D_HTFAC_SECOND_WINDBC_SMOOTH_DIVCEL_W_FROZEN_KERNEL_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
