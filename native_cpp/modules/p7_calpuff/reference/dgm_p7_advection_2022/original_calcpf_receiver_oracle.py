@@ -85,6 +85,8 @@ FIELD_NAMES = ("syrec", "szrec", "zpr", "zrpole", "f1", "xi1", "xi2",
 # only in a throwaway compiled vendor copy. Binary output is read-only, and
 # the complete unmodified original puff.con/DGM hashes MUST remain exact.
 H9_Z_TRACE_NAME = "dgm_h9_puff588_setpuf_z.bin"
+H9_MET_TRACE_NAME = "dgm_h9_puff588_setpuf_met.bin"
+H9_MET_RECORD = struct.Struct("<3i3f")
 H9_Z_RECORD = struct.Struct("<3i8f")
 H9_Z_HELPERS = """
 c --- Write-only exact H9 vertical SETPUF source state, no state mutation
@@ -103,6 +105,26 @@ c --- Write-only exact H9 vertical SETPUF source state, no state mutation
          ldgm=.true.
       endif
       write(1917) phase,ii,ndathrb,szb,szm,sze,vzb,vzm,vze,tm,te
+      return
+      end
+"""
+H9_MET_HELPERS = """
+c --- Original H9 actual input to SETPUF from COMP/TURBSET, write only
+      subroutine dgmh9met(ii,jdstab,tsigv,tsigw,el)
+      include 'params.puf'
+      include 'datehr.puf'
+      integer ii,jdstab
+      real tsigv,tsigw,el
+      logical ldgm
+      save ldgm
+      data ldgm/.false./
+      if(ii.ne.588.or.ndathrb.ne.202200108) return
+      if(.not.ldgm)then
+         open(1918,file='dgm_h9_puff588_setpuf_met.bin',
+     &        access='stream',form='unformatted',status='replace')
+         ldgm=.true.
+      endif
+      write(1918) ii,jdstab,ndathrb,tsigv,tsigw,el
       return
       end
 """
@@ -139,8 +161,39 @@ def add_h9_setpuf_trace(source: str) -> str:
             + ",".join(parts[:4]) + ",\n"
             + "     &                " + ",".join(parts[4:]) + ")\n"
         )
-        source=source.replace(anchor + "\n",anchor + "\n" + statement)
-    return source + H9_Z_HELPERS
+        if phase==1:
+            # SETPUF receives JDSTAB/TSIGV/TSIGW/EL as *call arguments*.
+            # Record these BEFORE the first inversion; do not infer them
+            # from COMP IPGT or from the original post-step DGM output.
+            met_call="            call dgmh9met(ii,jdstab,tsigv,tsigw,el)\n"
+            source=source.replace(anchor + "\n",
+                                  met_call+anchor + "\n" + statement)
+        else:
+            source=source.replace(anchor + "\n",anchor + "\n" + statement)
+    return source + H9_Z_HELPERS + H9_MET_HELPERS
+
+def audit_h9_met_trace(path: Path, out: Path) -> None:
+    if not path.is_file() or path.stat().st_size % H9_MET_RECORD.size:
+        raise AssertionError("original H9 SETPUF met input trace missing/misaligned")
+    rows=[]
+    with path.open("rb") as handle:
+        while raw:=handle.read(H9_MET_RECORD.size):
+            ii,jdstab,packed,tsigv,tsigw,el=H9_MET_RECORD.unpack(raw)
+            if ii!=588 or packed!=202200108 or not (1<=jdstab<=6):
+                raise AssertionError("bad native-independent SETPUF TURBSET key")
+            rows.append((jdstab,tsigv,tsigw,el))
+    if not rows:
+        raise AssertionError("no original H9 SETPUF incoming met rows")
+    for jdstab,tsigv,tsigw,el in rows[:5]:
+        print(f"P7_ORIGINAL_H9_SETPUF_TURBSET_INPUT=SOURCE_ONLY"
+              f" JDSTAB={jdstab} TSIGV={tsigv:.10g}"
+              f" TSIGW={tsigw:.10g} EL={el:.10g}"
+              " NATIVE_PHYSICS_PARITY=OPEN")
+    out.write_text(json.dumps({
+        "scope":"vendor original H9 puff588 SETPUF call-input meteorology",
+        "rows":rows,"sha256":original.sha256_file(path),
+        "original_vendor_modified":False,
+        "native_state_injected":False},indent=2)+"\n")
 
 def audit_h9_setpuf_trace(path: Path, out: Path) -> None:
     if not path.is_file() or path.stat().st_size % H9_Z_RECORD.size:
@@ -257,6 +310,8 @@ def main() -> None:
     if args.trace_h9_setpuf:
         audit_h9_setpuf_trace(run / H9_Z_TRACE_NAME,
                              out / "original-h9-puff588-setpuf-z.json")
+        audit_h9_met_trace(run / H9_MET_TRACE_NAME,
+                           out / "original-h9-puff588-setpuf-met.json")
     trace = run / trace_name
     if not trace.is_file() or trace.stat().st_size % (RECORD.size+16):
         raise AssertionError("missing or misaligned original CALCPF H3 trace")
