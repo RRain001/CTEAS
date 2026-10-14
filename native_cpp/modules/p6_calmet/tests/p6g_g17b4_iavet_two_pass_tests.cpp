@@ -24,6 +24,7 @@
 #include "cteas/p6/p6g_g18d4_comp_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18d5_source_mixht_controls.hpp"
 #include "cteas/p6/p6g_g18d6_station_upper_assignment.hpp"
+#include "cteas/p6/p6g_g18e1_stheor_stage_adapter.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -645,9 +646,65 @@ static void verify_source_staged_iavet(
                   combined.inter2_present[z]==initial_profiles.inter2_present[z],
                   "G17C3 changed source PREPDI upper-air columns");
         }
-    stages.provide_selected_diagi_before_inter2(combined);
+    // G18E1: compute selected STHEOR/ELUSTR2/MIXHTST/DIAGI in the
+    // frozen #53 G14 stage slot, not outside the stage as manual setup.
+    p6g::G18E1SelectedStheorStageAdapter stheor_stage(
+        stages,initial_profiles,surface,selected,sc);
+    check(!stheor_stage.run(
+              p6::NativeHourStage::DiagnoStheorElustr2Mixhtst,frame).completed,
+          "G18E1 test-only station stage impersonated production physics");
+    rejects([&]{(void)stheor_stage.stations();},
+            "G18E1 exposed DIAGI before original stage");
+    rejects([&]{
+        stheor_stage.run_selected(
+            p6::NativeHourStage::CompGridMixht,frame,true);
+    },"G18E1 allowed STHEOR after DIAGNO outside the frozen G14 slot");
+    rejects([&]{
+        stheor_stage.run_selected(
+            p6::NativeHourStage::DiagnoStheorElustr2Mixhtst,frame,false);
+    },"G18E1 promoted partial physical station state into full production");
+    auto wrong_slot=slot;
+    wrong_slot.end+=hours{1};
+    p6g::MultiHourFrame wrong_hour{
+        0,f.grid,all,f.series.hourly.front(),wrong_slot,upper,
+        &wind,prior,prior,{}};
+    rejects([&]{
+        stheor_stage.run_selected(
+            p6::NativeHourStage::DiagnoStheorElustr2Mixhtst,
+            wrong_hour,true);
+    },"G18E1 accepted a future DIAGI slot over previous-hour state");
+    stheor_stage.run_selected(
+        p6::NativeHourStage::DiagnoStheorElustr2Mixhtst,frame,true);
+    check(stheor_stage.selected_complete()&&
+          stheor_stage.selected_hour_index()==frame.hour_index &&
+          stheor_stage.stations().size()==diagi.size(),
+          "G18E1 selected G14 STHEOR source-stage output absent");
+    for(std::size_t i=0;i<diagi.size();++i) {
+        const auto& actual=stheor_stage.stations()[i];
+        const auto& expected=diagi[i];
+        check(actual.surface_id==expected.surface_id&&
+              actual.upper_id==expected.upper_id&&
+              actual.cell==expected.cell&&
+              actual.levels_filled==expected.levels_filled&&
+              actual.station_mixing.dptt_for_comp_k==
+                  expected.station_mixing.dptt_for_comp_k&&
+              actual.diagi_profile.u_mps==expected.diagi_profile.u_mps&&
+              actual.diagi_profile.v_mps==expected.diagi_profile.v_mps,
+              "G18E1 staged DIAGI is not the same G17C3 native calculation");
+    }
+    const auto& staged_profiles=stheor_stage.observed_after_diagi();
+    check(staged_profiles.wind1_u_mps==combined.wind1_u_mps&&
+          staged_profiles.wind1_v_mps==combined.wind1_v_mps&&
+          staged_profiles.inter2_u_mps==combined.inter2_u_mps&&
+          staged_profiles.inter2_v_mps==combined.inter2_v_mps&&
+          staged_profiles.inter2_present==combined.inter2_present,
+          "G18E1 altered source PREPDI or missed the STHEOR station handoff");
+    rejects([&]{
+        stheor_stage.run_selected(
+            p6::NativeHourStage::DiagnoStheorElustr2Mixhtst,frame,true);
+    },"G18E1 duplicated source STHEOR/MIXHTST current-hour stage");
     rejects([&]{stages.provide_selected_diagi_before_inter2(combined);},
-            "G17C3 duplicated source DIAGI station-profile handoff");
+            "G18E1 permitted a second DIAGI handoff outside source stage");
     rejects([&]{
         (void)stages.run(p6::NativeHourStage::DiagnoSmoothDivcelW,frame);
     },"G17D ran final W before second WINDBC source stage");
