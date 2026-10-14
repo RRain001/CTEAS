@@ -38,7 +38,8 @@ std::string control_bytes(const std::string& path) {
 
 int main(int argc,char** argv) {
   try {
-    need(argc==4,"usage: p7_hefei_real_h3 MET.DAT puff.inp puff.con");
+    need(argc==4 || argc==5,
+         "usage: p7_hefei_real_h3 MET.DAT puff.inp puff.con [read-only-native-trace.tsv]");
     const auto control=control_bytes(argv[2]);
     const auto deck=ControlFile::read_file(argv[2]);
     need(deck.required_int("METFM")==1 &&
@@ -140,6 +141,21 @@ int main(int argc,char** argv) {
              receptors.ibsamp==1 && receptors.jbsamp==1 &&
              receptors.mesh_down==1 && receptors.discrete.empty(),
              "original selected 2500-grid receptor geometry drifted");
+        struct H3StageRecord {
+            int puff_id=0;
+            float before_time_s=0.0F,after_time_s=0.0F;
+            OriginalCalcpfReceiverIntermediate intermediate;
+        };
+        std::vector<H3StageRecord> native_h3_stages;
+        OriginalCalcpfIntermediateHook h3_hook;
+        if(argc==5) {
+            h3_hook=[&](const RiseCompSamplingState& state,
+                        const OriginalCalcpfReceiverIntermediate& row) {
+                if(row.receptor_index!=2468U)return;
+                native_h3_stages.push_back({state.puff_id,
+                    state.before.travel_time_s,state.after.travel_time_s,row});
+            };
+        }
         const auto receptor_sampler=make_original_flat_calcpf_sampler(
             receptors,header.dx_m,3600.0F,3.0F,
             OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2,
@@ -154,7 +170,7 @@ int main(int argc,char** argv) {
                     receptors.sampling_nx,receptors.sampling_ny,position,
                     state.receptor_brunt_vaisala_s,
                     state.receptor_effective_wind_ms);
-            },true);
+            },true,h3_hook);
         OriginalCompRiseMultiPuffHours driver;
         const OriginalCompPuffBounds bounds{0.0F,50.0F,0.0F,50.0F};
         // Capacity is deliberately nonbinding for the first hour. The
@@ -167,6 +183,48 @@ int main(int argc,char** argv) {
              hour.receptor_concentrations.size()==2500U &&
              driver.completed_hours()==1U,
              "real first-hour native 1275-step/2500-receptor integration failed");
+        if(argc==5) {
+            need(!native_h3_stages.empty(),
+                 "native original-source hotspot intermediate trace is empty");
+            std::ofstream stage_file(argv[4],std::ios::binary);
+            need(bool(stage_file),"cannot create requested read-only native H3 trace");
+            stage_file<<std::setprecision(9);
+            std::size_t previous_step=0;
+            bool have_previous=false;
+            for(const auto& item:native_h3_stages) {
+                std::size_t matched=hour.steps.size();
+                for(std::size_t idx=0;idx<hour.steps.size();++idx) {
+                    const auto& st=hour.steps[idx];
+                    if(st.puff_id==item.puff_id &&
+                       st.step.before.travel_time_s==item.before_time_s &&
+                       st.step.after.travel_time_s==item.after_time_s) {
+                        need(matched==hour.steps.size(),
+                             "multiple native COMP substeps match one CALCPF event");
+                        matched=idx;
+                    }
+                }
+                need(matched<hour.steps.size() &&
+                     (!have_previous || previous_step<matched),
+                     "CALCPF intermediate event not in canonical COMP step order");
+                previous_step=matched;
+                have_previous=true;
+                const auto& st=hour.steps[matched];
+                const auto& v=item.intermediate;
+                stage_file<<matched+1U<<" "<<item.puff_id<<" "<<st.ksam<<" "
+                          <<v.sigma_y_m<<" "<<v.sigma_z_m<<" "
+                          <<v.puff_height_m<<" "<<v.receptor_pole_m<<" "
+                          <<v.vertical_factor<<" "<<v.xi1<<" "<<v.xi2<<" "
+                          <<v.t1<<" "<<v.t2<<" "<<v.qold<<" "<<v.qnew<<" "
+                          <<v.xtemp<<" "<<v.concentration<<"\n";
+            }
+            stage_file.flush();
+            need(bool(stage_file),"native H3 stage trace flush failed");
+            std::cout<<"P7_NATIVE_H3_CALCPF_STAGE_TRACE=PASS"
+                     <<" RECORDS="<<native_h3_stages.size()
+                     <<" RECEPTOR_I=19 RECEPTOR_J=50"
+                     <<" FIELD_COUNT=13"
+                     <<" ORIGINAL_VENDOR_STAGE_PARITY=NOT_YET_COMPARED\n";
+        }
         std::size_t dried=0,receiver_nonzero=0;
         double dry_mass=0.0,max_abs_diff=0.0,sum_abs_diff=0.0;
         double native_total=0.0,reference_total=0.0;
