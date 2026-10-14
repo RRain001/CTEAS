@@ -481,7 +481,17 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     std::optional<DryDepositionStep> dry_input_resistance;
     if(control.gaussian_dry){
         const auto& setup=control.gaussian_dry->setup;
-        const auto index=sampled.cell.offset_0based;
+        // COMP L10695-10703 updates IXMET/IYMET at the post-ADVECT
+        // midpoint before DRY L11084; VDCOMP reads that meteorological
+        // cell, NOT the earlier PUFFDZ/ADVECT starting cell.
+        // Original Hefei DGM #5823 puff200: start cell 1678 has
+        // QSW=522.7593384, while midpoint cell 1628 has the source-exact
+        // QSW=522.7720337 and TEMPK=284.1499329. This accounts for
+        // the first demonstrated RF/VD/QM history divergence.
+        const auto dry_cell=original_met_cell_clamped(
+            0.5F*(before.x_cells+moved.state.x_cells),
+            0.5F*(before.y_cells+moved.state.y_cells),met.nx,met.ny);
+        const auto index=dry_cell.offset_0based;
         const auto has_cell=[index](const auto& field){
             return index<field.size();
         };
