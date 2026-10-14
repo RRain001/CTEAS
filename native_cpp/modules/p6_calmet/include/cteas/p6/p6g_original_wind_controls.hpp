@@ -15,6 +15,8 @@
 namespace cteas::calmet::p6g {
 struct OriginalWindControls {
     std::array<float,9> bias{};
+    // The 10 vertical faces are original ZFACE(NZ+1), never G8 test constants.
+    std::array<float,10> zface_m{};
     std::array<int,9> nsmth{},nintr2{};
     float rmin_km{},rmax1_km{},rmax2_km{},rmax3_km{},
           r1_km{},r2_km{};
@@ -101,6 +103,7 @@ inline OriginalWindControls parse_original_wind_controls(
     v.rmax2_km=real("RMAX2");v.rmax3_km=real("RMAX3");
     v.r1_km=real("R1");v.r2_km=real("R2");
     array("BIAS",v.bias);
+    array("ZFACE",v.zface_m);
     array("NSMTH",v.nsmth);
     array("NINTR2",v.nintr2);
     // READCF calmet.for L26579-L26612 is a mandatory post-parse mutation.
@@ -118,6 +121,11 @@ inline OriginalWindControls parse_original_wind_controls(
                  v.r1_km,v.r2_km})
         if(!std::isfinite(x)||x<=0.f)
             throw std::invalid_argument("P6G invalid original radius");
+    for(std::size_t k=0;k<v.zface_m.size();++k){
+        if(!std::isfinite(v.zface_m[k])||
+           (k>0&&!(v.zface_m[k]>v.zface_m[k-1])))
+            throw std::invalid_argument("P6G original ZFACE must be finite/increasing");
+    }
     for(std::size_t k=0;k<v.bias.size();++k){
         if(!std::isfinite(v.bias[k])||v.bias[k]<-1.f||v.bias[k]>1.f||
            v.nsmth[k]<0||v.nsmth[k]>1000||
