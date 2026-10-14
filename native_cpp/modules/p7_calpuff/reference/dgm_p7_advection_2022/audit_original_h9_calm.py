@@ -72,12 +72,56 @@ def main() -> None:
         )
     if not selected:
         raise AssertionError("pinned original H9 puff585 KSAM1 is missing")
+    # The first actual unsupported native calm/terrain/dry/receptor boundary
+    # is part of the immutable ORIGINAL 143-hour source trace. Check it as
+    # binary32, never as rounded decimal output or a fitted tolerance.
+    if len(selected) != 1:
+        raise AssertionError(f"expected one original H9 puff585 KSAM1 record, got {len(selected)}")
+    first = selected[0]
+    source_identity = {
+        "global_record_1based": 16420,
+        "packed_date_hour": H9_PACKED,
+        "puff_id": PUFF,
+        "ksam": KSAM,
+        "icode": 1,
+        "PGT": 3,
+        "lcalm": 1,
+    }
+    for field, expected in source_identity.items():
+        if first[field] != expected:
+            raise AssertionError(
+                f"original H9 calm source identity changed: {field}="
+                f"{first[field]} expected={expected}"
+            )
+    expected_real4 = {
+        "comp_wind_speed_ms": 0x3EB70DE3,
+        "x_begin_cells": 0x424623BE,
+        "y_begin_cells": 0x41E5A121,
+        "x_after_cells": 0x4249BE4C,
+        "y_after_cells": 0x41E7182F,
+        "sigy_after_m": 0x438FB1D8,
+        "sigz_after_m": 0x4313E71E,
+    }
+    def real4_bits(value: float) -> int:
+        return struct.unpack("<I", struct.pack("<f", value))[0]
+
+    for field, expected in expected_real4.items():
+        actual = real4_bits(first[field])
+        if actual != expected:
+            raise AssertionError(
+                f"original H9 calm REAL4 source drift: {field}="
+                f"0x{actual:08x} expected=0x{expected:08x}"
+            )
+    if not (0.001 <= first["comp_wind_speed_ms"] < 0.5):
+        raise AssertionError("original H9 LCALM and selected WSCALM=0.5 disagree")
     report = {
         "status": "ORIGINAL_FORTRAN_SOURCE_ONLY",
         "full_dgm_rows": count,
         "full_dgm_sha256": actual_sha,
         "key": {"hour": 9, "puff": PUFF, "ksam": KSAM},
         "records": selected,
+        "original_h9_source_bitwise": "PASS",
+        "expected_real4_bits": {k: f"0x{v:08x}" for k, v in expected_real4.items()},
         "native_state_injected": False,
         "source_fortran_modified": False,
     }
@@ -96,6 +140,7 @@ def main() -> None:
         f" XY_AFTER={first['x_after_cells']:.9g},{first['y_after_cells']:.9g}"
         f" SIGY={first['sigy_after_m']:.9g}"
         f" SIGZ={first['sigz_after_m']:.9g}"
+        " ORIGINAL_REAL4_SOURCE=BITWISE_PASS"
         " NATIVE_PHYSICS_PARITY=NOT_YET_ACCEPTED"
     )
 
