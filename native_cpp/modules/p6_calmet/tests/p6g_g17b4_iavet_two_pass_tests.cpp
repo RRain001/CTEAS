@@ -306,8 +306,19 @@ static void verify_source_staged_iavet(
           "G17C source HEATFX differs from identical PR #53 immutable kernel");
     hi.temp_k=surface.first_temperature();
     const auto wrong_flux=p6e::heatfx(hi);
-    check(wrong_flux.sensible_wm2!=selected.sensible_heat_wm2,
-          "G17C test cannot distinguish stale first vs final temperature");
+    // Original HEATFX uses the fixed -0.1 W/m2 nocturnal land branch:
+    // at night QH is independent of both SURFVAR temperatures. It is
+    // incorrect to demand temperature sensitivity in that source branch.
+    // Retain the first-vs-second temperature discrimination in daylight.
+    const bool any_sun=std::any_of(selected.sun_sine.begin(),
+                                  selected.sun_sine.end(),
+                                  [](float x){return x>0.f;});
+    if(any_sun)
+        check(wrong_flux.sensible_wm2!=selected.sensible_heat_wm2,
+              "G17C daytime HEATFX did not distinguish pre/post-FRADJ TEMP2D");
+    else
+        check(wrong_flux.sensible_wm2==selected.sensible_heat_wm2,
+              "G17C nocturnal HEATFX not independent of TEMP2D as original");
     check(selected.density_kg_m3==
           p6g::source_airden_nears(selected.nearest_surface,second,
                                   f.series.hourly.front()),
