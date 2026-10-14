@@ -181,6 +181,19 @@ int main(int argc,char** argv) {
         refuse([&]{stages.provide_post_slope(wrong_windbc);},
                "G16 accepted boundary reconstructed from incorrect first-pass U");
         stages.provide_post_slope(corrected);
+        refuse([&]{(void)stages.run(p6::NativeHourStage::DiagnoInter2,hour);},
+               "G16 accepted original INTER2 without post-STHEOR DIAGI station refresh");
+        auto stale=profiles;
+        stale.end+=hours{1};
+        refuse([&]{stages.provide_selected_diagi_after_wind1(stale);},
+               "G16 accepted next-hour STHEOR DIAGI profiles");
+        auto corrupted=profiles;
+        corrupted.inter2_u_mps[2]+=0.125f; // upper US1 from PREPDI
+        refuse([&]{stages.provide_selected_diagi_after_wind1(corrupted);},
+               "G16 accepted a replaced PREPDI upper station column");
+        stages.provide_selected_diagi_after_wind1(profiles);
+        refuse([&]{stages.provide_selected_diagi_after_wind1(profiles);},
+               "G16 accepted duplicate DIAGI station refresh");
         const auto b=stages.run(p6::NativeHourStage::DiagnoInter2,hour);
         need(b.completed&&b.source==p6::NativeHourSource::NativeCpp&&
              stages.selected_result().inter2_complete,
