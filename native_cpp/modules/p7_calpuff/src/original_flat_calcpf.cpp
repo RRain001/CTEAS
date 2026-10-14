@@ -162,7 +162,12 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
         }
         const float sy=static_cast<float>(s.sigmas.step.sigma_y_mid_m);
         const float sz=static_cast<float>(s.sigmas.step.sigma_z_mid_m);
-        const float end_sy=static_cast<float>(s.sigmas.step.sigma_y_end_m);
+        // Original COMP L11169-11174 forms PUFFR=RCONST*SYE1 from
+        // /CURRENT/ AFTER SETPUF has added BIDFNL. PUFRECS L4969-4970
+        // likewise clips using the adjusted SYB1/SYE1, not the stored
+        // pre-BID dispersion sigma. Screening with step.sigma_y_end_m
+        // erroneously discards real edge receptors.
+        const float end_sy=static_cast<float>(s.sigmas.adjust.sigma_y_end_m);
         const float lid=s.vmass.reflecting_lid_m;
         if(!std::isfinite(sy)||sy<=0.0F || !std::isfinite(sz) ||
            sz<0.0F || !std::isfinite(end_sy)||end_sy<=0.0F ||
