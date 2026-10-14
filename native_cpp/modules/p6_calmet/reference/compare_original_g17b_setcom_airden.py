@@ -26,10 +26,10 @@ def extract(source: str, beginning: str, ending: str, after: str = "") -> str:
     return source[start:finish]
 
 def oracle_source(vendor: str) -> str:
-    selected = extract(vendor, "       do 20 i=1,nx",
-                       " 20    continue", "      subroutine setcom(ldb)")
-    airden = extract(vendor, "       do 200 j=1,ny",
-                     " 200   continue", "      subroutine airden(")
+    selected = extract(vendor, "      do 20 i=1,nx",
+                       "20    continue", "      subroutine setcom(ldb)")
+    airden = extract(vendor, "      do 200 j=1,ny",
+                     "200   continue", "      subroutine airden(")
     for term in ("dmin2=rmax", "dist2.lt.dmin2", "nears(i,j)=ksv"):
         if term.lower() not in selected.lower():
             raise ValueError("SETCOM original semantics changed: " + term)
