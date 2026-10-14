@@ -27,6 +27,9 @@ struct MultiHourFrame {
     const SurfaceHour& surface;
     const InputHour& input;
     const std::vector<UpperSeries>& upper;
+    // Null only for explicit synthetic in-memory scheduler tests.
+    // File-backed G15 stages receive the actual parsed met.inp controls.
+    const OriginalWindControls* source_controls;
     const p6::NativeGridMemory& previous;
     p6::NativeGridMemory next;
     p6::NativeHourFields fields;
@@ -103,6 +106,7 @@ public:
         if (obs.end != slot.end || obs.end - obs.start != std::chrono::hours{1})
             throw std::runtime_error("P6G SURF and upper bound hour no longer coincide");
         MultiHourFrame frame{i, grid_, stations_, obs, slot, upper_,
+                             source_controls_ ? &*source_controls_ : nullptr,
                              memory_, memory_, {}};
         // Reuse the accepted #53 stage list byte-for-byte: no second physics
         // scheduler authority or altered DIAGNO/COMP execution order.
