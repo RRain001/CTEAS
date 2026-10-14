@@ -204,6 +204,58 @@ int main(int argc,char** argv) {
             sum_abs_diff+=diff;
             if(diff>max_abs_diff){max_abs_diff=diff;max_diff_cell=i;}
         }
+        // Compare spatial footprints, not only largest absolute errors.
+        // Close field totals can conceal a displaced or widened plume;
+        // centroids and signed row/column residuals distinguish that
+        // from a nearly uniform mass scaling error.
+        double nx_moment=0.0,ny_moment=0.0;
+        double rx_moment=0.0,ry_moment=0.0;
+        double positive_error=0.0,negative_error=0.0;
+        std::size_t positive_cells=0,negative_cells=0;
+        std::vector<double> signed_row_error(50U,0.0);
+        std::vector<double> signed_column_error(50U,0.0);
+        for(std::size_t cell=0;cell<2500U;++cell){
+            const double n=hour.receptor_concentrations[cell];
+            const double o=expected[cell];
+            const double x=static_cast<double>(cell%50U)+0.5;
+            const double y=static_cast<double>(cell/50U)+0.5;
+            nx_moment+=n*x;ny_moment+=n*y;
+            rx_moment+=o*x;ry_moment+=o*y;
+            const double delta=n-o;
+            signed_row_error[cell/50U]+=delta;
+            signed_column_error[cell%50U]+=delta;
+            if(delta>0.0){positive_error+=delta;++positive_cells;}
+            if(delta<0.0){negative_error+=-delta;++negative_cells;}
+        }
+        need(native_total>0.0 && reference_total>0.0,
+             "native/original first-hour H-3 field is empty");
+        const double native_x=nx_moment/native_total;
+        const double native_y=ny_moment/native_total;
+        const double reference_x=rx_moment/reference_total;
+        const double reference_y=ry_moment/reference_total;
+        const auto top_positive_row=std::max_element(
+            signed_row_error.begin(),signed_row_error.end());
+        const auto top_negative_row=std::min_element(
+            signed_row_error.begin(),signed_row_error.end());
+        std::cout<<std::setprecision(9)
+                 <<"P7_HEFEI_H3_FOOTPRINT_DIAGNOSTIC"
+                 <<" NATIVE_CENTROID_CELL_X="<<native_x
+                 <<" NATIVE_CENTROID_CELL_Y="<<native_y
+                 <<" REFERENCE_CENTROID_CELL_X="<<reference_x
+                 <<" REFERENCE_CENTROID_CELL_Y="<<reference_y
+                 <<" DELTA_CENTROID_X_CELLS="<<native_x-reference_x
+                 <<" DELTA_CENTROID_Y_CELLS="<<native_y-reference_y
+                 <<" POSITIVE_DIFF_CELLS="<<positive_cells
+                 <<" NEGATIVE_DIFF_CELLS="<<negative_cells
+                 <<" TOTAL_POSITIVE_DIFF_BQ_M3="<<positive_error
+                 <<" TOTAL_NEGATIVE_DIFF_BQ_M3="<<negative_error
+                 <<" LARGEST_POSITIVE_ROW_J="<<
+                    std::distance(signed_row_error.begin(),top_positive_row)+1
+                 <<" POSITIVE_ROW_SUM_BQ_M3="<<*top_positive_row
+                 <<" LARGEST_NEGATIVE_ROW_J="<<
+                    std::distance(signed_row_error.begin(),top_negative_row)+1
+                 <<" NEGATIVE_ROW_SUM_BQ_M3="<<*top_negative_row
+                 <<" ORIGINAL_NUMERICAL_PARITY=OPEN\\n";
         std::sort(mismatches.begin(),mismatches.end(),
             [](const auto& left,const auto& right){
                 return std::abs(left.error)>std::abs(right.error);
