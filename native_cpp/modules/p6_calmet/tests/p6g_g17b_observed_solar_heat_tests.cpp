@@ -6,6 +6,8 @@
 #include <chrono>
 #include <cmath>
 #include <exception>
+#include <fstream>
+#include <iterator>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -36,7 +38,8 @@ struct Fixture {
         geo.xorigin_km=510.885f;geo.yorigin_km=3531.269f;
         geo.iwat1=50;geo.iwat2=55;
         geo.landuse.assign(144,20);geo.landuse[0]=50;
-        geo.terrain_m.assign(144,200.f);
+        for(int j=0;j<12;++j)for(int i=0;i<12;++i)
+            geo.terrain_m.push_back(100.f+60.f*i+35.f*j);
         geo.albedo.assign(144,0.2f);
         geo.bowen.assign(144,0.5f);
         geo.hcg.assign(144,0.2f);
@@ -48,12 +51,16 @@ struct Fixture {
         p6g::SurfaceHour h;
         h.start=start;h.end=surface.end;
         h.by_station.resize(2);
+        h.by_station[0].wind_valid=true;
+        h.by_station[0].wind_speed_mps=5.f;
         h.by_station[0].temperature_k=281.f;
         h.by_station[0].temperature_valid=true;
         h.by_station[0].humidity_pct=60;
         h.by_station[0].humidity_valid=true;
         h.by_station[0].cloud_valid=true;
         h.by_station[0].opaque_cloud_tenths=2;
+        h.by_station[1].wind_valid=true;
+        h.by_station[1].wind_speed_mps=5.f;
         h.by_station[1].temperature_k=302.f;
         h.by_station[1].temperature_valid=true;
         h.by_station[1].humidity_pct=73;
@@ -143,11 +150,99 @@ static void verify_real_solar(const Fixture& f) {
     for(float v:r.sensible_heat_wm2)
         check(std::isfinite(v),"G17B nonfinite source HEATFX flux");
 }
-int main() {
+static void verify_selected_slope_bridge(
+    const Fixture& f,const p6g::OriginalWindControls& controls) {
+    const auto result=f.calculate();
+    const auto terrain=p6g::prepare_g11_terrain(f.geo,35.f);
+    p6g::G16ObservedProfiles profiles;
+    profiles.end=f.surface.end;
+    profiles.station_ids={58321,58322,58424,58425};
+    for(int k=0;k<9;++k) {
+        const std::vector<float> u{3.f,-3.f,8.f,9.f};
+        const std::vector<float> v{4.f,4.f,-2.f,10.f};
+        profiles.wind1_u_mps.insert(
+            profiles.wind1_u_mps.end(),u.begin(),u.end());
+        profiles.wind1_v_mps.insert(
+            profiles.wind1_v_mps.end(),v.begin(),v.end());
+    }
+    profiles.wind1_present.assign(36,1);
+    profiles.inter2_u_mps=profiles.wind1_u_mps;
+    profiles.inter2_v_mps=profiles.wind1_v_mps;
+    profiles.inter2_present=profiles.wind1_present;
+    for(std::size_t k=4;k<9;++k){
+        profiles.inter2_present[k*4]=0;
+        profiles.inter2_u_mps[k*4]=999.f;
+        profiles.inter2_v_mps[k*4]=999.f;
+    }
+    p6g::InputHour slot{};
+    slot.end=result.end;slot.upper.resize(2);
+    std::vector<p6g::UpperSeries> upper(2);
+    upper[0].station_id=58424;upper[1].station_id=58425;
+    p6g::StationSet all=f.deck;
+    all.upper={station(58424,20000.f,20000.f),
+               station(58425,50000.f,50000.f)};
+    p6::NativeGridMemory previous;
+    previous.zi_m.assign(144,0.f);
+    previous.ziconv_m.assign(144,0.f);
+    previous.dptt_k.assign(144,0.f);
+    const auto& surface=f.surface.hourly.front();
+    p6g::MultiHourFrame frame{0,f.geo,all,surface,slot,upper,
+                             &controls,previous,previous,{}};
+    p6g::G17SelectedTerrainFixturePhysics stages(
+        std::move(profiles),terrain,result.fradj_fixture);
+    const auto wind=stages.run(p6::NativeHourStage::DiagnoWind1,frame);
+    check(wind.completed&&wind.source==p6::NativeHourSource::NativeCpp,
+          "G17B computed source hour failed to reach WIND1");
+    const auto& first=stages.wind_stages().first_guess;
+    p6::WindUV original{first.u_mps,first.v_mps};
+    const auto fradj=stages.run(p6::NativeHourStage::DiagnoFradj,frame);
+    check(fradj.completed,"G17B observed SURFVAR TEMP2D failed FRADJ");
+    check(!stages.run(p6::NativeHourStage::DiagnoHeatfx,frame).completed,
+          "G17B falsely approved complete native P6E HEATFX controls");
+    stages.provide_slope_heat(result.slope_fixture);
+    const auto slope=stages.run(p6::NativeHourStage::DiagnoSlope,frame);
+    check(slope.completed,"G17B computed solar HEATFX QH did not enter SLOPE");
+
+    // The same source-observed TEMP2D and source-computed solar QH must give
+    // EXACTLY the G11 combined physical kernel field, not only finite values.
+    p6g::TerrainHourG11 model_hour;
+    model_hour.end=result.end;
+    model_hour.provenance=p6g::TerrainHourProvenance::SyntheticReferenceFixture;
+    model_hour.isurft=-1;
+    model_hour.domain_temperature_k=result.fradj_fixture.domain_temperature_k;
+    model_hour.critfn=result.fradj_fixture.critfn;
+    model_hour.lapse_k_per_m=result.fradj_fixture.lapse_k_per_m;
+    model_hour.temperature_k=result.observed.temp2d_k;
+    model_hour.sensible_heat_w_m2=result.sensible_heat_wm2;
+    const auto zface=std::vector<float>(
+        controls.zface_m.begin(),controls.zface_m.end());
+    const auto direct=p6g::apply_g11_terrain_after_wind1(
+        terrain,model_hour,zface,original);
+    check(stages.after_slope().u==direct.field.u&&
+          stages.after_slope().v==direct.field.v,
+          "G17B source-observed-SOLAR-HEATFX corrected U/V differ from native G11");
+    check(stages.run(p6::NativeHourStage::DiagnoWindbcFirstGuess,frame).completed,
+          "G17B did not snapshot first source WINDBC before INTER2");
+    check(stages.run(p6::NativeHourStage::DiagnoInter2,frame).completed,
+          "G17B source heat chain did not reach INTER2");
+    check(!stages.run(p6::NativeHourStage::CompGridMixht,frame).completed,
+          "G17B incorrectly certified full multi-station COMP");
+    check(frame.next.ziconv_m==previous.ziconv_m,
+          "G17B mutated accepted prior-hour P6E state");
+}
+
+int main(int argc,char** argv) {
     try {
+        check(argc==2,"G17B source met.inp argument missing");
+        std::ifstream deck(argv[1]);
+        check(static_cast<bool>(deck),"G17B pinned original met.inp not found");
+        const std::string text((std::istreambuf_iterator<char>(deck)),
+                               std::istreambuf_iterator<char>());
+        const auto control=p6g::parse_original_wind_controls(text);
         const auto noon=sys_days{year{2024}/January/1}+hours{4};
         Fixture winter_day(noon);
         verify_real_solar(winter_day);
+        verify_selected_slope_bridge(winter_day,control);
         Fixture winter_night(noon+hours{12});
         verify_real_solar(winter_night);
         const auto daylight=winter_day.calculate();
