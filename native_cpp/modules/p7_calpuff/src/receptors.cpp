@@ -255,8 +255,12 @@ SamplingIntegrals puff_sampling_integrals(double x_old_km, double y_old_km, doub
     const R tsy = sygu * sygu;
     const R a = c1 / tsy;
     if (a < static_cast<R>(kLowWindThreshold)) {
-        integrals.i2 = 0.5F * std::exp(-dist2 / (2.0F * tsy));
-        integrals.i1 = 2.0F * integrals.i2;
+        // Original PFSAMP L4732-4733 uses REAL4 XI2 and then REAL4 XI1.
+        // Do not re-import the widened public double member to form XI1.
+        const R xi2 = 0.5F * std::exp(-dist2 / (2.0F * tsy));
+        const R xi1 = 2.0F * xi2;
+        integrals.i2 = static_cast<double>(xi2);
+        integrals.i1 = static_cast<double>(xi1);
         integrals.low_wind_branch = true;
         return integrals;
     }
