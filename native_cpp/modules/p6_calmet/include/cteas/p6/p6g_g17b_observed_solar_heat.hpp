@@ -8,6 +8,7 @@
 // P6E/COMP or promote P6G to production without separate real-case parity.
 #include "cteas/p6/p6g_g17_staged_terrain.hpp"
 #include "cteas/p6/p6g_observed_thermal_hour.hpp"
+#include "cteas/p6/p6g_g17b_setcom_airden.hpp"
 #include "cteas/p6e/surface_solar.hpp"
 #include "cteas/p6e/surfvar_multistation.hpp"
 #include "cteas/p6e/heatfx.hpp"
@@ -27,7 +28,9 @@ struct G17BExplicitAncillaryFixture {
     G12HeatCoefficients coefficients{};
     int isurft=-1;
     float domain_temperature_k=0.f,critfn=0.f;
-    std::vector<int> nearest_surface;    // source NEARS; 1-based SS ordinal
+    // Optional comparison oracle ONLY; never used as physical NEARS.
+    // Original SETCOM computes nearest stations from original GEO/SS.
+    std::vector<int> nearest_surface;
     std::vector<float> initial_water_qh_wm2,lapse_k_per_m;
     bool explicitly_test_only=false;      // must never be used for production
 };
@@ -35,6 +38,8 @@ struct G17BObservedSolarResult {
     std::chrono::sys_seconds end{};
     p6e::SurfvarMultistationResult observed;
     std::vector<float> sun_sine,shortwave_wm2,sensible_heat_wm2;
+    std::vector<int> nearest_surface;
+    std::vector<float> density_kg_m3;
     G17FradjSource fradj_fixture;
     G17SlopeHeatSource slope_fixture;
 };
@@ -67,7 +72,8 @@ inline G17BObservedSolarResult observed_solar_heat_selected(
     if(grid.landuse.size()!=count||grid.albedo.size()!=count||
        grid.bowen.size()!=count||grid.hcg.size()!=count||
        grid.qf.size()!=count||
-       fixture.nearest_surface.size()!=count||
+       (!fixture.nearest_surface.empty()&&
+        fixture.nearest_surface.size()!=count)||
        fixture.initial_water_qh_wm2.size()!=count||
        fixture.lapse_k_per_m.size()!=count||
        grid.iwat1>grid.iwat2)
@@ -93,6 +99,15 @@ inline G17BObservedSolarResult observed_solar_heat_selected(
         clouds.push_back(obs.opaque_cloud_tenths);
     }
     const auto field=p6e::surfvar_multistation(surface);
+    // CALMET SETCOM initializes NEARS before RDSN/COMP. It is always
+    // derived with source REAL*4 cell centres and met.inp station order,
+    // never copied from the synthetic G12/G8 nearest-station fixtures.
+    const auto nearest=source_setcom_nears(grid,stations);
+    if(!fixture.nearest_surface.empty()&&
+       fixture.nearest_surface!=nearest)
+        throw std::invalid_argument("G17B fixture NEARS differs from source SETCOM");
+    // AIRDEN L2096-2097: measured PRES at source NEARS, observed TEMP2D.
+    const auto density=source_airden_nears(nearest,field.temp2d_k,hour);
     // Original COMP interval starts at the SURF.DAT hour-start.
     // No system clock or local-time conversion enters this computation.
     const auto date=floor<days>(hour.start);
@@ -116,7 +131,7 @@ inline G17BObservedSolarResult observed_solar_heat_selected(
     heat.hc2=fixture.coefficients.hc2;
     heat.hc3p1=fixture.coefficients.hc3p1;
     heat.station_cloud=std::move(clouds);
-    heat.nearest=fixture.nearest_surface;
+    heat.nearest=nearest;
     heat.landuse=grid.landuse;
     heat.sun=sun;
     heat.temp_k=field.temp2d_k;
@@ -134,6 +149,8 @@ inline G17BObservedSolarResult observed_solar_heat_selected(
     result.sun_sine=sun;
     result.shortwave_wm2=flux.shortwave_wm2;
     result.sensible_heat_wm2=flux.sensible_wm2;
+    result.nearest_surface=nearest;
+    result.density_kg_m3=density;
     result.fradj_fixture.end=hour.end;
     result.fradj_fixture.provenance=TerrainHourProvenance::SyntheticReferenceFixture;
     result.fradj_fixture.isurft=fixture.isurft;
