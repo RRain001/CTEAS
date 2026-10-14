@@ -459,6 +459,10 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     // VDCOMP meteorology and full SETPUF VCBAR. It refuses the
     // original uniform codes 2/6 until their distinct ratio branch
     // is integrated, rather than applying the wrong Gaussian fraction.
+    // Original COMP L10963-10966 takes QOLD after VMASS and before
+    // dry removal; never substitute the final post-DRY QM for both
+    // CALCPF integration endpoints.
+    const auto original_qold_mixed=mass.mass_mixed;
     std::optional<OriginalGaussianDryResult> dry_result;
     if(control.gaussian_dry){
         const auto& setup=control.gaussian_dry->setup;
