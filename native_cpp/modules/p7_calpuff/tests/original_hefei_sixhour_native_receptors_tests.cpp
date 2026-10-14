@@ -282,7 +282,15 @@ int main(int argc,char** argv) {
                         <<" SIGY_NATIVE="<<stage.step.vertical_after.sigma_y_m
                         <<" SIGY_VENDOR="<<ref.reals[42]
                         <<" SIGZ_NATIVE="<<stage.step.vertical_after.sigma_z_m
-                        <<" SIGZ_VENDOR="<<ref.reals[43]<<"\n";
+                        <<" SIGZ_VENDOR="<<ref.reals[43]
+                        <<" SIGZ_IN_VENDOR="<<ref.reals[22]
+                        <<" SIGZ_IN_NATIVE="<<stage.step.sigma.step.sigma_z_begin_m
+                        <<" SIGZ_BME_VENDOR="<<ref.reals[56]<<","
+                                               <<ref.reals[57]<<","<<ref.reals[58]
+                        <<" SIGZ_BME_NATIVE="<<stage.step.sigma.adjust.sigma_z_begin_m<<","
+                                               <<stage.step.sigma.adjust.sigma_z_mid_m<<","
+                                               <<stage.step.sigma.adjust.sigma_z_end_m
+                        <<" FIRST_BME_SOURCE_STAGE_DIAGNOSTIC=YES"<<"\n";
                 }
             }
         }
@@ -394,8 +402,13 @@ int main(int argc,char** argv) {
                  <<" SCIENTIFIC_6H_PARITY="
                  <<(matches==2500U?"PASS_THIS_HOUR":"OPEN_THIS_HOUR")
                  <<"\n";
-        require(hour_index>0U || matches==2500U,
-                "first-hour bitwise source parity regressed inside sixhour COMP");
+        // Both first two source-real hours are now scientifically accepted.
+        // This gate must not loosen when investigating the hour3 SIGZ.
+        require(hour_index>=2U || matches==2500U,
+                "first two real H3 concentration fields lost REAL4 parity");
+        if(hour_index==1U && !dgm.empty())
+            require(first_dgm_mismatch_record==0U,
+                    "original/native first two hours of puff history diverged");
         ++completed;
        },true);
     require(summary.intervals==143U&&completed==6U&&
