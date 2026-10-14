@@ -329,12 +329,17 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         // HTMET=ZOLD=ZPB(II) for a Gaussian puff (COMP L10465-10489);
         // use actual native pre-ADVECT state and the original mid MET cell.
         require(mid_cell.offset_0based<met.zi.size() &&
-                cfg.minimum_mixing_height_m>0.0F &&
-                cfg.maximum_mixing_height_m>=cfg.minimum_mixing_height_m &&
-                cfg.jsup>=0&&cfg.jsup<=6,
+                cfg.jsup>=0&&cfg.jsup<=6 &&
+                (cfg.jsup==0 ||
+                 (cfg.minimum_mixing_height_m>0.0F &&
+                  cfg.maximum_mixing_height_m>=cfg.minimum_mixing_height_m)),
                 "original JSUP/PBL source selection requires deck-derived bounds");
-        const float dpbl=std::clamp(met.zi[mid_cell.offset_0based],
-            cfg.minimum_mixing_height_m,cfg.maximum_mixing_height_m);
+        // Synthetic JDSTAB tests may explicitly disable JSUP with zero.
+        // Real puff.inp uses JSUP>0 and must apply the source PBL clamps.
+        const float dpbl=cfg.jsup>0 ?
+            std::clamp(met.zi[mid_cell.offset_0based],
+                cfg.minimum_mixing_height_m,cfg.maximum_mixing_height_m):
+            met.zi[mid_cell.offset_0based];
         const int jdstab=
             cfg.jsup>0 && mid_stability<5 && before.z_m>dpbl ?
                 cfg.jsup:mid_stability;
