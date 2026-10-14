@@ -78,7 +78,10 @@ public:
         : controls_(std::move(controls)), end_(hour.end),
           nx_(static_cast<std::size_t>(grid.nx)),
           ny_(static_cast<std::size_t>(grid.ny)),
-          dgrid_m_(grid.grid_km*1000.f) {
+          dgrid_m_(grid.grid_km*1000.f),
+          xorigin_km_(grid.xorigin_km),yorigin_km_(grid.yorigin_km),
+          zone_(grid.zone),hemisphere_(grid.hemisphere),
+          original_landuse_(grid.landuse) {
         if(nx_<2||ny_<2||nx_>400||ny_>400||
            !std::isfinite(dgrid_m_)||dgrid_m_<=0.f||
            hour.end-hour.start!=std::chrono::hours{1}||
@@ -107,6 +110,9 @@ public:
                 throw std::invalid_argument("G17B4 source SS ordinal mismatch");
             const auto& st=station_set.surface[i];
             const auto& rec=hour.by_station[i];
+            source_station_ids_.push_back(st.id);
+            source_station_x_.push_back(st.local_x_m);
+            source_station_y_.push_back(st.local_y_m);
             obs.stations.push_back({
                 st.local_x_m,st.local_y_m,
                 rec.temperature_valid?rec.temperature_k:9999.f,
@@ -123,6 +129,26 @@ public:
         return raw_observed_temperature_;
     }
     [[nodiscard]] std::chrono::sys_seconds end() const noexcept {return end_;}
+    // Later HEATFX/SETCOM must consume exactly the GEO and SS station order
+    // used to compute the two SURFVAR passes, not a second caller's geometry.
+    [[nodiscard]] bool matches_source_geometry(
+        const GeoGrid& grid,const StationSet& station_set) const {
+        if(grid.nx!=static_cast<int>(nx_)||grid.ny!=static_cast<int>(ny_)||
+           grid.grid_km*1000.f!=dgrid_m_||
+           grid.xorigin_km!=xorigin_km_||grid.yorigin_km!=yorigin_km_||
+           grid.zone!=zone_||grid.hemisphere!=hemisphere_||
+           grid.landuse!=original_landuse_||
+           station_set.surface.size()!=source_station_ids_.size())
+            return false;
+        for(std::size_t i=0;i<source_station_ids_.size();++i) {
+            const auto& station=station_set.surface[i];
+            if(station.id!=source_station_ids_[i]||
+               station.local_x_m!=source_station_x_[i]||
+               station.local_y_m!=source_station_y_[i])
+                return false;
+        }
+        return true;
+    }
     [[nodiscard]] bool first_ready() const noexcept {return first_.has_value();}
     [[nodiscard]] bool second_ready() const noexcept {return final_.has_value();}
     [[nodiscard]] bool first_stage_wind_matches(
@@ -198,7 +224,11 @@ private:
     G17B4SurfaceControls controls_;
     std::chrono::sys_seconds end_{};
     std::size_t nx_=0,ny_=0;
-    float dgrid_m_=0.f;
+    float dgrid_m_=0.f,xorigin_km_=0.f,yorigin_km_=0.f;
+    int zone_=0;
+    char hemisphere_='N';
+    std::vector<int> original_landuse_,source_station_ids_;
+    std::vector<float> source_station_x_,source_station_y_;
     std::vector<float> raw_observed_temperature_;
     std::optional<std::vector<float>> first_,final_;
     std::vector<float> first_u_,first_v_;
