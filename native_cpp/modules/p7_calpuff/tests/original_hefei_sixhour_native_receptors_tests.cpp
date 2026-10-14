@@ -6,6 +6,7 @@
 #include "cteas/puff/control.hpp"
 #include "cteas/puff/dry_deposition.hpp"
 #include "cteas/puff/original_comp_rise_hourly.hpp"
+#include "cteas/puff/original_calm_sigma.hpp"
 #include "cteas/puff/original_flat_calcpf.hpp"
 #include "cteas/puff/original_met_hours.hpp"
 #include "cteas/puff/original_met_cell.hpp"
@@ -287,10 +288,51 @@ int main(int argc,char** argv) {
         std::vector<NativeH3ReceptorRow> trace_rows;
         OriginalCalcpfIntermediateHook stage_hook;
         if(trace_this_hour || trace_h9_cell20) {
-            stage_hook=[&trace_rows,trace_cell](
+            stage_hook=[&trace_rows,trace_cell,trace_h9_cell20](
                 const RiseCompSamplingState& state,
                 const OriginalCalcpfReceiverIntermediate& row){
                 if(row.receptor_index!=trace_cell)return;
+                if(trace_h9_cell20 && state.puff_id==594) {
+                    require(state.receptor_calm_sigma.has_value(),
+                            "H9 source residual requires native LCALM CSIGMA");
+                    const auto& v=state.sigmas.step;
+                    // Exact PUFRECS L5252/L5253 source grouping, after
+                    // LCALM has forced receptor fraction to 0.5.
+                    const float vtz=std::max(0.0F,
+                        static_cast<float>(v.virtual_time_z_begin_s)+
+                        0.5F*(static_cast<float>(v.virtual_time_z_end_s)-
+                              static_cast<float>(v.virtual_time_z_begin_s)));
+                    const float vdz=std::max(0.0F,
+                        static_cast<float>(v.virtual_distance_z_begin_km)+
+                        0.5F*(static_cast<float>(v.virtual_distance_z_end_km)-
+                              static_cast<float>(v.virtual_distance_z_begin_km)));
+                    auto sigma=*state.receptor_calm_sigma;
+                    sigma.sy0=0.0F;
+                    sigma.sz0=0.0F;
+                    sigma.dt_s=vtz;
+                    sigma.dx_km=vdz;
+                    const float szar=original_calm_sigma(sigma).sz;
+                    std::cout<<std::setprecision(10)
+                        <<"P7_NATIVE_H9_RECEPTOR_SIGTZ_INPUT"
+                        <<" PUFF="<<state.puff_id
+                        <<" FRACTION=0.5"
+                        <<" VTZ="<<vtz<<" VDZ="<<vdz
+                        <<" VTZB="<<static_cast<float>(v.virtual_time_z_begin_s)
+                        <<" VTZE="<<static_cast<float>(v.virtual_time_z_end_s)
+                        <<" VDZB="<<static_cast<float>(v.virtual_distance_z_begin_km)
+                        <<" VDZE="<<static_cast<float>(v.virtual_distance_z_end_km)
+                        <<" ZB1="<<state.before.z_m
+                        <<" SIGW="<<sigma.sigw
+                        <<" EL="<<sigma.el
+                        <<" TZISDR="<<sigma.tzisdr
+                        <<" UAVG="<<sigma.uavg
+                        <<" SZAR="<<szar
+                        <<" SZREC="<<row.sigma_z_m
+                        <<" BIT_VTZ=0x"<<std::hex<<std::bit_cast<std::uint32_t>(vtz)
+                        <<" BIT_SZAR=0x"<<std::bit_cast<std::uint32_t>(szar)
+                        <<std::dec
+                        <<" ORIGINAL_H9_INPUT_PARITY=TO_BE_COMPARED\n";
+                }
                 trace_rows.push_back({state.puff_id,
                     state.before.travel_time_s,state.after.travel_time_s,row});
             };
