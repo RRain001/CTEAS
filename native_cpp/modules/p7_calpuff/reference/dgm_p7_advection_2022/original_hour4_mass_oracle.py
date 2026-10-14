@@ -108,12 +108,13 @@ def main()->None:
         "     &        vd(1),vdpvd(1),tsamp)\n"+source[pos_after:])
     source=(source[:pos_before]+
         "         call p7massbefore(ii,ksam,qold(1))\n"+source[pos_before:])
-    dry_anchor="          const=tsamp*f1"
-    if source.count(dry_anchor)!=1:
+    dry_entry=source.index("f1=vcbar(jp,mfact0,hlid,ppcoef,lcalmf)")
+    dry_match=re.search(r"(?m)^ {6,}[ ]*const=tsamp\\*f1",source[dry_entry:dry_entry+240])
+    if dry_match is None:
         raise AssertionError("original DRY Gaussian VCBAR/CONST anchor drifted")
-    source=source.replace(dry_anchor+"\n",
-        dry_anchor+"\n"
-        "          call p7massvc(jp,f1,const)\n")
+    dry_line_start=dry_entry+dry_match.start()
+    dry_end=source.index("\n",dry_line_start)+1
+    source=source[:dry_end]+"          call p7massvc(jp,f1,const)\n"+source[dry_end:]
     target.write_text(source+HELPERS,encoding="latin-1")
     alias=base._alias_tree(vendor,out/"include-alias")
     executable=out/"bin"/"puff-original-mass.x"
