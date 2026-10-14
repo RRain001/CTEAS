@@ -1,4 +1,5 @@
 #include "cteas/p6/p6g_selected_hour_bridge.hpp"
+#include "cteas/p6/p6g_observed_thermal_hour.hpp"
 #include "cteas/p6/read_geo_dynamic.hpp"
 #include <bit>
 #include <chrono>
@@ -51,8 +52,10 @@ static void write_surface(const std::string& path,sys_seconds begin,
         const float ws2=4.f+static_cast<float>(h%11)*0.1f;
         const int wd1=90+(h%19),wd2=120+(h%13);
         out<<std::fixed<<std::setprecision(3)
-           <<ws1<<" "<<wd1<<" 722 5 283.000 60 1013.000 0\n"
-           <<ws2<<" "<<wd2<<" 722 5 285.000 65 1008.000 0\n";
+           <<ws1<<" "<<wd1<<" 722 5 "
+           <<283.f+float(h%24)*0.08f<<" 60 1013.000 0\n"
+           <<ws2<<" "<<wd2<<" 722 5 "
+           <<285.f+float(h%19)*0.06f<<" 65 1008.000 0\n";
     }
     require_test(static_cast<bool>(out),"write synthetic SURF.DAT failed");
 }
@@ -159,20 +162,31 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     grid.source_terrain_diagno_tail=true;
     grid.terrain=prepare_g11_terrain(geo,35.0f);
     grid.smoothing_passes={1,0,2,1,0,2,1,0,1};
+    // Selected P6E P6G G12: observed SURF.DAT 2SS temperatures enter
+    // source-matched SURFVAR. Solar and coefficients stay explicitly
+    // synthetic, while original HEATFX computes the actual QH field.
+    // GAMMA is still an EXTERNAL synthetic input, never claimed as CGAMMA.
     auto hour_thermo=[&](std::size_t time){
-        TerrainHourG11 state;
-        state.end=begin+hours{static_cast<int>(time)+1};
-        state.provenance=TerrainHourProvenance::SyntheticReferenceFixture;
-        state.isurft=-1;
-        state.domain_temperature_k=285.f;
-        state.critfn=10.f;
+        G12ExplicitSolarHeat forcing;
+        forcing.end=surface.hourly.at(time).end;
+        forcing.synthetic_radiation_fixture=true;
+        forcing.irad=1;forcing.numts=2;forcing.trad_grid=20.f;
+        forcing.isurft=-1;
+        forcing.domain_temperature_k=285.f;
+        forcing.critfn=10.f;
+        forcing.coefficients=G12HeatCoefficients{
+            950.f,0.f,-0.2f,1.f,0.f,0.f,1.f};
         const auto plane=static_cast<std::size_t>(nx*ny);
-        state.lapse_k_per_m.assign(plane,0.002f);
-        state.temperature_k.assign(
-            plane,280.f+float(time%12)*0.25f);
-        state.sensible_heat_w_m2.assign(
-            plane,-120.f-float(time%9)*4.f);
-        return state;
+        const auto model_clock=static_cast<int>(time%24);
+        forcing.sun_sine.assign(
+            plane,model_clock>=6&&model_clock<18?0.9f:-0.2f);
+        forcing.nearest_surface.reserve(plane);
+        for(int j=0;j<ny;++j)for(int i=0;i<nx;++i)
+            forcing.nearest_surface.push_back(i<nx/2?1:2);
+        forcing.lapse_k_per_m.assign(plane,0.002f);
+        forcing.initial_water_qh_wm2.assign(plane,0.f);
+        return source_selected_g12_thermal_hour(
+            deck,surface.hourly.at(time),geo,forcing);
     };
     // 6x6 (60 km) short cross-year; expanded 12x12 (120 km) annual.
     require_test(grid.nx*grid.ny==nx*ny&&grid.spacing_km==10.f,
@@ -193,7 +207,8 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
         require_test(!first.selected_tail_exercised&&first.nonzero_w_faces==0,
                      "G10 DIAGNO tail must be opt-in, never silently inferred");
         auto malformed=grid;
-        auto first_thermal=hour_thermo(0);
+        auto first_result=hour_thermo(0);
+        auto first_thermal=first_result.thermal;
         malformed.smoothing_passes.pop_back();
         bool denied=false;
         try {
@@ -225,7 +240,7 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
                 &first_thermal);
         }catch(const std::invalid_argument&){denied=true;}
         require_test(denied,"G11 contradictory identity/terrain modes accepted");
-        auto shifted=hour_thermo(0);
+        auto shifted=hour_thermo(0).thermal;
         shifted.end+=hours{1};
         denied=false;
         try {
@@ -242,11 +257,27 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     auto last=begin;
     std::size_t total_contributions=0;
     std::size_t total_fradj_changed=0,total_slope_changed=0;
+    float first_temp=0.f,first_qh=0.f;
+    bool varied_observed_temp=false,varied_computed_qh=false;
     for(std::size_t hour=0;hour<clock.size();++hour) {
         const auto& input=clock[hour];
         require_test(input.end==begin+hours{static_cast<int>(hour)+1},
                      "G8 one-hour input clock drifted");
-        auto thermal=hour_thermo(hour);
+        const auto computed=hour_thermo(hour);
+        const auto& thermal=computed.thermal;
+        require_test(thermal.end==input.end&&
+                     thermal.provenance==
+                         TerrainHourProvenance::ObservedSurfvarSyntheticSolarFixture&&
+                     thermal.temperature_k.size()==
+                         static_cast<std::size_t>(nx*ny),
+                     "G12 source SURFVAR→HEATFX thermal input missing");
+        if(hour==0){
+            first_temp=thermal.temperature_k.front();
+            first_qh=thermal.sensible_heat_w_m2.front();
+        }else{
+            varied_observed_temp|=thermal.temperature_k.front()!=first_temp;
+            varied_computed_qh|=thermal.sensible_heat_w_m2.front()!=first_qh;
+        }
         const auto output=selected_multisite_hour(
             deck,surface.hourly[hour],input,prepared,grid,&thermal);
         require_test(output.end==input.end,
@@ -266,6 +297,8 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
             crossed=true;
         last=output.end;
         total_contributions+=output.observed_contributions;
+        hash=digest(hash,thermal.temperature_k.front());
+        hash=digest(hash,thermal.sensible_heat_w_m2.front());
         hash=digest(hash,output.firstguess_center_u_mps);
         hash=digest(hash,output.firstguess_center_v_mps);
         hash=digest(hash,output.center_u_mps);
@@ -280,10 +313,12 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
                  "G8 selected multi-observation fields not active/variable");
     require_test(!require_year_boundary||crossed,
                  "G8 did not exercise Gregorian year boundary");
+    require_test(varied_observed_temp&&varied_computed_qh,
+                 "G12 SOURCE SURFVAR or HEATFX did not respond to dynamic station/hour data");
     require_test(total_slope_changed>0,
                  "G11 nonflat source GEO and negative sensible heat did not produce slope flow");
     require_test(hash!=1469598103934665603ULL,"G11 digest unchanged");
-    std::cout<<"G11_10KM_MULTISTATION_TERRAIN_FRADJ_SLOPE_DIAGNO_TAIL hours="<<expected_hours
+    std::cout<<"G12_10KM_SURFVAR_HEATFX_TERRAIN_DIAGNO_TAIL hours="<<expected_hours
              <<" grid="<<nx<<"x"<<ny<<"x9 spacing_km=10 surface=2 upper=2"
              <<" contributions="<<total_contributions
              <<" fradj_changed="<<total_fradj_changed
@@ -303,7 +338,7 @@ int main(){
         // 2024 is a leap year: actual 8784 consecutive UTC hours.
         const auto annual=sys_days{year{2024}/January/1};
         exercise_period(annual,annual+hours{8784},8784,true,12,12);
-        std::cout<<"PASS P6G_G11_10KM_MULTISTATION_TERRAIN_DIAGNO_TAIL_8784H\n";
+        std::cout<<"PASS P6G_G12_10KM_MULTISTATION_P6E_SURFVAR_HEATFX_TO_DIAGNO_8784H\n";
         return 0;
     }catch(const std::exception& e){
         std::cerr<<"P6G_G8_10KM_FAIL "<<e.what()<<"\n";
