@@ -62,9 +62,9 @@ bool equal_real4(float a,float b) {
 
 int main(int argc,char** argv) {
   try {
-    require(argc>=4 && argc<=6,
-            "usage: sixhour_real_h3 MET.DAT puff.inp puff.con [original-6h-DGM.bin] [native-hour2-25-28.tsv]");
-    require(argc!=6 || std::string(argv[4]).size()>0U,
+    require(argc>=4 && argc<=7,
+            "usage: sixhour_real_h3 MET.DAT puff.inp puff.con [original-DGM.bin] [hour2-25-28.tsv] [hour4-47-13.tsv]");
+    require(argc<6 || std::string(argv[4]).size()>0U,
             "hour2 CALCPF trace requires an original DGM provenance input");
     // Optional native stage trace (argv[5]) must never disable the
     // independent original DGM step oracle carried in argv[4].
@@ -208,13 +208,18 @@ int main(int argc,char** argv) {
                 receptors.sampling_ny==50&&receptors.mesh_down==1&&
                 receptors.discrete.empty(),"sixhour native receptor frame drift");
 
-        std::vector<NativeH3ReceptorRow> hour2_rows;
-        OriginalCalcpfIntermediateHook hour2_hook;
-        if(argc==6 && hour_index==1U){
-            hour2_hook=[&hour2_rows](const RiseCompSamplingState& state,
-                                    const OriginalCalcpfReceiverIntermediate& row){
-                if(row.receptor_index!=1374U)return; // original grid (25,28)
-                hour2_rows.push_back({state.puff_id,
+        const bool trace_this_hour=
+            (argc>=6 && hour_index==1U) ||
+            (argc==7 && hour_index==3U);
+        const std::size_t trace_cell=hour_index==1U?1374U:646U;
+        std::vector<NativeH3ReceptorRow> trace_rows;
+        OriginalCalcpfIntermediateHook stage_hook;
+        if(trace_this_hour) {
+            stage_hook=[&trace_rows,trace_cell](
+                const RiseCompSamplingState& state,
+                const OriginalCalcpfReceiverIntermediate& row){
+                if(row.receptor_index!=trace_cell)return;
+                trace_rows.push_back({state.puff_id,
                     state.before.travel_time_s,state.after.travel_time_s,row});
             };
         }
@@ -232,7 +237,7 @@ int main(int argc,char** argv) {
                     receptors.sampling_nx,receptors.sampling_ny,pos,
                     state.receptor_brunt_vaisala_s,
                     state.receptor_effective_wind_ms);
-            },true,hour2_hook,0.0F);
+            },true,stage_hook,0.0F);
         // 4096 capacity is intentionally non-binding in this SIX-HOUR
         // instrumented gate. MXPUFF-pressure acceptance is a distinct test.
         const OriginalCompPuffBounds bounds{0.0F,50.0F,0.0F,50.0F};
@@ -336,14 +341,16 @@ int main(int argc,char** argv) {
                 }
             }
         }
-        if(argc==6 && hour_index==1U){
-            require(!hour2_rows.empty(),
-                    "native hour2 original receptor 25,28 had no physical trace");
-            std::ofstream receiver_trace(argv[5],std::ios::binary);
-            require(bool(receiver_trace),"cannot open hour2 read-only native stage trace");
+        if(trace_this_hour){
+            require(!trace_rows.empty(),
+                    "native original hour2/4 H3 receptor had no physical trace");
+            std::ofstream receiver_trace(
+                hour_index==1U?argv[5]:argv[6],std::ios::binary);
+            require(bool(receiver_trace),
+                    "cannot open original hour2/4 native stage trace");
             receiver_trace<<std::setprecision(9);
             std::size_t prev=0U;bool seen_prev=false;
-            for(const auto& record:hour2_rows){
+            for(const auto& record:trace_rows){
                 std::size_t found=hour.steps.size();
                 for(std::size_t j=0;j<hour.steps.size();++j){
                     const auto& stage=hour.steps[j];
@@ -370,9 +377,11 @@ int main(int argc,char** argv) {
             receiver_trace.flush();
             require(bool(receiver_trace),
                     "native original hour2 CALCPF stage trace flush failed");
-            original_hour2_trace_rows=hour2_rows.size();
-            std::cout<<"P7_HEFEI_NATIVE_HOUR2_25_28_CALCPF_TRACE=PASS"
-                     <<" ORIGINAL_DGM_GLOBAL_SEQ=1276..3517"
+            original_hour2_trace_rows=trace_rows.size();
+            std::cout<<"P7_HEFEI_NATIVE_H3_CALCPF_TRACE=PASS"
+                     <<" HOUR="<<hour_index+1U
+                     <<" RECEPTOR_I="<<(hour_index==1U?25:47)
+                     <<" RECEPTOR_J="<<(hour_index==1U?28:13)
                      <<" RECORDS="<<original_hour2_trace_rows
                      <<" ORIGINAL_VENDOR_PARITY=NOT_YET_COMPARED\\n";
         }
