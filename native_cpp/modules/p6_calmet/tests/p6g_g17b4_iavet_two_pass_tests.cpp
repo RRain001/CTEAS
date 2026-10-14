@@ -22,6 +22,7 @@
 #include "cteas/p6/p6g_g18d1_p6f_precommit.hpp"
 #include "cteas/p6/p6g_g18d3_heat_source_defaults.hpp"
 #include "cteas/p6/p6g_g18d4_comp_stage_adapter.hpp"
+#include "cteas/p6/p6g_g18d5_source_mixht_controls.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -700,12 +701,24 @@ static void verify_source_staged_iavet(
     mix.nx=12;mix.ny=12;
     mix.water_first=f.grid.iwat1;mix.water_last=f.grid.iwat2;
     mix.landuse=f.grid.landuse;
-    mix.imixh=1;mix.iupt=-1;mix.izicrlx=1;
-    mix.timestep_s=3600;mix.constn=2400.f;
-    mix.zimin=50.f;mix.zimax=3000.f;
-    mix.dptmin=.001f;mix.dzzi=200.f;
-    mix.threshl=0.f;mix.tzicrlx=800.f;
-    mix.onedte=4140.f;mix.twodte=1080.f;
+    mix.iupt=-1;
+    p6g::g18d5_bind_original_mixht_scalars(source_metinp,comp);
+    check(mix.imixh==1&&mix.izicrlx==1&&
+          mix.constn==2400.f&&mix.zimin==50.f&&mix.zimax==3000.f&&
+          mix.threshl==0.f&&mix.dptmin==.001f&&mix.dzzi==200.f&&
+          mix.tzicrlx==800.f&&mix.timestep_s==3600&&
+          mix.onedte==4140.f&&mix.twodte==1080.f,
+          "G18D5 original met.inp/SETCOM COMP READCF scalar mismatch");
+    rejects([&]{
+        auto altered=comp;
+        p6g::g18d5_bind_original_mixht_scalars(
+            source_metinp+"\n! CONSTN = bogus !",altered);
+    },"G18D5 tolerated duplicate/invalid source mixing coefficient");
+    rejects([&]{
+        auto altered=comp;
+        p6g::g18d5_bind_original_mixht_scalars(
+            source_metinp,altered,1800);
+    },"G18D5 silently accepted unverified subhourly COMP relaxation");
     const auto choice=p6g::g18b3_source_deck_upper_choice(
         f.grid,all,source_metinp);
     check(choice.iupt==-1 && choice.nearu.size()==144 &&
@@ -1626,6 +1639,7 @@ int main(int argc,char** argv){
                     "G18D1_P6F_45_RECORDS_G14_PRECOMMIT_ORIGIN_PASS "
                     "G18D3_LITERAL_VENDOR_HFLUX_DEFAULTS_SOURCE_PASS "
                     "G18D4_ORIGINAL_COMP_FOUR_STAGES_SOURCE_CANDIDATE_PASS "
+                    "G18D5_ORIGINAL_METINP_SET_CMECH_MIXHT_SCALARS_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
