@@ -1,0 +1,60 @@
+name: P6G G13 10km 2SS literal original SURFVAR parity
+
+on:
+  push:
+    branches:
+      - codex/p6g-g13-10km-surfvar-fortran-parity-20261014
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/reference/compare_g13_original_surfvar_10km.py'
+      - '.github/workflows/p6g-g13-original-surfvar-10km.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-surfvar-10km:
+    name: Original SURFVAR 12x12 2SS (${{ matrix.mode }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify pinned CALMET source and hosted GNU Fortran
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_OS" = Linux
+          test "$RUNNER_ARCH" = X64
+          test -s engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for
+          command -v gfortran
+          command -v cmake
+          command -v g++
+      - name: Build strict C++20 observed SURFVAR reference and G12 bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p6_calmet/p6e -B "$RUNNER_TEMP/p6e-g13" -DCMAKE_BUILD_TYPE=${{ matrix.mode }}
+          cmake --build "$RUNNER_TEMP/p6e-g13" --target p6e_surfvar_multistation_reference --parallel 2
+          cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/p6g-g13" -DCMAKE_BUILD_TYPE=${{ matrix.mode }}
+          cmake --build "$RUNNER_TEMP/p6g-g13" --target cteas_p6g_g12_thermal_tests --parallel 2
+          ctest --test-dir "$RUNNER_TEMP/p6g-g13" --output-on-failure -R '^p6g_g12_10km_2surface_observed_temp_selected_heatfx_contract$'
+      - name: Unmodified original CALMET full SURFVAR 2SS 10km 12x12 direct field comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/compare_g13_original_surfvar_10km.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --cpp "$RUNNER_TEMP/p6e-g13/p6e_surfvar_multistation_reference" \
+            --out "$RUNNER_TEMP/g13-surfvar-10km-${{ matrix.mode }}.json"
+      - name: Archive per-cell scientific gate
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p6g-g13-surfvar-original-10km-${{ matrix.mode }}
+          path: ${{ runner.temp }}/g13-surfvar-10km-${{ matrix.mode }}.json
+          if-no-files-found: warn
