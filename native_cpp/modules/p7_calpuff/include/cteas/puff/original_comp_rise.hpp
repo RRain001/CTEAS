@@ -72,6 +72,8 @@ struct RiseCompStep {
     // Exact copied REAL4 COMP QOLD before DRY; read-only per-step provenance.
     // Never inferred by dividing QNEW by FRACDRY (would round differently).
     std::vector<float> pre_dry_qold_mixed;
+    // Read-only original VDCOMP-produced VD/VDPVD for numerical audit.
+    std::optional<DryDepositionStep> dry_input_resistance;
 };
 
 // COMP KSAM/NSAM context (vendor L10417, 10553-10581). Defaults reproduce
