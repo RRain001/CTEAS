@@ -186,7 +186,7 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
         forcing.lapse_k_per_m.assign(plane,0.002f);
         forcing.initial_water_qh_wm2.assign(plane,0.f);
         return source_selected_g12_thermal_hour(
-            deck,surface.hourly.at(time),geo,forcing);
+            deck,surface,surface.hourly.at(time),geo,forcing);
     };
     // 6x6 (60 km) short cross-year; expanded 12x12 (120 km) annual.
     require_test(grid.nx*grid.ny==nx*ny&&grid.spacing_km==10.f,
