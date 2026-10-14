@@ -94,6 +94,7 @@ def main() -> None:
     first=None
     identity_mismatch=0
     largest={k:0.0 for k in NAMES}
+    stage_differences={k:[] for k in NAMES}
     for seq in sorted(source.keys()|native.keys()):
         orig=source.get(seq);nat=native.get(seq)
         if orig is None or nat is None:
@@ -111,8 +112,17 @@ def main() -> None:
                        "original":[oi,ok],"native":[ni,nk]}
             continue
         for name in NAMES:
-            if u32(ov[name])==u32(nv[name]):
+            ob,nb=u32(ov[name]),u32(nv[name])
+            if ob==nb:
                 counts[name]+=1
+            else:
+                stage_differences[name].append({
+                    "seq":seq,"puff":oi,"ksam":ok,
+                    "original":ov[name],"native":nv[name],
+                    "original_bits":f"0x{ob:08x}",
+                    "native_bits":f"0x{nb:08x}",
+                    "absolute_error":abs(ov[name]-nv[name]),
+                })
             largest[name]=max(largest[name],abs(ov[name]-nv[name]))
         if first is None:
             for name in PRIORITY:
@@ -135,6 +145,10 @@ def main() -> None:
         "episode_ksam_mismatch":identity_mismatch,
         "stage_bitwise_equal":counts,
         "stage_max_absolute_error":largest,
+        "stage_differences":stage_differences,
+        "first_difference_per_stage":{
+            name:(rows[0] if rows else None)
+            for name,rows in stage_differences.items()},
         "all_stages_bitwise":first is None,
     }
     a.out.parent.mkdir(parents=True,exist_ok=True)
@@ -146,6 +160,11 @@ def main() -> None:
           " FULL_6H_CONCENTRATION_PARITY=OPEN")
     print(f"P7_HEFEI_HOUR{a.hour}_{ix}_{jy}_STAGE_BITWISE "+
           " ".join(f"{key}={counts[key]}/{len(common)}" for key in PRIORITY))
+    for name in ("zrpole","f1","xtemp","conc"):
+        rows=stage_differences[name]
+        print(f"P7_HEFEI_HOUR{a.hour}_{ix}_{jy}_STAGE_DIVERGENCES"
+              f" STAGE={name.upper()} COUNT={len(rows)}"
+              f" PHYSICAL_KEYS={json.dumps(rows,sort_keys=True,separators=(',',':'))}")
 
 
 if __name__=="__main__":
