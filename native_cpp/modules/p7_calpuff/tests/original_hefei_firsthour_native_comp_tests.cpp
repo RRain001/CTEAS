@@ -229,6 +229,8 @@ int main(int argc,char** argv){
             std::size_t compare=std::min(hour.steps.size(),original.size());
             std::size_t aligned=0,first=0;
             std::size_t bitwise_sigz=0,bitwise_sigz_triplet=0;
+            std::size_t bitwise_sigy=0,bitwise_sigy_triplet=0;
+            std::size_t bitwise_z=0,first_horizontal_sigma_difference=0;
             std::size_t bitwise_trajectory=0,bitwise_old_xy=0;
             std::size_t first_sigma_difference=0;
             const auto same_float=[](float x,float y){
@@ -278,6 +280,18 @@ int main(int argc,char** argv){
                     same_float(static_cast<float>(n.sigma.adjust.sigma_z_end_m),b.f[58]);
                 if(match_sigz)++bitwise_sigz;
                 if(match_all_sigz)++bitwise_sigz_triplet;
+                const bool match_sigy=same_float(n.vertical_after.sigma_y_m,b.f[42]);
+                const bool match_sy_triplet=
+                    same_float(static_cast<float>(n.sigma.adjust.sigma_y_begin_m),b.f[53]) &&
+                    same_float(static_cast<float>(n.sigma.adjust.sigma_y_mid_m),b.f[54]) &&
+                    same_float(static_cast<float>(n.sigma.adjust.sigma_y_end_m),b.f[55]);
+                if(match_sigy)++bitwise_sigy;
+                if(match_sy_triplet)++bitwise_sigy_triplet;
+                if(!match_sy_triplet && first_horizontal_sigma_difference==0)
+                    first_horizontal_sigma_difference=i+1;
+                if(same_float(n.after.z_m,b.f[46]) &&
+                   same_float(n.after.z_m,b.f[52]))
+                    ++bitwise_z;
                 if(!match_sigz && first_sigma_difference==0)
                     first_sigma_difference=i+1;
                 if(same_float(n.before.x_cells,b.f[0]) &&
@@ -312,6 +326,13 @@ int main(int argc,char** argv){
                      <<" FIRST_SIGZ_DIFFERENCE="<<first_sigma_difference
                      <<" TOTAL_REFERENCE="<<original.size()
                      <<" REAL_CASE_CONCENTRATIONS=NOT_YET_ACCEPTED\\n";
+            std::cout<<"P7_HEFEI_FIRSTHOUR_REAL4_RECEIVER_UPSTREAM_AUDIT"
+                     <<" EXACT_STORED_SIGY="<<bitwise_sigy
+                     <<" EXACT_SIGY_BEGIN_MID_END="<<bitwise_sigy_triplet
+                     <<" EXACT_PUFF_Z_AND_CURRENT_ZE1="<<bitwise_z
+                     <<" FIRST_SIGY_DIFFERENCE="<<first_horizontal_sigma_difference
+                     <<" TOTAL_REFERENCE="<<original.size()
+                     <<" FIRSTHOUR_CONCENTRATIONS=OPEN\\n";
             // Formerly this diagnostic could exit zero after reporting
             // mismatched physics. Freeze the newly verified 1275-step
             // subset as a mandatory regression; this does NOT gate dry
