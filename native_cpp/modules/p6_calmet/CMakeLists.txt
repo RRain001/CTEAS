@@ -236,6 +236,8 @@ endif()
 add_executable(cteas_p6g_g18b6_setcom_nearu_reference
                src/p6g_g18b6_setcom_nearu_reference_main.cpp)
 target_link_libraries(cteas_p6g_g18b6_setcom_nearu_reference PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6g_g18b6_setcom_nearu_reference PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
 if(MSVC)
   target_compile_options(cteas_p6g_g18b6_setcom_nearu_reference PRIVATE /W4 /WX)
 else()
