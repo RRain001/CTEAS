@@ -1,5 +1,13 @@
 name: P7 real Hefei first 24h divergence probe
 on:
+  # Branch-scoped hosted validation does not depend on PR synchronization
+  # catching up after a burst of GitHub App contents-API commits.
+  push:
+    branches:
+      - codex/p7a-original-input-semantics-20261012
+    paths:
+      - 'native_cpp/modules/p7_calpuff/**'
+      - '.github/workflows/p7-hefei-real-hour7-probe.yml'
   pull_request:
     paths:
       - 'native_cpp/modules/p7_calpuff/**'
@@ -8,7 +16,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: p7-real-hour7-probe-${{ github.head_ref || github.ref }}
+  group: p7-real-hour7-probe-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 jobs:
   real-hour7-probe:
