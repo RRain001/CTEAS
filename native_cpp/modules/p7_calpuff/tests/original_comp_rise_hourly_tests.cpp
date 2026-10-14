@@ -39,6 +39,57 @@ RisePointAdmission puff(int id,double x){
     a.mass.emission_rate={2,3};
     return a;
 }
+void test_original_zero_xfinal_point_release() {
+    // Source-scoped PRFIN: WSSTK < original WSSTK0=1.0 gives
+    // XFINB=XFINM=XFINAL=0, yet the plume rises vertically and
+    // POINTS1 still emits positive mass. This is not an arbitrary
+    // zero-XFINAL acceptance for noncalm or corrupted input.
+    OriginalPointPrfinRequest in;
+    in.stack_height_m=70.8F;
+    in.max_sample_distance_cells=1.0F;
+    OriginalPointNativeSourceParameters src;
+    src.met_spacing_m=100.0F;
+    src.initial_sigma_y_m=1.0F;
+    src.initial_sigma_z_m=1.0F;
+    src.emission_rates={834000.0,0.0};
+    OriginalPointPrfinResult rise;
+    rise.stability_class=3;
+    rise.stack_wind_ms=0.189907F;
+    rise.release_wind_ms=0.276511F;
+    rise.effective_height_m=153.648F;
+    rise.x_final_m=0.0F;
+    rise.final_rise_m=82.848F;
+    rise.mixing_height_m=1009.945F;
+    rise.max_layer_height_m=1009.945F;
+    rise.mixed_fraction=1.0F;
+    rise.buoyancy_flux=5.014F;
+    rise.momentum_flux=181.836F;
+    rise.buoyancy_variance_m2=560.31F;
+    rise.brigg.z_final_buoyancy_m=82.848;
+    rise.release=release_cadence({
+        rise.release_wind_ms,
+        in.hour_seconds/(src.met_spacing_m*in.max_sample_distance_cells),
+        in.max_new_puffs,in.hour_seconds});
+    const auto source=original_point_hour_from_prfin(in,rise,src);
+    check(source.point.x_final_m==0.0 &&
+          source.point.effective_height_m>source.point.stack_height_m &&
+          source.mass.species_count==2 &&
+          source.mass.emission_rate[0]>0.0,
+          "original PRFIN calm XFINAL=0 must preserve physical puff release");
+    rise.stack_wind_ms=1.1F;
+    rejects([&]{(void)original_point_hour_from_prfin(in,rise,src);},
+            "noncalm XFINAL=0 cannot pass original-source guard");
+    rise.stack_wind_ms=0.189907F;
+    rise.x_final_m=-1.0F;
+    rejects([&]{(void)original_point_hour_from_prfin(in,rise,src);},
+            "negative XFINAL cannot pass original-source guard");
+    rise.x_final_m=0.0F;
+    rise.brigg.x_final_buoyancy_m=1.0;
+    rejects([&]{(void)original_point_hour_from_prfin(in,rise,src);},
+            "inconsistent PRFIN buoyancy XFINAL cannot pass source guard");
+    std::cout<<"P7_ORIGINAL_POINT_ZERO_XFINAL_WIND_LT_1=PASS"
+             <<" INVALID_NONCALM_AND_NEGATIVE_REJECTED=YES\\n";
+}
 void run(int total_hours){
     OriginalCompRiseMultiPuffHours scheduler;
     OriginalMetHour met;
@@ -160,6 +211,7 @@ int main(int argc,char** argv){
         const int h=std::stoi(argv[1]);
         if(h!=1&&h!=6&&h!=143)
             throw std::invalid_argument("hours must be 1, 6 or 143");
+        test_original_zero_xfinal_point_release();
         run(h);
         return 0;
     }catch(const std::exception& e){
