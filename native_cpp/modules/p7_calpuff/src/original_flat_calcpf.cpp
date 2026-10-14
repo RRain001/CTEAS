@@ -21,9 +21,14 @@ ReceptorPgSigma receptor_pg_sigma(
     const RiseCompSamplingState& s,
     const OriginalPufrecsGeometry& geom,
     const SigmaCurves& curves) {
-    const float frac=geom.fraction;
+    // Original PUFRECS L4998-5004: a real LCALM step discards the
+    // trajectory-based FRAC and pending horizontal-rise distance.
+    // Keep the original SLGFRAC distance (XTT1 is computed *before*
+    // this override), but sample time-based sigma at FRAC=0.5.
+    const bool calm=s.receptor_calm_sigma.has_value();
+    const float frac=calm?0.5F:geom.fraction;
     const float xtt=geom.distance_to_receptor_m;
-    const float xfinal=s.receptor_final_rise_distance_m;
+    const float xfinal=calm?0.0F:s.receptor_final_rise_distance_m;
     const float bidsq=s.receptor_buoyancy_variance_m2;
     const float sy0sq=s.receptor_initial_sigma_y_squared_m2;
     if(!std::isfinite(frac)||!std::isfinite(xtt)||xtt<0.0F ||
@@ -43,7 +48,8 @@ ReceptorPgSigma receptor_pg_sigma(
         hgr=static_cast<float>(rise.height_m);
         const float rf=static_cast<float>(rise.rise_fraction);
         rfacsq=rf*rf;
-    } else if(xtt<=0.0F) {
+    } else if(xtt<=0.0F && xfinal>0.0F) {
+        // PUFRECS L5180-5184 enters this branch only if XFRISE>0.
         hgr=static_cast<float>(s.receptor_rise.stack_height_m);
         rfacsq=0.0F;
     } else {
@@ -334,7 +340,10 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                 const auto geometry=original_pufrecs_grid_receptor_geometry(
                     grid_step,i);
                 const auto pufrecs=receptor_pg_sigma(s,geometry,*curves);
-                receptor_fraction=geometry.fraction;
+                // Original PUFRECS LCALM overrides FRAC=0.5 AFTER
+                // SLGFRAC and BEFORE SIGTY/SIGTZ and PUFFCT2.
+                receptor_fraction=s.receptor_calm_sigma?0.5F:
+                                  geometry.fraction;
                 receptor_sigma_y=pufrecs.y;
                 receptor_sigma_z=pufrecs.z;
                 // Vendor CALCPF L4234–4275: PUFRECS computes per-receptor
@@ -343,7 +352,7 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                 float zrpole=0.0F;
                 if(terrain_mode) {
                     const auto position=original_puffct2(
-                        *s.original_ctadj2_step,geometry.fraction);
+                        *s.original_ctadj2_step,receptor_fraction);
                     const auto met_terrain=terrain_lookup(s,i,position);
                     const auto adjusted=original_mctadj2_receptor_height(
                         position,pufrecs.grise_height_m,
