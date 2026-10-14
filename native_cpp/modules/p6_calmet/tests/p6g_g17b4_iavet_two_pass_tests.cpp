@@ -25,6 +25,7 @@
 #include "cteas/p6/p6g_g18d5_source_mixht_controls.hpp"
 #include "cteas/p6/p6g_g18d6_station_upper_assignment.hpp"
 #include "cteas/p6/p6g_g18e1_stheor_stage_adapter.hpp"
+#include "cteas/p6/p6g_g18e2_heatfx_stage_adapter.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -340,8 +341,40 @@ static void verify_source_staged_iavet(
             f.grid,all,f.series.hourly.front(),surface,ancillary);
     },"G17C accepted unmarked heat coefficients as production state");
     ancillary.explicitly_test_only=true;
-    const auto selected=p6g::selected_iavet1_heat_after_fradj(
+    // Independent direct-call comparison only. The downstream P6E/DIAGNO
+    // calculation must consume the stage-executed G14 HEATFX result.
+    const auto direct_selected=p6g::selected_iavet1_heat_after_fradj(
         f.grid,all,f.series.hourly.front(),surface,ancillary);
+    p6g::G18E2SelectedHeatfxStageAdapter heat_stage(
+        stages,surface,ancillary);
+    check(!heat_stage.run(
+              p6::NativeHourStage::DiagnoHeatfx,frame).completed,
+          "G18E2 test-only HEATFX was wrongly accepted as production");
+    rejects([&]{
+        heat_stage.run_selected(
+            p6::NativeHourStage::DiagnoAirden,frame,true);
+    },"G18E2 HEATFX ran at wrong original DIAGNO stage");
+    rejects([&]{
+        heat_stage.run_selected(
+            p6::NativeHourStage::DiagnoHeatfx,frame,false);
+    },"G18E2 unaccepted coefficients were promoted into production");
+    heat_stage.run_selected(
+        p6::NativeHourStage::DiagnoHeatfx,frame,true);
+    auto counterfeit_heat_frame=frame;
+    rejects([&]{
+        (void)heat_stage.selected_heat_for(counterfeit_heat_frame);
+    },"G18E2 HEATFX result reused from a clone of the original G14 frame");
+    rejects([&]{
+        heat_stage.run_selected(
+            p6::NativeHourStage::DiagnoHeatfx,frame,true);
+    },"G18E2 performed HEATFX twice in the same original source hour");
+    const auto& selected=heat_stage.selected_heat_for(frame);
+    check(selected.temperature_k==direct_selected.temperature_k&&
+          selected.sensible_heat_wm2==direct_selected.sensible_heat_wm2&&
+          selected.shortwave_wm2==direct_selected.shortwave_wm2&&
+          selected.density_kg_m3==direct_selected.density_kg_m3&&
+          selected.sun_sine==direct_selected.sun_sine,
+          "G18E2 stage HEATFX differs from frozen original-source G17C kernel");
     check(selected.end==f.series.end &&
           selected.temperature_k==second &&
           selected.sun_sine.size()==144 &&
