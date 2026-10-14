@@ -94,10 +94,21 @@ public:
         return *source_controls_;
     }
 
-    // The caller cannot select an arbitrary/stale hourly input. All sources
-    // are already bound in exact SURF / met.inp / UP order and UTC hour-end.
-    // A failed stage or invalid field makes no committed state change.
+    // G18D1: precommit is invoked only AFTER every original G14 stage
+    // and ALL eight physical field + historical-memory checks succeed.
+    // A P6F source writer can serialize and independently validate the
+    // full hour here; its failure leaves this scheduler at hour n-1.
+    // The hook must NOT publish externally observable final output or
+    // mutate other persistent station clocks: only candidate validation
+    // belongs before the one final state commit.
+    // Existing synthetic G14 tests retain their historical API.
     void advance(MultiHourPhysics& physics) {
+        advance_with_precommit(physics, [](const MultiHourFrame&){});
+    }
+
+    template<class PrecommitGate>
+    void advance_with_precommit(MultiHourPhysics& physics,
+                                PrecommitGate&& verify_output) {
         if (completed_ >= input_.size())
             throw std::invalid_argument("P6G cannot advance beyond declared SURF hour window");
         const auto i = completed_;
@@ -118,6 +129,11 @@ public:
         }
         validate_memory(frame.next);
         validate_fields(frame.fields);
+        // Any output writer, read-back, source provenance or missing-field
+        // failure happens BEFORE committing previous-hour physics memory.
+        // No reference/oracle source can bypass the 17-stage gate above.
+        std::forward<PrecommitGate>(verify_output)(
+            static_cast<const MultiHourFrame&>(frame));
         memory_ = std::move(frame.next);
         ++completed_;
     }
