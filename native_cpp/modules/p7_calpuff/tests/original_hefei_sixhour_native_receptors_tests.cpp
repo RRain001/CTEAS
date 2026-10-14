@@ -196,6 +196,32 @@ int main(int argc,char** argv) {
         request.max_new_puffs=deck.required_int("MXNEW");
         const auto prfin=original_point_prfin_metfm1(
             met,static_met,header,request);
+        // Read-only first unsupported POINTS1 source admission at real H9.
+        // Report the native original-scoped PRFIN branch's exact physics
+        // rather than relaxing it or seeding it from the vendor DGM.
+        if(hour_index>=8U) {
+            const auto src_cell=original_met_cell(
+                request.x_cells,request.y_cells,met.nx,met.ny);
+            std::cout<<std::setprecision(10)
+                     <<"P7_REAL_EXTENDED_PRFIN_INPUT"
+                     <<" HOUR="<<hour_index+1U
+                     <<" SRC_CELL0="<<src_cell.offset_0based
+                     <<" PGT="<<met.ipgt.at(src_cell.offset_0based)
+                     <<" TEMP="<<prfin.ambient_temperature_k
+                     <<" PBL="<<prfin.mixing_height_m
+                     <<" STACK_WIND="<<prfin.stack_wind_ms
+                     <<" HEFF_WIND="<<prfin.effective_wind_ms
+                     <<" RELEASE_WIND="<<prfin.release_wind_ms
+                     <<" HEFF="<<prfin.effective_height_m
+                     <<" STACK_HEIGHT="<<request.stack_height_m
+                     <<" XFINAL="<<prfin.x_final_m
+                     <<" RISE="<<prfin.final_rise_m
+                     <<" BUOYANCY="<<prfin.buoyancy_flux
+                     <<" MOMENTUM="<<prfin.momentum_flux
+                     <<" BIDSQ="<<prfin.buoyancy_variance_m2
+                     <<" NEWPUFFS="<<prfin.release.puff_count
+                     <<"\n";
+        }
         OriginalPointNativeSourceParameters native_source;
         native_source.base_elevation_m=static_cast<float>(stack[3]);
         native_source.met_spacing_m=header.dx_m;
