@@ -8,6 +8,7 @@
 #include "cteas/puff/original_comp_rise_hourly.hpp"
 #include "cteas/puff/original_flat_calcpf.hpp"
 #include "cteas/puff/original_met_hours.hpp"
+#include "cteas/puff/original_met_cell.hpp"
 #include "cteas/puff/original_native_terrain.hpp"
 #include "cteas/puff/receptors.hpp"
 
@@ -44,6 +45,20 @@ bool equal_real4(float a,float b) {
 int main(int argc,char** argv) {
   try {
     require(argc==4,"usage: sixhour_real_h3 MET.DAT puff.inp puff.con");
+    // Source order: strict GETCELL for pre-step puff centre, original
+    // GRIDIJ clamping for the mid/end meteorological cell after movement.
+    // A boundary crossing is sampled and retired by COMP, not aborted by
+    // an inappropriately strict midpoint lookup.
+    const auto mid=original_met_cell_clamped(18.251936F,50.00001F,50,50);
+    require(mid.ix_1based==19 && mid.iy_1based==50 &&
+            mid.offset_0based==2468U,
+            "CALPUFF GETCELL outer-edge midpoint mapped to wrong REAL4 cell");
+    bool strict_rejects=false;
+    try {
+        (void)original_met_cell(18.251936F,50.00001F,50,50);
+    } catch(const std::out_of_range&) {strict_rejects=true;}
+    require(strict_rejects,
+            "original COMP start cell unexpectedly accepts out-of-grid puffs");
     const auto control=bytes(argv[2]);
     const auto deck=ControlFile::read_file(argv[2]);
     require(deck.required_int("METFM")==1 &&
