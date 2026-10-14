@@ -13,6 +13,7 @@
 #include "cteas/puff/receptors.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <cstddef>
@@ -89,7 +90,17 @@ int main(int argc,char** argv) {
 
     // ONE instance owns all six meteorological hours and all puff state.
     OriginalCompRiseMultiPuffHours driver;
-    std::size_t completed=0U,matching_words=0U;
+    // Pinned write-only original Fortran DGM metadata, verified against
+    // dgm_puffstep.json SHA cbbdaa29c6222e6ca6aefe9f605ad13e7dd6d258f6ad243afcac07cb578108c6.
+    // These values validate scheduling AFTER native execution; they never
+    // supply puff states, winds, positions, mass or source parameters.
+    constexpr std::array<std::size_t,6> original_hour_steps{
+        1275U,2242U,1906U,2132U,1742U,2161U};
+    constexpr std::array<int,6> original_first_puff{
+        1,22,113,183,247,314};
+    constexpr std::array<int,6> original_last_puff{
+        54,137,208,272,337,417};
+    std::size_t completed=0U,matching_words=0U,physical_steps=0U;
     bool every_hour_real4=true;
     std::size_t first_mismatched_hour=0U,first_mismatched_cell=0U;
     const auto summary=OriginalMetHourlyReader::read(argv[1],
@@ -187,6 +198,11 @@ int main(int argc,char** argv) {
                 hour.receptor_concentrations.size()==2500U &&
                 hour.steps.size()>0U,
                 "real sixhour COMP hour transaction/cadence invalid");
+        require(hour.steps.size()==original_hour_steps[hour_index] &&
+                hour.steps.front().puff_id==original_first_puff[hour_index] &&
+                hour.steps.back().puff_id==original_last_puff[hour_index],
+                "real COMP old/new puff chronology differs from pinned original DGM");
+        physical_steps+=hour.steps.size();
         if(hour_index==0U)
             require(hour.steps.size()==1275U &&
                     hour.release.puff_count==54 &&
@@ -259,8 +275,13 @@ int main(int argc,char** argv) {
         ++completed;
        },true);
     require(summary.intervals==143U&&completed==6U&&
-            driver.completed_hours()==6U,
+            driver.completed_hours()==6U&&physical_steps==11458U,
             "full 143-hour frozen MET and 6 native consecutive hours required");
+    std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
+             <<" ORIGINAL_DGM_ROWS=11458/11458"
+             <<" HOURLY_ROWS=1275,2242,1906,2132,1742,2161"
+             <<" FIRST_AND_LAST_EPISODE_IDS=SOURCE_EQUIVALENT"
+             <<" NATIVE_EPISODE_PHYSICS_VALUES=NOT_YET_ALL_BITWISE"<<"\\n";
     std::cout<<"P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=PASS"
              <<" HOURS=6 METFM1=ORIGINAL"
              <<" COMP_AUTHORITY=SINGLE_STATEFUL_DRIVER"
