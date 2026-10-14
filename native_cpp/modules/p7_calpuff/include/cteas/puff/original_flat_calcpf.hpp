@@ -25,6 +25,7 @@ enum class OriginalFlatVerticalMethod {
 // as inputs; the optional hook is disabled in every production path.
 struct OriginalCalcpfReceiverIntermediate {
     std::size_t receptor_index=0;
+    float receptor_fraction=0.0F;
     float sigma_y_m=0.0F;
     float sigma_z_m=0.0F;
     float puff_height_m=0.0F;
