@@ -508,6 +508,9 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         const auto resistance=dry_deposition_step(
             setup,e,mass.reflecting_lid_m,substep.step_s,
             sampled.mixing_height_m,met.wstar[index]);
+        // Expose exact native VDCOMP values to the read-only mass oracle.
+        // Never use these preserved copies as a new solver authority.
+        dry_input_resistance=resistance;
         int original_type=mass.puff_code;
         if(original_type>=11 && original_type<=16)
             original_type-=10;
@@ -592,7 +595,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         before,moved.state,post,sampled,rise,
         cadence,substep,bookkeeping,sigma,mass,end_height,
         std::move(receptor_increments),std::move(dry_result),
-        original_qold_mixed
+        original_qold_mixed,std::move(dry_input_resistance)
     };
     motion_=std::move(m);
     vertical_=std::move(v);
