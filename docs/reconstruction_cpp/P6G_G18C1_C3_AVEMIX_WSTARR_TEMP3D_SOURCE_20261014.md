@@ -37,3 +37,24 @@ It delegates the entire formula to **unchanged PR #53** `p6e::temp3d_observed_la
 These are components in **source-correct COMP physical order**. Upstream full production multi-station DIAGNO/COMP callbacks are not yet all `{NativeCpp,true}`; selected test-only fixture coefficients in G17C1–G18A still require authentic per-hour source controls and complete G14 input authority. Original AVEMIX vendor parity is a newly added independent code/CI gate; selected WSTARR/TEMP3D equality is to frozen #53 kernels. PR #53 physical implementation and its strict 143-hour 45-field science gate must remain green. The target for PR #63 acceptance is real complete multi-site 1h/6h/143h/year original Fortran **45-field** equivalence under one G14 production scheduler with P6F, not mere selected 2SS/2US fixture tests.
 
 CI: `P6G multistation on accepted single-station baseline`, GitHub-hosted Ubuntu only. Verify the **exact** PR #63 commit before marking Debug/Release/AVEMIX vendor test passed; this document is not an automatic scientific acceptance.
+
+## G18C4 — complete eight-field G14 current-hour candidate, still uncommitted
+
+The additional selected adapter `p6g_g18c4_selected_hour_candidate.hpp`
+assembles the existing G17D native U/V/W, G17C2 source ELUSTR
+QH/USTAR/EL, G18C2 post-AVEMIX WSTAR, G18C3 3D TEMP and
+G18C2 averaged ZI/ZICONV/current MIXHT DPTT into precisely the **eight
+`NativeHourFields` arrays** and `NativeGridMemory` specified in frozen
+PR #53's `hourly_comp_scheduler.hpp`. All field and memory sizes,
+original station order, same source hour, finite values and missing sentinels
+are checked. The selected test compares all component arrays exactly with
+their upstream source-ordered producer and rejects synthetic scientific
+promotion, missing 3D temperature, and premature `frame.next` state changes.
+
+**This is not a complete 17-stage `MultiHourPhysics` implementation.**
+G14's `CommitOutput` must still be authorized only after full real-source
+PREPDI/DIAGNO/COMP and native P6F have completed and been scientifically
+checked; this candidate object has no method to publish a completed hour.
+The next stage must use the existing G14 execution authority rather than
+building a second scheduler. Full real multi-site 45-field vendor verification
+remains an explicit prerequisite.
