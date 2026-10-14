@@ -112,7 +112,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     float averaging_period_s,float impact_sigma_multiple,
     OriginalFlatVerticalMethod vertical_method,
     OriginalMctadj2TerrainLookup terrain_lookup,
-    bool selected_h3_from_multispecies) {
+    bool selected_h3_from_multispecies,
+    OriginalCalcpfIntermediateHook trace_hook) {
     if(!receptors.gridded || !receptors.discrete.empty() ||
        receptors.mesh_down!=1 || receptors.sampling_nx<=0 ||
        receptors.sampling_ny<=0 || receptors.ibsamp<1 ||
@@ -130,6 +131,9 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     }
     const bool terrain_mode=
         vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2;
+    if(trace_hook && vertical_method!=OriginalFlatVerticalMethod::receptor_pg_vcoup &&
+       !terrain_mode)
+        throw std::invalid_argument("CALCPF intermediate trace requires receptor PUFRECS");
     if(terrain_mode && !terrain_lookup)
         throw std::invalid_argument(
             "CALCPF MCTADJ2 needs authentic TRELIEF/GETELEV receptor lookup");
@@ -139,7 +143,7 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
     const float grid_y=static_cast<float>(receptors.jbsamp)-0.5F;
     return [nrecs,nx,grid_x,grid_y,met_spacing_m,averaging_period_s,
             impact_sigma_multiple,vertical_method,terrain_lookup,
-            selected_h3_from_multispecies](
+            selected_h3_from_multispecies,trace_hook](
             const RiseCompSamplingState& s) {
         const bool terrain_mode=
             vertical_method==OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2;
@@ -288,12 +292,16 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             if(!screen.has_impact)
                 continue;
             float receptor_sigma_y=sy;
+            float receptor_sigma_z=sz;
+            float receptor_height_m=midz;
+            float receptor_pole_m=0.0F;
             float receptor_vertical=vfactor;
             if(pg_receiver) {
                 const auto geometry=original_pufrecs_grid_receptor_geometry(
                     grid_step,i);
                 const auto pufrecs=receptor_pg_sigma(s,geometry,*curves);
                 receptor_sigma_y=pufrecs.y;
+                receptor_sigma_z=pufrecs.z;
                 // Vendor CALCPF L4234–4275: PUFRECS computes per-receptor
                 // ZPR/ZRPOLE, with PUFFCT2 MCTADJ2 at L5321–5369.
                 float zpr=pufrecs.grise_height_m;
@@ -309,6 +317,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                     zpr=adjusted.puff_height_above_ground_m;
                     zrpole=adjusted.pole_height_m;
                 }
+                receptor_height_m=zpr;
+                receptor_pole_m=zrpole;
                 receptor_vertical=static_cast<float>(vertical_coupling({
                     s.vmass.puff_code,zrpole,zpr,pufrecs.z,lid,max_lid
                 }));
@@ -348,6 +358,20 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             if(!std::isfinite(inc) ||
                std::abs(inc)>std::numeric_limits<float>::max())
                 throw std::overflow_error("flat CALCPF receptor REAL4 overflow");
+            if(trace_hook) {
+                // Read-only: the trace is not fed back into PFSAMP/CALCPF.
+                const float denom=6.2831853F*receptor_sigma_y*receptor_sigma_y;
+                const float dinv=1.0F/denom;
+                const float t2=static_cast<float>(ints.i2)*dinv;
+                const float t1=static_cast<float>(ints.i1)*dinv-t2;
+                trace_hook(s,OriginalCalcpfReceiverIntermediate{
+                    i,receptor_sigma_y,receptor_sigma_z,
+                    receptor_height_m,receptor_pole_m,receptor_vertical,
+                    static_cast<float>(ints.i1),static_cast<float>(ints.i2),
+                    t1,t2,qold,qnew,static_cast<float>(receptor_vertical*frac),
+                    static_cast<float>(inc)
+                });
+            }
             values[i]=static_cast<float>(inc);
         }
         return values;
