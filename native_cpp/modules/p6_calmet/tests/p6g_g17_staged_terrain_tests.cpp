@@ -113,6 +113,15 @@ int main(int argc,char** argv) {
                                 &controls,memory,memory,{}};
         p6g::G17SelectedTerrainFixturePhysics stages(
             profiles(end),terrain,fradj(end));
+        auto obsolete_geo=geo;
+        obsolete_geo.terrain_m[0]+=1.f;
+        p6g::MultiHourFrame stale{0,obsolete_geo,stations,observation,slot,upper,
+                                 &controls,memory,memory,{}};
+        p6g::G17SelectedTerrainFixturePhysics stale_terrain(
+            profiles(end),terrain,fradj(end));
+        reject([&]{
+            (void)stale_terrain.run(p6::NativeHourStage::DiagnoWind1,stale);
+        },"G17 accepted terrain envelope from a different GEO source");
         check(!stages.run(p6::NativeHourStage::PrepdiPreviousZiconv,hour).completed,
               "G17 fabricated original PREPDI native processing");
         reject([&]{stages.run(p6::NativeHourStage::DiagnoFradj,hour);},
@@ -159,6 +168,10 @@ int main(int argc,char** argv) {
             p6g::TerrainHourProvenance::ValidatedP6EHourlyPhysics;
         reject([&]{stages.provide_slope_heat(wrong_source);},
                "G17 accepted unverified production P6E QH assertion");
+        auto inconsistent_temp=heat(end);
+        inconsistent_temp.temperature_k[0]+=1.f;
+        reject([&]{stages.provide_slope_heat(inconsistent_temp);},
+               "G17 used different SURFVAR TEMP2D in FRADJ and SLOPE");
         stages.provide_slope_heat(heat(end));
         res=stages.run(p6::NativeHourStage::DiagnoSlope,hour);
         check(res.completed&&res.source==p6::NativeHourSource::NativeCpp,
