@@ -50,6 +50,14 @@ jobs:
             --hour 2 --receptor-i 25 --receptor-j 28
           test -s "$root/vendor/case/run/puff/dgm_puffstep.bin"
           echo "P7_EXTENDED_ORIGINAL_DGM=PINNED_VENDOR_FULL_143H_ORACLE"
+      - name: Decode original H9 P585 KSAM1 calm stage without native state injection
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP}/p7-hour7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/audit_original_h9_calm.py \
+            --original-dgm "$root/vendor/case/run/puff/dgm_puffstep.bin" \
+            --out "$root/original-h9-calm.json"
       - name: Diagnose first native COMP mismatch through hour24 without weakening six-hour gate
         shell: bash
         run: |
@@ -80,6 +88,8 @@ jobs:
         if: always()
         with:
           name: p7-real-first-24h-divergence-log
-          path: ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour7-probe.log
+          path: |
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour7-probe.log
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/original-h9-calm.json
           retention-days: 7
           if-no-files-found: warn
