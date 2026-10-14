@@ -829,6 +829,40 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
          known_cells[2499]==0.0F,
          "flat source-ported VCOUP/PFSAMP receptor result was not localized/positive");
 
+    // Original CALCPF L4295/L4304 samples QOLD*T1 + QNEW*T2.
+    // When DRY removes the last remaining mixed H-3 mass, QNEW=0 must
+    // not suppress an otherwise valid positive pre-removal QOLD term.
+    auto endpoint=known;
+    endpoint.vmass.mass_mixed={0.0F,0.0F};
+    endpoint.vmass.mass_above={0.0F,0.0F};
+    endpoint.receptor_qold_mixed={2.0F,0.0F};
+    const auto endpoint_kernel=make_original_flat_calcpf_sampler(
+        flat_grid,100.0F,3600.0F,3.0F,
+        OriginalFlatVerticalMethod::midpoint_vcoup,{},true);
+    const auto qold_only=endpoint_kernel(endpoint);
+    const std::size_t endpoint_receptor=5U+5U*50U;
+    need(qold_only.size()==2500U && qold_only[endpoint_receptor]>0.0F,
+         "CALCPF discarded nonzero QOLD when QNEW was removed by DRY");
+    endpoint.receptor_qold_mixed[0]=0.0F;
+    const auto empty_endpoints=endpoint_kernel(endpoint);
+    need(std::all_of(empty_endpoints.begin(),empty_endpoints.end(),
+                     [](float x){return x==0.0F;}),
+         "CALCPF did not reject truly zero old and new species mass");
+    endpoint.vmass.mass_mixed[0]=2.0F;
+    const auto qnew_only=endpoint_kernel(endpoint);
+    endpoint.receptor_qold_mixed[0]=2.0F;
+    const auto both_endpoints=endpoint_kernel(endpoint);
+    need(qnew_only[endpoint_receptor]>0.0F &&
+         std::abs((qold_only[endpoint_receptor]+
+                   qnew_only[endpoint_receptor])-
+                  both_endpoints[endpoint_receptor])<=
+             2.0e-6F*both_endpoints[endpoint_receptor],
+         "CALCPF failed independent linear QOLD/QNEW endpoint weight test");
+    std::cout<<"P7_CALCPF_QOLD_QNEW_ZERO_ENDPOINT=PASS"
+             <<" PRE_DRY_QOLD_PRESERVED=YES"
+             <<" BOTH_MASS_ZERO=ZERO"
+             <<" VENDOR_QOLD_T1_QNEW_T2=ENFORCED\\n";
+
 
     // New opt-in, source-ported VCBAR stage: independently verify the
     // begin/mid/end SIGTZ/GRISE height coupling against P7H VCBAR, while
