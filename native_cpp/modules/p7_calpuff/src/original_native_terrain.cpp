@@ -109,9 +109,15 @@ OriginalMctadj2ReceptorTerrain OriginalNativeTerrain::receptor(
     const auto idx=static_cast<std::size_t>(iy-1)*
         static_cast<std::size_t>(data_->nx)+static_cast<std::size_t>(ix-1);
     const auto lookup=constraint_lookup();
+    // Original CALPUFF PUFRECS L5341-L5343 uses
+    // XR1MET=XR1*DGRIDI / YR1MET=YR1*DGRIDI, where DGRIDI is
+    // precomputed REAL*4 1/DGRID. Dividing by DGRID per receiver is
+    // NOT REAL*4 equivalent and can shift GETELEV by a terrain ULP.
+    const float dgridi=1.0F/data_->spacing_m;
+    const float xr1met=puff.x_m*dgridi;
+    const float yr1met=puff.y_m*dgridi;
     const auto under_puff=lookup.elevation_msl(
-        static_cast<double>(puff.x_m/data_->spacing_m),
-        static_cast<double>(puff.y_m/data_->spacing_m));
+        static_cast<double>(xr1met),static_cast<double>(yr1met));
     return {
         .receptor_ground_elevation_msl=data_->elevation_msl[idx],
         .terrain_peak_elevation_msl=static_cast<float>(
