@@ -17,6 +17,7 @@
 #include "cteas/p6/p6g_g18c2_wstarr_after_avemix.hpp"
 #include "cteas/p6/p6g_g18c3_temp3d_after_comp.hpp"
 #include "cteas/p6/p6g_g18c4_selected_hour_candidate.hpp"
+#include "cteas/p6/p6g_g18c5_selected_p6f_fields.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -75,6 +76,8 @@ struct Input {
         hour.by_station[0].pressure_mb=1013.f;
         hour.by_station[0].cloud_valid=true;
         hour.by_station[0].opaque_cloud_tenths=2;
+        hour.by_station[0].ceiling_valid=true;
+        hour.by_station[0].ceiling_hundreds_ft=150;
         hour.by_station[0].temperature_valid=true;
         hour.by_station[0].temperature_k=281.f;
         hour.by_station[0].humidity_valid=true;
@@ -86,6 +89,8 @@ struct Input {
         hour.by_station[1].pressure_mb=997.f;
         hour.by_station[1].cloud_valid=true;
         hour.by_station[1].opaque_cloud_tenths=7;
+        hour.by_station[1].ceiling_valid=true;
+        hour.by_station[1].ceiling_hundreds_ft=75;
         hour.by_station[1].temperature_valid=true;
         hour.by_station[1].temperature_k=302.f;
         hour.by_station[1].humidity_valid=true;
@@ -826,6 +831,68 @@ static void verify_source_staged_iavet(
     },"G18C4 allowed incomplete P6E fixture to impersonate a full G14 commit");
     const auto full_candidate=p6g::g18c4_assemble_selected_hour(
         frame,selected,elustr,final_conv,selected_temp,true);
+    rejects([&]{
+        (void)p6g::g18c5_selected_p6f_fields(
+            frame,selected,full_candidate,source_metinp,false);
+    },"G18C5 incomplete real P6F output impersonated native full 45 field output");
+    const auto p6f_candidate=p6g::g18c5_selected_p6f_fields(
+        frame,selected,full_candidate,source_metinp,true);
+    check(p6f_candidate.end==frame.input.end&&
+          p6f_candidate.station_ids==std::vector<int>({58321,58322})&&
+          p6f_candidate.real.size()==43&&p6f_candidate.integer.size()==2&&
+          p6f_candidate.real.at("T-LEV  1")==selected_temp.temperature_k/* first plane? */,
+          "G18C5 invalid source 45-field record mapping");
+    check(p6f_candidate.real.at("TEMPK   ")==selected.temperature_k&&
+          p6f_candidate.real.at("RHO     ")==selected.density_kg_m3&&
+          p6f_candidate.real.at("QSW     ")==selected.shortwave_wm2&&
+          p6f_candidate.real.at("WFACE  1").size()==144&&
+          p6f_candidate.real.at("WFACE  1")[0]==frame.fields.w_face_mps[144]&&
+          p6f_candidate.real.at("ZI      ")==averaged.zi_m&&
+          p6f_candidate.real.at("WSTAR   ")==final_conv.wstar_mps,
+          "G18C5 source REAL*4 CALMET.DAT arrays not mapped by native ownership");
+    p6e::PgtInput direct_pgt;
+    direct_pgt.nx=12;direct_pgt.ny=12;direct_pgt.mcloud=1;
+    direct_pgt.water_first=f.grid.iwat1;direct_pgt.water_last=f.grid.iwat2;
+    direct_pgt.u10.assign(frame.fields.u_mps.begin(),
+                          frame.fields.u_mps.begin()+144);
+    direct_pgt.v10.assign(frame.fields.v_mps.begin(),
+                          frame.fields.v_mps.begin()+144);
+    direct_pgt.sinalp=selected.sun_sine;
+    direct_pgt.nearest=selected.nearest_surface;
+    direct_pgt.landuse=f.grid.landuse;
+    direct_pgt.station_cloud={2,7};
+    direct_pgt.station_ceil={150,75};
+    direct_pgt.ccgrid.assign(144,0.f);
+    direct_pgt.ceilgrid.assign(144,0);
+    const auto frozen_pgt=p6e::pgtstb(direct_pgt);
+    check(p6f_candidate.integer.at("IPGT    ")==
+              std::vector<std::int32_t>(frozen_pgt.begin(),frozen_pgt.end()),
+          "G18C5 original PGTSTB grid not reused");
+    p6e::SurfvarMultistationInput direct_rh;
+    direct_rh.nx=12;direct_rh.ny=12;direct_rh.dgrid_m=10000.f;
+    direct_rh.irad=f.controls.source.irad;
+    direct_rh.numts=f.controls.source.numts;
+    direct_rh.trad_grid=f.controls.source.trad_km/10.f;
+    direct_rh.stations={{10000.f,10000.f,281.f,60},
+                        {100000.f,100000.f,302.f,73}};
+    const auto source_rh=p6e::surfvar_multistation(direct_rh).rh2d_pct;
+    check(p6f_candidate.integer.at("IRH     ")==
+              std::vector<std::int32_t>(source_rh.begin(),source_rh.end()),
+          "G18C5 original multi-station SURFVAR RH field not reused");
+    const auto invalid_icloud=std::regex_replace(
+        source_metinp,std::regex(R"(!\s*ICLOUD\s*=\s*0\s*!)",
+                                std::regex_constants::icase),
+        "! ICLOUD = 3 !");
+    rejects([&]{
+        (void)p6g::g18c5_selected_p6f_fields(
+            frame,selected,full_candidate,invalid_icloud,true);
+    },"G18C5 accepted unimplemented gridded CLOUD output as NWS observations");
+    auto bad_heat=selected;
+    bad_heat.shortwave_wm2.pop_back();
+    rejects([&]{
+        (void)p6g::g18c5_selected_p6f_fields(
+            frame,bad_heat,full_candidate,source_metinp,true);
+    },"G18C5 filled missing QSW from reference or omitted required field");
     check(full_candidate.end==frame.input.end&&
           full_candidate.candidate_fields.u_mps==frame.fields.u_mps&&
           full_candidate.candidate_fields.v_mps==frame.fields.v_mps&&
@@ -1375,6 +1442,7 @@ int main(int argc,char** argv){
                     "G18C2_AVEMIX_BEFORE_FROZEN_WSTARR_ORDER_PASS "
                     "G18C3_TRUE_UP_FACET_POST_AVEMIX_TEMP3D_PASS "
                     "G18C4_EIGHT_G14_FIELDS_UNCOMMITTED_SOURCE_CANDIDATE_PASS "
+                    "G18C5_SELECTED_45_P6F_NO_REFERENCE_BACKFILL_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
