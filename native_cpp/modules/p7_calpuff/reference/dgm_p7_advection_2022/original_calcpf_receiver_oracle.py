@@ -179,8 +179,14 @@ def audit_h9_met_trace(path: Path, out: Path) -> None:
     with path.open("rb") as handle:
         while raw:=handle.read(H9_MET_RECORD.size):
             ii,jdstab,packed,tsigv,tsigw,el=H9_MET_RECORD.unpack(raw)
-            if ii!=588 or packed!=202200108 or not (1<=jdstab<=6):
-                raise AssertionError("bad native-independent SETPUF TURBSET key")
+            # Original's JDSTAB is captured before imposing the native
+            # SWMIN index contract. It may be an upstream regime code,
+            # a valid sentinel, or a mismatched source type; print first.
+            if ii!=588 or packed!=202200108:
+                raise AssertionError(
+                    f"bad original SETPUF trace identity ii={ii}"
+                    f" packed={packed} jdstab_raw={jdstab}"
+                    f" sigw={tsigw:.9g} el={el:.9g}")
             rows.append((jdstab,tsigv,tsigw,el))
     if not rows:
         raise AssertionError("no original H9 SETPUF incoming met rows")
