@@ -12,7 +12,7 @@ from pathlib import Path
 import struct
 
 RECORD = struct.Struct("<3i13f")
-VIRTUAL = struct.Struct("<3i9f")
+FRACTION = struct.Struct("<3if")
 NAMES = ("syrec", "szrec", "zpr", "zrpole", "f1", "xi1", "xi2",
          "t1", "t2", "qold", "qnew", "xtemp", "conc")
 SOURCE_ORDER = ("qold", "qnew", "syrec", "szrec", "zpr", "zrpole", "f1",
@@ -42,13 +42,15 @@ def load_original(path: Path) -> dict:
         while chunk := fp.read(RECORD.size):
             if len(chunk) != RECORD.size:
                 raise ValueError("truncated vendor receiver record")
-            extra = fp.read(VIRTUAL.size)
-            if len(extra) != VIRTUAL.size:
-                raise ValueError("truncated paired PUFRECS virtual trace")
+            extra = fp.read(FRACTION.size)
+            if len(extra) != FRACTION.size:
+                raise ValueError("truncated paired original receptor FRAC")
             seq, ii, ksam, *floats = RECORD.unpack(chunk)
-            vseq, vid, vksam, *_values = VIRTUAL.unpack(extra)
+            vseq, vid, vksam, frec = FRACTION.unpack(extra)
             if (seq, ii, ksam) != (vseq, vid, vksam):
-                raise ValueError("vendor PUFRECS virtual trace key does not match CALCPF")
+                raise ValueError("vendor PUFRECS FRAC key does not match CALCPF")
+            if not math.isfinite(frec):
+                raise ValueError("non-finite original PUFRECS FRAC")
             rows.append((seq, ii, ksam, floats))
     return check(rows, "ORIGINAL")
 
