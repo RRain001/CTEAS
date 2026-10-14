@@ -217,13 +217,21 @@ def add_h9_receptor_sigtz_trace(source: str) -> str:
             "     &                           addbid,vtzb1,vtze1,\n"
             "     &                           vdzb1,vdze1)\n")
     source=source.replace(anchor + "\n", anchor + "\n" + call)
+    # The original also has an identical SZ0 floor in another routine
+    # (calpuff.for L7099). Instrument ONLY PUFRECS L5272.
+    begin=source.lower().find("      subroutine pufrecs(")
+    end=source.lower().find("      subroutine calcsl(",begin)
+    if begin<0 or end<begin:
+        raise AssertionError("original PUFRECS/CALCSL boundaries changed")
+    routine=source[begin:end]
     floor_anchor="      if(szr .LT. sz0(ipnum)) szr=sz0(ipnum)"
-    if source.count(floor_anchor + "\n") != 1:
-        raise AssertionError("H9 original PUFRECS SZ0 floor anchor changed")
+    if routine.count(floor_anchor + "\n") != 1:
+        raise AssertionError("H9 PUFRECS unique SZ0 floor changed")
     floor_call=("      call dgmh9recvfloor(x,y,szar,addbid,\n"
                 "     &                       sz0(ipnum),szr)\n")
-    return source.replace(floor_anchor + "\n",
-                          floor_anchor + "\n" + floor_call) + H9_RECSIG_HELPERS
+    routine=routine.replace(floor_anchor + "\n",
+                            floor_anchor + "\n" + floor_call)
+    return source[:begin]+routine+source[end:]+H9_RECSIG_HELPERS
 
 
 def audit_h9_receptor_floor(path: Path, out: Path) -> None:
