@@ -9,6 +9,57 @@ and original `puff.con` as a read-only external oracle; real `MDRY=1`,
 only** (`143` hourly species DATA fields, **not** `286` fields; `286`
 are the period/grid metadata records). **MWET=0.**
 
+## 2026-10-14 CTADJ2 first-REAL4-divergence closure (latest accepted scope)
+
+The previous 1-ULP REAL4 difference at **DGM record 3874**, 2022 real
+meteorological hour 3, puff 138 KSAM=23 is **FIXED**, not tolerated.
+
+- Original vendor **SETPUF** L48627-L48631 and **CTADJ2** L20800 explicitly
+  evaluate `ETABYL*(ONE+XBYL2)**2` before dividing the numerator; native
+  had left-associated `(ETABYL*(ONE+XBYL2))*(ONE+XBYL2)`.
+  The grouping determines the last float32 bit of `DTZ` and `STRAIN`.
+- Independent pinned Fortran source replay with **unchanged** full 143h
+  `puff.con` and 254687-record original DGM gave at record 3874:
+  `R` identical (`0x3f76113e`); **vendor CTADJ2 STRAIN
+  `0x3f806eea` versus native `0x3f806eeb`**; downstream
+  `SZADJ` `0x4306a3c2` versus `0x4306a3c3`.
+  This directly identifies **CTADJ2, not SIGTZ**, as the first discrepancy.
+  [Original-vs-native source oracle #38517589533](https://github.com/RRain001/CTEAS/actions/runs/38517589533).
+- [`44abb4d`](https://github.com/RRain001/CTEAS/commit/44abb4dfd9755eccd0486fe3782c2df05c7167b0)
+  changes **only the vendor-defined REAL4 denominator grouping** in
+  `terrain_constraints.cpp`. The original vendor source, P6, original
+  case and prior CALCPF physics remain immutable.
+- Real six-hour 11,458-step original DGM under the fixed native solver:
+  **episode ID/KSAM 11458/11458; X/Y 11458/11458; SIGY 11458/11458;
+  SIGZ 11458/11458**, first DGM difference **NONE**.
+  **First 3 H-3 hourly fields: 7500/7500 REAL4 bits identical.**
+- New hour-4-6 H3 field checks (2500 receptors per hour):
+  hour 4 **2252/2500**, hour 5 **2461/2500**, hour 6
+  **2483/2500**. Sixhour total **14696/15000** exact;
+  **first remaining H3 discrepancy: hour 4, index0 646**
+  (1-based grid i=47,j=13).
+  Remaining 304 mismatches are **not** cleared by DGM endpoint equality
+  and must be traced via historical receptor-specific CALCPF, mass
+  and accumulation rather than loosening tolerances.
+- Original-vs-native stage gate
+  [#38518070871](https://github.com/RRain001/CTEAS/actions/runs/38518070871)
+  reported these source-backed science results but the *obsolete diagnostic
+  assertion* deliberately expected a DGM #3874 mismatch, making that
+  workflow's final assertion fail **because the mismatch disappeared**.
+  [`188732d`](https://github.com/RRain001/CTEAS/commit/188732d050c5abbc11e3f0ccc0c86fbe1cc36957)
+  now gates **all** 11,458 actual DGM fields and first three original H3
+  hours, and
+  [`fb82ada`](https://github.com/RRain001/CTEAS/commit/fb82adaff2f1e396cb4d6d9667475c352400af23)
+  changes the original endpoint stage job into a true **PASS-on-bitwise-parity
+  gate**. Final run status must be checked independently.
+
+**CURRENT SCIENCE VERDICT:** 3h H3 REAL4 parity **ACCEPTED**;
+6h original COMP trajectory/sigmas **ACCEPTED**;
+complete 6h H3 **OPEN**; complete 143h output, forced MXPUFF
+`SWAP/ROLLDN`, and wet deposition **OPEN / OUT OF SCOPE HERE**.
+
+---
+
 ## One source-ordered native scheduling authority
 
 `OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled`
