@@ -3,6 +3,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace cteas::puff {
@@ -410,11 +411,27 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
                 ctrl.source_period_s=tsamp;
                 ctrl.release_number=1;
                 ctrl.max_sampling_steps=1;
-                const auto physics=trial.step_pg_rise(
-                    id,met,statics,ctrl,pg,urban,
-                    {.ksam=k,.nsam=plan.sampling_steps,
-                     .lsubsam=adaptive && plan.subsampling},
-                    sampling_kernel?*sampling_kernel:RiseCompSamplingKernel{});
+                const auto physics=[&](){
+                    try {
+                        return trial.step_pg_rise(
+                            id,met,statics,ctrl,pg,urban,
+                            {.ksam=k,.nsam=plan.sampling_steps,
+                             .lsubsam=adaptive && plan.subsampling},
+                            sampling_kernel?*sampling_kernel:RiseCompSamplingKernel{});
+                    } catch(const std::exception& failure) {
+                        // No change to the COMP transaction or REAL4 math.
+                        // Identify the earliest failing old/new episode,
+                        // KSAM and exact pre-step puff centre for domain audit.
+                        const auto centre=trial.motion(id);
+                        throw std::runtime_error(
+                            "P7 COMP phase=physical_substep HOUR="+
+                            std::to_string(hours_+1U)+" PUFF="+
+                            std::to_string(id)+" KSAM="+
+                            std::to_string(k)+" X_CELLS="+
+                            std::to_string(centre.x_cells)+" Y_CELLS="+
+                            std::to_string(centre.y_cells)+" : "+failure.what());
+                    }
+                }();
                 const float used=static_cast<float>(physics.substep.step_s);
                 if(!(used>0.0F && used<=tsamp && std::isfinite(used)))
                     throw std::logic_error("invalid native COMP effective TSAMP");
@@ -471,7 +488,19 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
         }
     };
     for(const int id:ids){
-        const auto native=trial.pre_cadence_wind(id,met,statics);
+        const auto native=[&]() {
+            try {
+                return trial.pre_cadence_wind(id,met,statics);
+            } catch(const std::exception& failure) {
+                const auto centre=trial.motion(id);
+                throw std::runtime_error(
+                    "P7 COMP phase=old_puff_pre_cadence HOUR="+
+                    std::to_string(hours_+1U)+" PUFF="+
+                    std::to_string(id)+" X_CELLS="+
+                    std::to_string(centre.x_cells)+" Y_CELLS="+
+                    std::to_string(centre.y_cells)+" : "+failure.what());
+            }
+        }();
         const float u=static_cast<float>(native.wind.u_ms);
         const float v=static_cast<float>(native.wind.v_ms);
         const float ws=std::sqrt(u*u+v*v);
