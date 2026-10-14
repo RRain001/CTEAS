@@ -25,6 +25,9 @@ CALCPF_ANCHOR = "                  conc=vdpvd(ipol)*xtemp*(qold(ipol)*t1+qnew(ip
 CALL = """                  call dgmrecv(isamp,jsamp,ipol,syrec,szrec,zpr,
      &                 zrpole,f1,xi1,xi2,t1,t2,qold(ipol),
      &                 qnew(ipol),xtemp,conc)
+                  call dgmrecvvirt(isamp,jsamp,ipol,frec,
+     &                 vtyb1,vtye1,vdyb1,vdye1,
+     &                 vtzb1,vtze1,vdzb1,vdze1)
 """
 
 # Helpers are appended AFTER all original modules; no COMMON values are
@@ -63,6 +66,27 @@ c ---- Write-only receiver-stage provenance, original first hour only.
       write(97) dgmseq,dgmid,dgmksam,
      &          syrec,szrec,zpr,zrpole,f1,xi1,xi2,t1,t2,
      &          qold,qnew,xtemp,conc
+      return
+      end
+      subroutine dgmrecvvirt(isamp,jsamp,ipol,frac,
+     &                       vtyb,vtye,vdyb,vdye,
+     &                       vtzb,vtze,vdzb,vdze)
+      integer isamp,jsamp,ipol,dgmseq,dgmid,dgmksam
+      real frac,vtyb,vtye,vdyb,vdye,vtzb,vtze,vdzb,vdze
+      common /dgmrecur/ dgmseq,dgmid,dgmksam
+      logical first
+      save first
+      data first/.true./
+      if(dgmseq.gt.1275) return
+      if(isamp.ne.19.or.jsamp.ne.50.or.ipol.ne.1) return
+      if(first)then
+        open(unit=98,file='dgm_calcpf_h3_virtual_19_50.bin',
+     &       form='unformatted',access='stream',
+     &       status='replace')
+        first=.false.
+      endif
+      write(98) dgmseq,dgmid,dgmksam,
+     &          frac,vtyb,vtye,vdyb,vdye,vtzb,vtze,vdzb,vdze
       return
       end
 """
@@ -122,6 +146,21 @@ def main() -> None:
             samples.append((seq, puff, ksam, values))
     if not samples:
         raise AssertionError("original first-hour H3 hotspot never sampled")
+    virtual_trace = run / "dgm_calcpf_h3_virtual_19_50.bin"
+    if not virtual_trace.is_file() or virtual_trace.stat().st_size != len(samples) * 48:
+        raise AssertionError("original first-hour PUFRECS virtual state alignment mismatch")
+    with virtual_trace.open("rb") as infile:
+        for k, original_row in enumerate(samples):
+            row = infile.read(48)
+            vseq, vid, vksam, *stage = struct.unpack("<3i9f", row)
+            if (vseq, vid, vksam) != original_row[:3]:
+                raise AssertionError(f"PUFRECS virtual trace identity drift at row {k}")
+            if k < 8:
+                print("P7_VENDOR_H3_PUFRECS_VIRTUAL"
+                      f" SEQ={vseq} II={vid} KSAM={vksam}"
+                      + " ".join(f" {name}={value:.9g}" for name, value in zip(
+                          ("frac", "vtyb", "vtye", "vdyb", "vdye",
+                           "vtzb", "vtze", "vdzb", "vdze"),stage)))
     if any(a[0] >= b[0] for a, b in zip(samples, samples[1:])):
         raise AssertionError("original receiver substep trace order incorrect")
     total = sum(v[12] for _, _, _, v in samples)
@@ -134,6 +173,8 @@ def main() -> None:
         "record_bytes": RECORD.size,
         "trace_sha256": original.sha256_file(trace),
         "trace_path": str(trace),
+        "virtual_trace_path": str(virtual_trace),
+        "virtual_trace_sha256": original.sha256_file(virtual_trace),
         "first_receptor_contribution": {
             "seq": samples[0][0], "puff": samples[0][1],
             "ksam": samples[0][2],
