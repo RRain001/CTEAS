@@ -53,6 +53,9 @@ FORTRAN_HEAD = """      program original_wind1_probe
       yusta(2)=50000.
       ws10(1)=0.
       ws10(2)=5.
+      do k=1,nz
+        bias(k)=0.
+      enddo
       bias(1)=0.
       bias(2)=0.3
       bias(3)=-0.2
@@ -93,7 +96,7 @@ FORTRAN_TAIL = """      do k=1,nz
 """
 
 
-def lift_vendor() -> tuple[str, str]:
+def lift_vendor(expanded: bool) -> tuple[str, str]:
     raw = VENDOR.read_bytes()
     lines = raw.decode("latin-1").splitlines(keepends=True)
     if len(lines) < 36397:
@@ -103,10 +106,18 @@ def lift_vendor() -> tuple[str, str]:
         raise ValueError("vendor WIND1 source location changed; do not fall back to reimplemented code")
     if "vvw(k,l)" not in excerpt or "ug(i,j,k)=unext" not in excerpt:
         raise ValueError("original WIND1 numerical source statements not found")
-    return FORTRAN_HEAD + excerpt + FORTRAN_TAIL, hashlib.sha256(raw).hexdigest()
+    header = FORTRAN_HEAD
+    if expanded:
+        header = (header
+                  .replace("nx=3,ny=3,nz=3", "nx=12,ny=12,nz=9")
+                  .replace("xssta(2)=30000.", "xssta(2)=100000.")
+                  .replace("yssta(2)=40000.", "yssta(2)=100000.")
+                  .replace("xusta(2)=50000.", "xusta(2)=90000.")
+                  .replace("yusta(2)=50000.", "yusta(2)=90000."))
+    return header + excerpt + FORTRAN_TAIL, hashlib.sha256(raw).hexdigest()
 
 
-def rows(text: str) -> dict[tuple[int, int, int], tuple[float, float]]:
+def rows(text: str, expected: int) -> dict[tuple[int, int, int], tuple[float, float]]:
     values = {}
     for record in text.splitlines():
         words = record.strip().split()
@@ -121,8 +132,8 @@ def rows(text: str) -> dict[tuple[int, int, int], tuple[float, float]]:
         if not all(math.isfinite(q) for q in uv):
             raise ValueError(f"nonfinite original wind field {key}")
         values[key] = uv
-    if len(values) != 27:
-        raise ValueError(f"expected 27 three-dimensional original WIND1 cells, got {len(values)}")
+    if len(values) != expected:
+        raise ValueError(f"expected {expected} three-dimensional original WIND1 cells, got {len(values)}")
     return values
 
 
@@ -130,41 +141,48 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=("Debug", "Release"), required=True)
     args = ap.parse_args()
-    fortran, sha = lift_vendor()
+    common = ["-ffixed-line-length-none", "-std=legacy"]
+    opt = "-O0" if args.mode == "Debug" else "-O2"
     with tempfile.TemporaryDirectory(prefix="p6g-g9-source-") as temp:
         root = Path(temp)
-        path = root / "wind1_original_extracted.f"
-        path.write_text(fortran, encoding="latin-1")
-        common = ["-ffixed-line-length-none", "-std=legacy"]
-        opt = "-O0" if args.mode == "Debug" else "-O2"
-        subprocess.run(["gfortran", opt, *common, str(path), "-o", str(root / "original")],
-                       check=True)
         subprocess.run(["g++", "-std=c++20", opt, "-Wall", "-Wextra", "-Wpedantic",
                         "-Werror", "-I", str(INCLUDE), str(CPP),
                         "-o", str(root / "native")], check=True)
-        original = subprocess.run([str(root / "original")], capture_output=True,
-                                  text=True, check=True)
-        native = subprocess.run([str(root / "native")], capture_output=True,
-                                text=True, check=True)
-    f = rows(original.stdout)
-    c = rows(native.stdout)
-    if f.keys() != c.keys():
-        raise ValueError("original and C++ grid ordering/coordinates differ")
-    failures = []
-    maximum = 0.0
-    for key in sorted(f):
-        for a, b in zip(f[key], c[key]):
-            diff = abs(a - b)
-            maximum = max(maximum, diff)
-            if diff > 2e-6:
-                failures.append((key, a, b, diff))
-    if failures:
-        raise AssertionError(
-            f"selected vendor WIND1 != C++ multi-station WIND1: "
-            f"maximum abs delta={maximum:.9g}, sample={failures[:5]}")
-    print("PASS P6G_G9_DIRECT_ORIGINAL_FORTRAN_WIND1_SELECTED_MULTISTATION "
-          f"mode={args.mode} cells={len(f)} max_abs_uv_delta={maximum:.9g} "
-          f"original_sha256={sha}")
+        for expanded in (False, True):
+            fortran, sha = lift_vendor(expanded)
+            scenario = "expanded120km" if expanded else "initial30km"
+            expected = 12 * 12 * 9 if expanded else 3 * 3 * 3
+            path = root / f"wind1_original_{scenario}.f"
+            path.write_text(fortran, encoding="latin-1")
+            executable = root / f"original_{scenario}"
+            subprocess.run(["gfortran", opt, *common, str(path), "-o",
+                            str(executable)], check=True)
+            original = subprocess.run([str(executable)], capture_output=True,
+                                      text=True, check=True)
+            native_cmd = [str(root / "native")]
+            if expanded:
+                native_cmd.append("expanded")
+            native = subprocess.run(native_cmd, capture_output=True,
+                                    text=True, check=True)
+            f = rows(original.stdout, expected)
+            c = rows(native.stdout, expected)
+            if f.keys() != c.keys():
+                raise ValueError("original and C++ grid ordering/coordinates differ")
+            failures = []
+            maximum = 0.0
+            for key in sorted(f):
+                for a, b in zip(f[key], c[key]):
+                    diff = abs(a - b)
+                    maximum = max(maximum, diff)
+                    if diff > 2e-6:
+                        failures.append((key, a, b, diff))
+            if failures:
+                raise AssertionError(
+                    f"original Fortran WIND1 vs C++ mismatch scenario={scenario}: "
+                    f"max abs delta={maximum:.9g}, sample={failures[:5]}")
+            print("PASS P6G_G9_DIRECT_ORIGINAL_FORTRAN_WIND1_SELECTED_MULTISTATION "
+                  f"mode={args.mode} scenario={scenario} cells={len(f)} "
+                  f"max_abs_uv_delta={maximum:.9g} original_sha256={sha}")
 
 
 if __name__ == "__main__":
