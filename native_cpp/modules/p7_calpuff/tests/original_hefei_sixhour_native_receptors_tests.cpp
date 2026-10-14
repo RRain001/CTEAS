@@ -565,6 +565,12 @@ int main(int argc,char** argv) {
                  <<" 6H_STAGE_BITWISE="
                  <<(first_dgm_mismatch_record==0U?"YES":"OPEN")<<"\n";
     }
+    // The frozen native/original six-hour numerical equivalence is now
+    // an acceptance gate, not a diagnostic trend. Do not silently reduce
+    // it to first-three-hour parity or a floating-point tolerance.
+    require(every_hour_real4 && matching_words==15000U &&
+            first_mismatched_hour==0U && first_mismatched_cell==0U,
+            "real 6h original/native H-3 must match all 15000 REAL4 bits");
     std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
              <<" ORIGINAL_DGM_ROWS=11458/11458"
              <<" HOURLY_ROWS=1275,2242,1906,2132,1742,2161"
@@ -582,7 +588,7 @@ int main(int argc,char** argv) {
              <<(every_hour_real4?"PASS":"OPEN")
              <<" ORIGINAL_143H=NOT_ACCEPTED"
              <<" WROUT1_FULL_OUTPUT=NOT_ACCEPTED\n";
-    return 0; // Diagnostic can PASS only as a diagnostic, not 6h scientific acceptance.
+    return 0; // Strict complete six-hour REAL4 concentration and DGM gate.
   }catch(const std::exception& e){
     std::cerr<<"P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=FAIL "
              <<e.what()<<"\n";
