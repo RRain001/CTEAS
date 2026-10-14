@@ -55,6 +55,10 @@ inline cteas::p6f::Calmet21File g18c6_selected_one_hour_dataset(
        source_wind_normalize(source_wind_value(original_deck,"LCALGRD"))!="T"||
        g18c1_source_integer(original_deck,"NPSTA")!=0)
         throw std::invalid_argument("G18C6 unsupported original P6F output mode / CRS");
+    // NEARS is a source-derived static field, not merely any in-range
+    // station index; reject a fabricated but valid ordinal distribution.
+    if(original_nears!=source_setcom_nears(frame.grid,frame.stations))
+        throw std::invalid_argument("G18C6 NEARS differs from original SETCOM geometry");
     const auto matched_controls=parse_original_wind_controls(original_deck);
     if(matched_controls.zface_m!=frame.source_controls->zface_m)
         throw std::invalid_argument("G18C6 original ZFACE does not belong to source deck");
