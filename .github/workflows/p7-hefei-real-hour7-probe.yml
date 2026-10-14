@@ -111,7 +111,9 @@ jobs:
           set -euo pipefail
           root="${RUNNER_TEMP}/p7-hour7-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           cmake -S native_cpp/modules/p7_calpuff -B "$root/build" -DCMAKE_BUILD_TYPE=Debug
-          cmake --build "$root/build" --parallel 2 --target cteas_p7_hefei_sixhour_native_h3_receptors_tests
+          cmake --build "$root/build" --parallel 2 --target cteas_p7_hefei_sixhour_native_h3_receptors_tests cteas_p7_original_native_terrain_tests
+          "$root/build/cteas_p7_original_native_terrain_tests"
+          echo "P7_H9_REAL4_DGRIDI_RECEPTOR_REGRESSION=PASS"
           # The same production COMP executor must close ALL 8 real hours
           # before continuing to the non-gating H9/H24 divergence probe.
           # No fitted tolerance and no historical state supplied to native.
