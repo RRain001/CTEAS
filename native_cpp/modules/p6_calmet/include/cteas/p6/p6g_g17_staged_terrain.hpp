@@ -6,6 +6,7 @@
 // Real multi-site thermal P6E state remains mandatory for production.
 #include "cteas/p6/p6g_g16_staged_wind.hpp"
 #include "cteas/p6/p6g_terrain_hour.hpp"
+#include "cteas/p6/p6g_g17b_setcom_airden.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -49,6 +50,25 @@ public:
     [[nodiscard]] const p6::WindUV& after_slope() const {
         if(!after_slope_)throw std::logic_error("G17 SLOPE not yet computed");
         return *after_slope_;
+    }
+    // Selected source AIRDEN L2094-L2098 is now available when the caller
+    // explicitly supplies the SAME validated SURFVAR temperature used by
+    // FRADJ. Without this real-observation handoff AIRDEN remains false.
+    void prepare_selected_airden(const MultiHourFrame& frame,
+                                 const std::vector<float>& surfvar_temperature_k) {
+        if(!after_fradj_||after_slope_||airden_)
+            throw std::logic_error("G17B AIRDEN outside FRADJ→SLOPE window");
+        verify_hour(frame);
+        if(surfvar_temperature_k!=fradj_.temperature_k)
+            throw std::invalid_argument(
+                "G17B AIRDEN TEMP2D differs from the source FRADJ field");
+        const auto nearest=source_setcom_nears(frame.grid,frame.stations);
+        airden_=source_airden_nears(
+            nearest,surfvar_temperature_k,frame.surface);
+    }
+    [[nodiscard]] const std::vector<float>& selected_air_density() const {
+        if(!airden_)throw std::logic_error("G17B native AIRDEN not computed");
+        return *airden_;
     }
 
     // G17 consumes QH only after FRADJ. A fixture is deliberately supplied
@@ -94,6 +114,12 @@ public:
         }
         if(stage==p6::NativeHourStage::DiagnoFradj)
             return do_fradj(frame);
+        if(stage==p6::NativeHourStage::DiagnoAirden){
+            verify_hour(frame);
+            return airden_
+                ?p6::NativeHourStageResult{p6::NativeHourSource::NativeCpp,true}
+                :p6::NativeHourStageResult{p6::NativeHourSource::Unknown,false};
+        }
         if(stage==p6::NativeHourStage::DiagnoSlope)
             return do_slope(frame);
         if(stage==p6::NativeHourStage::DiagnoWindbcFirstGuess)
@@ -103,7 +129,7 @@ public:
                 "G17 INTER2 before first source WINDBC");
             return wind_.run(stage,frame);
         }
-        // HEATFX/AIRDEN/ELUSTR and DIAGI stability-dependent SIMILT are
+        // HEATFX/ELUSTR and DIAGI stability-dependent SIMILT are
         // NOT implemented; neither are COMP, P6F, final mass-consistency.
         return {p6::NativeHourSource::Unknown,false};
     }
@@ -227,6 +253,7 @@ private:
     std::chrono::sys_seconds current_hour_{};
     std::optional<p6::WindUV> after_fradj_,after_slope_;
     std::optional<G17SlopeHeatSource> heat_;
+    std::optional<std::vector<float>> airden_;
     bool first_windbc_=false;
 };
 } // namespace cteas::calmet::p6g
