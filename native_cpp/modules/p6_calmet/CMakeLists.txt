@@ -204,6 +204,30 @@ add_test(NAME p6g_g17b_source_computed_utm_solar_multisite_surfvar_heatfx
          COMMAND cteas_p6g_g17b_observed_solar_heat_tests
            "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
 
+# G17B3: CALMET source SETCOM initialises 1-based station NEARS, and
+# AIRDEN uses nearest RDSN pressure plus SURFVAR TEMP2D. Compile literal
+# Fortran source loop oracle, not hand-authored physical approximation.
+add_executable(cteas_p6g_g17b_setcom_airden_reference
+               src/p6g_g17b_setcom_airden_reference_main.cpp)
+target_link_libraries(cteas_p6g_g17b_setcom_airden_reference PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g17b_setcom_airden_reference PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g17b_setcom_airden_reference PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+find_program(P6G_G17B_GFORTRAN NAMES gfortran-11 gfortran-12 gfortran)
+find_package(Python3 QUIET COMPONENTS Interpreter)
+if(P6G_G17B_GFORTRAN AND Python3_Interpreter_FOUND)
+  add_test(NAME p6g_g17b_literal_vendor_setcom_nears_airden_real4_parity
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_original_g17b_setcom_airden.py"
+      --vendor "${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for"
+      --cpp "$<TARGET_FILE:cteas_p6g_g17b_setcom_airden_reference>"
+      --gfortran "${P6G_G17B_GFORTRAN}"
+      --out "${CMAKE_CURRENT_BINARY_DIR}/g17b_setcom_airden_source_parity.json")
+endif()
+
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
 add_executable(cteas_p6_terset src/terrain_envelope_main.cpp)
