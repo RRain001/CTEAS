@@ -44,8 +44,8 @@ static p6::Wind1SelectedStationHour frozen_pair_hour(const p6g::Wind1MultiInput&
         h.surface_neutral_profile[k]=p6::LayerWind{
             in.station_u_mps[k*2],in.station_v_mps[k*2]};
         h.upper_observed_profile[k]=p6::LayerWind{
-            in.present[k*2+1]?in.station_u_mps[k*2+1]:999999.f,
-            in.present[k*2+1]?in.station_v_mps[k*2+1]:999999.f};
+            in.present[k*2+1]?in.station_u_mps[k*2+1]:999.f,
+            in.present[k*2+1]?in.station_v_mps[k*2+1]:999.f};
     }
     return h;
 }
