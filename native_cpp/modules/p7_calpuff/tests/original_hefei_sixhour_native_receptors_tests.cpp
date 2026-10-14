@@ -395,6 +395,50 @@ int main(int argc,char** argv) {
                         <<" BIT_SZE1=0x"<<std::bit_cast<std::uint32_t>(t.end_sigma_after_sigtz_m)
                         <<std::dec<<"\n";
                 }
+                // Read-only original-source first real LCALM sigma discrepancy.
+                // DGM #16426 is the earliest post-integration H9 difference:
+                // same puff/KSAM and exact XY/SIGY, differing SIGZ by REAL4
+                // rounding. Compare source/current before-mid-end timelines,
+                // not a fitted tolerance or DGM-fed native physical state.
+                if(global+1U==16426U){
+                    const auto& z=stage.step.sigma.step;
+                    const auto& az=stage.step.sigma.adjust;
+                    std::cout<<std::setprecision(10)
+                        <<"P7_REAL_H9_CALM_SIGTZ_FIRST_DIVERGENCE"
+                        <<" RECORD=16426"
+                        <<" PUFF_NATIVE="<<stage.puff_id
+                        <<" PUFF_VENDOR="<<ref.integers[3]
+                        <<" KSAM="<<stage.ksam
+                        <<" ICODE_VENDOR="<<ref.integers[4]
+                        <<" LCALM_VENDOR="<<ref.integers[17]
+                        <<" EL_VENDOR="<<ref.reals[4]
+                        <<" WS_VENDOR="<<ref.reals[11]
+                        <<" TSAMP_VENDOR="<<ref.reals[16]
+                        <<" TSAMP_EFFECTIVE_VENDOR="<<ref.reals[62]
+                        <<" TSAMP_NATIVE="<<stage.step.substep.step_s
+                        <<" SIGZ_START_VENDOR="<<ref.reals[22]
+                        <<" SIGZ_START_NATIVE="<<z.sigma_z_begin_m
+                        <<" RAW_BME_NATIVE="<<z.sigma_z_begin_m<<","
+                                          <<z.sigma_z_mid_m<<","<<z.sigma_z_end_m
+                        <<" ADJUSTED_BME_VENDOR="<<ref.reals[56]<<","
+                                                 <<ref.reals[57]<<","<<ref.reals[58]
+                        <<" ADJUSTED_BME_NATIVE="<<az.sigma_z_begin_m<<","
+                                                 <<az.sigma_z_mid_m<<","<<az.sigma_z_end_m
+                        <<" VIRTUAL_TZ_NATIVE="<<z.virtual_time_z_begin_s<<","
+                                                <<z.virtual_time_z_mid_s<<","
+                                                <<z.virtual_time_z_end_s
+                        <<" VIRTUAL_DZ_NATIVE="<<z.virtual_distance_z_begin_km<<","
+                                                <<z.virtual_distance_z_mid_km<<","
+                                                <<z.virtual_distance_z_end_km
+                        <<" SIGZ_STORED_VENDOR="<<ref.reals[43]
+                        <<" SIGZ_STORED_NATIVE="<<stage.step.vertical_after.sigma_z_m
+                        <<" BIT_Z_VENDOR=0x"<<std::hex<<std::bit_cast<std::uint32_t>(ref.reals[43])
+                        <<" BIT_Z_NATIVE=0x"<<std::bit_cast<std::uint32_t>(
+                            static_cast<float>(stage.step.vertical_after.sigma_z_m))
+                        <<std::dec
+                        <<" READ_ONLY=YES"
+                        <<" REAL_H9_PARITY=TO_BE_AUDITED\\n";
+                }
                 const bool keys=stage.puff_id==ref.integers[3] &&
                     stage.ksam==ref.integers[16] &&
                     ref.integers[1]==202200100+static_cast<int>(hour_index);
