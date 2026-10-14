@@ -9,6 +9,8 @@ on:
       - "native_cpp/modules/p6_calmet/include/cteas/p6/p6g_selected_hour_bridge.hpp"
       - "native_cpp/modules/p6_calmet/tests/p6g_g8_10km_year_stress_tests.cpp"
       - "native_cpp/modules/p6_calmet/CMakeLists.txt"
+      - "native_cpp/modules/p6_calmet/src/p6g_g10_10km_diagno_reference_main.cpp"
+      - "native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py"
       - ".github/workflows/p6g-g10-10km-diagno.yml"
   workflow_dispatch:
 
@@ -31,7 +33,14 @@ jobs:
         run: |
           cmake --build "${{ runner.temp }}/p6g-g10" --target \
             cteas_p6g_g8_10km_year_tests cteas_p6g_g9_multi_wind1_tests \
-            cteas_p6_final_segment_tests cteas_p6_d9a_bridge_tests -j2
+            cteas_p6_final_segment_tests cteas_p6_d9a_bridge_tests \
+            cteas_p6g_g10_diagno_reference -j2
+      - name: Original Fortran vs native complete 10km DIAGNO tail 12x12x9 source gate
+        run: |
+          command -v gfortran || (sudo apt-get update -qq && sudo apt-get install -y -qq gfortran)
+          python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
+            --mode ${{ matrix.mode }} \
+            --cpp "${{ runner.temp }}/p6g-g10/cteas_p6g_g10_diagno_reference"
       - name: Test 120km 8784h selected WIND1-INTER2-SMOOTH-DIVCEL-W
         run: |
           ctest --test-dir "${{ runner.temp }}/p6g-g10" --output-on-failure \
