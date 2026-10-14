@@ -8,6 +8,7 @@
 #include "cteas/p6/observation_input_contract.hpp"
 #include "cteas/p6/inter2_selected.hpp"
 #include "cteas/p6/diagno_segment.hpp"
+#include "cteas/p6/p6g_terrain_hour.hpp"
 #include "cteas/p6/p6g_multi_wind1_firstguess.hpp"
 #include "cteas/p6/similt_profile.hpp"
 #include "cteas/p6/upper_hourly_wind.hpp"
@@ -17,6 +18,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -60,6 +62,10 @@ struct SelectedBridgeGrid {
     // as an explicit identity substitute to DIAGNO's selected tail.
     bool synthetic_identity_diagno_tail=false;
     std::vector<int> smoothing_passes{}; // 9 source SMOOTH passes, 0..1000
+    // Mutually exclusive with synthetic_identity_diagno_tail. Requires
+    // explicitly passed, time-stamped test thermodynamics per input hour.
+    bool source_terrain_diagno_tail=false;
+    std::optional<TerrainStaticG11> terrain{};
 };
 struct SelectedBridgeHour {
     std::chrono::sys_seconds end{};
@@ -70,11 +76,14 @@ struct SelectedBridgeHour {
     float final_center_u_mps{},final_center_v_mps{},top_center_w_mps{};
     std::size_t nonzero_w_faces{};
     bool selected_tail_exercised=false;
+    bool original_terrain_kernels_exercised=false;
+    std::size_t fradj_changed_cells{},slope_changed_cells{};
 };
 inline SelectedBridgeHour selected_multisite_hour(
     const StationSet& deck,const SurfaceHour& surface,
     const InputHour& input,const PreparedUpper& prepared,
-    const SelectedBridgeGrid& grid) {
+    const SelectedBridgeGrid& grid,
+    const TerrainHourG11* thermal_hour=nullptr) {
     if(grid.nx<2||grid.ny<2||grid.nx>400||grid.ny>400||
        grid.spacing_km<=0.f||!std::isfinite(grid.spacing_km)||
        grid.utm_zone<1||grid.utm_zone>60||grid.hemisphere!='N'||
@@ -85,6 +94,11 @@ inline SelectedBridgeHour selected_multisite_hour(
        grid.landuse.size()!=static_cast<std::size_t>(grid.nx)*
                             static_cast<std::size_t>(grid.ny))
         throw std::invalid_argument("G8 bridge source-hour/grid/array mismatch");
+    if(grid.synthetic_identity_diagno_tail&&grid.source_terrain_diagno_tail)
+        throw std::invalid_argument("G11 identity and terrain DIAGNO audit modes conflict");
+    if((thermal_hour!=nullptr)!=grid.source_terrain_diagno_tail ||
+       (grid.source_terrain_diagno_tail&&!grid.terrain))
+        throw std::invalid_argument("G11 original terrain needs explicit GEO and hourly thermal input");
     for(std::size_t i=1;i<grid.zface_m.size();++i)
         if(!(grid.zface_m[i]>grid.zface_m[i-1]))
             throw std::invalid_argument("G8 invalid ZFACE");
@@ -194,18 +208,30 @@ inline SelectedBridgeHour selected_multisite_hour(
         wind.station_y_m.push_back(st.local_y_m);
     }
     const auto guess=multi_station_wind1_firstguess(wind);
+    // Original DIAGNO post-WIND1 stage order, *before* INTER2, and
+    // L5748 WINDBC records these corrected winds, never blended U/V.
+    std::vector<float> prepared_u=guess.u_mps,prepared_v=guess.v_mps;
+    TerrainCorrectionG11 terrain_result;
+    if(grid.source_terrain_diagno_tail) {
+        const std::vector<float> zface(grid.zface_m.begin(),grid.zface_m.end());
+        terrain_result=apply_g11_terrain_after_wind1(
+            *grid.terrain,*thermal_hour,zface,
+            p6::WindUV{std::move(prepared_u),std::move(prepared_v)});
+        prepared_u=std::move(terrain_result.field.u);
+        prepared_v=std::move(terrain_result.field.v);
+    }
     inter.observation_weight.assign(cells*levels,1.f);
-    inter.step1_mps=guess.u_mps;
+    inter.step1_mps=prepared_u;
     inter.station_component_mps=std::move(su);
     const auto u=p6::original_inter2_selected(inter);
-    inter.step1_mps=guess.v_mps;
+    inter.step1_mps=prepared_v;
     inter.station_component_mps=std::move(sv);
     const auto v=p6::original_inter2_selected(inter);
     // Save the original WIND1 step-one boundary snapshot before INTER2.
     // In real CALMET this snapshot must instead come from post-FRADJ/SLOPE
     // UG/VG. Explicit synthetic-identity audit only; no hidden fallback.
     p6::FinalWindSegment tail;
-    if(grid.synthetic_identity_diagno_tail) {
+    if(grid.synthetic_identity_diagno_tail||grid.source_terrain_diagno_tail) {
         if(grid.smoothing_passes.size()!=levels)
             throw std::invalid_argument(
                 "G10 DIAGNO synthetic tail requires all nine smoothing passes");
@@ -224,17 +250,17 @@ inline SelectedBridgeHour selected_multisite_hour(
                                  static_cast<std::size_t>(grid.nx);
                 const auto edge=k*2*static_cast<std::size_t>(grid.ny)+
                                 static_cast<std::size_t>(j);
-                sm.ub_west_east_mps[edge]=guess.u_mps[first];
+                sm.ub_west_east_mps[edge]=prepared_u[first];
                 sm.ub_west_east_mps[edge+static_cast<std::size_t>(grid.ny)]=
-                    guess.u_mps[first+static_cast<std::size_t>(grid.nx-1)];
+                    prepared_u[first+static_cast<std::size_t>(grid.nx-1)];
             }
             for(int i=0;i<grid.nx;++i){
                 const auto start=k*cells+static_cast<std::size_t>(i);
                 const auto edge=k*2*static_cast<std::size_t>(grid.nx)+
                                 static_cast<std::size_t>(i);
-                sm.vb_south_north_mps[edge]=guess.v_mps[start];
+                sm.vb_south_north_mps[edge]=prepared_v[start];
                 sm.vb_south_north_mps[edge+static_cast<std::size_t>(grid.nx)]=
-                    guess.v_mps[start+(static_cast<std::size_t>(grid.ny-1)*
+                    prepared_v[start+(static_cast<std::size_t>(grid.ny-1)*
                                         static_cast<std::size_t>(grid.nx))];
             }
         }
@@ -251,6 +277,9 @@ inline SelectedBridgeHour selected_multisite_hour(
                       static_cast<std::size_t>(grid.nx/2);
     SelectedBridgeHour out;
     out.end=input.end;
+    out.original_terrain_kernels_exercised=grid.source_terrain_diagno_tail;
+    out.fradj_changed_cells=terrain_result.froude_modified;
+    out.slope_changed_cells=terrain_result.slope_modified;
     out.firstguess_center_u_mps=guess.u_mps[center];
     out.firstguess_center_v_mps=guess.v_mps[center];
     out.center_u_mps=u.component_mps[center];
