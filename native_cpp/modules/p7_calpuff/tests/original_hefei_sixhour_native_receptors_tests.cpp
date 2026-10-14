@@ -38,6 +38,23 @@ std::string bytes(const char* path) {
     return {std::istreambuf_iterator<char>(file),
             std::istreambuf_iterator<char>()};
 }
+struct OriginalDgmStep {
+    std::array<std::int32_t,24> integers{};
+    std::array<float,64> reals{};
+};
+static_assert(sizeof(OriginalDgmStep)==352U);
+static_assert(std::endian::native==std::endian::little);
+std::vector<OriginalDgmStep> read_sixhour_dgm(const std::string& path) {
+    std::ifstream input(path,std::ios::binary);
+    require(bool(input),"original pinned sixhour DGM oracle missing");
+    std::vector<OriginalDgmStep> rows;
+    OriginalDgmStep row;
+    while(input.read(reinterpret_cast<char*>(&row),sizeof(row)))
+        rows.push_back(row);
+    require(input.eof() && input.gcount()==0 && rows.size()==11458U,
+            "original first sixhour DGM slice length or record count drifted");
+    return rows;
+}
 bool equal_real4(float a,float b) {
     return std::bit_cast<std::uint32_t>(a)==std::bit_cast<std::uint32_t>(b);
 }
@@ -45,7 +62,10 @@ bool equal_real4(float a,float b) {
 
 int main(int argc,char** argv) {
   try {
-    require(argc==4,"usage: sixhour_real_h3 MET.DAT puff.inp puff.con");
+    require(argc==4 || argc==5,
+            "usage: sixhour_real_h3 MET.DAT puff.inp puff.con [original-6h-DGM.bin]");
+    const auto dgm=argc==5?read_sixhour_dgm(argv[4]):
+                           std::vector<OriginalDgmStep>{};
     // Source order: strict GETCELL for pre-step puff centre, original
     // GRIDIJ clamping for the mid/end meteorological cell after movement.
     // A boundary crossing is sampled and retired by COMP, not aborted by
@@ -101,6 +121,10 @@ int main(int argc,char** argv) {
     constexpr std::array<int,6> original_last_puff{
         54,137,208,272,337,417};
     std::size_t completed=0U,matching_words=0U,physical_steps=0U;
+    std::size_t matched_step_keys=0U,matched_new_xy=0U;
+    std::size_t matched_stored_sigy=0U,matched_stored_sigz=0U;
+    std::size_t first_dgm_mismatch_record=0U;
+    std::string first_dgm_mismatch_field;
     bool every_hour_real4=true;
     std::size_t first_mismatched_hour=0U,first_mismatched_cell=0U;
     const auto summary=OriginalMetHourlyReader::read(argv[1],
@@ -202,6 +226,48 @@ int main(int argc,char** argv) {
                 hour.steps.front().puff_id==original_first_puff[hour_index] &&
                 hour.steps.back().puff_id==original_last_puff[hour_index],
                 "real COMP old/new puff chronology differs from pinned original DGM");
+        if(!dgm.empty()) {
+            for(std::size_t n=0;n<hour.steps.size();++n){
+                const std::size_t global=physical_steps+n;
+                const auto& ref=dgm.at(global);
+                const auto& stage=hour.steps[n];
+                const bool keys=stage.puff_id==ref.integers[3] &&
+                    stage.ksam==ref.integers[16] &&
+                    ref.integers[1]==202200100+static_cast<int>(hour_index);
+                const bool xy=equal_real4(stage.step.after.x_cells,ref.reals[38]) &&
+                    equal_real4(stage.step.after.y_cells,ref.reals[39]);
+                const bool sy=equal_real4(stage.step.vertical_after.sigma_y_m,
+                                          ref.reals[42]);
+                const bool sz=equal_real4(stage.step.vertical_after.sigma_z_m,
+                                          ref.reals[43]);
+                matched_step_keys+=keys?1U:0U;
+                matched_new_xy+=xy?1U:0U;
+                matched_stored_sigy+=sy?1U:0U;
+                matched_stored_sigz+=sz?1U:0U;
+                if(first_dgm_mismatch_record==0U &&
+                   (!keys||!xy||!sy||!sz)) {
+                    first_dgm_mismatch_record=global+1U;
+                    first_dgm_mismatch_field=!keys?"PUFF_ID_KSAM":
+                        !xy?"ADVECT_XY":!sy?"STORED_SIGY":"STORED_SIGZ";
+                    std::cout<<std::setprecision(9)
+                        <<"P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE"
+                        <<" RECORD="<<global+1U
+                        <<" HOUR="<<hour_index+1U
+                        <<" STAGE="<<first_dgm_mismatch_field
+                        <<" PUFF_NATIVE="<<stage.puff_id
+                        <<" PUFF_VENDOR="<<ref.integers[3]
+                        <<" KSAM_NATIVE="<<stage.ksam
+                        <<" KSAM_VENDOR="<<ref.integers[16]
+                        <<" XY_NATIVE="<<stage.step.after.x_cells<<","
+                                         <<stage.step.after.y_cells
+                        <<" XY_VENDOR="<<ref.reals[38]<<","<<ref.reals[39]
+                        <<" SIGY_NATIVE="<<stage.step.vertical_after.sigma_y_m
+                        <<" SIGY_VENDOR="<<ref.reals[42]
+                        <<" SIGZ_NATIVE="<<stage.step.vertical_after.sigma_z_m
+                        <<" SIGZ_VENDOR="<<ref.reals[43]<<"\\n";
+                }
+            }
+        }
         physical_steps+=hour.steps.size();
         if(hour_index==0U)
             require(hour.steps.size()==1275U &&
@@ -277,6 +343,19 @@ int main(int argc,char** argv) {
     require(summary.intervals==143U&&completed==6U&&
             driver.completed_hours()==6U&&physical_steps==11458U,
             "full 143-hour frozen MET and 6 native consecutive hours required");
+    if(!dgm.empty()) {
+        require(matched_step_keys==11458U,
+                "6h COMP first actual original DGM puff identity or KSAM deviated");
+        std::cout<<"P7_HEFEI_6H_ORIGINAL_DGM_REAL4_DIAGNOSTIC=PASS"
+                 <<" KEYS="<<matched_step_keys<<"/11458"
+                 <<" ADVECT_XY="<<matched_new_xy<<"/11458"
+                 <<" STORED_SIGY="<<matched_stored_sigy<<"/11458"
+                 <<" STORED_SIGZ="<<matched_stored_sigz<<"/11458"
+                 <<" FIRST_DIFFERENCE_RECORD="<<first_dgm_mismatch_record
+                 <<" FIRST_DIFFERENCE_STAGE="<<first_dgm_mismatch_field
+                 <<" 6H_STAGE_BITWISE="
+                 <<(first_dgm_mismatch_record==0U?"YES":"OPEN")<<"\\n";
+    }
     std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
              <<" ORIGINAL_DGM_ROWS=11458/11458"
              <<" HOURLY_ROWS=1275,2242,1906,2132,1742,2161"
