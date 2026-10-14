@@ -186,6 +186,31 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
                  file_backed.stations().upper.size()==2&&
                  file_backed.completed_hours()==0,
                  "G14B source-file-backed single hourly authority not initialized");
+    const cteas::calmet::p6g::GeoGridSpec expected_grid{
+        nx,ny,50,'N',510.885,3531.269,10.0};
+    // Negative original-source gates: never use externally supplied grid
+    // sizes or ZFACE values when met.inp advertises a different grid.
+    auto wrong_nx=deck_text;
+    const std::string nx_record="! NX = "+std::to_string(nx)+" !";
+    const auto nx_offset=wrong_nx.find(nx_record);
+    require_test(nx_offset!=std::string::npos,"G14B grid source fixture missing NX");
+    wrong_nx.replace(nx_offset,nx_record.size(),
+                     "! NX = "+std::to_string(nx+1)+" !");
+    bool blocked=false;
+    try{
+        validate_original_calmet_deck_grid(wrong_nx,expected_grid,2,2);
+    }catch(const std::invalid_argument&){blocked=true;}
+    require_test(blocked,"G14B accepted inconsistent met.inp NX");
+    auto wrong_zface=deck_text;
+    const auto last_face=wrong_zface.find("2000,3000");
+    require_test(last_face!=std::string::npos,"G14B original ZFACE fixture absent");
+    wrong_zface.replace(last_face,9,"2000,2000");
+    blocked=false;
+    try{
+        validate_original_calmet_deck_grid(wrong_zface,expected_grid,2,2);
+    }catch(const std::invalid_argument&){blocked=true;}
+    require_test(blocked,"G14B accepted nonmonotonic original ZFACE");
+
     const auto clock=bind_original_calmet_station_inputs(deck,surface,upper);
     require_test(clock.size()==static_cast<std::size_t>(expected_hours),
                  "year duration not present in G8 input chain");
