@@ -45,13 +45,16 @@ struct G12ThermalResult {
     std::vector<int> humidity_pct,precip_code;
 };
 inline G12ThermalResult source_selected_g12_thermal_hour(
-    const StationSet& deck,const SurfaceHour& hour,
-    const GeoGrid& geo,const G12ExplicitSolarHeat& forcing) {
+    const StationSet& deck,const SurfaceSeries& series,
+    const SurfaceHour& hour,const GeoGrid& geo,
+    const G12ExplicitSolarHeat& forcing) {
     const std::size_t nx=static_cast<std::size_t>(geo.nx);
     const std::size_t ny=static_cast<std::size_t>(geo.ny);
     if(geo.nx<2||geo.ny<2||geo.nx>400||geo.ny>400||
        deck.surface.size()<2||deck.surface.size()>6||
        deck.surface.size()!=hour.by_station.size()||
+       series.station_ids.size()!=deck.surface.size()||
+       hour.start<series.begin||hour.end>series.end||
        !std::isfinite(geo.grid_km)||geo.grid_km<=0.f||
        forcing.end!=hour.end||hour.end-hour.start!=std::chrono::hours{1}||
        !forcing.synthetic_radiation_fixture||!forcing.coefficients||
@@ -79,6 +82,8 @@ inline G12ThermalResult source_selected_g12_thermal_hour(
     std::vector<int> station_cloud;
     station_cloud.reserve(deck.surface.size());
     for(std::size_t k=0;k<deck.surface.size();++k) {
+        if(series.station_ids[k]!=deck.surface[k].id)
+            throw std::invalid_argument("G12 SURF station ID/order disagrees with met.inp SSn");
         const auto& observed=hour.by_station[k];
         const auto& location=deck.surface[k];
         if(!observed.cloud_valid)
