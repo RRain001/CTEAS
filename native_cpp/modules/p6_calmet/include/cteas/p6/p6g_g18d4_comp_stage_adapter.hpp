@@ -48,7 +48,17 @@ public:
         if(!explicitly_test_only||stage_index_>=4||
            stage!=sequence[stage_index_]||
            (bound_&&(frame.hour_index!=hour_index_||
-                     frame.input.end!=source_end_))||
+                     frame.input.end!=source_end_||
+                     &frame!=bound_frame_||
+                     frame.previous.zi_m!=previous_snapshot_.zi_m||
+                     frame.previous.ziconv_m!=previous_snapshot_.ziconv_m||
+                     frame.previous.dptt_k!=previous_snapshot_.dptt_k||
+                     frame.fields.u_mps!=wind_u_snapshot_||
+                     frame.fields.v_mps!=wind_v_snapshot_||
+                     frame.fields.w_face_mps!=wind_w_snapshot_||
+                     frame.next.zi_m!=pending_next_.zi_m||
+                     frame.next.ziconv_m!=pending_next_.ziconv_m||
+                     frame.next.dptt_k!=pending_next_.dptt_k))||
            !frame.source_controls||
            frame.input.end!=frame.surface.end||
            upper_.end!=frame.input.end||
@@ -59,7 +69,18 @@ public:
             const auto pre=selected_comp_mixht_with_observed_upper(
                 frame,heat_,elustr_,diagi_,upper_,mixht_);
             mixed_.emplace(pre);
-            bound_=true;hour_index_=frame.hour_index;source_end_=frame.input.end;
+            // Freeze the exact live G14 frame and all upstream
+            // DIAGNO/previous-COMP fields between the four original COMP
+            // stages. A cloned frame with the same UTC stamp is NOT valid.
+            bound_=true;
+            hour_index_=frame.hour_index;
+            source_end_=frame.input.end;
+            bound_frame_=&frame;
+            previous_snapshot_=frame.previous;
+            pending_next_=frame.next;
+            wind_u_snapshot_=frame.fields.u_mps;
+            wind_v_snapshot_=frame.fields.v_mps;
+            wind_w_snapshot_=frame.fields.w_face_mps;
         }else if(stage_index_==1) {
             averaged_.emplace(g18c1_selected_after_mixht(
                 frame,*mixed_,avemix_,true));
@@ -102,7 +123,10 @@ private:
     std::optional<G18C2SourceCompAfterAverage> conv_;
     std::optional<G18C4SelectedCandidate> result_;
     std::size_t stage_index_=0,hour_index_=0;
-    bool bound_=false;
     std::chrono::sys_seconds source_end_{};
+    const MultiHourFrame* bound_frame_=nullptr;
+    p6::NativeGridMemory previous_snapshot_,pending_next_;
+    std::vector<float> wind_u_snapshot_,wind_v_snapshot_,wind_w_snapshot_;
+    bool bound_=false;
 };
 } // namespace cteas::calmet::p6g
