@@ -1,12 +1,13 @@
 #pragma once
-// P6G G9 SELECTED-KERNEL exercise, not the complete CALMET DIAGNO.
+// P6G G10 selected-source DIAGNO tail audit after G9 multi-station WIND1.
 // Source-backed SIMILT (surface neutral profile), VERTAV/PREPDI (upper
 // profiles) and INTER2 (all stations) operate for a single UTC hour.
-// WIND1 now uses the G9 multiple-source candidate first-guess kernel,
-// still awaiting direct Fortran multi-SS/US numerical equivalence.
-// No original terrain FRADJ/SLOPE, P6E or P6F acceptance claim.
+// G9 WIND1 selected route has direct extracted-original Fortran field parity.
+// G10 adds an explicitly marked synthetic-identity DIAGNO tail audit.
+// No real FRADJ/SLOPE, P6E or P6F acceptance claim.
 #include "cteas/p6/observation_input_contract.hpp"
 #include "cteas/p6/inter2_selected.hpp"
+#include "cteas/p6/diagno_segment.hpp"
 #include "cteas/p6/p6g_multi_wind1_firstguess.hpp"
 #include "cteas/p6/similt_profile.hpp"
 #include "cteas/p6/upper_hourly_wind.hpp"
@@ -54,6 +55,11 @@ struct SelectedBridgeGrid {
     char hemisphere='N';
     std::array<float,10> zface_m{};
     std::vector<int> landuse; // Read from P6G READGE GEO.DAT, not hardcoded.
+    // Intentionally audit-only: the real post-WIND1 FRADJ/SLOPE/terrain
+    // processing has NOT been run, so the initial WIND1 field is passed
+    // as an explicit identity substitute to DIAGNO's selected tail.
+    bool synthetic_identity_diagno_tail=false;
+    std::vector<int> smoothing_passes; // 9 source SMOOTH passes, 0..1000
 };
 struct SelectedBridgeHour {
     std::chrono::sys_seconds end{};
@@ -61,6 +67,9 @@ struct SelectedBridgeHour {
     float upper_u_mps{},upper_v_mps{};
     float firstguess_center_u_mps{},firstguess_center_v_mps{};
     std::size_t observed_contributions{};
+    float final_center_u_mps{},final_center_v_mps{},top_center_w_mps{};
+    std::size_t nonzero_w_faces{};
+    bool selected_tail_exercised=false;
 };
 inline SelectedBridgeHour selected_multisite_hour(
     const StationSet& deck,const SurfaceHour& surface,
@@ -192,6 +201,51 @@ inline SelectedBridgeHour selected_multisite_hour(
     inter.step1_mps=guess.v_mps;
     inter.station_component_mps=std::move(sv);
     const auto v=p6::original_inter2_selected(inter);
+    // Save the original WIND1 step-one boundary snapshot before INTER2.
+    // In real CALMET this snapshot must instead come from post-FRADJ/SLOPE
+    // UG/VG. Explicit synthetic-identity audit only; no hidden fallback.
+    p6::FinalWindSegment tail;
+    if(grid.synthetic_identity_diagno_tail) {
+        if(grid.smoothing_passes.size()!=levels)
+            throw std::invalid_argument(
+                "G10 DIAGNO synthetic tail requires all nine smoothing passes");
+        p6::SmoothInput sm;
+        sm.nx=grid.nx;sm.ny=grid.ny;sm.nz=static_cast<int>(levels);
+        sm.lake_breeze=false;
+        sm.passes_per_layer=grid.smoothing_passes;
+        sm.u_mps=u.component_mps;sm.v_mps=v.component_mps;
+        sm.ub_west_east_mps.resize(levels*2*
+                                   static_cast<std::size_t>(grid.ny));
+        sm.vb_south_north_mps.resize(levels*2*
+                                     static_cast<std::size_t>(grid.nx));
+        for(std::size_t k=0;k<levels;++k){
+            for(int j=0;j<grid.ny;++j){
+                const auto first=k*cells+static_cast<std::size_t>(j)*
+                                 static_cast<std::size_t>(grid.nx);
+                const auto edge=k*2*static_cast<std::size_t>(grid.ny)+
+                                static_cast<std::size_t>(j);
+                sm.ub_west_east_mps[edge]=guess.u_mps[first];
+                sm.ub_west_east_mps[edge+static_cast<std::size_t>(grid.ny)]=
+                    guess.u_mps[first+static_cast<std::size_t>(grid.nx-1)];
+            }
+            for(int i=0;i<grid.nx;++i){
+                const auto start=k*cells+static_cast<std::size_t>(i);
+                const auto edge=k*2*static_cast<std::size_t>(grid.nx)+
+                                static_cast<std::size_t>(i);
+                sm.vb_south_north_mps[edge]=guess.v_mps[start];
+                sm.vb_south_north_mps[edge+static_cast<std::size_t>(grid.nx)]=
+                    guess.v_mps[start+(static_cast<std::size_t>(grid.ny-1)*
+                                        static_cast<std::size_t>(grid.nx))];
+            }
+        }
+        std::vector<float> dz;
+        dz.reserve(levels);
+        for(std::size_t k=0;k<levels;++k)
+            dz.push_back(grid.zface_m[k+1]-grid.zface_m[k]);
+        tail=p6::original_smooth_divcel_w(
+            std::move(sm),grid.spacing_km*1000.f,
+            grid.spacing_km*1000.f,dz,false);
+    }
     const auto center=static_cast<std::size_t>(grid.ny/2)*
                       static_cast<std::size_t>(grid.nx)+
                       static_cast<std::size_t>(grid.nx/2);
@@ -203,6 +257,19 @@ inline SelectedBridgeHour selected_multisite_hour(
     out.center_v_mps=v.component_mps[center];
     out.upper_u_mps=u.component_mps[8*cells+center];
     out.upper_v_mps=v.component_mps[8*cells+center];
+    if(grid.synthetic_identity_diagno_tail){
+        out.selected_tail_exercised=true;
+        out.final_center_u_mps=tail.u_mps[center];
+        out.final_center_v_mps=tail.v_mps[center];
+        out.top_center_w_mps=tail.w_face_mps[levels*cells+center];
+        for(float w:tail.w_face_mps)
+            if(std::abs(w)>1.e-10f)++out.nonzero_w_faces;
+        if(out.nonzero_w_faces==0||
+           !std::isfinite(out.final_center_u_mps)||
+           !std::isfinite(out.final_center_v_mps)||
+           !std::isfinite(out.top_center_w_mps))
+            throw std::invalid_argument("G10 no valid selected DIAGNO W after INTER2");
+    }
     for(const auto n:u.contributing_station_count)
         out.observed_contributions+=static_cast<std::size_t>(n);
     if(out.observed_contributions==0||
