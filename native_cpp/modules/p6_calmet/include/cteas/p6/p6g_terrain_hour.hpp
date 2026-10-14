@@ -70,7 +70,8 @@ inline TerrainCorrectionG11 apply_g11_terrain_after_wind1(
        static_input.hmax_m.size()!=n||static_input.hmin_m.size()!=n||
        static_input.dist_hmax_m.size()!=n||static_input.dist_hmin_m.size()!=n||
        static_input.water_first>static_input.water_last||
-       hour.provenance==TerrainHourProvenance::Missing||
+       hour.provenance!=TerrainHourProvenance::SyntheticReferenceFixture||
+       hour.isurft!=-1||
        hour.lapse_k_per_m.size()!=n||hour.temperature_k.size()!=n||
        hour.sensible_heat_w_m2.size()!=n||
        !std::isfinite(hour.domain_temperature_k)||
