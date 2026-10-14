@@ -404,7 +404,7 @@ int main(int argc,char** argv) {
                         <<" ZDIFF="<<zdiff
                         <<" BIT_DSEL=0x"<<std::hex
                         <<std::bit_cast<std::uint32_t>(dsel)<<std::dec
-                        <<" SOURCE_PARITY=NOT_YET_VERIFIED\\n";
+                        <<" SOURCE_PARITY=NOT_YET_VERIFIED\n";
                 }
                 return t;
             },true,stage_hook,0.0F);
