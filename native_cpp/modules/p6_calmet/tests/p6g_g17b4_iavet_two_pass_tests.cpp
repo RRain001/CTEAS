@@ -29,6 +29,7 @@
 #include "cteas/p6/p6g_g18e3_airden_elustr_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18e5_slope_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18e6_wind_tail_stage_adapter.hpp"
+#include "cteas/p6/p6g_g18e7_live_comp_stage_adapter.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -1491,6 +1492,72 @@ static void verify_source_staged_iavet(
           "G18A misrepresented partial selected MIXHT as complete COMP");
     check(frame.next.ziconv_m==prior.ziconv_m,
           "G17C selected heat bridge modified n-1 accepted P6E state");
+    // G18E7: unlike the detached G18D4 scientific comparator above,
+    // this second independently executed 4-stage COMP physically consumes
+    // the SAME live frame that ran all selected G18E2/E3/E5/E6 and G18E1
+    // stage adapters. This closes the last DIAGNO -> COMP frame handoff.
+    p6g::G18E7SelectedLiveCompStageAdapter live_comp(
+        wind_tail,stheor_stage,heat_stage,thermal_stage,
+        observed_upper,comp,av_ctrl,temp_controls);
+    check(!live_comp.run(
+              p6::NativeHourStage::CompGridMixht,frame).completed,
+          "G18E7 selected live COMP falsely became production NativeCpp");
+    rejects([&]{
+        (void)live_comp.selected_candidate_for(frame);
+    },"G18E7 released uncomputed COMP result");
+    rejects([&]{
+        live_comp.run_selected(
+            p6::NativeHourStage::CompAvemix,frame,true);
+    },"G18E7 accepted COMP AVEMIX without preceding source MIXHT");
+    auto detached_live_frame=frame;
+    rejects([&]{
+        live_comp.run_selected(
+            p6::NativeHourStage::CompGridMixht,detached_live_frame,true);
+    },"G18E7 allowed copied DIAGNO frame to drive source COMP");
+    rejects([&]{
+        live_comp.run_selected(
+            p6::NativeHourStage::CompGridMixht,frame,false);
+    },"G18E7 promoted selected COMP fixture into production");
+    live_comp.run_selected(p6::NativeHourStage::CompGridMixht,frame,true);
+    const float saved_comp_u=frame.fields.u_mps[0];
+    frame.fields.u_mps[0]+=1.f;
+    rejects([&]{
+        live_comp.run_selected(p6::NativeHourStage::CompAvemix,frame,true);
+    },"G18E7 accepted altered G17D final DIAGNO wind for AVEMIX");
+    frame.fields.u_mps[0]=saved_comp_u;
+    const float saved_zi=prior.zi_m[0];
+    prior.zi_m[0]+=1.f;
+    rejects([&]{
+        live_comp.run_selected(p6::NativeHourStage::CompAvemix,frame,true);
+    },"G18E7 accepted modified immutable previous-hour mixing state");
+    prior.zi_m[0]=saved_zi;
+    live_comp.run_selected(p6::NativeHourStage::CompAvemix,frame,true);
+    live_comp.run_selected(p6::NativeHourStage::CompWstarr,frame,true);
+    rejects([&]{
+        (void)live_comp.selected_candidate_for(frame);
+    },"G18E7 released COMP candidate before original TEMP3D");
+    live_comp.run_selected(p6::NativeHourStage::CompTemp3d,frame,true);
+    const auto& live_candidate=live_comp.selected_candidate_for(frame);
+    check(frame.fields.u_mps==full_candidate.candidate_fields.u_mps &&
+          frame.fields.v_mps==full_candidate.candidate_fields.v_mps &&
+          frame.fields.w_face_mps==full_candidate.candidate_fields.w_face_mps &&
+          frame.fields.temperature_k==full_candidate.candidate_fields.temperature_k &&
+          frame.fields.qh_wm2==full_candidate.candidate_fields.qh_wm2 &&
+          frame.fields.ustar_mps==full_candidate.candidate_fields.ustar_mps &&
+          frame.fields.el_m==full_candidate.candidate_fields.el_m &&
+          frame.fields.wstar_mps==full_candidate.candidate_fields.wstar_mps &&
+          frame.next.zi_m==full_candidate.candidate_memory.zi_m &&
+          frame.next.ziconv_m==full_candidate.candidate_memory.ziconv_m &&
+          frame.next.dptt_k==full_candidate.candidate_memory.dptt_k &&
+          live_candidate.end==frame.input.end &&
+          frame.previous.ziconv_m==prior.ziconv_m,
+          "G18E7 live G14 DIAGNO -> COMP fields/memory differ from source kernel");
+    rejects([&]{
+        (void)live_comp.selected_candidate_for(detached_live_frame);
+    },"G18E7 returned COMP result to detached earlier-hour frame");
+    rejects([&]{
+        live_comp.run_selected(p6::NativeHourStage::CompTemp3d,frame,true);
+    },"G18E7 duplicated finished original COMP");
 }
 static void verify_g18b_asynchronous_upper_turnover(
     const std::string& source_metinp) {
