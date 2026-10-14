@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import struct
 import sys
@@ -74,18 +75,9 @@ c ---- Write-only receiver-stage provenance, original first hour only.
       integer isamp,jsamp,ipol,dgmseq,dgmid,dgmksam
       real frac,vtyb,vtye,vdyb,vdye,vtzb,vtze,vdzb,vdze
       common /dgmrecur/ dgmseq,dgmid,dgmksam
-      logical first
-      save first
-      data first/.true./
       if(dgmseq.gt.1275) return
       if(isamp.ne.19.or.jsamp.ne.50.or.ipol.ne.1) return
-      if(first)then
-        open(unit=98,file='dgm_calcpf_h3_virtual_19_50.bin',
-     &       form='unformatted',access='stream',
-     &       status='replace')
-        first=.false.
-      endif
-      write(98) dgmseq,dgmid,dgmksam,
+      write(97) dgmseq,dgmid,dgmksam,
      &          frac,vtyb,vtye,vdyb,vdye,vtzb,vtze,vdzb,vdze
       return
       end
@@ -150,28 +142,25 @@ def main() -> None:
         while chunk := fd.read(RECORD.size):
             if len(chunk) != RECORD.size:
                 raise AssertionError("truncated H-3 receptor record")
+            virtual_block = fd.read(48)
+            if len(virtual_block) != 48:
+                raise AssertionError("missing paired PUFRECS virtual record")
             seq, puff, ksam, *values = RECORD.unpack(chunk)
+            vseq, vid, vksam, *stage = struct.unpack("<3i9f",virtual_block)
+            if (seq,puff,ksam)!=(vseq,vid,vksam):
+                raise AssertionError("original CALCPF stage/virtual identity mismatch")
             if not (1 <= seq <= 1275 and 1 <= puff <= 54 and
-                    1 <= ksam <= 54 and all(map(lambda x: abs(x)<1e100, values))):
+                    1 <= ksam <= 54 and all(math.isfinite(x) for x in values+stage)):
                 raise AssertionError("original CALCPF key or value corrupted")
             samples.append((seq, puff, ksam, values))
-    if not samples:
-        raise AssertionError("original first-hour H3 hotspot never sampled")
-    virtual_trace = run / "dgm_calcpf_h3_virtual_19_50.bin"
-    if not virtual_trace.is_file() or virtual_trace.stat().st_size != len(samples) * 48:
-        raise AssertionError("original first-hour PUFRECS virtual state alignment mismatch")
-    with virtual_trace.open("rb") as infile:
-        for k, original_row in enumerate(samples):
-            row = infile.read(48)
-            vseq, vid, vksam, *stage = struct.unpack("<3i9f", row)
-            if (vseq, vid, vksam) != original_row[:3]:
-                raise AssertionError(f"PUFRECS virtual trace identity drift at row {k}")
-            if k < 8:
+            if len(samples) <= 8:
                 print("P7_VENDOR_H3_PUFRECS_VIRTUAL"
                       f" SEQ={vseq} II={vid} KSAM={vksam}"
                       + " ".join(f" {name}={value:.9g}" for name, value in zip(
                           ("frac", "vtyb", "vtye", "vdyb", "vdye",
                            "vtzb", "vtze", "vdzb", "vdze"),stage)))
+    if not samples:
+        raise AssertionError("original first-hour H3 hotspot never sampled")
     if any(a[0] >= b[0] for a, b in zip(samples, samples[1:])):
         raise AssertionError("original receiver substep trace order incorrect")
     total = sum(v[12] for _, _, _, v in samples)
@@ -184,8 +173,7 @@ def main() -> None:
         "record_bytes": RECORD.size,
         "trace_sha256": original.sha256_file(trace),
         "trace_path": str(trace),
-        "virtual_trace_path": str(virtual_trace),
-        "virtual_trace_sha256": original.sha256_file(virtual_trace),
+        "virtual_trace_layout": "paired 3i13f stage + 3i9f virtual in one unit97 stream",
         "first_receptor_contribution": {
             "seq": samples[0][0], "puff": samples[0][1],
             "ksam": samples[0][2],
