@@ -322,7 +322,11 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                 xo,yo,xn,yn,xr,yr,receptor_sigma_y/met_spacing_m,
                 screen.closest_distance_squared);
             const double inc=receptor_concentration_increment(ints,{
-                .mass_old=s.vmass.mass_mixed[0],
+                // CALPUFF COMP L10965 QOLD is the post-VMASS snapshot;
+                // L11108 QNEW is post-DRY. Keep the historical restricted
+                // one-species/synthetic kernel unchanged by default.
+                .mass_old=selected_h3_from_multispecies ?
+                    s.receptor_qold_mixed[0] : s.vmass.mass_mixed[0],
                 .mass_new=s.vmass.mass_mixed[0],
                 .sigma_y_at_receptor_m=receptor_sigma_y,
                 .closest_approach_squared_km2=screen.closest_distance_squared,
