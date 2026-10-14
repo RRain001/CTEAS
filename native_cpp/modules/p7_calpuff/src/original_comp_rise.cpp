@@ -292,7 +292,9 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     if(lcalm){
         // Source COMP L10695-10703 resolves midpoint IXMET/IYMET;
         // L10839-10842 selects ILW from THAT cell, not release/origin.
-        const auto mid_cell=original_met_cell(
+        // Vendor GETCELL allows the crossing substep's midpoint to map
+        // to the nearest valid outer MET cell until COMP retires the puff.
+        const auto mid_cell=original_met_cell_clamped(
             0.5F*(before.x_cells+moved.state.x_cells),
             0.5F*(before.y_cells+moved.state.y_cells),met.nx,met.ny);
         require(mid_cell.offset_0based<met.el.size() &&
@@ -412,7 +414,9 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             // current *midpoint* meteorological cell and full puff
             // extent. Do not reuse PRFIN source-cell lapse or a frozen
             // hour-constant Brunt-Vaisala frequency.
-            const auto mid=original_met_cell(
+            // Source COMP PTLAPS reads a clamped post-advection GETCELL
+            // midpoint BEFORE the final out-of-domain retirement check.
+            const auto mid=original_met_cell_clamped(
                 0.5F*(before.x_cells+moved.state.x_cells),
                 0.5F*(before.y_cells+moved.state.y_cells),met.nx,met.ny);
             const auto nz=static_cast<std::size_t>(met.nz);
