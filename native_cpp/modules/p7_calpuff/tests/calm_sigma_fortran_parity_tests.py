@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fortran oracle: original SIGTY/SIGTZ IDOPT1, EL<=0; not whole P7."""
-import argparse,importlib.util,json,math,shutil,subprocess,tempfile
+import argparse,importlib.util,json,math,shutil,struct,subprocess,tempfile
 from pathlib import Path
 def main():
  p=argparse.ArgumentParser()
@@ -25,6 +25,15 @@ def main():
     for tzisdr in [0.001,0.01]:
      cases.append((len(cases)+1,sy,sy*0.8,dt,0.02,0.2,
                    0.45,0.25,el,0.001,0.002,tzisdr,550.0,0.5,5000.0))
+ # The first true Hefei H9 DGM numerical divergence #16426 is a stable
+ # (EL>0) LCALM=1 puff with enormous inverted SIGTZ virtual time.
+ # Probe exact original real4 source-scale data; do not fit tolerances.
+ h9_indices=[]
+ for dt in [0.0,138.4615478515625,276.923095703125]:
+  h9_indices.append(len(cases)+1)
+  cases.append((len(cases)+1,265.4058532714844,129.92457580566406,
+                dt,0.0,0.32317984104156494,0.5,0.08,
+                12.74099349975586,0.001,0.002,0.01,550.0,0.5,5000.0))
  matrix="\n".join(" ".join(str(x) for x in row) for row in cases)+"\n"
  with tempfile.TemporaryDirectory(prefix="p7-calm-idopt1-") as work:
   stage=Path(work)/"stage"
@@ -64,6 +73,19 @@ def main():
     worst=max(worst,rel)
     if abs(want-got)>max(2e-4,2e-4*abs(want)):
      raise RuntimeError(f"original mismatch {i}:{j}: {want} vs {got} rel={rel}")
+  def real4_bits(x):
+   return struct.unpack("<I",struct.pack("<f",float(x)))[0]
+  for case in h9_indices:
+   vendor=[float(x) for x in ov[case-1].split()]
+   native=[float(x) for x in nv[case-1].split()]
+   print("P7_H9_CALM_ORIGINAL_SIGTZ_PRECISION"
+         f" CASE={case} DT={cases[case-1][3]}"
+         f" SZ_VENDOR={vendor[4]:.10g} SZ_NATIVE={native[4]:.10g}"
+         f" VTZ_VENDOR={vendor[5]:.10g} VTZ_NATIVE={native[5]:.10g}"
+         f" BIT_SZ_VENDOR=0x{real4_bits(vendor[4]):08x}"
+         f" BIT_SZ_NATIVE=0x{real4_bits(native[4]):08x}"
+         f" EXACT_SZ={real4_bits(vendor[4])==real4_bits(native[4])}"
+         " DIAGNOSTIC_ONLY=YES")
   print(f"P7_CALM_IDOPT1_SIGTY_SIGTZ_VENDOR_PARITY=PASS CASES={len(cases)} "
         f"VALUES={len(cases)*6} MAX_REL={worst:.3e}")
   print("P7_STABLE_CALM_ELS_GT_ZERO=SOURCE_PARITY_TESTED")
