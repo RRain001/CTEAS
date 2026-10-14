@@ -414,7 +414,11 @@ int main(int argc,char** argv) {
                                         step.dry->vcbar_m_inverse)<<" "
                     <<step.dry_input_resistance->atmospheric_resistance_s_m<<" "
                     <<step.dry_input_resistance->deposition_layer_resistance_s_m[0]<<" "
-                    <<step.dry_input_resistance->canopy_resistance_s_m[0]<<"\n";
+                    <<step.dry_input_resistance->canopy_resistance_s_m[0]<<" "
+                    <<step.dry_input_resistance->ground_resistance_s_m[0]<<" "
+                    <<step.dry_input_resistance->foliage_resistance_s_m[0]<<" "
+                    <<step.dry_input_resistance->cuticle_resistance_s_m[0]<<" "
+                    <<step.dry_input_resistance->source_leaf_area_index<<"\n";
             }
             mass_trace.flush();
             require(bool(mass_trace),"native original puff200 mass trace failed");
