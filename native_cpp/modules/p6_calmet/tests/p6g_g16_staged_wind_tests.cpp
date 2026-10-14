@@ -174,8 +174,13 @@ int main(int argc,char** argv) {
         inter.r1_km=controls.r1_km;inter.r2_km=controls.r2_km;
         inter.landuse=grid.landuse;
         inter.water_first=grid.iwat1;inter.water_last=grid.iwat2;
-        inter.station_x_km={10.f,30.f,20.f,50.f};
-        inter.station_y_km={10.f,40.f,20.f,50.f};
+        // Source operations: convert each REAL*4 local-metre coordinate
+        // by multiplication with 0.001f. 10.f literal is NOT guaranteed
+        // bit-identical to 10000.f * 0.001f on the original REAL*4 path.
+        inter.station_x_km={10000.f*0.001f,30000.f*0.001f,
+                            20000.f*0.001f,50000.f*0.001f};
+        inter.station_y_km={10000.f*0.001f,40000.f*0.001f,
+                            20000.f*0.001f,50000.f*0.001f};
         inter.nintrp_per_layer.assign(9,4);
         inter.observation_weight=corrected.observation_weight;
         inter.station_component_mps=profiles.inter2_u_mps;
