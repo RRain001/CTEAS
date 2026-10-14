@@ -165,6 +165,8 @@ int main(int argc,char** argv) {
              "G16 stage diverged from accepted original-source G9 WIND1");
         refuse([&]{(void)stages.run(p6::NativeHourStage::DiagnoWind1,hour);},
                "G16 repeated WIND1 after source clock committed");
+        refuse([&]{stages.provide_selected_diagi_after_wind1(profiles);},
+               "G16 accepted DIAGI after WIND1 without post-SLOPE first WINDBC");
         refuse([&]{
             auto wrong=controlled_corrected(end+hours{1},stages.selected_result());
             stages.provide_post_slope(std::move(wrong));
