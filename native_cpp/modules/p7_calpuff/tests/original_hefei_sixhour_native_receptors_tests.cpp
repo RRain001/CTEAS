@@ -62,8 +62,8 @@ bool equal_real4(float a,float b) {
 
 int main(int argc,char** argv) {
   try {
-    require(argc>=4 && argc<=7,
-            "usage: sixhour_real_h3 MET.DAT puff.inp puff.con [original-DGM.bin] [hour2-25-28.tsv] [hour4-47-13.tsv]");
+    require(argc>=4 && argc<=8,
+            "usage: sixhour_real_h3 MET.DAT puff.inp puff.con [original-DGM.bin] [hour2-25-28.tsv] [hour4-47-13.tsv] [native-puff200-mass.tsv]");
     require(argc<6 || std::string(argv[4]).size()>0U,
             "hour2 CALCPF trace requires an original DGM provenance input");
     // Optional native stage trace (argv[5]) must never disable the
@@ -210,7 +210,7 @@ int main(int argc,char** argv) {
 
         const bool trace_this_hour=
             (argc>=6 && hour_index==1U) ||
-            (argc==7 && hour_index==3U);
+            (argc>=7 && hour_index==3U);
         const std::size_t trace_cell=hour_index==1U?1374U:646U;
         std::vector<NativeH3ReceptorRow> trace_rows;
         OriginalCalcpfIntermediateHook stage_hook;
@@ -384,6 +384,31 @@ int main(int argc,char** argv) {
                      <<" RECEPTOR_J="<<(hour_index==1U?28:13)
                      <<" RECORDS="<<original_hour2_trace_rows
                      <<" ORIGINAL_VENDOR_PARITY=NOT_YET_COMPARED\\n";
+        }
+        if(argc==8){
+            // Independent, read-only physical mass history of original puff 200.
+            // Emit EVERY substep, not just ones that reach any receptor.
+            std::ofstream mass_trace(argv[7],std::ios::app);
+            require(bool(mass_trace),"cannot open native original puff200 mass trace");
+            mass_trace<<std::setprecision(9);
+            for(std::size_t n=0;n<hour.steps.size();++n){
+                const auto& stage=hour.steps[n];
+                if(stage.puff_id!=200)continue;
+                const auto& step=stage.step;
+                require(step.pre_dry_qold_mixed.size()>=1 &&
+                        step.vmass.mass_mixed.size()>=1 && step.dry.has_value() &&
+                        step.dry->fraction_remaining.size()>=1,
+                        "puff200 original dry mass source provenance missing");
+                mass_trace<<physical_steps+n+1U<<" "
+                    <<stage.puff_id<<" "<<stage.ksam<<" "
+                    <<step.pre_dry_qold_mixed[0]<<" "
+                    <<step.vmass.mass_mixed[0]<<" "
+                    <<step.dry->fraction_remaining[0]<<" "
+                    <<step.substep.step_s<<" "
+                    <<step.dry->vcbar_m_inverse<<"\n";
+            }
+            mass_trace.flush();
+            require(bool(mass_trace),"native original puff200 mass trace failed");
         }
         physical_steps+=hour.steps.size();
         if(hour_index==0U)
