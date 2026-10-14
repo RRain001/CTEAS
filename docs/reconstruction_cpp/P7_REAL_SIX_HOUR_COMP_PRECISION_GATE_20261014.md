@@ -42,16 +42,22 @@ sampling or puff state. Every value below is from independent native
 | Original 2022 hour | Old puffs | New puffs | Active after | Original and native physical substeps | H-3 bitwise words | Max abs deviation (Bq/m³) | Verdict |
 |---|---:|---:|---:|---:|---:|---:|---|
 | 1 | 0 | 54 | 33 | 1,275 | **2,500/2,500** | **0** | ACCEPTED selected first-hour H-3 |
-| 2 | 33 | 83 | 25 | 2,242 | 2,426/2,500 | 3.099441528e-6 | OPEN |
-| 3 | 25 | 71 | 26 | 1,906 | 2,481/2,500 | 3.576278687e-6 | OPEN |
-| 4 | 26 | 64 | 26 | 2,132 | 2,189/2,500 | 1.549720764e-6 | OPEN |
-| 5 | 26 | 65 | 24 | 1,742 | 2,418/2,500 | 2.384185791e-6 | OPEN |
-| 6 | 24 | 80 | 25 | 2,161 | 2,464/2,500 | 2.384185791e-7 | OPEN |
+| 2 | 33 | 83 | 25 | 2,242 | **2,500/2,500** | **0** | **ACCEPTED second-hour H-3** |
+| 3 | 25 | 71 | 26 | 1,906 | 2,498/2,500 | 3.576278687e-6 | OPEN |
+| 4 | 26 | 64 | 26 | 2,249/2,500 | 2.384185791e-7 | OPEN |
+| 5 | 26 | 65 | 24 | 1,742 | 2,461/2,500 | 4.768371582e-7 | OPEN |
+| 6 | 24 | 80 | 25 | 2,161 | 2,483/2,500 | 2.384185791e-7 | OPEN |
 
 - All six MET hours execute under **one historical driver**; original
   hour-table FSTEP row counts match exactly, **11,458/11,458**.
-- Across all 15,000 H-3 receptor words, **14,478/15,000 bitwise**;
-  first differing concentration field is hour 2, 0-based receptor **1374**.
+- Across all 15,000 H-3 receptor words, **14,691/15,000 bitwise**;
+  **hours 1 and 2 both 2,500/2,500 exactly**; first remaining differing
+  field is hour **3**, 0-based receptor **2380**.
+- [Hosted original+native hour2 CALCPF comparison #38515121418](https://github.com/RRain001/CTEAS/actions/runs/38515121418)
+  pins hour 2 receptor (25,28), full original 143h DGM unchanged,
+  and proves **167/167 REAL4 bitwise** for `QOLD,QNEW,SYREC,SZREC,ZPR,
+  ZRPOLE,VCOUP,XI1,XI2,T1,T2,XTEMP,CONC`. This is an explicit
+  *source-backed* concentration-stage contract, not merely a tolerance.
 - A successful *diagnostic* workflow is **not** 6-hour scientific parity.
   The hourly H-3 equality state is printed individually and labelled OPEN
   until every real-hour native value matches its frozen original counterpart.
@@ -83,7 +89,17 @@ First stored `SIGZ` disagreement is source DGM record **3874**,
 hour **3**, puff **138**, `KSAM=23`:
 original `SIGZ=134.639679` m versus native `134.639694` m
 (about one binary32 ULP). Post-step `X/Y` and stored `SIGY` at
-that **same** substep are bitwise equal. The original/natively derived
+that **same** substep are bitwise equal. Additional
+[hosted original DGM re-audit #38515995353](https://github.com/RRain001/CTEAS/actions/runs/38515995353)
+records **input SIGZ = 128.979172 m** identically, original/native
+SETPUF **begin SIGZ = 129.699402 m** and **mid SIGZ = 132.499527 m**
+identically, but the **end-of-step SIGZ** first diverges:
+original **135.329788 m**, native **135.329803 m** (one REAL4 ULP).
+The earliest demonstrated vertical difference is therefore **within the
+SETPUF end-point terrain/dispersion update**, *not* the input SIGZ
+or the beginning/midpoint profile. An independent CTADJ2-end strain
+and SIGTZ calculation trace is required before altering the code.
+The original/natively derived
 first/last episode IDs per hour and their exact substep counts are now
 mandatory fail-closed regression expectations from the pinned original
 DGM metadata.
@@ -93,28 +109,33 @@ stable episode ID mapping, source release counts, horizontal advection,
 and stored `SIGY` have **direct original six-hour bitwise parity**.
 Do **not** infer that untraced cross-hour internal states, `VMASS`,
 `DRY`, or receptor-specific `CALCPF` stages are equivalent solely from
-this. Concentration differences already occur in **hour 2**, when all
-four DGM fields above remain equal; therefore troubleshoot the
-original-vs-native old-puff `CALCPF` receptor intermediates and REAL4
-accumulation independently from the first stored `SIGZ` discrepancy in
-hour 3. Do not fit a concentration tolerance to conceal either.
+this. The earlier hour-2 concentration mismatch was traced
+to **XTEMP=F1*TFRACT**; original COMP L10447 and L10563 explicitly
+evaluate `TAVGI=1.0/TAVG`, followed by `TFRACT=TSAMP*TAVGI` in REAL*4,
+whereas the native path had used a direct `TSAMP/TAVG` division.
+At global step 1607 the original `XTEMP` was
+`0x2d162cd9`, native direct division `0x2d162cd8`.
+The source-ordered reciprocal-multiply fix closes all hour-2 receptor
+concentrations exactly. Do not fit a tolerance to conceal the still-open
+hour-3 end-SIGTZ/CTADJ2 mismatch.
 
 ## Next true acceptance work, retaining original control flow
 
-1. Trace original and native *same old puff, same hour 2 KSAM, same
-   receptor* `QOLD/QNEW,SYREC,SZREC,FRAC,VCOUP,PFSAMP XI1/XI2,T1/T2`
-   and REAL4 running `CHISAM`, to distinguish historical starting
-   masses/virtual sigmas from source-specific sampling or accumulation.
-2. Trace original and native DGM row 3874 vertical stages:
-   original stored input `SIGZ` and `WDIV` correction, `VMASS` and
-   `SETPUF` begin/mid/end `SIGZ`, rounding order, and accumulated
-   history. Repair the first differing source expression, then rerun
-   all six-hour data and DGM comparison gates.
+1. **Preserve the now ACCEPTED hour-2 CALCPF gate.** Source-verified
+   `TFRACT = TSAMP*(1.0/TAVG)` is a shared original REAL4 precision
+   helper and separate binary32 ULP test; additionally retain
+   the independent native/original 167/167-hour2-CALCPF stage oracle.
+2. Isolate the original versus native **SETPUF end-point** operation
+   at DGM record 3874 (hour3, puff138, KSAM23). The entry SIGZ
+   and the begin/midpoint SETPUF SIGZ are already identical; instrument
+   the authentic original CTADJ2 end-point STRAIN and SIGTZ input/output
+   and compare to corresponding native stages. Repair ONLY the first
+   evidenced divergent expression; rerun the six-hour H-3 and DGM gates.
 3. Require **six hours × 2,500 H-3 REAL4 exact** and original-stage
    vertical history equality before the real 143-hour acceptance run.
    At 143 hours enforce original puff lifetime/conditional
    `SWAP/ROLLDN` capacity and full native `COMP→OUTPUT` data records.
-4. Preserve **first-hour 2,500/2,500** and the source-tethered
+4. Preserve **first and second hour 2,500/2,500 EACH** and the source-tethered
    `PFSAMP/CALCPF` 196/196 stage parity as nonnegotiable regression gates.
    Wet removal, other source modes, compiler/math-library changes
    and complete file-byte equivalence are **out of scope**.
