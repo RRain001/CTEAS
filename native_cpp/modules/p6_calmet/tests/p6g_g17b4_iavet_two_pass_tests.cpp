@@ -27,6 +27,7 @@
 #include "cteas/p6/p6g_g18e1_stheor_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18e2_heatfx_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18e3_airden_elustr_stage_adapter.hpp"
+#include "cteas/p6/p6g_g18e5_slope_stage_adapter.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -583,12 +584,47 @@ static void verify_source_staged_iavet(
     check(genuine_heat.sensible_heat_w_m2==elustr.qh_wm2 &&
           genuine_heat.temperature_k==selected.temperature_k,
           "G17C2 stale HEATFX QH used after stable ELUSTR");
-    stages.provide_slope_heat(genuine_heat);
+    // G18E5: execute original SLOPE at G14 slot 6, consuming G18E3's
+    // actual post-ELUSTR QH (stable cells may have changed it), never
+    // the earlier HEATFX field. The standalone formula remains frozen.
+    p6g::G18E5SelectedSlopeStageAdapter slope_stage(
+        stages,heat_stage,thermal_stage);
+    check(!slope_stage.run(
+              p6::NativeHourStage::DiagnoSlope,frame).completed,
+          "G18E5 test-only SLOPE falsely promoted to production");
+    rejects([&]{
+        slope_stage.run_selected(p6::NativeHourStage::DiagnoElustr,frame,true);
+    },"G18E5 executed SLOPE before its original G14 slot");
+    rejects([&]{
+        slope_stage.run_selected(p6::NativeHourStage::DiagnoSlope,frame,false);
+    },"G18E5 promoted selected thermal fixtures to production");
+    auto cloned_slope_frame=frame;
+    rejects([&]{
+        slope_stage.run_selected(
+            p6::NativeHourStage::DiagnoSlope,cloned_slope_frame,true);
+    },"G18E5 used a detached G14 hour for source ELUSTR SLOPE");
+    const float held_dptt=prior.dptt_k[0];
+    prior.dptt_k[0]=held_dptt+1.f;
+    rejects([&]{
+        slope_stage.run_selected(p6::NativeHourStage::DiagnoSlope,frame,true);
+    },"G18E5 SLOPE accepted mutated committed previous-hour DPTT");
+    prior.dptt_k[0]=held_dptt;
     // Scoped inputs are still test-only: do not claim production HEATFX/COMP.
     check(!stages.run(p6::NativeHourStage::DiagnoHeatfx,frame).completed,
           "G17C marked experimental coefficient-controlled heat as production");
-    check(stages.run(p6::NativeHourStage::DiagnoSlope,frame).completed,
-          "G17B4 SLOPE failed with original post-FRADJ TEMP2D");
+    slope_stage.run_selected(p6::NativeHourStage::DiagnoSlope,frame,true);
+    const auto& native_slope=slope_stage.selected_slope_wind_for(frame);
+    check(native_slope.u==stages.after_slope().u &&
+          native_slope.v==stages.after_slope().v &&
+          native_slope.u.size()==144u*9u &&
+          native_slope.v.size()==144u*9u,
+          "G18E5 staged SLOPE differs from the original frozen kernel");
+    rejects([&]{
+        slope_stage.run_selected(p6::NativeHourStage::DiagnoSlope,frame,true);
+    },"G18E5 duplicated SLOPE after stage completion");
+    rejects([&]{
+        (void)slope_stage.selected_slope_wind_for(cloned_slope_frame);
+    },"G18E5 leaked source slope wind to a copied G14 frame");
     check(stages.run(p6::NativeHourStage::DiagnoWindbcFirstGuess,frame).completed,
           "G17B4 first WINDBC did not preserve corrected U/V");
     p6g::G17C3StationControls sc;
