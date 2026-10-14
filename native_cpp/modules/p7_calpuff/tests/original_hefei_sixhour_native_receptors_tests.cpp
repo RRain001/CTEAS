@@ -258,6 +258,40 @@ int main(int argc,char** argv) {
                 const std::size_t global=physical_steps+n;
                 const auto& ref=dgm.at(global);
                 const auto& stage=hour.steps[n];
+                // Read-only source-aligned native VDCOMP inputs at the first
+                // original puff200 foliage resistance disagreement (DGM #5823).
+                if(global+1U==5823U){
+                    require(stage.puff_id==200 && stage.ksam==2 &&
+                            stage.step.dry_input_resistance.has_value() &&
+                            controls.gaussian_dry.has_value(),
+                            "native #5823 source key or DRY provenance missing");
+                    const auto cell=stage.step.sampled.cell.offset_0based;
+                    const float t=met.tempk.at(cell);
+                    const float sw=met.qsw.at(cell);
+                    const float pd=static_cast<float>(
+                        controls.gaussian_dry->setup.diffusivity_m2_s.at(0));
+                    const float fr=std::max(0.0F,std::min(1.0F,sw/600.0F));
+                    const float opening=t>308.0F?2.5e-6F:
+                        t<283.0F?0.1e-6F:
+                        2.5e-6F*fr+0.1e-6F*(1.0F-fr);
+                    const float rs=2.3e-8F/(opening*pd);
+                    const float native_rf=static_cast<float>(
+                        stage.step.dry_input_resistance->
+                            foliage_resistance_s_m.at(0));
+                    std::cout<<std::setprecision(10)
+                        <<"P7_NATIVE_VDCOMP5823"
+                        <<" CELL0="<<cell
+                        <<" TEMPK="<<t<<" QSW="<<sw
+                        <<" PDIFF="<<pd<<" B="<<opening
+                        <<" RS="<<rs<<" RF="<<native_rf
+                        <<" BIT_T=0x"<<std::hex<<std::bit_cast<std::uint32_t>(t)
+                        <<" BIT_QSW=0x"<<std::bit_cast<std::uint32_t>(sw)
+                        <<" BIT_PDIFF=0x"<<std::bit_cast<std::uint32_t>(pd)
+                        <<" BIT_B=0x"<<std::bit_cast<std::uint32_t>(opening)
+                        <<" BIT_RS=0x"<<std::bit_cast<std::uint32_t>(rs)
+                        <<std::dec<<" ORIGINAL_VDCOMP_INPUT_PARITY=TO_BE_COMPARED"
+                        <<"\\n";
+                }
                 // Pinned original SETPUF #3874: record the native CTADJ2
                 // end calculation even after full SIGZ parity is achieved.
                 if(global+1U==3874U){
