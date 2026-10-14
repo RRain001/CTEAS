@@ -1171,6 +1171,7 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
     std::size_t pufrecs_native_substeps=0;
     std::size_t receptor_changed_increments=0;
     std::size_t sample_diagnostic_count=0;
+    bool zero_xfinal_receptor_verified=false;
     std::size_t nonzero_lower_mass_steps=0;
     std::size_t positive_concentration_steps=0;
     std::size_t geometry_bridge_substeps=0;
@@ -1205,6 +1206,29 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
              "PUFRECS native receptor frame returned invalid geometry");
         ++geometry_bridge_substeps;
         auto concentrations=plume_sampler(state);
+        if(!zero_xfinal_receptor_verified) {
+            // Original PRFIN legitimately sets XFINAL=0 when WSSTK<1m/s.
+            // Test the REAL4 PUFRECS receptor branch through the actual
+            // native COMP sampling state without altering its puff history.
+            auto zero_final=state;
+            zero_final.receptor_final_rise_distance_m=0.0F;
+            const auto zero_values=plume_sampler(zero_final);
+            need(zero_values.size()==2500U &&
+                 std::all_of(zero_values.begin(),zero_values.end(),
+                    [](float value){return std::isfinite(value)&&value>=0.0F;}),
+                 "PUFRECS refused source-valid XFINAL=0 receptor sampling");
+            zero_final.receptor_final_rise_distance_m=-1.0F;
+            bool negative_rejected=false;
+            try{(void)plume_sampler(zero_final);}
+            catch(const std::invalid_argument&){negative_rejected=true;}
+            need(negative_rejected,
+                 "PUFRECS accepted unphysical negative XFINAL");
+            zero_xfinal_receptor_verified=true;
+            std::cout<<"P7_PUFRECS_ORIGINAL_ZERO_XFINAL=PASS"
+                     <<" CALCPF=ACTUAL_NATIVE_COMP_SAMPLER"
+                     <<" NEGATIVE_XFINAL=FAIL_CLOSED"
+                     <<" CALM_TERRAIN_DRY=NOT_YET_ACCEPTED\\n";
+        }
         const auto midpoint=midpoint_control(state);
         need(midpoint.size()==concentrations.size() &&
              concentrations.size()==2500U,
