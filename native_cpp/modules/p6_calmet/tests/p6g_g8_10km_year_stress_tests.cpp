@@ -244,6 +244,7 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     // Single config authority is G14B's parsed original met.inp. No
     // second deck parsing or test-driver constants for WIND1/INTER2.
     grid.source_controls=file_backed.original_controls();
+    grid.zface_m=grid.source_controls->zface_m;
     grid.smoothing_passes.assign(grid.source_controls->nsmth.begin(),
                                  grid.source_controls->nsmth.end());
     // Selected P6E P6G G12: observed SURF.DAT 2SS temperatures enter
