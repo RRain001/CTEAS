@@ -87,18 +87,21 @@ def main() -> None:
     ap.add_argument("--case", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--compiler", default="gfortran-11")
-    ap.add_argument("--hour", type=int, choices=(1, 2), default=1)
+    ap.add_argument("--hour", type=int, choices=(1, 2, 4), default=1)
     ap.add_argument("--receptor-i", type=int, default=None)
     ap.add_argument("--receptor-j", type=int, default=None)
     args = ap.parse_args()
     vendor, case, out = (p.resolve() for p in (args.vendor, args.case, args.out))
-    ix = args.receptor_i if args.receptor_i is not None else (19 if args.hour == 1 else 25)
-    jy = args.receptor_j if args.receptor_j is not None else (50 if args.hour == 1 else 28)
+    defaults = {1:(19,50), 2:(25,28), 4:(47,13)}
+    di,dj=defaults[args.hour]
+    ix = args.receptor_i if args.receptor_i is not None else di
+    jy = args.receptor_j if args.receptor_j is not None else dj
     if not (1 <= ix <= 50 and 1 <= jy <= 50):
         raise ValueError("Hefei original receptor coordinates outside frozen grid")
-    first_seq, final_seq = ((1, 1275) if args.hour == 1 else (1276, 3517))
+    first_seq, final_seq = {1:(1,1275),2:(1276,3517),4:(5424,7555)}[args.hour]
+    last_puff = {1:54,2:137,4:272}[args.hour]
     trace_name = (f"dgm_calcpf_h3_{ix}_{jy}.bin" if args.hour == 1 else
-                  f"dgm_calcpf_h3_{ix}_{jy}_hour2.bin")
+                  f"dgm_calcpf_h3_{ix}_{jy}_hour{args.hour}.bin")
     source_helpers = (EXTRA_HELPERS
         .replace("if(dgmseq.gt.1275) return",
                  f"if(dgmseq.lt.{first_seq}.or.dgmseq.gt.{final_seq}) return")
@@ -163,7 +166,7 @@ def main() -> None:
             vseq, vid, vksam, frec = struct.unpack("<3if",fraction_block)
             if (seq,puff,ksam)!=(vseq,vid,vksam):
                 raise AssertionError("original CALCPF stage/virtual identity mismatch")
-            if not (first_seq <= seq <= final_seq and 1 <= puff <= (54 if args.hour==1 else 137) and
+            if not (first_seq <= seq <= final_seq and 1 <= puff <= last_puff and
                     1 <= ksam <= 99 and all(math.isfinite(x) for x in values+[frec])):
                 raise AssertionError("original CALCPF key or value corrupted")
             samples.append((seq, puff, ksam, values))
