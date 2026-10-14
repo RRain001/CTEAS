@@ -35,4 +35,16 @@ static_assert(std::is_same_v<VendorPointCommonReal, float> &&
     return static_cast<VendorDefaultReal>(value);
 }
 
+// COMP original L10342/L10447/L10563/L10569:
+ //   TAVGI = 1.0 / TAVG   (unqualified Fortran REAL*4)
+ //   TFRACT = TSAMP * TAVGI
+ // CALCPF L4302 then evaluates XTEMP = F1 * TFRACT.
+ // A single TSAMP/TAVG division is NOT bitwise equivalent: hour 2 native
+ // DGM seq1607 receptor (25,28) differs by exactly one binary32 ULP.
+[[nodiscard]] inline VendorDefaultReal original_calcpf_time_fraction(
+    VendorDefaultReal tsamp,VendorDefaultReal averaging_seconds) noexcept {
+    const VendorDefaultReal tavgi=1.0F/averaging_seconds;
+    return tsamp*tavgi;
+}
+
 } // namespace cteas::puff
