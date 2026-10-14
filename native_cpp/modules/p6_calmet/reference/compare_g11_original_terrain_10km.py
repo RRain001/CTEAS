@@ -68,8 +68,8 @@ FORTRAN_DRIVER="""      program p6g11terrain
             disthmax(i,j)=0.
             disthmin(i,j)=0.
             do k=1,nz
-               u(i,j,k)=-3.
-               v(i,j,k)=-1.
+               u(i,j,k)=3.
+               v(i,j,k)=1.
             enddo
          enddo
       enddo
@@ -184,7 +184,7 @@ def main():
             for i,(a,b) in enumerate(zip(original_rows[index],native_rows[index])):
                 delta=abs(a-b)
                 highest=max(highest,delta)
-                if abs(a-(-3.0 if i==0 else -1.0))>1.e-4:
+                if abs(a-(3.0 if i==0 else 1.0))>1.e-4:
                     adjusted+=1
                 if delta>2e-4 and len(failures)<10:
                     failures.append((index,i,a,b,delta))
