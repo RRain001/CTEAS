@@ -72,6 +72,7 @@ jobs:
             cteas_p6g_g17b_observed_solar_heat_tests \
             cteas_p6g_g17b_setcom_airden_reference \
             cteas_p6g_g18b6_setcom_nearu_reference \
+            cteas_p6g_g18b8_gamma_grid_reference \
             cteas_p6g_g17b4_iavet_two_pass_tests \
             cteas_p6g_g17b4_avetmp_reference --parallel 2
       - name: Run 2SS+2US cross-year and 8784h CTest
