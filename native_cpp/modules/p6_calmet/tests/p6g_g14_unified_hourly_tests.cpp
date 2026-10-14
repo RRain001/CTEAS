@@ -176,10 +176,46 @@ int main(){
         must_reject([&]{rollback.advance(mock);},"uncomputed WFACE was accepted");
         check(rollback.completed_hours()==0,"missing native WFACE advanced clock");
         mock.omit_w=false;
-        rollback.advance(mock);
-        check(rollback.completed_hours()==1&&
+        // G18D1: the real G14 authority must offer a precommit barrier.
+        // Even with all 17 stages marked native, failed output validation
+        // cannot publish current ZICONV or advance source UTC time.
+        std::size_t p6f_checked=0;
+        must_reject([&]{
+            rollback.advance_with_precommit(mock,
+              [&](const p6g::MultiHourFrame& candidate) {
+                ++p6f_checked;
+                check(candidate.hour_index==0&&
+                      candidate.previous.ziconv_m[0]==0.f&&
+                      candidate.next.ziconv_m[0]==1.f&&
+                      candidate.fields.temperature_k.size()==12*12*9,
+                      "G18D1 G14 precommit candidate data incomplete");
+                throw std::runtime_error("synthetic P6F readback failure");
+              });
+        },"G18D1 failed native P6F precommit gate advanced hour");
+        check(p6f_checked==1&&rollback.completed_hours()==0&&
+              rollback.committed_memory().ziconv_m[0]==0.f,
+              "G18D1 P6F failure mutated accepted preceding-hour ZICONV");
+        rollback.advance_with_precommit(mock,
+          [&](const p6g::MultiHourFrame& candidate) {
+            ++p6f_checked;
+            check(candidate.hour_index==0&&
+                  candidate.next.ziconv_m[0]==1.f,
+                  "G18D1 P6F gate accepted stale stage-time candidate");
+          });
+        check(p6f_checked==2&&rollback.completed_hours()==1&&
               rollback.committed_memory().ziconv_m[0]==1.f,
-              "valid synthetic retry failed to commit");
+              "G18D1 successful P6F precommit did not preserve atomic G14 hour");
+        // The retry must not permit an arbitrary future-hour offset.
+        rollback.advance_with_precommit(mock,
+          [&](const p6g::MultiHourFrame& candidate) {
+            check(candidate.hour_index==1&&
+                  candidate.previous.ziconv_m[0]==1.f&&
+                  candidate.next.ziconv_m[0]==2.f,
+                  "G18D1 2nd hour re-read tentative rather than committed ZICONV");
+          });
+        check(rollback.completed_hours()==2&&
+              rollback.committed_memory().ziconv_m[0]==2.f,
+              "G18D1 successive 2SS/2US native hours lacked isolated histories");
         auto bad=surface(jan1,6);
         bad.station_ids={58322,58321};
         must_reject([&]{
@@ -195,6 +231,7 @@ int main(){
                      "1h_6h_143h_8784h 2SS_2US dynamic_10km "
                      "17_accepted_stages prior_ZICONV DPTT rollback "
                      "oracle_rejected WFACE_required "
+                     "G18D1_P6F_PRECOMMIT_ROLLBACK_AND_RETRY_PASS "
                      "FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
