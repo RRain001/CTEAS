@@ -79,6 +79,17 @@ else()
 endif()
 add_test(NAME p6g_g9_expanded_10km_multi_wind1_frozen_pair_parity COMMAND cteas_p6g_g9_multi_wind1_tests)
 
+# G10 original-Fortran 10km selected DIAGNO tail source-lift reference.
+# Distinct from frozen 100m DIAGNO and from any real terrain/heat acceptance.
+add_executable(cteas_p6g_g10_diagno_reference src/p6g_g10_10km_diagno_reference_main.cpp)
+target_link_libraries(cteas_p6g_g10_diagno_reference PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g10_diagno_reference PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g10_diagno_reference PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
+
 set_tests_properties(p6g_g8_multisite_10km_8784h_selected_source_bridge PROPERTIES TIMEOUT 900)
 
 
