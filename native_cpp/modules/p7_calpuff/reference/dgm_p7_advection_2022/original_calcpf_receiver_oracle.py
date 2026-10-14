@@ -209,6 +209,97 @@ H9_RECSIG_HELPERS = """
       end
 """
 
+# Isolate the THREE actual REAL4 ZRPOLE residual events at receiver (42,11).
+# Original PUFRECS MCTADJ2 L5333-5359, after ZRPOLE is fully computed.
+# This trace is write-only in a temporary instrumented original source copy.
+H9_MCTADJ2_TRACE_NAME = "dgm_h9_mctadj2_receptor42_11.bin"
+H9_MCTADJ2_RECORD = struct.Struct("<3i12f")
+H9_MCTADJ2_LABELS = (
+    "x","y","eltop","uavg","bvf","dsel","ze","dsh",
+    "zrterr","zdiff","z","zrpole")
+H9_MCTADJ2_HELPERS = """
+c --- Original REAL4 terrain operands for exactly three H9 CALCPF events.
+      subroutine dgmh9mctadj2(x,y,eltop,uavg,bvf,dsel,
+     &                        ze,dsh,zrterr,zdiff,z,zrpole)
+      include 'grid.puf'
+      integer dgmseq,dgmid,dgmksam
+      real x,y,eltop,uavg,bvf,dsel,ze,dsh,zrterr,zdiff,z,zrpole
+      real tx,ty
+      common /dgmrecur/ dgmseq,dgmid,dgmksam
+      logical opened
+      save opened
+      data opened/.false./
+      if(dgmseq.ne.16480.and.dgmseq.ne.16486.and.
+     &   dgmseq.ne.16495) return
+      tx=(float(ibsamp)-0.5)*dgrid+41.0*delsam
+      ty=(float(jbsamp)-0.5)*dgrid+10.0*delsam
+      if(x.ne.tx.or.y.ne.ty) return
+      if(.not.opened)then
+         open(1923,file='dgm_h9_mctadj2_receptor42_11.bin',
+     &        form='unformatted',access='stream',status='replace')
+         opened=.true.
+      endif
+      write(1923) dgmseq,dgmid,dgmksam,x,y,eltop,
+     &            uavg,bvf,dsel,ze,dsh,zrterr,zdiff,z,zrpole
+      return
+      end
+"""
+
+
+def add_h9_mctadj2_trace(source: str) -> str:
+    begin=source.lower().find("      subroutine pufrecs(")
+    end=source.lower().find("      subroutine calcsl(",begin)
+    if begin<0 or end<=begin:
+        raise AssertionError("original PUFRECS scope changed")
+    original=source[begin:end]
+    # Match the terminal terrain branch and insert AFTER the entire
+    # if(dsh.EQ.0.0) block. Never instrument unrelated MCTADJ users.
+    anchor=("                   zrpole=z+dsh\n"
+            "                endif\n"
+            "             endif\n")
+    if original.count(anchor)!=1:
+        raise AssertionError("original PUFRECS MCTADJ2 terminal branch drifted")
+    call=("             call dgmh9mctadj2(x,y,eltop,uavg,bvf,dsel,\n"
+          "     &                           ze,dsh,zrterr,zdiff,z,zrpole)\n")
+    original=original.replace(anchor,anchor+call)
+    return source[:begin]+original+source[end:]+H9_MCTADJ2_HELPERS
+
+
+def audit_h9_mctadj2_trace(path: Path, out: Path) -> None:
+    if not path.is_file() or path.stat().st_size % H9_MCTADJ2_RECORD.size:
+        raise AssertionError("original H9 MCTADJ2 trace missing/misaligned")
+    samples=[]
+    with path.open("rb") as fh:
+        while block:=fh.read(H9_MCTADJ2_RECORD.size):
+            seq,puff,ksam,*vals=H9_MCTADJ2_RECORD.unpack(block)
+            if not all(math.isfinite(v) for v in vals):
+                raise AssertionError("source H9 MCTADJ2 nonfinite operand")
+            samples.append((seq,puff,ksam,vals))
+    expected=((16480,596,2),(16486,597,6),(16495,598,7))
+    if tuple(row[:3] for row in samples)!=expected:
+        raise AssertionError(f"source H9 terrain physical keys drifted: {samples}")
+    entries=[]
+    for seq,puff,ksam,vals in samples:
+        values=dict(zip(H9_MCTADJ2_LABELS,vals))
+        bits={k:f"0x{struct.unpack('<I',struct.pack('<f',v))[0]:08x}"
+              for k,v in values.items()}
+        entries.append({"seq":seq,"puff":puff,"ksam":ksam,
+                        "operands":values,"real4_bits":bits})
+        print(f"P7_ORIGINAL_H9_MCTADJ2_TERRAIN"
+              f" STEP={seq} PUFF={puff} KSAM={ksam}"
+              + " ".join(f" {k.upper()}={v:.10g} BIT_{k.upper()}={bits[k]}"
+                         for k,v in values.items())
+              + " VENDOR_UNMODIFIED=YES NATIVE_PARITY=NOT_CLAIMED")
+    out.write_text(json.dumps({
+        "status":"ORIGINAL_H9_SOURCE_ONLY",
+        "scope":"original PUFRECS MCTADJ2 (42,11), 3 REAL4 events",
+        "events":entries,
+        "trace_sha256":original.sha256_file(path),
+        "vendor_source_sha256":original.ORIGINAL_CALPUFF_SHA256,
+        "native_state_injected":False
+    },indent=2)+"\n")
+
+
 def add_h9_receptor_sigtz_trace(source: str) -> str:
     anchor = "            call sigtz(dum0,vdz,vtz,zb1,szar,dum1,dum2)"
     if source.count(anchor + "\n") != 1:
@@ -601,6 +692,7 @@ def main() -> None:
     if args.trace_h9_setpuf:
         source=add_h9_setpuf_trace(source)
         source=add_h9_receptor_sigtz_trace(source)
+        source=add_h9_mctadj2_trace(source)
         source=add_h9_puff598_mass_trace(source)
         source=add_h9_puff598_vcbar_trace(source)
     instrumented.write_text(source + source_helpers, encoding="latin-1")
@@ -632,6 +724,9 @@ def main() -> None:
     if original.sha256_file(dgm) != DGM_SHA or dgm.stat().st_size != 254687 * 352:
         raise AssertionError("original 143h DGM changed under CALCPF instrumentation")
     if args.trace_h9_setpuf:
+        audit_h9_mctadj2_trace(
+            run / H9_MCTADJ2_TRACE_NAME,
+            out / "original-h9-mctadj2-receptor42-11.json")
         audit_h9_puff598_vcbar(run / H9_PUFF598_VCBAR_NAME,
                               out / "original-h9-puff598-vcbar.json")
         audit_h9_puff598_mass(run / H9_PUFF598_MASS_NAME,
