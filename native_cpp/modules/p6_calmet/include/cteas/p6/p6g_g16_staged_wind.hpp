@@ -93,6 +93,40 @@ public:
         corrected_=std::move(input);
     }
 
+    // One source-selected post-MIXHTST DIAGI refresh per hour. WIND1
+    // stays neutral and upper-air PREPDI columns stay independently owned.
+    void provide_selected_diagi_after_wind1(
+        const G16ObservedProfiles& observed) {
+        if(!stage_.wind1_complete||stage_.inter2_complete||diagi_refreshed_||
+           observed.end!=stage_.end||
+           observed.station_ids!=profiles_.station_ids||
+           observed.wind1_u_mps!=profiles_.wind1_u_mps||
+           observed.wind1_v_mps!=profiles_.wind1_v_mps||
+           observed.wind1_present!=profiles_.wind1_present)
+            throw std::invalid_argument("G16 source DIAGI/WIND1 identity or ordering invalid");
+        const auto total=profiles_.station_ids.size();
+        const auto ns=stage_.first_guess.nsurface;
+        if(ns==0||ns>=total||
+           observed.inter2_u_mps.size()!=9*total||
+           observed.inter2_v_mps.size()!=9*total||
+           observed.inter2_present.size()!=9*total)
+            throw std::invalid_argument("G16 source DIAGI dimensions invalid");
+        // Retain upper columns from the existing source PREPDI, not a
+        // separate interpolated or differently stamped observation.
+        for(std::size_t k=0;k<9;++k)
+            for(std::size_t i=ns;i<total;++i) {
+                const auto p=k*total+i;
+                if(observed.inter2_u_mps[p]!=profiles_.inter2_u_mps[p]||
+                   observed.inter2_v_mps[p]!=profiles_.inter2_v_mps[p]||
+                   observed.inter2_present[p]!=profiles_.inter2_present[p])
+                    throw std::invalid_argument("G16 DIAGI would replace PREPDI UP columns");
+            }
+        profiles_.inter2_u_mps=observed.inter2_u_mps;
+        profiles_.inter2_v_mps=observed.inter2_v_mps;
+        profiles_.inter2_present=observed.inter2_present;
+        diagi_refreshed_=true;
+    }
+
     p6::NativeHourStageResult run(
         p6::NativeHourStage stage,MultiHourFrame& hour) override {
         if(stage==p6::NativeHourStage::DiagnoWind1)
@@ -245,5 +279,6 @@ private:
     G16ObservedProfiles profiles_;
     G16WindStages stage_{};
     std::optional<G16PostSlopeFields> corrected_;
+    bool diagi_refreshed_=false;
 };
 } // namespace cteas::calmet::p6g
