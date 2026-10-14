@@ -212,8 +212,11 @@ SigmaUpdateResult sigma_update(const SigmaUpdateInputs& inputs, const SigmaYCurv
             to_real(mid_sigma.virtual_time_s,"CTADJ2 midpoint VTZM1");
         result.step.virtual_distance_z_mid_km=
             to_real(mid_sigma.virtual_distance_km,"CTADJ2 midpoint VDZ M1");
-        const auto end=ct(sb/se,xe,ye);
-        const R strained_end=se*to_real(end.strain,"CTADJ2 end STRAIN");
+        const R end_ratio=sb/se;
+        const R end_sigma_unstrained=se;
+        const auto end=ct(end_ratio,xe,ye);
+        const R end_strain=to_real(end.strain,"CTADJ2 end STRAIN");
+        const R strained_end=se*end_strain;
         const auto end_sigma=sigma_z_curve(strained_end,0.0,0.0,zpb);
         se=curve_value(end_sigma.value,"SETPUF terrain end SZE1");
         result.step.sigma_z_end_m=se;
@@ -225,7 +228,14 @@ SigmaUpdateResult sigma_update(const SigmaUpdateInputs& inputs, const SigmaYCurv
             .z_mid_m=to_real(mid.puff_height_end_m,"CTADJ2 ZM1"),
             .z_end_m=to_real(end.puff_height_end_m,"CTADJ2 ZE1"),
             .fracz_end=to_real(end.fraction_beyond,"CTADJ2 FRACZ1"),
-            .upslope_end=end.upslope
+            .upslope_end=end.upslope,
+            .end_ratio=end_ratio,
+            .end_sigma_before_strain_m=end_sigma_unstrained,
+            .end_strain=end_strain,
+            .end_sigma_adjusted_m=strained_end,
+            .end_sigma_after_sigtz_m=se,
+            .end_virtual_distance_km=to_real(
+                end_sigma.virtual_distance_km,"SETPUF original VDZE1")
         };
     }
     SigmaAdjustInputs adjust;
