@@ -61,6 +61,7 @@ add_test(NAME p6g_multistation_surface_upper_hourly_input_contract COMMAND cteas
 # This is NOT full CALMET WIND1/DIAGNO physical equivalence.
 add_executable(cteas_p6g_g8_10km_year_tests tests/p6g_g8_10km_year_stress_tests.cpp)
 target_link_libraries(cteas_p6g_g8_10km_year_tests PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6g_g8_10km_year_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
 if(MSVC)
   target_compile_options(cteas_p6g_g8_10km_year_tests PRIVATE /W4 /WX)
 else()
