@@ -877,15 +877,15 @@ static void verify_source_staged_iavet(
     rejects([&]{
         (void)p6g::g18d1_validate_p6f_precommit(contaminated,native_file);
     },"G18D1 accepted MET.DAT U-field backfill not from current G14 physics");
-    contaminated=pending_g14;
-    contaminated.next.zi_m[0]+=25.f;
+    auto contaminated_zi=pending_g14;
+    contaminated_zi.next.zi_m[0]+=25.f;
     rejects([&]{
-        (void)p6g::g18d1_validate_p6f_precommit(contaminated,native_file);
+        (void)p6g::g18d1_validate_p6f_precommit(contaminated_zi,native_file);
     },"G18D1 accepted stale pre-AVEMIX ZI instead of current COMP state");
-    contaminated=pending_g14;
-    contaminated.fields.w_face_mps[144]+=1.f;
+    auto contaminated_w=pending_g14;
+    contaminated_w.fields.w_face_mps[144]+=1.f;
     rejects([&]{
-        (void)p6g::g18d1_validate_p6f_precommit(contaminated,native_file);
+        (void)p6g::g18d1_validate_p6f_precommit(contaminated_w,native_file);
     },"G18D1 accepted wrong 3D WFACE top-face value");
     auto wrong_time_file=native_file;
     wrong_time_file.header.end_hour=(wrong_time_file.header.end_hour+1)%24;
