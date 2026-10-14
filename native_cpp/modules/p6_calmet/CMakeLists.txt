@@ -325,6 +325,30 @@ if(P6G_G17B_GFORTRAN AND Python3_Interpreter_FOUND)
       --out "${CMAKE_CURRENT_BINARY_DIR}/g18d3_hflux_source_defaults_parity.json")
 endif()
 
+# G18D6: literal CALMET SETCOM NEARU closest-upper station grid mapping.
+# Compiles actual G18B3 C++ module, independently extracts vendor Fortran
+# READCF/SETCOM's REAL4 index loops, and compares every 1-based ordinal.
+add_executable(cteas_p6g_g18d6_nearu_reference
+               src/p6g_g18d6_nearu_reference_main.cpp)
+target_link_libraries(cteas_p6g_g18d6_nearu_reference PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6g_g18d6_nearu_reference PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+if(MSVC)
+  target_compile_options(cteas_p6g_g18d6_nearu_reference PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g18d6_nearu_reference PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(P6G_G17B_GFORTRAN AND Python3_Interpreter_FOUND)
+  add_test(NAME p6g_g18d6_literal_vendor_setcom_nearu_real4_parity
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_original_g18d6_nearu.py"
+      --vendor "${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for"
+      --cpp "$<TARGET_FILE:cteas_p6g_g18d6_nearu_reference>"
+      --gfortran "${P6G_G17B_GFORTRAN}"
+      --out "${CMAKE_CURRENT_BINARY_DIR}/g18d6_setcom_nearu_source_parity.json")
+endif()
+
 # G17B4: original Hefei IAVET=1 two SURFVAR/AVETMP calls bracket FRADJ;
 # distinct source WIND1 and post-FRADJ winds must not be conflated.
 add_executable(cteas_p6g_g17b4_iavet_two_pass_tests
