@@ -21,8 +21,13 @@ struct G16ObservedProfiles {
     std::chrono::sys_seconds end{};
     // Station major order in each layer: SS1..SSn, US1..USn (met.inp).
     // Must be supplied by source-validated SIMILT/VERTAV/PREPDI upstream.
-    std::vector<float> u_mps,v_mps;
-    std::vector<unsigned char> present;
+    // WIND1 source SIMILT: neutral and uncapped, calmet.for L36171.
+    std::vector<float> wind1_u_mps,wind1_v_mps;
+    std::vector<unsigned char> wind1_present;
+    // INTER2 source DIAGI: stability-dependent SIMILT capped at MIXHTST ZI,
+    // upper soundings from hourly PREPDI; NOT interchangeable with WIND1.
+    std::vector<float> inter2_u_mps,inter2_v_mps;
+    std::vector<unsigned char> inter2_present;
     std::vector<int> station_ids; // matching met.inp SS/US ordinal identities
 };
 struct G16PostSlopeFields {
@@ -95,9 +100,13 @@ private:
            hour.surface.by_station.size()!=ns||
            hour.input.upper.size()!=nu)
             throw std::invalid_argument("G16 WIND1 station/time mismatch");
-        require_finite(profiles_.u_mps,count,"station U");
-        require_finite(profiles_.v_mps,count,"station V");
-        if(profiles_.present.size()!=count||profiles_.station_ids.size()!=total)
+        require_finite(profiles_.wind1_u_mps,count,"neutral WIND1 station U");
+        require_finite(profiles_.wind1_v_mps,count,"neutral WIND1 station V");
+        require_finite(profiles_.inter2_u_mps,count,"DIAGI INTER2 station U");
+        require_finite(profiles_.inter2_v_mps,count,"DIAGI INTER2 station V");
+        if(profiles_.wind1_present.size()!=count||
+           profiles_.inter2_present.size()!=count||
+           profiles_.station_ids.size()!=total)
             throw std::invalid_argument("G16 WIND1 missing station IDs or flags");
         for(std::size_t i=0;i<ns;++i)
             if(profiles_.station_ids[i]!=hour.stations.surface[i].id)
@@ -112,9 +121,9 @@ private:
         input.upper_count=static_cast<int>(nu);
         input.icalm=controls.icalm;
         input.vertical_bias.assign(controls.bias.begin(),controls.bias.end());
-        input.station_u_mps=profiles_.u_mps;
-        input.station_v_mps=profiles_.v_mps;
-        input.present=profiles_.present;
+        input.station_u_mps=profiles_.wind1_u_mps;
+        input.station_v_mps=profiles_.wind1_v_mps;
+        input.present=profiles_.wind1_present;
         for(std::size_t i=0;i<ns;++i){
             const auto& obs=hour.surface.by_station[i];
             if(!obs.wind_valid||!std::isfinite(obs.wind_speed_mps))
@@ -179,13 +188,16 @@ private:
             // Explicit original EDIT/EDITL to distinguish missing observations.
             for(std::size_t k=0;k<9;++k)
                 for(std::size_t l=0;l<total;++l)
-                    if(!profiles_.present[k*total+l])
+                    if(!profiles_.inter2_present[k*total+l])
                         in.station_component_mps[k*total+l]=in.edit;
             in.step1_mps=corrected;
             return p6::original_inter2_selected(in);
         };
-        const auto u=make_component(profiles_.u_mps,corrected_->u_mps);
-        const auto v=make_component(profiles_.v_mps,corrected_->v_mps);
+        // Never re-use the neutral WIND1 profile as the DIAGI/INTER2
+        // stability and mixing-height limited observation. This was a
+        // source-level ambiguity in the old G8 selected-source bridge.
+        const auto u=make_component(profiles_.inter2_u_mps,corrected_->u_mps);
+        const auto v=make_component(profiles_.inter2_v_mps,corrected_->v_mps);
         stage_.blended_u=u;
         stage_.blended_v=v;
         stage_.inter2_complete=true;
