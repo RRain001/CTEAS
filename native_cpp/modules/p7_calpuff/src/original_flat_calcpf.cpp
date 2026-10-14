@@ -27,7 +27,10 @@ ReceptorPgSigma receptor_pg_sigma(
     const float bidsq=s.receptor_buoyancy_variance_m2;
     const float sy0sq=s.receptor_initial_sigma_y_squared_m2;
     if(!std::isfinite(frac)||!std::isfinite(xtt)||xtt<0.0F ||
-       !std::isfinite(xfinal)||xfinal<=0.0F ||
+       // Original PRFIN may set XFINAL=0 below WSSTK0 while retaining
+       // genuine vertical final rise. PUFRECS then uses the final-rise
+       // branch for XT>0; reject negative/infinite XFINAL, not zero.
+       !std::isfinite(xfinal)||xfinal<0.0F ||
        !std::isfinite(bidsq)||bidsq<0.0F ||
        !std::isfinite(sy0sq)||sy0sq<0.0F)
         throw std::invalid_argument("PUFRECS receptor PG requires valid native rise/virtuals");
