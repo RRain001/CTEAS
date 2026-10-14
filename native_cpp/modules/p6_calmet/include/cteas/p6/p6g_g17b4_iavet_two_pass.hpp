@@ -163,6 +163,18 @@ public:
                first_v_[i]!=native_wind1_v[i])return false;
         return true;
     }
+    [[nodiscard]] bool second_stage_wind_matches(
+        const std::vector<float>& adjusted_u,
+        const std::vector<float>& adjusted_v) const {
+        const auto n=nx_*ny_;
+        if(!final_||second_u_.size()!=n||second_v_.size()!=n||
+           adjusted_u.size()!=n*9||adjusted_v.size()!=n*9)
+            return false;
+        for(std::size_t k=0;k<n;++k)
+            if(second_u_[k]!=adjusted_u[k]||
+               second_v_[k]!=adjusted_v[k])return false;
+        return true;
+    }
     [[nodiscard]] const std::vector<float>& first_temperature() const {
         if(!first_)throw std::logic_error("G17B4 first SURFVAR not performed");
         return *first_;
@@ -193,8 +205,14 @@ public:
         const std::vector<float>& corrected_fradj_v3d) {
         if(!first_||final_)
             throw std::logic_error("G17B4 post-FRADJ SURFVAR out of source order");
-        final_=make_temperature(source_hour_end,corrected_fradj_u3d,
-                                corrected_fradj_v3d);
+        auto corrected=make_temperature(source_hour_end,corrected_fradj_u3d,
+                                        corrected_fradj_v3d);
+        const auto n=nx_*ny_;
+        second_u_.assign(corrected_fradj_u3d.begin(),
+                         corrected_fradj_u3d.begin()+static_cast<std::ptrdiff_t>(n));
+        second_v_.assign(corrected_fradj_v3d.begin(),
+                         corrected_fradj_v3d.begin()+static_cast<std::ptrdiff_t>(n));
+        final_=std::move(corrected);
     }
     [[nodiscard]] G17B4TwoPassResult result() const {
         if(!first_||!final_)
@@ -231,6 +249,6 @@ private:
     std::vector<float> source_station_x_,source_station_y_;
     std::vector<float> raw_observed_temperature_;
     std::optional<std::vector<float>> first_,final_;
-    std::vector<float> first_u_,first_v_;
+    std::vector<float> first_u_,first_v_,second_u_,second_v_;
 };
 } // namespace cteas::calmet::p6g
