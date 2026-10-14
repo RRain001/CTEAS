@@ -109,7 +109,7 @@ def main()->None:
     source=(source[:pos_before]+
         "         call p7massbefore(ii,ksam,qold(1))\n"+source[pos_before:])
     dry_entry=source.index("f1=vcbar(jp,mfact0,hlid,ppcoef,lcalmf)")
-    dry_match=re.search(r"(?m)^ {6,}[ ]*const=tsamp\\*f1",source[dry_entry:dry_entry+240])
+    dry_match=re.search(r"(?m)^ {6,}[ ]*const=tsamp\*f1",source[dry_entry:dry_entry+240])
     if dry_match is None:
         raise AssertionError("original DRY Gaussian VCBAR/CONST anchor drifted")
     dry_line_start=dry_entry+dry_match.start()
