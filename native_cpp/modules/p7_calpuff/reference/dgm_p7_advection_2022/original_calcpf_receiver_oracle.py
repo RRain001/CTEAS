@@ -299,6 +299,11 @@ def main() -> None:
     ap.add_argument("--receptor-i", type=int, default=None)
     ap.add_argument("--receptor-j", type=int, default=None)
     ap.add_argument("--trace-h9-setpuf", action="store_true")
+    ap.add_argument(
+        "--allow-no-receptor-events", action="store_true",
+        help="H9 source-only diagnostic: record an absent CALCPF receiver trace "
+             "without claiming sampled receptor parity; corrupt traces still fail",
+    )
     args = ap.parse_args()
     vendor, case, out = (p.resolve() for p in (args.vendor, args.case, args.out))
     defaults = {1:(19,50), 2:(25,28), 4:(47,13), 9:(13,1)}
@@ -370,8 +375,32 @@ def main() -> None:
         audit_h9_csigma_trace(run / H9_SIGMA_TRACE_NAME,
                              out / "original-h9-puff588-effective-csigma.json")
     trace = run / trace_name
-    if not trace.is_file() or trace.stat().st_size % (RECORD.size+16):
-        raise AssertionError("missing or misaligned original CALCPF H3 trace")
+    # A receptor may have no contributing CALCPF events in a selected hour.
+    # That is not the same as a malformed diagnostic file, and it does NOT
+    # establish zero concentration or native numerical equivalence.
+    if trace.is_file() and trace.stat().st_size % (RECORD.size + 16):
+        raise AssertionError("misaligned original CALCPF H3 trace")
+    if not trace.is_file() or trace.stat().st_size == 0:
+        if not (args.allow_no_receptor_events and args.hour == 9):
+            raise AssertionError("missing or empty original CALCPF H3 trace")
+        audit = {
+            "scope": f"original CALPUFF hour {args.hour} H3 receptor ({ix},{jy}), source-only",
+            "status": "NO_CALCPF_RECEIVER_EVENTS_RECORDED",
+            "vendor_sha256": original.ORIGINAL_CALPUFF_SHA256,
+            "frozen_puff_con_sha256": result["puff_con_sha256"],
+            "frozen_dgm_sha256": original.sha256_file(dgm),
+            "records": 0,
+            "trace_path": None,
+            "numeric_native_parity": "NOT_CLAIMED",
+            "original_hourly_receptor_concentration": "NOT_CHECKED",
+        }
+        (out / f"original-calcpf-h3-{ix}-{jy}-hour{args.hour}.json").write_text(
+            json.dumps(audit, indent=2) + "\n")
+        print("P7_ORIGINAL_H3_CALCPF_RECEIVER_NO_EVENTS=SOURCE_ONLY"
+              f" HOUR={args.hour} RECEPTOR_I={ix} RECEPTOR_J={jy}"
+              " RECORDS=0 ORIGINAL_PUFF_CON_AND_DGM=UNCHANGED"
+              " NATIVE_PARITY=NOT_CLAIMED")
+        return
     samples = []
     with trace.open("rb") as fd:
         while chunk := fd.read(RECORD.size):
