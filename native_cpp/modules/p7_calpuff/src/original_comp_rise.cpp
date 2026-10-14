@@ -416,9 +416,41 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     auto dispersion=control.dispersion;
     dispersion.calm=lcalm;
     // Vendor COMP L10859: VMASS uses OLD sigma and may alter ICODE.
+    // Original COMP calpuff.for L10683-10691 reloads ISTAB/DPBL from
+    // the POST-ADVECT midpoint (IXMID/IYMID).  VMASS L10859 consumes
+    // that live DPBL, not the pre-ADVECT start-cell value used by
+    // PUFFDZ and ADVECT L10482-10499.
+    //
+    // The production original-deck path carries explicit XMINZI/XMAXZI
+    // in calm_mdisp3. Other synthetic test paths keep their separate
+    // previously supported metadata contract until that clamp is
+    // represented in general NeutralCompControls.
+    float vmass_dpbl=sampled.mixing_height_m;
+    int vmass_stability=sampled.stability_class;
+    if(control.gaussian_dry && control.calm_mdisp3 &&
+       control.calm_mdisp3->jsup>0){
+        const auto mid=original_met_cell_clamped(
+            0.5F*(before.x_cells+moved.state.x_cells),
+            0.5F*(before.y_cells+moved.state.y_cells),
+            met.nx,met.ny);
+        const auto& config=*control.calm_mdisp3;
+        require(mid.offset_0based<met.zi.size() &&
+                mid.offset_0based<met.ipgt.size() &&
+                config.minimum_mixing_height_m>0.0F &&
+                config.maximum_mixing_height_m>=
+                    config.minimum_mixing_height_m,
+                "source COMP midpoint VMASS requires valid PBL bounds");
+        vmass_dpbl=std::clamp(met.zi[mid.offset_0based],
+            config.minimum_mixing_height_m,
+            config.maximum_mixing_height_m);
+        vmass_stability=std::min(met.ipgt[mid.offset_0based],6);
+        require(vmass_stability>=1 && vmass_stability<=6 &&
+                std::isfinite(vmass_dpbl) && vmass_dpbl>0.0F,
+                "source COMP midpoint VMASS PBL/stability invalid");
+    }
     auto mass=v.commit_vmass(
-        id,sampled.mixing_height_m,before.z_m,moved.state.z_m,
-        vs.sigma_z_m,sampled.stability_class,0);
+        id,vmass_dpbl,before.z_m,moved.state.z_m,
+        vs.sigma_z_m,vmass_stability,0);
     order.completed(VendorSubstepPhase::ApplyVmass);
     dispersion.step.puff_code=mass.puff_code;
     dispersion.step.sigma_y_start_m=vs.sigma_y_m;
