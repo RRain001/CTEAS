@@ -62,8 +62,10 @@ bool equal_real4(float a,float b) {
 
 int main(int argc,char** argv) {
   try {
-    require(argc==4 || argc==5,
-            "usage: sixhour_real_h3 MET.DAT puff.inp puff.con [original-6h-DGM.bin]");
+    require(argc>=4 && argc<=6,
+            "usage: sixhour_real_h3 MET.DAT puff.inp puff.con [original-6h-DGM.bin] [native-hour2-25-28.tsv]");
+    require(argc!=6 || std::string(argv[4]).size()>0U,
+            "hour2 CALCPF trace requires an original DGM provenance input");
     const auto dgm=argc==5?read_sixhour_dgm(argv[4]):
                            std::vector<OriginalDgmStep>{};
     // Source order: strict GETCELL for pre-step puff centre, original
@@ -125,6 +127,12 @@ int main(int argc,char** argv) {
     std::size_t matched_stored_sigy=0U,matched_stored_sigz=0U;
     std::size_t first_dgm_mismatch_record=0U;
     std::string first_dgm_mismatch_field;
+    struct NativeH3ReceptorRow {
+        int episode=0;
+        float time_before=0.0F,time_after=0.0F;
+        OriginalCalcpfReceiverIntermediate values;
+    };
+    std::size_t original_hour2_trace_rows=0U;
     bool every_hour_real4=true;
     std::size_t first_mismatched_hour=0U,first_mismatched_cell=0U;
     const auto summary=OriginalMetHourlyReader::read(argv[1],
@@ -196,6 +204,16 @@ int main(int argc,char** argv) {
                 receptors.sampling_ny==50&&receptors.mesh_down==1&&
                 receptors.discrete.empty(),"sixhour native receptor frame drift");
 
+        std::vector<NativeH3ReceptorRow> hour2_rows;
+        OriginalCalcpfIntermediateHook hour2_hook;
+        if(argc==6 && hour_index==1U){
+            hour2_hook=[&hour2_rows](const RiseCompSamplingState& state,
+                                    const OriginalCalcpfReceiverIntermediate& row){
+                if(row.receptor_index!=1374U)return; // original grid (25,28)
+                hour2_rows.push_back({state.puff_id,
+                    state.before.travel_time_s,state.after.travel_time_s,row});
+            };
+        }
         const auto sampling=make_original_flat_calcpf_sampler(
             receptors,header.dx_m,3600.0F,3.0F,
             OriginalFlatVerticalMethod::receptor_pg_vcoup_mctadj2,
@@ -210,7 +228,7 @@ int main(int argc,char** argv) {
                     receptors.sampling_nx,receptors.sampling_ny,pos,
                     state.receptor_brunt_vaisala_s,
                     state.receptor_effective_wind_ms);
-            },true,{},0.0F);
+            },true,hour2_hook,0.0F);
         // 4096 capacity is intentionally non-binding in this SIX-HOUR
         // instrumented gate. MXPUFF-pressure acceptance is a distinct test.
         const OriginalCompPuffBounds bounds{0.0F,50.0F,0.0F,50.0F};
@@ -264,9 +282,49 @@ int main(int argc,char** argv) {
                         <<" SIGY_NATIVE="<<stage.step.vertical_after.sigma_y_m
                         <<" SIGY_VENDOR="<<ref.reals[42]
                         <<" SIGZ_NATIVE="<<stage.step.vertical_after.sigma_z_m
-                        <<" SIGZ_VENDOR="<<ref.reals[43]<<"\\n";
+                        <<" SIGZ_VENDOR="<<ref.reals[43]<<"\n";
                 }
             }
+        }
+        if(argc==6 && hour_index==1U){
+            require(!hour2_rows.empty(),
+                    "native hour2 original receptor 25,28 had no physical trace");
+            std::ofstream receiver_trace(argv[5],std::ios::binary);
+            require(bool(receiver_trace),"cannot open hour2 read-only native stage trace");
+            receiver_trace<<std::setprecision(9);
+            std::size_t prev=0U;bool seen_prev=false;
+            for(const auto& record:hour2_rows){
+                std::size_t found=hour.steps.size();
+                for(std::size_t j=0;j<hour.steps.size();++j){
+                    const auto& stage=hour.steps[j];
+                    if(stage.puff_id==record.episode &&
+                       stage.step.before.travel_time_s==record.time_before &&
+                       stage.step.after.travel_time_s==record.time_after){
+                        require(found==hour.steps.size(),
+                                "ambiguous native original COMP hour2 receptor step");
+                        found=j;
+                    }
+                }
+                require(found<hour.steps.size() && (!seen_prev || prev<found),
+                        "native hour2 CALCPF step keys not in canonical COMP order");
+                seen_prev=true;prev=found;
+                const auto& d=record.values;
+                const auto& st=hour.steps[found];
+                receiver_trace<<physical_steps+found+1U<<" "<<record.episode
+                    <<" "<<st.ksam<<" "<<d.sigma_y_m<<" "<<d.sigma_z_m
+                    <<" "<<d.puff_height_m<<" "<<d.receptor_pole_m
+                    <<" "<<d.vertical_factor<<" "<<d.xi1<<" "<<d.xi2
+                    <<" "<<d.t1<<" "<<d.t2<<" "<<d.qold<<" "<<d.qnew
+                    <<" "<<d.xtemp<<" "<<d.concentration<<"\n";
+            }
+            receiver_trace.flush();
+            require(bool(receiver_trace),
+                    "native original hour2 CALCPF stage trace flush failed");
+            original_hour2_trace_rows=hour2_rows.size();
+            std::cout<<"P7_HEFEI_NATIVE_HOUR2_25_28_CALCPF_TRACE=PASS"
+                     <<" ORIGINAL_DGM_GLOBAL_SEQ=1276..3517"
+                     <<" RECORDS="<<original_hour2_trace_rows
+                     <<" ORIGINAL_VENDOR_PARITY=NOT_YET_COMPARED\\n";
         }
         physical_steps+=hour.steps.size();
         if(hour_index==0U)
@@ -354,13 +412,13 @@ int main(int argc,char** argv) {
                  <<" FIRST_DIFFERENCE_RECORD="<<first_dgm_mismatch_record
                  <<" FIRST_DIFFERENCE_STAGE="<<first_dgm_mismatch_field
                  <<" 6H_STAGE_BITWISE="
-                 <<(first_dgm_mismatch_record==0U?"YES":"OPEN")<<"\\n";
+                 <<(first_dgm_mismatch_record==0U?"YES":"OPEN")<<"\n";
     }
     std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
              <<" ORIGINAL_DGM_ROWS=11458/11458"
              <<" HOURLY_ROWS=1275,2242,1906,2132,1742,2161"
              <<" FIRST_AND_LAST_EPISODE_IDS=SOURCE_EQUIVALENT"
-             <<" NATIVE_EPISODE_PHYSICS_VALUES=NOT_YET_ALL_BITWISE"<<"\\n";
+             <<" NATIVE_EPISODE_PHYSICS_VALUES=NOT_YET_ALL_BITWISE"<<"\n";
     std::cout<<"P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=PASS"
              <<" HOURS=6 METFM1=ORIGINAL"
              <<" COMP_AUTHORITY=SINGLE_STATEFUL_DRIVER"
