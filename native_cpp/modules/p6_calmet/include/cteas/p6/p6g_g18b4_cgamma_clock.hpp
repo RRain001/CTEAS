@@ -33,7 +33,8 @@ public:
            (committed_&&frame.hour_index!=last_index_+1)||
            (!committed_&&frame.hour_index!=0)||
            (committed_&&frame.input.end!=last_end_+std::chrono::hours{1})||
-           (committed_&&states_.size()!=frame.stations.upper.size()))
+           (committed_&&states_.size()!=frame.stations.upper.size())||
+           (committed_&&upper.station_ids!=station_ids_))
             throw std::invalid_argument("G18B4 CGAMMA previous-hour provenance invalid");
         // Existing G18B1 source read contract independently validates the
         // physical AA/BB payload and its slot-to-chronological translation.
@@ -53,10 +54,15 @@ public:
             p6::Upper2022 one;
             one.station_id=frame.upper[i].station_id;
             one.pstop_hpa=frame.upper[i].pstop_hpa;
-            one.soundings=frame.upper[i].soundings;
+            // CGammaState needs only the chronological AA/BB pair and
+            // timestamp; copying a whole multi-year UP series every hour
+            // would be quadratic work with no change in original physics.
+            one.soundings={
+                frame.upper[i].soundings.at(upper.chronological_older[i]),
+                frame.upper[i].soundings.at(upper.chronological_newer[i])};
             p6::CompBufferedHour h;
-            h.aa_profile=upper.chronological_older[i];
-            h.bb_profile=upper.chronological_newer[i];
+            h.aa_profile=0;
+            h.bb_profile=1;
             h.jorder=upper.justa[i];
             h.interpolated.end=frame.input.end;
             h.interpolated.prior_sounding=h.aa_profile;
