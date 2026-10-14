@@ -143,6 +143,21 @@ endif()
 add_test(NAME p6g_g14_unified_2ss_2us_hourly_clock_state_1h_6h_143h_8784h
          COMMAND cteas_p6g_g14_unified_hourly_tests)
 
+# G15A: no independently hardcoded G8 wind radii or BIAS; verify against
+# the actual pinned 2022 met.inp with original READCF effective BIAS(1).
+add_executable(cteas_p6g_g15_original_controls_tests
+               tests/p6g_g15_original_wind_controls_tests.cpp)
+target_link_libraries(cteas_p6g_g15_original_controls_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g15_original_controls_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g15_original_controls_tests PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g15_original_metinp_wind_radii_bias_readcf_source
+         COMMAND cteas_p6g_g15_original_controls_tests
+           "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
+
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
 add_executable(cteas_p6_terset src/terrain_envelope_main.cpp)
