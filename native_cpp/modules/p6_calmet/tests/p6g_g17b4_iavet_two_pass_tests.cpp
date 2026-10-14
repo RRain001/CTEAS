@@ -11,6 +11,7 @@
 #include "cteas/p6/p6g_g18b4_cgamma_clock.hpp"
 #include "cteas/p6/p6g_g18b5_upper_temp_faces.hpp"
 #include "cteas/p6/p6g_g18b7_previous_ziconv.hpp"
+#include "cteas/p6/p6g_g18b8_gamma_grid.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -841,6 +842,10 @@ static void verify_g18b_asynchronous_upper_turnover() {
     prior.dptt_k.assign(144,0.f);
     p6g::G18BUpperBufferClock clock;
     p6g::G18B4CGammaClock gamma_clock;
+    const auto gamma_near_choice=p6g::g18b3_source_deck_upper_choice(
+        grid,sites,"! IUPT = -1 !");
+    auto gamma_fixed_choice=gamma_near_choice;
+    gamma_fixed_choice.iupt=2;
     std::vector<p6::CGammaState> independent_gamma(2);
     bool saw_cgamma_conv=false,saw_cgamma_retained=false;
     bool saw_different_turnover=false,saw_negative_justa=false;
@@ -956,6 +961,54 @@ static void verify_g18b_asynchronous_upper_turnover() {
               gamma.station_ids==std::vector<int>({58424,58425})&&
               gamma.lapse.size()==2,
               "G18B4 per-upper source CGAMMA station state absent");
+        rejects([&]{
+            (void)p6g::g18b8_source_gamma_from_hour(
+                frame,gamma_near_choice,gamma,false);
+        },"G18B8 unmarked selected gamma field impersonated native PREPDI");
+        const auto spatial=p6g::g18b8_source_gamma_from_hour(
+            frame,gamma_near_choice,gamma,true);
+        const auto uniform=p6g::g18b8_source_gamma_from_hour(
+            frame,gamma_fixed_choice,gamma,true);
+        check(spatial.end==frame.input.end&&
+              spatial.gamma_k_per_m.size()==144&&
+              spatial.upper_station_ids==std::vector<int>({58424,58425})&&
+              spatial.original_iupt==-1&&
+              uniform.original_iupt==2&&
+              uniform.gamma_k_per_m.size()==144,
+              "G18B8 source CGAMMA→grid GAMMA provenance or shape invalid");
+        const auto first=gamma.lapse[0].kelvin_per_m;
+        const auto second=gamma.lapse[1].kelvin_per_m;
+        const auto min_lapse=std::min(first,second);
+        const auto max_lapse=std::max(first,second);
+        for(std::size_t k=0;k<144;++k) {
+            check(uniform.gamma_k_per_m[k]==second,
+                  "G18B8 IUPT>0 did not broadcast source specified US GAMUP");
+            const auto source=spatial.gamma_k_per_m[k];
+            check(std::isfinite(source)&&source>=min_lapse-1.e-8f&&
+                  source<=max_lapse+1.e-8f,
+                  "G18B8 original inverse-distance lapse exceeded station bounds");
+        }
+        if(h==4){
+            auto stale=gamma;
+            stale.end+=hours{1};
+            rejects([&]{
+                (void)p6g::g18b8_source_gamma_from_hour(
+                    frame,gamma_near_choice,stale,true);
+            },"G18B8 allowed GAMMA from another source hour");
+            auto shuffled=gamma;
+            std::swap(shuffled.station_ids[0],shuffled.station_ids[1]);
+            rejects([&]{
+                (void)p6g::g18b8_source_gamma_from_hour(
+                    frame,gamma_near_choice,shuffled,true);
+            },"G18B8 crossed independent CGAMMA upper-station identities");
+            auto invalid=gamma;
+            invalid.lapse[1].kelvin_per_m=
+                std::numeric_limits<float>::quiet_NaN();
+            rejects([&]{
+                (void)p6g::g18b8_source_gamma_from_hour(
+                    frame,gamma_near_choice,invalid,true);
+            },"G18B8 accepted invalid REAL4 upper-station lapse");
+        }
         for(std::size_t us=0;us<2;++us) {
             p6::Upper2022 direct;
             direct.station_id=upper[us].station_id;
@@ -1111,6 +1164,7 @@ int main(int argc,char** argv){
                     "G18B4_PER_UP_FROZEN_CGAMMA_TRANSACTIONAL_HISTORY_PASS "
                     "G18B5_FROZEN_FACET_MULTISITE_SOURCE_FACES_PASS "
                     "G18B7_SOURCE_PREVIOUS_IIUP_JJUP_ZICONV_PASS "
+                    "G18B8_SOURCE_IUPT_GAMMA_HOURLY_HANDOFF_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
