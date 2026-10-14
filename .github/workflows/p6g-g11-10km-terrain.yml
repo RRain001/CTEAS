@@ -11,6 +11,8 @@ on:
       - "native_cpp/modules/p6_calmet/tests/p6g_g11_source_terrain_tests.cpp"
       - "native_cpp/modules/p6_calmet/tests/p6g_g8_10km_year_stress_tests.cpp"
       - "native_cpp/modules/p6_calmet/CMakeLists.txt"
+      - "native_cpp/modules/p6_calmet/tests/p6g_g11_original_terrain_probe.cpp"
+      - "native_cpp/modules/p6_calmet/reference/compare_g11_original_terrain_10km.py"
       - ".github/workflows/p6g-g11-10km-terrain.yml"
   workflow_dispatch:
 
@@ -35,6 +37,10 @@ jobs:
             cteas_p6g_g11_terrain_tests cteas_p6g_g8_10km_year_tests \
             cteas_p6_final_segment_tests cteas_p6g_g9_multi_wind1_tests \
             cteas_p6_d9a_bridge_tests -j2
+      - name: Compare literal original Fortran TERSET/FRADJ/SLOPE vs 10km C++ U/V
+        run: |
+          command -v gfortran || (sudo apt-get update -qq && sudo apt-get install -y -qq gfortran)
+          python3 native_cpp/modules/p6_calmet/reference/compare_g11_original_terrain_10km.py --mode ${{ matrix.mode }}
       - name: Run selected FRADJ/SLOPE 10km test and full-year 8784h terrain→DIAGNO
         run: |
           ctest --test-dir "${{ runner.temp }}/p6g-g11" --output-on-failure \
