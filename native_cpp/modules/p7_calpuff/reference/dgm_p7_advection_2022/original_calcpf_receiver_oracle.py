@@ -254,9 +254,9 @@ def add_h9_mctadj2_trace(source: str) -> str:
     original=source[begin:end]
     # Match the terminal terrain branch and insert AFTER the entire
     # if(dsh.EQ.0.0) block. Never instrument unrelated MCTADJ users.
-    anchor=("                   zrpole=z+dsh\n"
-            "                endif\n"
-            "             endif\n")
+    anchor=("                  zrpole=z+dsh\n"
+            "               endif\n"
+            "            endif\n")
     if original.count(anchor)!=1:
         raise AssertionError("original PUFRECS MCTADJ2 terminal branch drifted")
     call=("             call dgmh9mctadj2(x,y,eltop,uavg,bvf,dsel,\n"
