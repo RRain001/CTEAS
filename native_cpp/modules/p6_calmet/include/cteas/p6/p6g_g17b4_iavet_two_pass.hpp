@@ -125,6 +125,18 @@ public:
     [[nodiscard]] std::chrono::sys_seconds end() const noexcept {return end_;}
     [[nodiscard]] bool first_ready() const noexcept {return first_.has_value();}
     [[nodiscard]] bool second_ready() const noexcept {return final_.has_value();}
+    [[nodiscard]] bool first_stage_wind_matches(
+        const std::vector<float>& native_wind1_u,
+        const std::vector<float>& native_wind1_v) const {
+        const auto n=nx_*ny_;
+        if(!first_||first_u_.size()!=n||first_v_.size()!=n||
+           native_wind1_u.size()!=n*9||native_wind1_v.size()!=n*9)
+            return false;
+        for(std::size_t i=0;i<n;++i)
+            if(first_u_[i]!=native_wind1_u[i]||
+               first_v_[i]!=native_wind1_v[i])return false;
+        return true;
+    }
     [[nodiscard]] const std::vector<float>& first_temperature() const {
         if(!first_)throw std::logic_error("G17B4 first SURFVAR not performed");
         return *first_;
@@ -140,8 +152,14 @@ public:
         const std::vector<float>& original_wind1_v3d) {
         if(first_||final_)
             throw std::logic_error("G17B4 duplicate/late pre-FRADJ SURFVAR");
-        first_=make_temperature(source_hour_end,original_wind1_u3d,
-                                original_wind1_v3d);
+        auto field=make_temperature(source_hour_end,original_wind1_u3d,
+                                    original_wind1_v3d);
+        const auto n=nx_*ny_;
+        first_u_.assign(original_wind1_u3d.begin(),
+                        original_wind1_u3d.begin()+static_cast<std::ptrdiff_t>(n));
+        first_v_.assign(original_wind1_v3d.begin(),
+                        original_wind1_v3d.begin()+static_cast<std::ptrdiff_t>(n));
+        first_=std::move(field);
     }
     void after_fradj_before_heatfx(
         std::chrono::sys_seconds source_hour_end,
@@ -183,5 +201,6 @@ private:
     float dgrid_m_=0.f;
     std::vector<float> raw_observed_temperature_;
     std::optional<std::vector<float>> first_,final_;
+    std::vector<float> first_u_,first_v_;
 };
 } // namespace cteas::calmet::p6g
