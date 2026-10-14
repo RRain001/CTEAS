@@ -266,6 +266,14 @@ int main(int argc,char** argv) {
                             controls.gaussian_dry.has_value(),
                             "native #5823 source key or DRY provenance missing");
                     const auto cell=stage.step.initial_met.cell.offset_0based;
+                    const auto midpoint=original_met_cell_clamped(
+                        0.5F*(stage.step.before.x_cells+
+                              stage.step.after.x_cells),
+                        0.5F*(stage.step.before.y_cells+
+                              stage.step.after.y_cells),met.nx,met.ny);
+                    const auto endpoint=original_met_cell_clamped(
+                        stage.step.after.x_cells,stage.step.after.y_cells,
+                        met.nx,met.ny);
                     const float t=met.tempk.at(cell);
                     const float sw=met.qsw.at(cell);
                     const float pd=static_cast<float>(
@@ -281,6 +289,12 @@ int main(int argc,char** argv) {
                     std::cout<<std::setprecision(10)
                         <<"P7_NATIVE_VDCOMP5823"
                         <<" CELL0="<<cell
+                        <<" MID_CELL0="<<midpoint.offset_0based
+                        <<" MID_TEMPK="<<met.tempk.at(midpoint.offset_0based)
+                        <<" MID_QSW="<<met.qsw.at(midpoint.offset_0based)
+                        <<" END_CELL0="<<endpoint.offset_0based
+                        <<" END_TEMPK="<<met.tempk.at(endpoint.offset_0based)
+                        <<" END_QSW="<<met.qsw.at(endpoint.offset_0based)
                         <<" TEMPK="<<t<<" QSW="<<sw
                         <<" PDIFF="<<pd<<" B="<<opening
                         <<" RS="<<rs<<" RF="<<native_rf
