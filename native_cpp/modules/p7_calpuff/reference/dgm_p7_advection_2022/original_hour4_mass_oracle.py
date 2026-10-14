@@ -76,6 +76,22 @@ c --- Diagnostic-only COMP MASS COMMON, not part of source/physical COMMON.
       masslai=lai
       return
       end
+c --- Read-only original VDCOMP physical inputs at first RF divergence.
+      subroutine p7massvdinputs(j,t,sw,p,b,rs)
+      integer j,seq,seen,episode,substep
+      integer it,is,ip,ib,ir
+      real t,sw,p,b,rs,prior
+      common /p7masdiag/ seq,seen,episode,substep,prior
+      if(seq.ne.5823.or.episode.ne.200.or.j.ne.1) return
+      it=transfer(t,0)
+      is=transfer(sw,0)
+      ip=transfer(p,0)
+      ib=transfer(b,0)
+      ir=transfer(rs,0)
+      write(*,*)'P7_VENDOR_VDCOMP5823',t,sw,p,b,rs,
+     &           it,is,ip,ib,ir
+      return
+      end
       subroutine p7massafter(ii,ksam,newmass,frac,vd,ratio,tsamp)
       integer ii,ksam,seq,seen,episode,substep,unit
       real newmass,frac,vd,ratio,tsamp,prior,massvc,massconst
@@ -145,6 +161,7 @@ def main()->None:
     endpos=source.index("\n",vdpos)+1
     source=(source[:endpos]+
             "      call p7massres(j,ra,rd,rc,rg,rf,rcut(j),xlai)\n"+
+            "      call p7massvdinputs(j,tdegk,qsw,pdiff(j),b,rs)\n"+
             source[endpos:])
     target.write_text(source+HELPERS,encoding="latin-1")
     alias=base._alias_tree(vendor,out/"include-alias")
@@ -158,6 +175,13 @@ def main()->None:
     dgm=staged/"run"/"puff"/"dgm_puffstep.bin"
     if hashlib.sha256(dgm.read_bytes()).hexdigest()!=FULL_DGM_SHA:
         raise AssertionError("original mass source instrumentation changed 143h DGM")
+    diagnostic=(staged/"run"/"puff"/"puff_runtime.log").read_text(
+        encoding="latin-1",errors="replace")
+    input_lines=[line.strip() for line in diagnostic.splitlines()
+                 if "P7_VENDOR_VDCOMP5823" in line]
+    if len(input_lines)!=1:
+        raise AssertionError(f"expected exactly one original VDCOMP #5823 trace, found {len(input_lines)}")
+    print("P7_ORIGINAL_INPUT_TRACE="+input_lines[0])
     trace=staged/"run"/"puff"/"dgm_mass_puff200.bin"
     data=trace.read_bytes()
     if len(data)%RECORD.size:
