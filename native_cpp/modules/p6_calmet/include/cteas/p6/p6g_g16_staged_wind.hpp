@@ -213,8 +213,10 @@ private:
         return {p6::NativeHourSource::NativeCpp,true};
     }
     p6::NativeHourStageResult do_inter2(MultiHourFrame& hour) {
-        if(!stage_.wind1_complete||stage_.inter2_complete||!corrected_)
-            throw std::logic_error("G16 INTER2 before corrected post-SLOPE wind");
+        if(!stage_.wind1_complete||stage_.inter2_complete||!corrected_||
+           !diagi_refreshed_)
+            throw std::logic_error(
+                "G16 INTER2 requires source DIAGI STHEOR post-MIXHTST station columns and corrected post-SLOPE wind");
         const auto& controls=source(hour);
         const auto cells=static_cast<std::size_t>(hour.grid.nx)*
                          static_cast<std::size_t>(hour.grid.ny);
