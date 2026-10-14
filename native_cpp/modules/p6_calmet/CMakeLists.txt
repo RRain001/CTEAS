@@ -307,17 +307,32 @@ endif()
 add_executable(cteas_p6g_g17b4_iavet_two_pass_tests
                tests/p6g_g17b4_iavet_two_pass_tests.cpp)
 target_link_libraries(cteas_p6g_g17b4_iavet_two_pass_tests PRIVATE cteas_p6a_contracts)
+# Compile the accepted original P6F writer as a separate translation unit:
+# no reimplementation, no modifications to frozen #53 source files.
+target_sources(cteas_p6g_g17b4_iavet_two_pass_tests PRIVATE
+               p6f/src/calmet_dat21_writer.cpp)
 target_include_directories(cteas_p6g_g17b4_iavet_two_pass_tests PRIVATE
-                           ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+                           ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include
+                           ${CMAKE_CURRENT_SOURCE_DIR}/p6f/include)
 if(MSVC)
   target_compile_options(cteas_p6g_g17b4_iavet_two_pass_tests PRIVATE /W4 /WX)
 else()
   target_compile_options(cteas_p6g_g17b4_iavet_two_pass_tests PRIVATE
                          -Wall -Wextra -Wpedantic -Werror)
 endif()
+set(P6G_G18C6_BINARY "${CMAKE_CURRENT_BINARY_DIR}/g18c6_selected_2ss_2us_1h_calmet.dat")
 add_test(NAME p6g_g17b4_original_iavet1_pre_and_post_fradj_surfvar
          COMMAND cteas_p6g_g17b4_iavet_two_pass_tests
-           "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
+           "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp"
+           "${P6G_G18C6_BINARY}")
+add_test(NAME p6g_g18c6_independent_native_calmet_dat21_2ss_2us_byte_walk
+  COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/reference/verify_g18c6_independent_binary.py"
+    --candidate "${P6G_G18C6_BINARY}"
+    --out "${CMAKE_CURRENT_BINARY_DIR}/g18c6_binary_independent.json")
+set_tests_properties(
+  p6g_g18c6_independent_native_calmet_dat21_2ss_2us_byte_walk
+  PROPERTIES DEPENDS p6g_g17b4_original_iavet1_pre_and_post_fradj_surfvar)
 
 # Source-selected G17B4 must retain the independently audited original
 # AVETMP Fortran parity (40 cases, source calmet.for unmodified).
