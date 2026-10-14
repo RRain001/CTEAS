@@ -23,6 +23,7 @@
 #include "cteas/p6/p6g_g18d3_heat_source_defaults.hpp"
 #include "cteas/p6/p6g_g18d4_comp_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18d5_source_mixht_controls.hpp"
+#include "cteas/p6/p6g_g18d6_station_upper_assignment.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -512,7 +513,23 @@ static void verify_source_staged_iavet(
     check(stages.run(p6::NativeHourStage::DiagnoWindbcFirstGuess,frame).completed,
           "G17B4 first WINDBC did not preserve corrected U/V");
     p6g::G17C3StationControls sc;
-    sc.upper_ordinal_for_surface={0,1};
+    sc.upper_ordinal_for_surface=
+        p6g::g18d6_station_uppers_from_source_setcom(
+            f.grid,all,source_metinp,true);
+    check(sc.upper_ordinal_for_surface==std::vector<std::size_t>({0,1}),
+          "G18D6 original SETCOM NEARU did not choose correct 2US for STHEOR");
+    rejects([&]{
+        (void)p6g::g18d6_station_uppers_from_source_setcom(
+            f.grid,all,source_metinp,false);
+    },"G18D6 selected station map masqueraded as whole P6 production");
+    auto alternative_grid=f.grid;
+    alternative_grid.grid_km=10.f;
+    auto wrong_station=all;
+    wrong_station.surface[0].local_x_m=-10000.f;
+    rejects([&]{
+        (void)p6g::g18d6_station_uppers_from_source_setcom(
+            alternative_grid,wrong_station,source_metinp,true);
+    },"G18D6 accepted STHEOR station outside source GEO");
     sc.heat_coefficients=ancillary.coefficients;
     sc.zimin_m=50.f;sc.zimax_m=3000.f;sc.constn=2400.f;
     sc.dptmin_kperm=.001f;sc.dzzi_m=200.f;
@@ -1653,6 +1670,7 @@ int main(int argc,char** argv){
                     "G18D3_LITERAL_VENDOR_HFLUX_DEFAULTS_SOURCE_PASS "
                     "G18D4_ORIGINAL_COMP_FOUR_STAGES_SOURCE_CANDIDATE_PASS "
                     "G18D5_ORIGINAL_METINP_SET_CMECH_MIXHT_SCALARS_PASS "
+                    "G18D6_VENDOR_NEARU_STHEOR_SURFACE_ASSIGNMENT_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
