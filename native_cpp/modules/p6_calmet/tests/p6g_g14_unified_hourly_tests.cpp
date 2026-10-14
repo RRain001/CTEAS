@@ -185,7 +185,7 @@ struct SyntheticNativePhysics final : p6g::MultiHourPhysics {
                         static_cast<std::size_t>(pos.i-1);
                     f.next.ziconv_m.at(index)=
                         static_cast<float>(f.hour_index+1)+
-                        (i==0?0.25f:0.75f);
+                        (i==0?250.f:0.75f);
                 }
             }
         }
@@ -430,9 +430,16 @@ int main(){
                         p6g::g18b7_source_previous_station_ziconv(live,up);
                     const float base=static_cast<float>(h);
                     check(previous_samples.size()==2&&
-                          previous_samples[0]==(h==0?0.f:base+0.25f)&&
+                          previous_samples[0]==(h==0?0.f:base+250.f)&&
                           previous_samples[1]==(h==0?0.f:base+0.75f),
                           "G18E4 used current ZICONV or confused two upper-site previous histories");
+                    // Source ZUPT=200m: only US1's previously committed
+                    // 250m+ ZICONV qualifies for original CGAMMA convective
+                    // lapse (-0.0098 K/m); US2 must remain direct sounding.
+                    check(gamma.lapse.size()==2&&
+                          gamma.lapse[0].branch==(h==0?0:1)&&
+                          gamma.lapse[1].branch==0,
+                          "G18E4 CGAMMA mixed station-specific previous ZICONV branches");
                     const auto expected_slot=h+1>=24?3U:(h+1>=12?2U:1U);
                     for(std::size_t station=0;station<2;++station) {
                         check(up.chronological_older[station]==expected_slot&&
