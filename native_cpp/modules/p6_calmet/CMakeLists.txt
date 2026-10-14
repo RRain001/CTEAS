@@ -131,6 +131,18 @@ set_tests_properties(p6g_g8_multisite_10km_8784h_selected_source_bridge PROPERTI
 
 
 
+# P6G G14: new dynamic 2SS/2US hourly state authority REUSES accepted
+# P6SinglePass stage enums/order, but does NOT replace frozen P6D/P6E physics.
+add_executable(cteas_p6g_g14_unified_hourly_tests tests/p6g_g14_unified_hourly_tests.cpp)
+target_link_libraries(cteas_p6g_g14_unified_hourly_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g14_unified_hourly_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g14_unified_hourly_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g14_unified_2ss_2us_hourly_clock_state_1h_6h_143h_8784h
+         COMMAND cteas_p6g_g14_unified_hourly_tests)
+
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
 add_executable(cteas_p6_terset src/terrain_envelope_main.cpp)
