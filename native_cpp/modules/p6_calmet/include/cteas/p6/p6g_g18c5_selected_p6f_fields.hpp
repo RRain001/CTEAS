@@ -56,16 +56,17 @@ inline G18C5SelectedHourFields g18c5_selected_p6f_fields(
         if(lu>=frame.grid.iwat1&&lu<=frame.grid.iwat2)
             throw std::invalid_argument("G18C5 water PGT/IRH output source not accepted");
     const auto surfvar=parse_original_surfvar_controls(original_metinp);
+    const int mcloud=g18c1_source_integer(original_metinp,"MCLOUD");
     if(surfvar.iavet!=1||surfvar.itprog!=0||
        surfvar.irhprog!=0||surfvar.npsta!=0||
-       surfvar.mcloud!=1||surfvar.irad!=1)
+       mcloud!=1||surfvar.irad!=1)
         throw std::invalid_argument("G18C5 unsupported source IAVET/IRAD/MCLOUD/IRH");
     p6e::SurfvarMultistationInput rh;
     rh.nx=nx;rh.ny=ny;rh.dgrid_m=frame.grid.grid_km*1000.f;
     rh.irad=surfvar.irad;rh.numts=surfvar.numts;
     rh.trad_grid=surfvar.trad_km/frame.grid.grid_km;
     p6e::PgtInput pgt;
-    pgt.nx=nx;pgt.ny=ny;pgt.mcloud=surfvar.mcloud;
+    pgt.nx=nx;pgt.ny=ny;pgt.mcloud=mcloud;
     pgt.water_first=frame.grid.iwat1;
     pgt.water_last=frame.grid.iwat2;
     pgt.landuse=frame.grid.landuse;
