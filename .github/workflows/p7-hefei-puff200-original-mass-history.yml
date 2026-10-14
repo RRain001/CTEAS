@@ -39,8 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           vendor=engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for
-          test "$(sha256sum "$vendor" | cut -d' ' -f1)" = \\
-            da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568
+          test "$(sha256sum "$vendor" | cut -d' ' -f1)" = da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568
           echo 'P7_VENDOR_VDCOMP_RF_SOURCE_BEGIN line=26350'
           sed -n '26350,26555p' "$vendor"
           echo 'P7_VENDOR_VDCOMP_RF_SOURCE_END (read-only, original immutable)'
