@@ -165,8 +165,9 @@ int main() {
               "G17B updated real station temperature did not propagate");
         altered=winter_day;
         altered.surface.hourly.front().by_station[0].opaque_cloud_tenths=9;
-        check(altered.calculate().shortwave_wm2[20]<
-              daylight.shortwave_wm2[20],
+        // Cell 13 is controlled by NEARS=1 (SS1); cell 20 is NEARS=2.
+        check(altered.calculate().shortwave_wm2[13]<
+              daylight.shortwave_wm2[13],
               "G17B source station cloud did not enter HEATFX");
         altered=winter_day;altered.anc.explicitly_test_only=false;
         reject([&]{(void)altered.calculate();},
