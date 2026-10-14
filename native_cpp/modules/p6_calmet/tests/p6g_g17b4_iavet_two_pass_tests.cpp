@@ -692,6 +692,19 @@ static void verify_source_staged_iavet(
               actual.diagi_profile.v_mps==expected.diagi_profile.v_mps,
               "G18E1 staged DIAGI is not the same G17C3 native calculation");
     }
+    // A cloned preview can carry the same hour_index/end and station IDs,
+    // yet it does not represent the authoritative in-flight G14 transaction.
+    auto counterfeit_stheor_frame=frame;
+    rejects([&]{
+        (void)stheor_stage.stations_for_comp(counterfeit_stheor_frame);
+    },"G18E1 permitted stage station memory from a cloned G14 frame");
+    prior.zi_m[0]+=1.f;
+    rejects([&]{
+        (void)stheor_stage.stations_for_comp(frame);
+    },"G18E1 allowed prior-hour ZI mutation before COMP");
+    prior.zi_m[0]-=1.f;
+    check(stheor_stage.stations_for_comp(frame).size()==diagi.size(),
+          "G18E1 did not authorize the same source G14 COMP frame");
     const auto& staged_profiles=stheor_stage.observed_after_diagi();
     check(staged_profiles.wind1_u_mps==combined.wind1_u_mps&&
           staged_profiles.wind1_v_mps==combined.wind1_v_mps&&
@@ -843,7 +856,8 @@ static void verify_source_staged_iavet(
     // Actual G18A COMP consumes the G18E1 G14-stage station results,
     // not the independent direct-call G17C3 numerical oracle above.
     const auto calculated=p6g::selected_comp_mixht_with_observed_upper(
-        frame,selected,elustr,stheor_stage.stations(),observed_upper,comp);
+        frame,selected,elustr,stheor_stage.stations_for_comp(frame),
+        observed_upper,comp);
     auto corrupt_source=observed_upper;
     corrupt_source.justa[1]=-1;
     rejects([&]{
@@ -1123,8 +1137,8 @@ static void verify_source_staged_iavet(
     // the final four stage results from a prefilled fixture.
     auto staged_frame=frame;
     p6g::G18D4SelectedCompStageAdapter routed_comp(
-        selected,elustr,stheor_stage.stations(),observed_upper,comp,
-        av_ctrl,temp_controls);
+        selected,elustr,stheor_stage.stations_for_comp(frame),
+        observed_upper,comp,av_ctrl,temp_controls);
     check(!routed_comp.run(p6::NativeHourStage::CompGridMixht,
                            staged_frame).completed,
           "G18D4 fixture callback falsely certified production COMP");
@@ -1141,6 +1155,29 @@ static void verify_source_staged_iavet(
     check(!routed_comp.selected_complete()&&
           staged_frame.next.ziconv_m==prior.ziconv_m,
           "G18D4 MIXHT prematurely committed prior ZICONV");
+    auto cloned_comp_frame=staged_frame;
+    rejects([&]{
+        routed_comp.run_selected(
+            p6::NativeHourStage::CompAvemix,cloned_comp_frame,true);
+    },"G18D4 accepted AVEMIX from a cloned, same-hour G14 frame");
+    staged_frame.fields.u_mps[0]+=1.f;
+    rejects([&]{
+        routed_comp.run_selected(
+            p6::NativeHourStage::CompAvemix,staged_frame,true);
+    },"G18D4 accepted mutated DIAGNO wind between COMP stages");
+    staged_frame.fields.u_mps[0]-=1.f;
+    staged_frame.next.zi_m[0]+=1.f;
+    rejects([&]{
+        routed_comp.run_selected(
+            p6::NativeHourStage::CompAvemix,staged_frame,true);
+    },"G18D4 accepted uncommitted MIXHT/COMP memory injected between stages");
+    staged_frame.next.zi_m[0]-=1.f;
+    prior.zi_m[0]+=1.f;
+    rejects([&]{
+        routed_comp.run_selected(
+            p6::NativeHourStage::CompAvemix,staged_frame,true);
+    },"G18D4 accepted external mutation of prior-hour memory");
+    prior.zi_m[0]-=1.f;
     rejects([&]{
         routed_comp.run_selected(
             p6::NativeHourStage::CompWstarr,staged_frame,true);
