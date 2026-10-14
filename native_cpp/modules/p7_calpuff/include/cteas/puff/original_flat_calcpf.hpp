@@ -63,6 +63,10 @@ using OriginalMctadj2TerrainLookup=std::function<
         OriginalFlatVerticalMethod::midpoint_vcoup,
     OriginalMctadj2TerrainLookup terrain_lookup={},
     bool selected_h3_from_multispecies=false,
-    OriginalCalcpfIntermediateHook trace_hook={});
+    OriginalCalcpfIntermediateHook trace_hook={},
+    // FCLIP is the PUFRECS trajectory-extension control, *not* CALCPF's
+    // RCONST/NSIGMA influence radius. The legacy fixture default is kept;
+    // original-case callers MUST pass the source-derived FCLIP explicitly.
+    float receptor_clip_extension_sigma=3.0F);
 
 } // namespace cteas::puff
