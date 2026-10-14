@@ -411,7 +411,10 @@ int main(int argc,char** argv) {
                     <<step.substep.step_s<<" "
                     <<step.dry->vcbar_m_inverse<<" "
                     <<static_cast<float>(step.substep.step_s*
-                                        step.dry->vcbar_m_inverse)<<"\n";
+                                        step.dry->vcbar_m_inverse)<<" "
+                    <<step.dry_input_resistance->atmospheric_resistance_s_m<<" "
+                    <<step.dry_input_resistance->deposition_layer_resistance_s_m[0]<<" "
+                    <<step.dry_input_resistance->canopy_resistance_s_m[0]<<"\n";
             }
             mass_trace.flush();
             require(bool(mass_trace),"native original puff200 mass trace failed");
