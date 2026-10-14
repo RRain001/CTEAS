@@ -50,6 +50,7 @@ inline std::vector<G17C3StationDiagi> selected_station_diagi_from_previous_comp(
     if(!ctrl.explicitly_test_only||ctrl.ipsifcn!=0||
        (ctrl.imixh!=1&&ctrl.imixh!=-1&&ctrl.imixh!=2&&ctrl.imixh!=-2)||
        ctrl.upper_ordinal_for_surface.size()!=deck.surface.size()||
+       !frame.source_controls||
        frame.surface.end!=frame.input.end||heat.end!=frame.input.end||
        frame.surface.end-frame.surface.start!=hours{1}||
        !surfvar.first_ready()||!surfvar.second_ready()||
@@ -117,6 +118,12 @@ inline std::vector<G17C3StationDiagi> selected_station_diagi_from_previous_comp(
             sounding.temp_k.push_back(layer.temperature_valid?
                                       layer.temperature_k:9999.f);
         }
+        if(!std::isfinite(obs.wind_speed_mps)||obs.wind_speed_mps<0.001f||
+           !std::isfinite(obs.wind_direction_deg)||obs.wind_direction_deg<0.f||
+           obs.wind_direction_deg>360.f||!std::isfinite(obs.pressure_mb)||
+           obs.pressure_mb<=0.f||obs.opaque_cloud_tenths<0||
+           obs.opaque_cloud_tenths>10)
+            throw std::invalid_argument("G17C3 unsupported calm/missing original SURF");
         const float rad=0.0174533f*obs.wind_direction_deg;
         const float u=-obs.wind_speed_mps*std::sin(rad);
         const float v=-obs.wind_speed_mps*std::cos(rad);
@@ -180,5 +187,44 @@ inline std::vector<G17C3StationDiagi> selected_station_diagi_from_previous_comp(
                           station_flux,mixing,profile});
     }
     return result;
+}
+// The already validated G16 WIND1 neutral profiles must be preserved.
+// Only DIAGI's surface columns may be replaced by the source-station
+// STHEOR/MIXHTST output, leaving PREPDI upper-air columns intact.
+inline G16ObservedProfiles merge_g17c3_surface_diagi(
+    G16ObservedProfiles profiles,
+    const StationSet& station_set,
+    const std::vector<G17C3StationDiagi>& selected) {
+    const auto ns=station_set.surface.size();
+    const auto nu=station_set.upper.size();
+    const auto total=ns+nu;
+    if(selected.size()!=ns||profiles.station_ids.size()!=total||
+       profiles.wind1_u_mps.size()!=total*9||
+       profiles.wind1_v_mps.size()!=total*9||
+       profiles.inter2_u_mps.size()!=total*9||
+       profiles.inter2_v_mps.size()!=total*9||
+       profiles.inter2_present.size()!=total*9)
+        throw std::invalid_argument("G17C3 DIAGI station-profile geometry invalid");
+    for(std::size_t i=0;i<total;++i)
+        if(profiles.station_ids[i]!=(i<ns?station_set.surface[i].id:
+                                       station_set.upper[i-ns].id))
+            throw std::invalid_argument("G17C3 DIAGI station ordinal mismatch");
+    for(std::size_t i=0;i<ns;++i) {
+        const auto& src=selected[i];
+        if(src.surface_id!=station_set.surface[i].id||
+           src.end!=profiles.end||src.levels_filled>9||
+           src.levels_filled<1)
+            throw std::invalid_argument("G17C3 DIAGI stale/shuffled SS output");
+        for(std::size_t k=0;k<9;++k) {
+            const auto index=k*total+i;
+            const bool valid=k<src.levels_filled;
+            profiles.inter2_u_mps[index]=valid?
+                src.diagi_profile.u_mps[k]:999.f;
+            profiles.inter2_v_mps[index]=valid?
+                src.diagi_profile.v_mps[k]:999.f;
+            profiles.inter2_present[index]=valid?1U:0U;
+        }
+    }
+    return profiles;
 }
 } // namespace cteas::calmet::p6g
