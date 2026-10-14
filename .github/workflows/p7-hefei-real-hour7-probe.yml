@@ -51,6 +51,7 @@ jobs:
             --trace-h9-setpuf --allow-no-receptor-events
           test -s "$root/vendor/case/run/puff/dgm_puffstep.bin"
           test -s "$root/vendor/original-h9-puff588-setpuf-z.json"
+          test -s "$root/vendor/original-h9-puff594-receptor21-1-sigtz.json"
           test -s "$root/vendor/original-calcpf-h3-21-1-hour9.json"
           python3 - "$root/vendor/original-calcpf-h3-21-1-hour9.json" <<'PY'
           import json
@@ -105,7 +106,7 @@ jobs:
             "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/hour7-probe.log" 2>&1
           code=$?
           set -e
-          grep -E 'P7_REAL_EXTENDED_PROBE|P7_REAL_EXTENDED_PRFIN_INPUT|P7_REAL_EXTENDED_CALM_SOURCE_DECK|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE|P7_REAL_H9_CALM_SIGTZ_FIRST_DIVERGENCE|P7_REAL_H9_CALM_SIGTZ_MET_AUTHORITIES|P7_REAL_H9_NATIVE_CALCPF_CELL12' "$root/hour7-probe.log" || true
+          grep -E 'P7_REAL_EXTENDED_PROBE|P7_REAL_EXTENDED_PRFIN_INPUT|P7_REAL_EXTENDED_CALM_SOURCE_DECK|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE|P7_REAL_H9_CALM_SIGTZ_FIRST_DIVERGENCE|P7_REAL_H9_CALM_SIGTZ_MET_AUTHORITIES|P7_REAL_H9_NATIVE_CALCPF_CELL12|P7_NATIVE_H9_RECEPTOR_SIGTZ_INPUT' "$root/hour7-probe.log" || true
           # Compare the actual first remaining H9 receptor same-step stages.
           # This is read-only and diagnostic: a mismatch cannot turn into PASS.
           original_h9="$root/vendor/case/run/puff/dgm_calcpf_h3_21_1_hour9.bin"
@@ -138,6 +139,7 @@ jobs:
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-compare.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-same-step-audit.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/native-h9-21-1.tsv
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/vendor/original-h9-puff594-receptor21-1-sigtz.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/original-h9-calm.json
           retention-days: 7
           if-no-files-found: warn
