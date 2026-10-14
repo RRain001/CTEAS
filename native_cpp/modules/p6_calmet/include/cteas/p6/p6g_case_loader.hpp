@@ -33,7 +33,7 @@ inline void validate_original_calmet_deck_grid(
     int surface_count,int upper_count) {
     const auto field=[&](const std::string& name) {
         const std::regex pattern(
-            "!\\\\s*"+name+"\\\\s*=\\\\s*([^!]*)!",
+            "!\\s*"+name+"\\s*=\\s*([^!]*)!",
             std::regex_constants::icase);
         auto it=std::sregex_iterator(deck.begin(),deck.end(),pattern);
         if(it==std::sregex_iterator())
@@ -42,8 +42,8 @@ inline void validate_original_calmet_deck_grid(
         ++it;
         if(it!=std::sregex_iterator())
             throw std::invalid_argument("G14B duplicate met.inp control "+name);
-        const auto first=value.find_first_not_of(" \\t\\r\\n");
-        const auto last=value.find_last_not_of(" \\t\\r\\n");
+        const auto first=value.find_first_not_of(" \t\r\n");
+        const auto last=value.find_last_not_of(" \t\r\n");
         if(first==std::string::npos)
             throw std::invalid_argument("G14B empty met.inp control "+name);
         return value.substr(first,last-first+1);
