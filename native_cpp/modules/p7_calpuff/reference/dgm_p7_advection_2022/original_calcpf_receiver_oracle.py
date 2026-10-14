@@ -98,11 +98,11 @@ c --- Write-only exact H9 vertical SETPUF source state, no state mutation
       data ldgm/.false./
       if(ii.ne.588.or.ndathrb.ne.202200108) return
       if(.not.ldgm)then
-         open(98,file='dgm_h9_puff588_setpuf_z.bin',
+         open(1917,file='dgm_h9_puff588_setpuf_z.bin',
      &        access='stream',form='unformatted',status='replace')
          ldgm=.true.
       endif
-      write(98) phase,ii,ndathrb,szb,szm,sze,vzb,vzm,vze,tm,te
+      write(1917) phase,ii,ndathrb,szb,szm,sze,vzb,vzm,vze,tm,te
       return
       end
 """
