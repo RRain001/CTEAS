@@ -423,13 +423,21 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
                         // Identify the earliest failing old/new episode,
                         // KSAM and exact pre-step puff centre for domain audit.
                         const auto centre=trial.motion(id);
-                        throw std::runtime_error(
+                        const std::string message=
                             "P7 COMP phase=physical_substep HOUR="+
                             std::to_string(hours_+1U)+" PUFF="+
                             std::to_string(id)+" KSAM="+
                             std::to_string(k)+" X_CELLS="+
                             std::to_string(centre.x_cells)+" Y_CELLS="+
-                            std::to_string(centre.y_cells)+" : "+failure.what());
+                            std::to_string(centre.y_cells)+" : "+failure.what();
+                        // Preserve original exception categories: the
+                        // unsupported CALM and other fail-closed callers
+                        // explicitly require std::invalid_argument.
+                        if(dynamic_cast<const std::invalid_argument*>(&failure))
+                            throw std::invalid_argument(message);
+                        if(dynamic_cast<const std::out_of_range*>(&failure))
+                            throw std::out_of_range(message);
+                        throw std::runtime_error(message);
                     }
                 }();
                 const float used=static_cast<float>(physics.substep.step_s);
@@ -493,12 +501,17 @@ OriginalCompRiseMultiPuffHours::advance_hour_mxsam99_core(
                 return trial.pre_cadence_wind(id,met,statics);
             } catch(const std::exception& failure) {
                 const auto centre=trial.motion(id);
-                throw std::runtime_error(
+                const std::string message=
                     "P7 COMP phase=old_puff_pre_cadence HOUR="+
                     std::to_string(hours_+1U)+" PUFF="+
                     std::to_string(id)+" X_CELLS="+
                     std::to_string(centre.x_cells)+" Y_CELLS="+
-                    std::to_string(centre.y_cells)+" : "+failure.what());
+                    std::to_string(centre.y_cells)+" : "+failure.what();
+                if(dynamic_cast<const std::invalid_argument*>(&failure))
+                    throw std::invalid_argument(message);
+                if(dynamic_cast<const std::out_of_range*>(&failure))
+                    throw std::out_of_range(message);
+                throw std::runtime_error(message);
             }
         }();
         const float u=static_cast<float>(native.wind.u_ms);
