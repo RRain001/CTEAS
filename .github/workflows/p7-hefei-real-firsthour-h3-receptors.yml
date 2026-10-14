@@ -43,6 +43,16 @@ jobs:
                   a=max(lo-1,idx-1);b=min(hi,idx+3)
                   for j in range(a,b):
                       print(f'P7_VENDOR_H3_RECEIVER {j+1:6d} {lines[j]}')
+          # Inspect initial QOLD snapshot before VMASS/CHEM/DRY and the
+          # source-ordered construction of QNEW at the CALCPF boundary.
+          shown=set()
+          for idx in range(9900,11045):
+              if 'qold(' not in lines[idx].lower() and 'qnew(' not in lines[idx].lower():
+                  continue
+              for j in range(max(9900,idx-3),min(11045,idx+5)):
+                  if j not in shown:
+                      print(f'P7_VENDOR_OLD_NEW_MASS {j+1:6d} {lines[j]}')
+                      shown.add(j)
           print('P7_VENDOR_H3_RECEIVER_SOURCE_PIN=PASS')
           PY
       - name: Verify immutable original inputs, compile independent native solver and compare
