@@ -28,6 +28,7 @@
 #include "cteas/p6/p6g_g18e2_heatfx_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18e3_airden_elustr_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18e5_slope_stage_adapter.hpp"
+#include "cteas/p6/p6g_g18e6_wind_tail_stage_adapter.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -625,8 +626,27 @@ static void verify_source_staged_iavet(
     rejects([&]{
         (void)slope_stage.selected_slope_wind_for(cloned_slope_frame);
     },"G18E5 leaked source slope wind to a copied G14 frame");
-    check(stages.run(p6::NativeHourStage::DiagnoWindbcFirstGuess,frame).completed,
-          "G17B4 first WINDBC did not preserve corrected U/V");
+    // G18E6: first WINDBC is the seventh source-ordered DIAGNO slot,
+    // authorized by the SAME staged G18E5 SLOPE and live G14 frame.
+    p6g::G18E6SelectedWindTailStageAdapter wind_tail(stages,slope_stage);
+    check(!wind_tail.run(
+              p6::NativeHourStage::DiagnoWindbcFirstGuess,frame).completed,
+          "G18E6 fixture WINDBC pretended to be production CALMET");
+    rejects([&]{
+        wind_tail.run_selected(p6::NativeHourStage::DiagnoInter2,frame,true);
+    },"G18E6 attempted INTER2 before first WINDBC/STHEOR");
+    rejects([&]{
+        wind_tail.run_selected(
+            p6::NativeHourStage::DiagnoWindbcFirstGuess,frame,false);
+    },"G18E6 allowed fixture-to-production promotion");
+    wind_tail.run_selected(
+        p6::NativeHourStage::DiagnoWindbcFirstGuess,frame,true);
+    check(wind_tail.completed_wind_stages()==1,
+          "G18E6 first source WINDBC not staged");
+    rejects([&]{
+        wind_tail.run_selected(
+            p6::NativeHourStage::DiagnoWindbcFirstGuess,frame,true);
+    },"G18E6 duplicated source first WINDBC");
     p6g::G17C3StationControls sc;
     sc.upper_ordinal_for_surface=
         p6g::g18d6_station_uppers_from_source_setcom(
@@ -764,6 +784,8 @@ static void verify_source_staged_iavet(
     // frozen #53 G14 stage slot, not outside the stage as manual setup.
     p6g::G18E1SelectedStheorStageAdapter stheor_stage(
         stages,initial_profiles,surface,selected,sc);
+    rejects([&]{wind_tail.bind_stheor_stage(stheor_stage,frame,true);},
+            "G18E6 bound STHEOR before original G14 slot 8");
     check(!stheor_stage.run(
               p6::NativeHourStage::DiagnoStheorElustr2Mixhtst,frame).completed,
           "G18E1 test-only station stage impersonated production physics");
@@ -833,15 +855,30 @@ static void verify_source_staged_iavet(
     },"G18E1 duplicated source STHEOR/MIXHTST current-hour stage");
     rejects([&]{stages.provide_selected_diagi_before_inter2(combined);},
             "G18E1 permitted a second DIAGI handoff outside source stage");
+    wind_tail.bind_stheor_stage(stheor_stage,frame,true);
+    rejects([&]{wind_tail.bind_stheor_stage(stheor_stage,frame,true);},
+            "G18E6 allowed duplicate DIAGI handoff to INTER2");
+    rejects([&]{
+        (void)wind_tail.selected_wind_for_comp(frame);
+    },"G18E6 exposed incomplete physical U/V/W to COMP");
     rejects([&]{
         (void)stages.run(p6::NativeHourStage::DiagnoSmoothDivcelW,frame);
     },"G17D ran final W before second WINDBC source stage");
-    check(stages.run(p6::NativeHourStage::DiagnoInter2,frame).completed,
-          "G17C3 original selected INTER2 rejected real MIXHTST-capped DIAGI");
+    wind_tail.run_selected(p6::NativeHourStage::DiagnoInter2,frame,true);
+    check(wind_tail.completed_wind_stages()==2,
+          "G18E6 did not route source MIXHTST-capped DIAGI into native INTER2");
+    auto fake_wind_tail_frame=frame;
+    rejects([&]{
+        wind_tail.run_selected(
+            p6::NativeHourStage::DiagnoWindbcPostInter2Htfac1,
+            fake_wind_tail_frame,true);
+    },"G18E6 accepted a detached G14 frame after INTER2");
     const auto first_ub=stages.wind_stages().original_ub_west_east_mps;
     const auto first_vb=stages.wind_stages().original_vb_south_north_mps;
-    check(stages.run(p6::NativeHourStage::DiagnoWindbcPostInter2Htfac1,frame).completed,
-          "G17D source original HTFAC=1 post-INTER2 WINDBC not run");
+    wind_tail.run_selected(
+        p6::NativeHourStage::DiagnoWindbcPostInter2Htfac1,frame,true);
+    check(wind_tail.completed_wind_stages()==3,
+          "G18E6 source HTFAC=1 post-INTER2 WINDBC not staged");
     const auto& input=stages.selected_post_inter2_windbc();
     const auto& blend=stages.wind_stages();
     check(input.passes_per_layer==std::vector<int>(wind.nsmth.begin(),wind.nsmth.end()) &&
@@ -865,9 +902,13 @@ static void verify_source_staged_iavet(
     rejects([&]{
         (void)stages.run(p6::NativeHourStage::DiagnoWindbcPostInter2Htfac1,frame);
     },"G17D duplicated post-INTER2 boundary before final W");
-    check(stages.run(p6::NativeHourStage::DiagnoSmoothDivcelW,frame).completed,
-          "G17D final SMOOTH/DIVCEL/W failed in native selected-stage chain");
-    const auto& tail=stages.selected_final_wind();
+    wind_tail.run_selected(p6::NativeHourStage::DiagnoSmoothDivcelW,frame,true);
+    check(wind_tail.completed_wind_stages()==4,
+          "G18E6 final SMOOTH/DIVCEL/W not staged");
+    const auto& tail=wind_tail.selected_wind_for_comp(frame);
+    rejects([&]{
+        (void)wind_tail.selected_wind_for_comp(fake_wind_tail_frame);
+    },"G18E6 released final U/V/W through detached G14 frame");
     std::vector<float> dz;
     for(std::size_t k=0;k<9;++k)
         dz.push_back(wind.zface_m[k+1]-wind.zface_m[k]);
