@@ -121,6 +121,10 @@ struct DryDepositionEnvironment {
 
 struct DryDepositionStep {
     std::vector<double> velocity_ms;         // VD(nspec)
+    // Exact source-ordered VDCOMP REAL4 component resistances retained
+    // for independent original-vs-native precision diagnostics only.
+    std::vector<double> deposition_layer_resistance_s_m; // RD
+    std::vector<double> canopy_resistance_s_m;           // RC
     std::vector<double> boundary_ratio;      // VDPVD(nspec)
     std::vector<double> fraction_remaining;  // FRACDRY(nspec)
     double boundary_diffusivity_m2_s = 0.0;  // DIFFK
