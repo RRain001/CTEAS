@@ -295,20 +295,20 @@ def main() -> None:
     ap.add_argument("--case", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--compiler", default="gfortran-11")
-    ap.add_argument("--hour", type=int, choices=(1, 2, 4), default=1)
+    ap.add_argument("--hour", type=int, choices=(1, 2, 4, 9), default=1)
     ap.add_argument("--receptor-i", type=int, default=None)
     ap.add_argument("--receptor-j", type=int, default=None)
     ap.add_argument("--trace-h9-setpuf", action="store_true")
     args = ap.parse_args()
     vendor, case, out = (p.resolve() for p in (args.vendor, args.case, args.out))
-    defaults = {1:(19,50), 2:(25,28), 4:(47,13)}
+    defaults = {1:(19,50), 2:(25,28), 4:(47,13), 9:(13,1)}
     di,dj=defaults[args.hour]
     ix = args.receptor_i if args.receptor_i is not None else di
     jy = args.receptor_j if args.receptor_j is not None else dj
     if not (1 <= ix <= 50 and 1 <= jy <= 50):
         raise ValueError("Hefei original receptor coordinates outside frozen grid")
-    first_seq, final_seq = {1:(1,1275),2:(1276,3517),4:(5424,7555)}[args.hour]
-    last_puff = {1:54,2:137,4:272}[args.hour]
+    first_seq, final_seq = {1:(1,1275),2:(1276,3517),4:(5424,7555),9:(16420,16679)}[args.hour]
+    last_puff = {1:54,2:137,4:272,9:618}[args.hour]
     trace_name = (f"dgm_calcpf_h3_{ix}_{jy}.bin" if args.hour == 1 else
                   f"dgm_calcpf_h3_{ix}_{jy}_hour{args.hour}.bin")
     source_helpers = (EXTRA_HELPERS
