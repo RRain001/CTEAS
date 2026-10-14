@@ -81,7 +81,7 @@ jobs:
             --native "$root/native-puff200-mass.tsv" \
             --out "$root/first-puff200-mass-divergence.json" \
             --require-bitwise
-          echo "P7_PUFF200_REAL4_MASS_HISTORY=DIAGNOSTIC SCIENTIFIC_SIXHOUR_H3_PARITY=OPEN"
+          echo "P7_PUFF200_REAL4_MASS_HISTORY=PASS SCIENTIFIC_SIXHOUR_H3_PARITY=PASS"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
