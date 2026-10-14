@@ -201,7 +201,8 @@ else()
                          -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME p6g_g17b_source_computed_utm_solar_multisite_surfvar_heatfx
-         COMMAND cteas_p6g_g17b_observed_solar_heat_tests)
+         COMMAND cteas_p6g_g17b_observed_solar_heat_tests
+           "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
 
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
