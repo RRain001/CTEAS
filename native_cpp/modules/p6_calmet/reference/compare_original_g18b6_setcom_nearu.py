@@ -51,6 +51,7 @@ def literal_vendor_oracle(vendor: str) -> str:
          read(*,*)xusta(k),yusta(k)
       enddo
 """ + block + """
+121   continue
       do j=1,ny
         do i=1,nx
           write(*,'(I5)') nearu(i,j)
