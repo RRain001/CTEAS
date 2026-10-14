@@ -78,6 +78,7 @@ jobs:
           test -s "$root/vendor/original-h9-puff594-receptor21-1-szfloor.json"
           test -s "$root/vendor/original-h9-puff598-mass.json"
           test -s "$root/vendor/original-h9-puff598-vcbar.json"
+          test -s "$root/vendor/original-h9-mctadj2-receptor42-11.json"
           test -s "$root/vendor/original-calcpf-h3-42-11-hour9.json"
           python3 - "$root/vendor/original-calcpf-h3-42-11-hour9.json" <<'PY'
           import json
@@ -135,6 +136,10 @@ jobs:
           code=$?
           set -e
           grep -E 'P7_NATIVE_H9_PUFF598_VCBAR|P7_REAL_EXTENDED_PROBE|P7_REAL_EXTENDED_PRFIN_INPUT|P7_REAL_EXTENDED_CALM_SOURCE_DECK|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE|P7_REAL_H9_CALM_SIGTZ_FIRST_DIVERGENCE|P7_REAL_H9_CALM_SIGTZ_MET_AUTHORITIES|P7_REAL_H9_NATIVE_CALCPF_CELL12|P7_NATIVE_H9_RECEPTOR_SIGTZ_INPUT' "$root/hour7-probe.log" || true
+          # Source-pinned same-step terrain operands for the three H9
+          # ZRPOLE residuals. Diagnostic only: original state is not injected.
+          grep -E 'P7_NATIVE_H9_MCTADJ2_TERRAIN PUFF=(596|597|598)' \
+            "$root/hour7-probe.log" | head -n 24 || true
           # Compare the actual first remaining H9 receptor same-step stages.
           # This is read-only and diagnostic: a mismatch cannot turn into PASS.
           original_h9="$root/vendor/case/run/puff/dgm_calcpf_h3_42_11_hour9.bin"
@@ -185,6 +190,7 @@ jobs:
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/native-h9-puff598-mass.tsv
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/vendor/original-h9-puff598-mass.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/vendor/original-h9-puff598-vcbar.json
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/vendor/original-h9-mctadj2-receptor42-11.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/native-h9-42-11.tsv
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/vendor/original-h9-puff594-receptor21-1-sigtz.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/vendor/original-h9-puff594-receptor21-1-szfloor.json
