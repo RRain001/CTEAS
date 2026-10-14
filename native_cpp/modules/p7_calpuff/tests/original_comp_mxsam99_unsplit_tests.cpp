@@ -1272,7 +1272,64 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
         std::cout<<"P7_NATIVE_CALM_IDOPT1_CTADJ2_PUFRECS_CALCPF_1H=PASS"
                  <<" SUBSTEPS="<<calm_terrain_calls
                  <<" TERRAIN=SYNTHETIC_NATIVE"
-                 <<" DRY_VCBAR=FAIL_CLOSED"
+                 <<" DRY_VCBAR=SEPARATE_GATE"
+                 <<" HEFEI_H9_PARITY=NOT_YET_ACCEPTED\\n";
+
+        // Original DRY explicitly sets LCALMF=.FALSE. and calls VCBAR
+        // with that LOCAL flag even when COMP uses LCALM=1 IDOPT1 sigmas.
+        // Exercise the entire native calm+CTADJ2+DRY+receptor chain; this
+        // remains a synthetic regression, not a substitute for original H9.
+        calm_met.ustar.assign(n,0.3F);
+        calm_met.tempk.assign(n,288.0F);
+        calm_met.qsw.assign(n,300.0F);
+        calm_met.wstar.assign(n,0.5F);
+        calm_geo.leaf_area_index.assign(n,2.0F);
+        auto dry_calm_control=terrain_calm_control;
+        dry_calm_control.gaussian_dry=NativeGaussianDryControls{
+            h3_dry_setup,1.0F};
+        std::size_t calm_dry_samples=0;
+        const RiseCompSamplingKernel calm_dry_kernel=[&](
+                const RiseCompSamplingState& state){
+            need(state.receptor_calm_sigma.has_value() &&
+                 state.original_ctadj2_step.has_value() &&
+                 state.receptor_qold_mixed.size()==1,
+                 "calm DRY receiver lost native IDOPT1 or pre-DRY QOLD");
+            ++calm_dry_samples;
+            return calm_terrain_receptors(state);
+        };
+        OriginalCompRiseMultiPuffHours calm_dry_driver;
+        const auto calm_dry_hour=
+            calm_dry_driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
+                calm_met,calm_geo,dry_calm_control,pg,false,calm_point,
+                calm_bounds,4096,2500,calm_dry_kernel);
+        need(calm_dry_driver.completed_hours()==1U &&
+             calm_dry_samples==calm_dry_hour.steps.size() &&
+             calm_dry_samples==calm_terrain_hour.steps.size() &&
+             calm_dry_hour.receptor_concentrations.size()==2500U,
+             "native calm DRY failed full hour or CALCPF stage counts");
+        std::size_t removed_calm=0;
+        for(std::size_t i=0;i<calm_dry_hour.steps.size();++i){
+            const auto& with_dry=calm_dry_hour.steps[i].step;
+            const auto& no_dry=calm_terrain_hour.steps[i].step;
+            need(with_dry.bookkeeping.calm &&
+                 with_dry.dry.has_value() &&
+                 with_dry.dry->removed_mass.size()==1 &&
+                 with_dry.after.x_cells==no_dry.after.x_cells &&
+                 with_dry.after.y_cells==no_dry.after.y_cells &&
+                 with_dry.vmass.mass_mixed[0]<=no_dry.vmass.mass_mixed[0] &&
+                 with_dry.pre_dry_qold_mixed.size()==1 &&
+                 with_dry.pre_dry_qold_mixed[0]>=with_dry.vmass.mass_mixed[0],
+                 "calm DRY changed puff trajectory or mass chronology");
+            if(with_dry.dry->removed_mass[0]>0.0F)++removed_calm;
+        }
+        need(removed_calm>0U &&
+             calm_dry_driver.vertical(1).mass_mixed[0] <=
+                  calm_terrain_driver.vertical(1).mass_mixed[0],
+             "original LCALMF false VCBAR produced no calm H3 removal");
+        std::cout<<"P7_NATIVE_CALM_IDOPT1_CTADJ2_DRY_CALCPF_1H=PASS"
+                 <<" SUBSTEPS="<<calm_dry_samples
+                 <<" DRY_REMOVAL_SUBSTEPS="<<removed_calm
+                 <<" DRY_VCBAR_LCALMF=FALSE"
                  <<" HEFEI_H9_PARITY=NOT_YET_ACCEPTED\\n";
     }
     const auto midpoint_control=make_original_flat_calcpf_sampler(
