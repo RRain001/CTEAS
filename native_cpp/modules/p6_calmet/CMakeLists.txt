@@ -158,6 +158,21 @@ add_test(NAME p6g_g15_original_metinp_wind_radii_bias_readcf_source
          COMMAND cteas_p6g_g15_original_controls_tests
            "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
 
+# G16A: stage-correct WIND1/INTER2 adapter with mandatory post-SLOPE handoff.
+# Does NOT claim fully coupled original CALMET hourly source parity.
+add_executable(cteas_p6g_g16_staged_wind_tests
+               tests/p6g_g16_staged_wind_tests.cpp)
+target_link_libraries(cteas_p6g_g16_staged_wind_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g16_staged_wind_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g16_staged_wind_tests PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g16_source_wind1_then_explicit_post_slope_inter2_no_comp
+         COMMAND cteas_p6g_g16_staged_wind_tests
+           "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
+
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
 add_executable(cteas_p6_terset src/terrain_envelope_main.cpp)
