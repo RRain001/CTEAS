@@ -403,6 +403,37 @@ int main(int argc,char** argv) {
                 if(global+1U==16426U){
                     const auto& z=stage.step.sigma.step;
                     const auto& az=stage.step.sigma.adjust;
+                    const auto start_cell=stage.step.initial_met.cell.offset_0based;
+                    const auto mid_cell=original_met_cell_clamped(
+                        0.5F*(stage.step.before.x_cells+stage.step.after.x_cells),
+                        0.5F*(stage.step.before.y_cells+stage.step.after.y_cells),
+                        met.nx,met.ny);
+                    require(controls.calm_mdisp3.has_value(),
+                            "real H9 precision probe requires native CALM deck");
+                    const auto& cfg=*controls.calm_mdisp3;
+                    const auto turb=original_turbset_mdisp3_from_cell(
+                        cfg.original_turbulence,static_met,
+                        static_cast<std::size_t>(met.nx),
+                        static_cast<std::size_t>(met.ny),
+                        mid_cell.offset_0based,
+                        met.ipgt.at(mid_cell.offset_0based),
+                        cfg.iwat1,cfg.iwat2);
+                    std::cout<<std::setprecision(10)
+                        <<"P7_REAL_H9_CALM_SIGTZ_MET_AUTHORITIES"
+                        <<" RECORD=16426"
+                        <<" ORIGINAL_PGT="<<ref.integers[8]
+                        <<" START_CELL0="<<start_cell
+                        <<" MID_CELL0="<<mid_cell.offset_0based
+                        <<" START_EL="<<met.el.at(start_cell)
+                        <<" MID_EL="<<met.el.at(mid_cell.offset_0based)
+                        <<" START_PGT="<<met.ipgt.at(start_cell)
+                        <<" MID_PGT="<<met.ipgt.at(mid_cell.offset_0based)
+                        <<" MID_SIGW="<<turb.sigw_ms
+                        <<" MID_SIGV="<<turb.sigv_ms
+                        <<" ORIGINAL_EL="<<ref.reals[4]
+                        <<" IWAT="<<turb.land_water
+                        <<" TZISDR="<<cfg.original_turbulence.tzisdr
+                        <<" ORIGINAL_PHYSICS_INPUT_PROVENANCE=TO_BE_COMPARED\\n";
                     std::cout<<std::setprecision(10)
                         <<"P7_REAL_H9_CALM_SIGTZ_FIRST_DIVERGENCE"
                         <<" RECORD=16426"
