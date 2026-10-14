@@ -46,6 +46,35 @@ int main(){
              receiver.terrain_peak_elevation_msl>=expected &&
              std::isfinite(receiver.terrain_under_puff_msl),
              "PUFRECS ground/peak/puff GETELEV indices mismatched");
+        // PUFRECS L5341-L5343 computes XR1*DGRIDI in REAL4, not XR1/DGRID.
+        // A steep synthetic stencil makes the 1-ULP coordinate difference
+        // observable through GETELEV, so the old divide path fails this test.
+        Calmet21Static steep=statics;
+        for(int j=0;j<ny;++j)for(int i=0;i<nx;++i)
+            steep.elevation_m[static_cast<std::size_t>(j*nx+i)]=
+                100.0F+100000.0F*static_cast<float>(i%2)+
+                25.0F*static_cast<float>(j);
+        const auto steep_terrain=OriginalNativeTerrain::from_calmet(
+            steep,nx,ny,100.0F);
+        const auto steep_lookup=steep_terrain.constraint_lookup();
+        const float recip=1.0F/100.0F;
+        const OriginalPuffct2Result witness{
+            .x_m=603.47F,.y_m=745.678F,.z_m=30.0F};
+        const float xm=witness.x_m*recip,ym=witness.y_m*recip;
+        const float xd=witness.x_m/100.0F,yd=witness.y_m/100.0F;
+        need(xm!=xd || ym!=yd,
+             "REAL4 reciprocal-multiply witness accidentally equals divide");
+        const float exact=static_cast<float>(steep_lookup.elevation_msl(
+            static_cast<double>(xm),static_cast<double>(ym)));
+        const float legacy=static_cast<float>(steep_lookup.elevation_msl(
+            static_cast<double>(xd),static_cast<double>(yd)));
+        need(exact!=legacy,
+             "steep GETELEV witness does not distinguish REAL4 order");
+        const auto strict=steep_terrain.receptor(
+            5+6*nx,1,1,nx,ny,witness,0.015F,1.2F);
+        need(strict.terrain_under_puff_msl==exact,
+             "PUFRECS GETELEV must use precomputed REAL4 DGRIDI");
+
         bool missed=false;
         try {(void)terrain.receptor(nx*ny,1,1,nx,ny,position,0.0F,1.2F);}
         catch(const std::invalid_argument&){missed=true;}
