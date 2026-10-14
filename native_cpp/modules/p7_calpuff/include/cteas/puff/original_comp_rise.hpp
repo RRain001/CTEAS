@@ -46,6 +46,10 @@ struct RiseCompSamplingState {
     // receptor-specific terrain PUFRECS, NOT derived from receptor motion.
     float receptor_brunt_vaisala_s=0.0F;
     float receptor_effective_wind_ms=0.0F;
+    // CALPUFF COMP L10963-10966: QOLD is recorded after VMASS,
+    // before DRY/CHEM/WET mass removal; QNEW is post removal.
+    // This is solver-owned state, never sampled from original puff.con.
+    std::vector<float> receptor_qold_mixed;
 };
 using RiseCompSamplingKernel=std::function<std::vector<float>(
     const RiseCompSamplingState&)>;
