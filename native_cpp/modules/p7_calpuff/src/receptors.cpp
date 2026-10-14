@@ -306,8 +306,14 @@ double receptor_concentration_increment(const SamplingIntegrals& integrals,
     // CALCPF gridded-receptor branch: normalize by 1/(2*pi*sigma_y**2) and
     // weight the start/end masses by the two sampling integrals.
     const R sigma = static_cast<R>(inputs.sigma_y_at_receptor_m);
+    // Vendor CALCPF L4293: ASDF/(6.2831853*SYREC**2).
+    // The exponent evaluates SYREC*SYREC in REAL*4 *before* multiplying
+    // by 6.2831853. Left-associated (2*pi*sigma)*sigma instead rounds
+    // a different intermediate and can perturb T1/T2 and concentration.
+    const R sigma_squared = sigma * sigma;
+    const R denominator = static_cast<R>(kTwoPi) * sigma_squared;
     const R inverse = static_cast<R>(inputs.area_source_factor) /
-                      (static_cast<R>(kTwoPi) * sigma * sigma);
+                      denominator;
     const R t2 = static_cast<R>(integrals.i2) * inverse;
     const R t1 = static_cast<R>(integrals.i1) * inverse - t2;
     const R concentration =
