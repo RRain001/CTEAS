@@ -3,6 +3,7 @@
 // This test's physical callback is explicitly SYNTHETIC. It does not qualify
 // a multi-station CALMET physics implementation or original field parity.
 #include "cteas/p6/p6g_unified_hourly.hpp"
+#include "cteas/p6/p6g_g18d7_source_station_cell.hpp"
 #include "cteas/p6/p6g_g18d2_station_clock_transaction.hpp"
 #include <algorithm>
 #include <chrono>
@@ -40,6 +41,38 @@ static p6g::GeoGrid geo() {
     g.landuse.assign(144,10);
     return g;
 }
+
+// G18D7 regression: literal CALMET DIAGI uses REAL*4 (X/DGRID+1)
+// assigned to INTEGER, then STHEOR clamps the 1-based index. Truncating
+// X/DGRID before +1 selects the WRONG cell for near-boundary REAL*4 input.
+static void original_station_cell_real4_boundary() {
+    auto grid=geo();
+    grid.grid_km=1.f;
+    p6::DeckStation site{};
+    site.local_x_m=std::nextafter(1000.f,0.f);
+    site.local_y_m=100.f;
+    check(p6g::g18d7_source_diagi_station_cell(grid,site)==1,
+          "DIAGI REAL4 near 1km boundary did not round before INTEGER");
+    site.local_x_m=std::nextafter(2000.f,0.f);
+    check(p6g::g18d7_source_diagi_station_cell(grid,site)==2,
+          "DIAGI REAL4 near 2km boundary did not round before INTEGER");
+    site.local_x_m=100.f;
+    site.local_y_m=std::nextafter(1000.f,0.f);
+    check(p6g::g18d7_source_diagi_station_cell(grid,site)==12,
+          "DIAGI REAL4 JST boundary was not source-equivalent");
+    site.local_x_m=std::nextafter(12000.f,0.f);
+    site.local_y_m=100.f;
+    check(p6g::g18d7_source_diagi_station_cell(grid,site)==11,
+          "STHEOR must clamp DIAGI rounded index to NX");
+    site.local_x_m=12000.f;
+    must_reject([&]{(void)p6g::g18d7_source_diagi_station_cell(grid,site);},
+                "Outside scoped GEO station was silently clamped");
+    grid.grid_km=10.f;
+    site.local_x_m=std::nextafter(10000.f,0.f);
+    check(p6g::g18d7_source_diagi_station_cell(grid,site)==0,
+          "10km source REAL4 rounding unexpectedly changed station cell");
+}
+
 static p6g::SurfaceSeries surface(sys_seconds begin,std::size_t hours) {
     p6g::SurfaceSeries s;
     s.begin=begin;s.end=begin+std::chrono::hours{static_cast<int>(hours)};
@@ -169,6 +202,7 @@ static void case_hours(sys_seconds begin,std::size_t count){
 }
 int main(){
     try{
+        original_station_cell_real4_boundary();
         const auto jan1=sys_days{year{2024}/January/1};
         case_hours(jan1,1);
         case_hours(jan1,6);
