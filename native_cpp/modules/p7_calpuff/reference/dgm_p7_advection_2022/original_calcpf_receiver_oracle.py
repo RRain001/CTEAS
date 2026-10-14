@@ -80,6 +80,106 @@ c ---- Write-only receiver-stage provenance, original first hour only.
 FIELD_NAMES = ("syrec", "szrec", "zpr", "zrpole", "f1", "xi1", "xi2",
                "t1", "t2", "qold", "qnew", "xtemp", "conc")
 
+# Seven exact, source-ordered SETPUF checkpoints at the first real H9 calm
+# vertical-sigma mismatch (global DGM #16426, puff 588). These are inserted
+# only in a throwaway compiled vendor copy. Binary output is read-only, and
+# the complete unmodified original puff.con/DGM hashes MUST remain exact.
+H9_Z_TRACE_NAME = "dgm_h9_puff588_setpuf_z.bin"
+H9_Z_RECORD = struct.Struct("<3i8f")
+H9_Z_HELPERS = """
+c --- Write-only exact H9 vertical SETPUF source state, no state mutation
+      subroutine dgmh9z(ii,phase,szb,szm,sze,vzb,vzm,vze,tm,te)
+      include 'params.puf'
+      include 'datehr.puf'
+      integer ii,phase
+      real szb,szm,sze,vzb,vzm,vze,tm,te
+      logical ldgm
+      save ldgm
+      data ldgm/.false./
+      if(ii.ne.588.or.ndathrb.ne.202200108) return
+      if(.not.ldgm)then
+         open(98,file='dgm_h9_puff588_setpuf_z.bin',
+     &        access='stream',form='unformatted',status='replace')
+         ldgm=.true.
+      endif
+      write(98) phase,ii,ndathrb,szb,szm,sze,vzb,vzm,vze,tm,te
+      return
+      end
+"""
+H9_Z_ANCHORS = (
+    # Original SETPUF calpuff.for L48526-48534, BEFORE terrain or clipping.
+    ("            call sigtz(sigzb(ii),zero,zero,zpb(ii),szb1,vtzb1,vdzb1)",
+     1, "szb1,szm1,sze1,vtzb1,zero,zero,zero,zero"),
+    ("            call sigtz(zero,dm,tm,zpb(ii),szm1,vtzm1,vdzm1)",
+     2, "szb1,szm1,sze1,vtzb1,vtzm1,zero,tm,zero"),
+    ("            call sigtz(zero,de,te,zpb(ii),sze1,vtze1,vdze1)",
+     3, "szb1,szm1,sze1,vtzb1,vtzm1,vtze1,tm,te"),
+    # Original SETPUF CTADJ2 state, after inverse-time correction.
+    ("            call sigtz(szadj,zero,zero,zpb(ii),szm1,vtzm1,vdzm1)",
+     4, "szb1,szm1,sze1,vtzb1,vtzm1,vtze1,tm,te"),
+    ("            call sigtz(szadj,zero,zero,zpb(ii),sze1,vtze1,vdze1)",
+     5, "szb1,szm1,sze1,vtzb1,vtzm1,vtze1,tm,te"),
+    # Original SETPUF L48635-48639 monotonicity/stored sigma transition.
+    ("         if(szm1.GT.sze1) sze1=szm1",
+     6, "szb1,szm1,sze1,vtzb1,vtzm1,vtze1,tm,te"),
+    ("         sigzb(ii)=sze1",
+     7, "szb1,szm1,sze1,vtzb1,vtzm1,vtze1,tm,te"),
+)
+
+def add_h9_setpuf_trace(source: str) -> str:
+    # Verify every exact Fortran statement once; abort instead of installing
+    # the diagnostic in an unrelated SIGTZ call.
+    for anchor, phase, fields in H9_Z_ANCHORS:
+        if source.count(anchor + "\n") != 1:
+            raise AssertionError(
+                f"source SETPUF H9 trace anchor drift phase={phase} {anchor!r}")
+        parts=fields.split(",")
+        statement=(
+            f"            call dgmh9z(ii,{phase},"
+            + ",".join(parts[:4]) + ",\n"
+            + "     &                " + ",".join(parts[4:]) + ")\n"
+        )
+        source=source.replace(anchor + "\n",anchor + "\n" + statement)
+    return source + H9_Z_HELPERS
+
+def audit_h9_setpuf_trace(path: Path, out: Path) -> None:
+    if not path.is_file() or path.stat().st_size % H9_Z_RECORD.size:
+        raise AssertionError("original H9 SETPUF trace missing/misaligned")
+    rows=[]
+    with path.open("rb") as handle:
+        while raw:=handle.read(H9_Z_RECORD.size):
+            phase,ii,packed,*values=H9_Z_RECORD.unpack(raw)
+            if ii!=588 or packed!=202200108 or phase not in range(1,8):
+                raise AssertionError("invalid source H9 SETPUF trace identity")
+            rows.append((phase,values))
+    if len(rows)<7 or [r[0] for r in rows[:7]]!=list(range(1,8)):
+        raise AssertionError("source H9 puff588 phase order not complete")
+    labels=("SZB","SZM","SZE","VTZB","VTZM","VTZE","TM","TE")
+    def r4bits(x: float) -> str:
+        return f"0x{struct.unpack('<I',struct.pack('<f',x))[0]:08x}"
+    for phase,values in rows[:7]:
+        print(
+            f"P7_ORIGINAL_H9_SETPUF_Z_PHASE={phase} PUFF=588 "
+            + " ".join(f"{label}={value:.10g} BIT_{label}={r4bits(value)}"
+                       for label,value in zip(labels,values)))
+    out.write_text(json.dumps({
+        "status": "ORIGINAL_H9_SOURCE_ONLY", "phase_order": list(range(1,8)),
+        "record_count": len(rows),
+        "record_bytes": H9_Z_RECORD.size,
+        "binary_sha256": original.sha256_file(path),
+        "first_complete_step": [
+            {"phase":phase, **{k:v for k,v in zip(labels,values)}}
+            for phase,values in rows[:7]
+        ],
+        "native_state_injected": False,
+        "vendor_source_unchanged": True
+    },indent=2)+"\n")
+    print(f"P7_ORIGINAL_H9_SETPUF_Z_TRACE=PASS ROWS={len(rows)}"
+          " STAGES=1,2,3,4,5,6,7"
+          " ORIGINAL_PUFF_CON_AND_DGM=UNCHANGED"
+          " NATIVE_H9_PARITY=OPEN")
+
+
 
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -90,6 +190,7 @@ def main() -> None:
     ap.add_argument("--hour", type=int, choices=(1, 2, 4), default=1)
     ap.add_argument("--receptor-i", type=int, default=None)
     ap.add_argument("--receptor-j", type=int, default=None)
+    ap.add_argument("--trace-h9-setpuf", action="store_true")
     args = ap.parse_args()
     vendor, case, out = (p.resolve() for p in (args.vendor, args.case, args.out))
     defaults = {1:(19,50), 2:(25,28), 4:(47,13)}
@@ -123,6 +224,8 @@ def main() -> None:
         raise AssertionError("original CALCPF mass-weighting anchor changed")
     source = source.replace(CALCPF_ANCHOR + "\n",
                             CALCPF_ANCHOR + "\n" + CALL)
+    if args.trace_h9_setpuf:
+        source=add_h9_setpuf_trace(source)
     instrumented.write_text(source + source_helpers, encoding="latin-1")
 
     alias = original._alias_tree(vendor, out / "include-alias")
@@ -151,6 +254,9 @@ def main() -> None:
     dgm = run / "dgm_puffstep.bin"
     if original.sha256_file(dgm) != DGM_SHA or dgm.stat().st_size != 254687 * 352:
         raise AssertionError("original 143h DGM changed under CALCPF instrumentation")
+    if args.trace_h9_setpuf:
+        audit_h9_setpuf_trace(run / H9_Z_TRACE_NAME,
+                             out / "original-h9-puff588-setpuf-z.json")
     trace = run / trace_name
     if not trace.is_file() or trace.stat().st_size % (RECORD.size+16):
         raise AssertionError("missing or misaligned original CALCPF H3 trace")
