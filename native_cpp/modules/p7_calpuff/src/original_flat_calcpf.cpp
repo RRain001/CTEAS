@@ -53,6 +53,18 @@ ReceptorPgSigma receptor_pg_sigma(
     const float subbid=bidsq*(1.0F-rfacsq);
     const auto& a=s.sigmas.adjust;
     const auto& v=s.sigmas.step;
+    // PUFRECS evaluates SIGTY/SIGTZ at interpolated virtual time and
+    // distance using the CURRENT COMP IDOPT (not always PG IDOPT=3).
+    // Live calm SETCSIG/TURBSET is carried by the puff's native step.
+    const auto calm_forward=[&](float t,float d,bool vertical) {
+        auto p=*s.receptor_calm_sigma;
+        p.sy0=0.0F;
+        p.sz0=0.0F;
+        p.dt_s=t;
+        p.dx_km=d;
+        const auto result=original_calm_sigma(p);
+        return vertical?result.sz:result.sy;
+    };
     float syr=0.0F,szr=0.0F;
     if(frac==0.0F || frac==1.0F) {
         // Original L5201-5223: endpoints use stored begin/end sigma,
@@ -80,8 +92,9 @@ ReceptorPgSigma receptor_pg_sigma(
             v.virtual_distance_y_begin_km)+frac*(static_cast<float>(
             v.virtual_distance_y_end_km)-static_cast<float>(
             v.virtual_distance_y_begin_km)));
-        const float syar=static_cast<float>(
-            curves.sigma_y(0.0F,{vdy,vty}).sigma_y_m);
+        const float syar=s.receptor_calm_sigma ?
+            calm_forward(vty,vdy,false) :
+            static_cast<float>(curves.sigma_y(0.0F,{vdy,vty}).sigma_y_m);
         syr=syar;
         if(addbid>0.0F || sy0sq>0.0F)
             syr=std::sqrt(syar*syar+addbid+sy0sq);
@@ -95,8 +108,10 @@ ReceptorPgSigma receptor_pg_sigma(
                 v.virtual_distance_z_end_km)-static_cast<float>(
                 v.virtual_distance_z_begin_km)));
             // Original SIGTZ(...,ZB1,...): use native puff's begin height.
-            const float szar=static_cast<float>(curves.sigma_z(
-                0.0F,s.before.z_m,{vdz,vtz}).sigma_z_m);
+            const float szar=s.receptor_calm_sigma ?
+                calm_forward(vtz,vdz,true) :
+                static_cast<float>(curves.sigma_z(
+                    0.0F,s.before.z_m,{vdz,vtz}).sigma_z_m);
             szr=szar;
             if(addbid>0.0F)szr=std::sqrt(szar*szar+addbid);
         } else {
