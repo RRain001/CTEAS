@@ -454,6 +454,8 @@ DryDepositionStep dry_deposition_step(const DryDepositionSetup& setup,
 
     DryDepositionStep step;
     step.velocity_ms.assign(count, 0.0);
+    step.deposition_layer_resistance_s_m.assign(count, 0.0);
+    step.canopy_resistance_s_m.assign(count, 0.0);
     step.boundary_ratio.assign(count, 1.0);
     step.fraction_remaining.assign(count, 1.0);
     step.vegetation_state = environment.vegetation_state;
@@ -538,6 +540,8 @@ DryDepositionStep dry_deposition_step(const DryDepositionSetup& setup,
         const R resistance_c = 1.0F / (leaf_area / resistance_f +
                                        leaf_area / static_cast<R>(setup.cuticle_resistance_s_m[index]) +
                                        1.0F / resistance_g);
+        step.deposition_layer_resistance_s_m[index]=deposition_layer;
+        step.canopy_resistance_s_m[index]=resistance_c;
         step.velocity_ms[index] = 1.0F / (resistance_a + deposition_layer + resistance_c);
     }
 
