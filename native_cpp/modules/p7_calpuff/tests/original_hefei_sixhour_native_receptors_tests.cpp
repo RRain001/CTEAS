@@ -66,8 +66,12 @@ int main(int argc,char** argv) {
             "usage: sixhour_real_h3 MET.DAT puff.inp puff.con [original-6h-DGM.bin] [native-hour2-25-28.tsv]");
     require(argc!=6 || std::string(argv[4]).size()>0U,
             "hour2 CALCPF trace requires an original DGM provenance input");
-    const auto dgm=argc==5?read_sixhour_dgm(argv[4]):
+    // Optional native stage trace (argv[5]) must never disable the
+    // independent original DGM step oracle carried in argv[4].
+    const auto dgm=argc>=5?read_sixhour_dgm(argv[4]):
                            std::vector<OriginalDgmStep>{};
+    require(argc!=6 || !dgm.empty(),
+            "hour2 source trace must retain pinned original sixhour DGM gate");
     // Source order: strict GETCELL for pre-step puff centre, original
     // GRIDIJ clamping for the mid/end meteorological cell after movement.
     // A boundary crossing is sampled and retired by COMP, not aborted by
