@@ -16,6 +16,7 @@
 #include "cteas/p6/p6g_g18c1_avemix.hpp"
 #include "cteas/p6/p6g_g18c2_wstarr_after_avemix.hpp"
 #include "cteas/p6/p6g_g18c3_temp3d_after_comp.hpp"
+#include "cteas/p6/p6g_g18c4_selected_hour_candidate.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -819,6 +820,35 @@ static void verify_source_staged_iavet(
     const auto expected_temp=p6e::temp3d_observed_land(independent_temperature);
     check(selected_temp.temperature_k==expected_temp,
           "G18C3 native 2UP TEMP3D differs from immutable PR #53 physical kernel");
+    rejects([&]{
+        (void)p6g::g18c4_assemble_selected_hour(
+            frame,selected,elustr,final_conv,selected_temp,false);
+    },"G18C4 allowed incomplete P6E fixture to impersonate a full G14 commit");
+    const auto full_candidate=p6g::g18c4_assemble_selected_hour(
+        frame,selected,elustr,final_conv,selected_temp,true);
+    check(full_candidate.end==frame.input.end&&
+          full_candidate.candidate_fields.u_mps==frame.fields.u_mps&&
+          full_candidate.candidate_fields.v_mps==frame.fields.v_mps&&
+          full_candidate.candidate_fields.w_face_mps==frame.fields.w_face_mps&&
+          full_candidate.candidate_fields.temperature_k==selected_temp.temperature_k&&
+          full_candidate.candidate_fields.qh_wm2==elustr.qh_wm2&&
+          full_candidate.candidate_fields.ustar_mps==elustr.ustar_mps&&
+          full_candidate.candidate_fields.el_m==elustr.el_m&&
+          full_candidate.candidate_fields.wstar_mps==final_conv.wstar_mps&&
+          full_candidate.candidate_memory.zi_m==averaged.zi_m&&
+          full_candidate.candidate_memory.ziconv_m==averaged.ziconv_m&&
+          full_candidate.candidate_memory.dptt_k==calculated.candidate_next.dptt_k,
+          "G18C4 did not preserve all frozen G14 field/memory components");
+    auto broken_temp=selected_temp;
+    broken_temp.temperature_k[0]=9999.f;
+    rejects([&]{
+        (void)p6g::g18c4_assemble_selected_hour(
+            frame,selected,elustr,final_conv,broken_temp,true);
+    },"G18C4 accepted incomplete P6F candidate 3D temperature");
+    check(frame.next.zi_m==prior.zi_m&&
+          frame.next.ziconv_m==prior.ziconv_m&&
+          frame.next.dptt_k==prior.dptt_k,
+          "G18C4 committed selected candidate despite incomplete G14/P6F");
     for(std::size_t idx=0;idx<144;++idx)
         check(selected_temp.temperature_k[idx]==selected.temperature_k[idx],
               "G18C3 original TEMP3D level-1 was not second SURFVAR TEMP2D");
@@ -1344,6 +1374,7 @@ int main(int argc,char** argv){
                     "G18C1_SOURCE_IAVEZI_MNMDAV_HAFANG_AVEMIX_PASS "
                     "G18C2_AVEMIX_BEFORE_FROZEN_WSTARR_ORDER_PASS "
                     "G18C3_TRUE_UP_FACET_POST_AVEMIX_TEMP3D_PASS "
+                    "G18C4_EIGHT_G14_FIELDS_UNCOMMITTED_SOURCE_CANDIDATE_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
