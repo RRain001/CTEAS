@@ -12,6 +12,7 @@
 #include "cteas/p6/p6g_g18b5_upper_temp_faces.hpp"
 #include "cteas/p6/p6g_g18b7_previous_ziconv.hpp"
 #include "cteas/p6/p6g_g18b8_gamma_grid.hpp"
+#include "cteas/p6/p6g_g18b9_original_gamma_controls.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -793,7 +794,8 @@ static void verify_source_staged_iavet(
     check(frame.next.ziconv_m==prior.ziconv_m,
           "G17C selected heat bridge modified n-1 accepted P6E state");
 }
-static void verify_g18b_asynchronous_upper_turnover() {
+static void verify_g18b_asynchronous_upper_turnover(
+    const std::string& source_metinp) {
     const auto begin=sys_days{year{2024}/December/31}+hours{18};
     p6g::StationSet sites;
     sites.surface={station(58321,10000.f,10000.f),
@@ -842,8 +844,13 @@ static void verify_g18b_asynchronous_upper_turnover() {
     prior.dptt_k.assign(144,0.f);
     p6g::G18BUpperBufferClock clock;
     p6g::G18B4CGammaClock gamma_clock;
+    const auto gamma_controls=p6g::g18b9_parse_original_gamma_controls(
+        source_metinp,sites.upper.size());
+    check(gamma_controls.iupt==-1&&gamma_controls.idiopt2==0&&
+          gamma_controls.zupt_m==200.f,
+          "G18B9 original model controls not read from met.inp");
     const auto gamma_near_choice=p6g::g18b3_source_deck_upper_choice(
-        grid,sites,"! IUPT = -1 !");
+        grid,sites,source_metinp);
     auto gamma_fixed_choice=gamma_near_choice;
     gamma_fixed_choice.iupt=2;
     std::vector<p6::CGammaState> independent_gamma(2);
@@ -955,8 +962,17 @@ static void verify_g18b_asynchronous_upper_turnover() {
                     frame,observed,{0.f},200.f,true);
             },"G18B4 accepted incomplete 2US previous ZICONV");
         }
-        const auto gamma=p6g::g18b7_prepare_source_grid_cgamma(
-            gamma_clock,frame,observed,200.f,true);
+        rejects([&]{
+            (void)p6g::g18b9_selected_original_hour_gamma(
+                gamma_clock,frame,observed,gamma_near_choice,gamma_controls,false);
+        },"G18B9 promoted test-only source CGAMMA to production");
+        const auto selected_gamma=p6g::g18b9_selected_original_hour_gamma(
+            gamma_clock,frame,observed,gamma_near_choice,gamma_controls,true);
+        const auto& gamma=selected_gamma.upper;
+        check(selected_gamma.grid.end==frame.input.end&&
+              selected_gamma.grid.original_iupt==gamma_controls.iupt&&
+              selected_gamma.grid.gamma_k_per_m.size()==144,
+              "G18B9 original-deck CGAMMA→GAMMA source control handoff failed");
         check(gamma.end==frame.input.end&&
               gamma.station_ids==std::vector<int>({58424,58425})&&
               gamma.lapse.size()==2,
@@ -967,6 +983,8 @@ static void verify_g18b_asynchronous_upper_turnover() {
         },"G18B8 unmarked selected gamma field impersonated native PREPDI");
         const auto spatial=p6g::g18b8_source_gamma_from_hour(
             frame,gamma_near_choice,gamma,true);
+        check(spatial.gamma_k_per_m==selected_gamma.grid.gamma_k_per_m,
+              "G18B9 independently source-parsed GAMMA differs from G18B8");
         const auto uniform=p6g::g18b8_source_gamma_from_hour(
             frame,gamma_fixed_choice,gamma,true);
         check(spatial.end==frame.input.end&&
@@ -1022,7 +1040,7 @@ static void verify_g18b_asynchronous_upper_turnover() {
             hour.interpolated.gap_seconds=observed.gap_seconds[us];
             hour.interpolated.to_go_seconds=observed.to_go_seconds[us];
             const auto expected=independent_gamma[us].calculate(
-                direct,hour,200.f,station_previous_ziconv[us]);
+                direct,hour,gamma_controls.zupt_m,station_previous_ziconv[us]);
             check(gamma.lapse[us].branch==expected.branch &&
                   gamma.lapse[us].kelvin_per_m==expected.kelvin_per_m,
                   "G18B4 frozen CGAMMA numerical/branch parity mismatch");
@@ -1043,7 +1061,8 @@ static void verify_g18b_asynchronous_upper_turnover() {
             gamma_clock.commit_after_completed_g14_hour(gamma,h);
         },"G18B4 committed convective history before accepted G14 hour");
         const auto repeated=gamma_clock.prepare(
-            frame,observed,station_previous_ziconv,200.f,true);
+            frame,observed,station_previous_ziconv,
+            gamma_controls.zupt_m,true);
         check(repeated.lapse[0].kelvin_per_m==gamma.lapse[0].kelvin_per_m,
               "G18B4 failed atomic candidate retry after later COMP failure");
         rejects([&]{
@@ -1138,7 +1157,7 @@ int main(int argc,char** argv){
         verify(control,begin);
         verify_source_staged_iavet(control,wind,begin,deck);
         verify_source_staged_iavet(control,wind,begin+hours{12},deck);
-        verify_g18b_asynchronous_upper_turnover();
+        verify_g18b_asynchronous_upper_turnover(deck);
         verify_g18b3_source_iupt_choice(deck);
         verify(control,begin+hours{11});
         // Accept original Fortran freeform control spacing, not a
@@ -1165,6 +1184,7 @@ int main(int argc,char** argv){
                     "G18B5_FROZEN_FACET_MULTISITE_SOURCE_FACES_PASS "
                     "G18B7_SOURCE_PREVIOUS_IIUP_JJUP_ZICONV_PASS "
                     "G18B8_SOURCE_IUPT_GAMMA_HOURLY_HANDOFF_PASS "
+                    "G18B9_ORIGINAL_ZUPT_IDIOPT2_IUPT_SOURCE_CONTROLS_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
