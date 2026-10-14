@@ -372,16 +372,18 @@ int main(){
         // G18E4: the same PREPDI is now evaluated INSIDE G14's real
         // stage-zero callback, not on an independently driven clock.
         // The rest of this test remains explicitly SYNTHETIC G14 physics.
-        // Traverse actual 12h/24h AA/BB turnover and reject a failed P6F
-        // hour before publication of either of the two upper clocks.
+        // Exercise a REAL 143-hour chronological source-clock run across
+        // Dec 2023 / Jan 2024: repeated 12-hour AA/BB swaps and a failed
+        // P6F hour cannot publish either upper-air station clock.
+        const auto prepdi_begin=sys_days{year{2023}/December/30};
         p6g::UnifiedMultistationHourlyScheduler routed(
-            geo(),stations(),surface(jan1,26),upper(jan1,26),
+            geo(),stations(),surface(prepdi_begin,143),upper(prepdi_begin,143),
             deck_controls);
         p6g::G18D2StationClockAuthority routed_clocks;
         SyntheticNativePhysics routed_mock;
         routed_mock.expect_source_controls=true;
         routed_mock.varied_upper_ziconv=true;
-        for(std::size_t h=0;h<26;++h) {
+        for(std::size_t h=0;h<143;++h) {
             if(h==12) {
                 p6g::G18E4SelectedPrepdiStageAdapter rejected(
                     routed,routed_clocks,synthetic_deck);
@@ -395,8 +397,8 @@ int main(){
                 check(rejected.staged()&&!rejected.published()&&
                       routed.completed_hours()==h&&
                       routed.committed_memory().ziconv_m[0]==12.f&&
-                      routed_clocks.latest_upper_hour()==jan1+hours{12}&&
-                      routed_clocks.latest_gamma_hour()==jan1+hours{12},
+                      routed_clocks.latest_upper_hour()==prepdi_begin+hours{12}&&
+                      routed_clocks.latest_gamma_hour()==prepdi_begin+hours{12},
                       "G18E4 source 2US clock leaked after failed G14 transaction");
                 must_reject([&]{rejected.publish_after_completed_g14_hour();},
                             "G18E4 published source clocks after P6F failure");
@@ -440,7 +442,7 @@ int main(){
                           gamma.lapse[0].branch==(h==0?0:1)&&
                           gamma.lapse[1].branch==0,
                           "G18E4 CGAMMA mixed station-specific previous ZICONV branches");
-                    const auto expected_slot=h+1>=24?3U:(h+1>=12?2U:1U);
+                    const auto expected_slot=static_cast<std::size_t>((h+1)/12+1);
                     for(std::size_t station=0;station<2;++station) {
                         check(up.chronological_older[station]==expected_slot&&
                               up.justa[station]==(expected_slot%2==0?1:-1)&&
@@ -457,8 +459,8 @@ int main(){
                   "G18E4 G14 hour accepted before source clock publication");
             selected.publish_after_completed_g14_hour();
             check(selected.published()&&
-                  routed_clocks.latest_upper_hour()==jan1+hours{static_cast<int>(h+1)}&&
-                  routed_clocks.latest_gamma_hour()==jan1+hours{static_cast<int>(h+1)},
+                  routed_clocks.latest_upper_hour()==prepdi_begin+hours{static_cast<int>(h+1)}&&
+                  routed_clocks.latest_gamma_hour()==prepdi_begin+hours{static_cast<int>(h+1)},
                   "G18E4 source upper/CGAMMA commits not atomic after G14 hour");
             must_reject([&]{selected.publish_after_completed_g14_hour();},
                         "G18E4 allowed double publish of source PREPDI clocks");
