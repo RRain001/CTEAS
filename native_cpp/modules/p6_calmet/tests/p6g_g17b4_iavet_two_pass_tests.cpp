@@ -5,6 +5,7 @@
 #include "cteas/p6/p6g_g17_staged_terrain.hpp"
 #include "cteas/p6/p6g_g17c_iavet1_heat_handoff.hpp"
 #include "cteas/p6/p6g_g17c2_elustr_handoff.hpp"
+#include "cteas/p6/p6g_g17c3_station_diagi.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -213,15 +214,41 @@ static void verify_source_staged_iavet(
     forcing.lapse_k_per_m.assign(144,0.002f);
     // No externally invented TEMP2D. The first G17B4 SURFVAR fills it
     // using precisely G17's native WIND1 output.
+    const auto initial_profiles=profiles;
     p6g::G17SelectedTerrainFixturePhysics stages(
         std::move(profiles),terrain,std::move(forcing));
     p6g::StationSet all=f.station_set;
     all.upper={station(58424,20000.f,20000.f),
                station(58425,50000.f,50000.f)};
+    // Supply source-ordered absolute READCF UTM positions for the two SSs.
+    for(auto& ss:all.surface) {
+        ss.utm_x_km=f.grid.xorigin_km+ss.local_x_m/1000.f;
+        ss.utm_y_km=f.grid.yorigin_km+ss.local_y_m/1000.f;
+        ss.anemometer_height_m=10.f;
+    }
     p6g::InputHour slot{};
     slot.end=f.series.end;slot.upper.resize(2);
     std::vector<p6g::UpperSeries> upper(2);
     upper[0].station_id=58424;upper[1].station_id=58425;
+    for(std::size_t idx=0;idx<upper.size();++idx) {
+        p6::UpperSounding older;
+        older.station_id=upper[idx].station_id;
+        older.start=f.series.begin-hours{2};
+        older.end=older.start;
+        p6::UpperSounding following;
+        following.station_id=upper[idx].station_id;
+        following.start=f.series.end+hours{5};
+        following.end=following.start;
+        for(std::size_t k=0;k<4;++k) {
+            p6::UpperLevel level;
+            level.height_valid=true;level.temperature_valid=true;
+            level.height_lgl_m=static_cast<float>(k*k*500);
+            level.temperature_k=285.f+static_cast<float>(3*k+idx);
+            older.data.push_back(level);
+            following.data.push_back(level);
+        }
+        upper[idx].soundings={older,following};
+    }
     p6::NativeGridMemory prior;
     prior.zi_m.assign(144,0.f);
     prior.ziconv_m.assign(144,0.f);
@@ -440,8 +467,84 @@ static void verify_source_staged_iavet(
           "G17B4 SLOPE failed with original post-FRADJ TEMP2D");
     check(stages.run(p6::NativeHourStage::DiagnoWindbcFirstGuess,frame).completed,
           "G17B4 first WINDBC did not preserve corrected U/V");
+    p6g::G17C3StationControls sc;
+    sc.upper_ordinal_for_surface={0,1};
+    sc.heat_coefficients=ancillary.coefficients;
+    sc.zimin_m=50.f;sc.zimax_m=3000.f;sc.constn=2400.f;
+    sc.dptmin_kperm=.001f;sc.dzzi_m=200.f;
+    sc.threshl=0.f;sc.fcori_s=1.e-4f;sc.cmech=100.f;
+    rejects([&]{
+        (void)p6g::selected_station_diagi_from_previous_comp(
+            frame,surface,selected,sc);
+    },"G17C3 accepted unmarked STHEOR/MIXHTST station mapping");
+    sc.explicitly_test_only=true;
+    const auto diagi=p6g::selected_station_diagi_from_previous_comp(
+        frame,surface,selected,sc);
+    check(diagi.size()==2&&diagi[0].surface_id==58321&&
+          diagi[0].upper_id==58424&&diagi[1].surface_id==58322&&
+          diagi[1].upper_id==58425,
+          "G17C3 multi-station source ordinal provenance wrong");
+    for(std::size_t i=0;i<diagi.size();++i) {
+        const auto& state=diagi[i];
+        const auto& station=all.surface[i];
+        const auto& obs=f.series.hourly.front().by_station[i];
+        const auto z=state.cell;
+        const float angle=0.0174533f*obs.wind_direction_deg;
+        p6::StationElustr2Input stheor;
+        stheor.surface_u_mps=-obs.wind_speed_mps*std::sin(angle);
+        stheor.surface_v_mps=-obs.wind_speed_mps*std::cos(angle);
+        stheor.zmid1_m=.5f*(wind.zface_m[0]+wind.zface_m[1]);
+        stheor.anemometer_m=station.anemometer_height_m;
+        stheor.z0_m=f.grid.z0_m[z];stheor.solar_sine=selected.sun_sine[z];
+        stheor.temp_k=selected.temperature_k[z];
+        stheor.rho_kg_m3=.3484321f*obs.pressure_mb/stheor.temp_k;
+        stheor.cloud_tenths=obs.opaque_cloud_tenths;
+        stheor.ipsifcn=sc.ipsifcn;
+        const auto& c=sc.heat_coefficients;
+        stheor.ha1=c.ha1;stheor.ha2=c.ha2;stheor.hb1=c.hb1;
+        stheor.hb2=c.hb2;stheor.hc1=c.hc1;stheor.hc2=c.hc2;
+        stheor.hc3p1=c.hc3p1;
+        stheor.albedo=f.grid.albedo[z];stheor.bowen=f.grid.bowen[z];
+        stheor.hcg=f.grid.hcg[z];stheor.qf=f.grid.qf[z];
+        const auto expected=p6::station_elustr2_flux(stheor);
+        check(state.station_flux.sensible_wm2==expected.sensible_wm2 &&
+              state.station_flux.friction_velocity_mps==expected.friction_velocity_mps &&
+              state.station_flux.monin_obukhov_m==expected.monin_obukhov_m &&
+              state.levels_filled>=1&&state.levels_filled<=9 &&
+              std::isfinite(state.station_mixing.zii_to_similt_m) &&
+              std::isfinite(state.station_mixing.dptt_for_comp_k),
+              "G17C3 original station ELUSTR2/MIXHTST output mismatch");
+    }
+    auto modified=sc;
+    modified.upper_ordinal_for_surface={2,0};
+    rejects([&]{
+        (void)p6g::selected_station_diagi_from_previous_comp(
+            frame,surface,selected,modified);
+    },"G17C3 silently invented missing third UP station");
+    auto broken_frame=frame;
+    broken_frame.upper[0].soundings.front().end=f.series.end+hours{1};
+    rejects([&]{
+        (void)p6g::selected_station_diagi_from_previous_comp(
+            broken_frame,surface,selected,sc);
+    },"G17C3 accepted missing older model-begin UP sounding");
+    const auto combined=p6g::merge_g17c3_surface_diagi(
+        initial_profiles,all,diagi);
+    check(combined.wind1_u_mps==initial_profiles.wind1_u_mps&&
+          combined.wind1_v_mps==initial_profiles.wind1_v_mps,
+          "G17C3 overwrote neutral WIND1 station physics");
+    for(std::size_t k=0;k<9;++k)
+        for(std::size_t i=2;i<4;++i) {
+            const auto z=k*4+i;
+            check(combined.inter2_u_mps[z]==initial_profiles.inter2_u_mps[z]&&
+                  combined.inter2_v_mps[z]==initial_profiles.inter2_v_mps[z]&&
+                  combined.inter2_present[z]==initial_profiles.inter2_present[z],
+                  "G17C3 changed source PREPDI upper-air columns");
+        }
+    stages.provide_selected_diagi_before_inter2(combined);
+    rejects([&]{stages.provide_selected_diagi_before_inter2(combined);},
+            "G17C3 duplicated source DIAGI station-profile handoff");
     check(stages.run(p6::NativeHourStage::DiagnoInter2,frame).completed,
-          "G17B4 original selected INTER2 rejected two-pass thermal fields");
+          "G17C3 original selected INTER2 rejected real MIXHTST-capped DIAGI");
     check(!stages.run(p6::NativeHourStage::CompGridMixht,frame).completed,
           "G17B4 invented native multi-station COMP acceptance");
     check(frame.next.ziconv_m==prior.ziconv_m,
@@ -480,6 +583,7 @@ int main(int argc,char** argv){
                     "WIND1_FIRST_FRADJ_SECOND DIAGNO_ORDER "
                     "G17C_SECOND_TEMP_NATIVE_SOLAR_HEATFX_AIRDEN_PASS "
                     "G17C2_SOURCE_FRADJ_STABLE_DAYTIME_ELUSTR_PASS "
+                    "G17C3_STHEOR_ELUSTR2_MIXHTST_DIAGI_SOURCE_SELECTED_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
