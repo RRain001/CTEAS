@@ -38,11 +38,14 @@ jobs:
           lines=raw.decode('latin-1').splitlines()
           terms=('QOLD','QNEW','Q01DRY','QM(','QU(','FRACT','TFRACT','CALCPF','PFSAMP','PUFRECS','DRY','VCOUP','MTRANS','MDRY','VDPVD','FRACDRY','SFC')
           for lo,hi in ((4165,4325),(11045,11230)):
+              shown_in_span=set()
               for idx in range(lo-1,hi):
                   if not any(term in lines[idx].upper() for term in terms):continue
                   a=max(lo-1,idx-1);b=min(hi,idx+3)
                   for j in range(a,b):
-                      print(f'P7_VENDOR_H3_RECEIVER {j+1:6d} {lines[j]}')
+                      if j not in shown_in_span:
+                          print(f'P7_VENDOR_H3_RECEIVER {j+1:6d} {lines[j]}')
+                          shown_in_span.add(j)
           # Inspect initial QOLD snapshot before VMASS/CHEM/DRY and the
           # source-ordered construction of QNEW at the CALCPF boundary.
           shown=set()
