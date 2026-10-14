@@ -193,6 +193,7 @@ add_test(NAME p6g_g17_fradj_slope_first_windbc_native_stage_source_parity
 add_executable(cteas_p6g_g17b_observed_solar_heat_tests
                tests/p6g_g17b_observed_solar_heat_tests.cpp)
 target_link_libraries(cteas_p6g_g17b_observed_solar_heat_tests PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6g_g17b_observed_solar_heat_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
 if(MSVC)
   target_compile_options(cteas_p6g_g17b_observed_solar_heat_tests PRIVATE /W4 /WX)
 else()
