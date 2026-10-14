@@ -441,8 +441,18 @@ int main(int argc,char** argv) {
                  <<" NATIVE_FIELD_SUM_BQ_M3="<<native_total
                  <<" REFERENCE_FIELD_SUM_BQ_M3="<<reference_total
                  <<" CONCENTRATION_MISMATCH_CELLS="<<mismatches.size()
-                 <<" REFERENCE_SCIENTIFIC_PARITY=OPEN"
+                 <<" REFERENCE_SCIENTIFIC_PARITY=PASS_FIRSTHOUR_H3_REAL4_ONLY"
                  <<" 6H_143H=NOT_YET_ACCEPTED\n";
+        // This must remain a scientific acceptance gate, not merely a smoke
+        // test that prints diagnostics and exits successfully. The original
+        // frozen puff.con is a post-run oracle, never a solver input.
+        need(bitwise_equal==2500U && mismatches.empty() &&
+             max_abs_diff==0.0 && sum_abs_diff==0.0,
+             "Hefei original first-hour H3 concentration REAL4 parity regressed");
+        std::cout<<"P7_HEFEI_FIRST_HOUR_2500_REAL4_CONCENTRATION_PARITY=PASS"
+                 <<" SPECIES=H3 GRID=50x50"
+                 <<" RECEPTOR_WORDS=2500/2500"
+                 <<" FULL_6H_143H_AND_OUTPUT=NOT_YET_ACCEPTED\n";
       },true);
     need(evaluated && summary.intervals==143,
          "full frozen MET provenance 143 hours is required");
