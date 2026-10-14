@@ -41,8 +41,15 @@ void OriginalCompRisePointDriver::admit(
     RiseSource state;
     state.x_final_m=r4(source.x_final_m,"XFINAL");
     state.buoyancy_variance_m2=r4(source.final_rise_variance_m2,"BIDSQ");
-    state.initial_sigma_y_squared_m2=
-        r4(source.sigma_y_source_m*source.sigma_y_source_m,"SYSRC squared");
+    // Original SETPUF calpuff.for L48408-48413: SY0SQ is the
+    // initial AREA-source size ONLY (ISTYPE=3 or 4). POINTS1
+    // ISTYPE=1 sets SY0SQ=0. The native point SYSRC already enters
+    // the persisted SIGYB/virtual SIGTY state; adding SYSRC**2 again
+    // double counts source width in every /CURRENT/ receptor sigma.
+    require(std::isfinite(source.sigma_y_source_m) &&
+            source.sigma_y_source_m>=0.0,
+            "original point SYSRC must be finite and non-negative");
+    state.initial_sigma_y_squared_m2=0.0F;
     state.minimum_sigma_y_m=r4(source.initial_sigma_y_m,"SY0");
     state.minimum_sigma_z_m=r4(source.initial_sigma_z_m,"SZ0");
     auto& p=state.physics;
