@@ -182,47 +182,6 @@ inline Wind1MultiField multi_station_wind1_firstguess(
             if(!have)
                 throw std::invalid_argument("G9 WIND1 no usable observations");
             if(!std::isfinite(u)||!std::isfinite(v))
-                    throw std::invalid_argument("G9 WIND1 nonfinite single-pair wind");
-                const std::size_t idx=k*cells+
-                    static_cast<std::size_t>(j-1)*static_cast<std::size_t>(in.nx)+
-                    static_cast<std::size_t>(i-1);
-                out.u_mps[idx]=u;out.v_mps[idx]=v;
-                continue;
-            }
-            float kept=0.f;
-            for(std::size_t l=0;l<nc;++l){
-                const std::size_t z=k*nc+l;
-                const bool surface=l<static_cast<std::size_t>(in.surface_count);
-                const bool calm_surface=surface&&k>0&&in.icalm==0&&
-                    in.surface_speeds_mps[l]<0.0001f;
-                adjusted[l]=(!in.present[z]||calm_surface)?0.f:
-                            (surface?beta:gamma)*base[l];
-                kept+=adjusted[l];
-            }
-            // An explicitly BIAS-forced class with no observations is not
-            // silently replaced by fabricated winds.
-            if((bias>=0.9999f&&upper_base>0.f)&&
-               std::none_of(adjusted.begin()+in.surface_count,
-                            adjusted.end(),[](float w){return w>0.f;}))
-                throw std::invalid_argument("G9 WIND1 forced upper class is missing");
-            if((bias<=-0.9999f&&surface_base>0.f)&&
-               std::none_of(adjusted.begin(),
-                            adjusted.begin()+in.surface_count,
-                            [](float w){return w>0.f;}))
-                throw std::invalid_argument("G9 WIND1 forced surface class is missing");
-            if(!(kept>0.f)||!std::isfinite(kept))
-                throw std::invalid_argument("G9 WIND1 no valid station observation");
-            // Redistribute missing/calm station weights among available
-            // stations; the frozen pair case retains its own acceptance.
-            const float inv_kept=1.f/kept;
-            float u=0.f,v=0.f;
-            for(std::size_t l=0;l<nc;++l){
-                const float w=adjusted[l]*inv_kept;
-                const std::size_t z=k*nc+l;
-                u+=w*in.station_u_mps[z];
-                v+=w*in.station_v_mps[z];
-            }
-            if(!std::isfinite(u)||!std::isfinite(v))
                 throw std::invalid_argument("G9 WIND1 nonfinite field");
             const std::size_t idx=k*cells+
                 static_cast<std::size_t>(j-1)*static_cast<std::size_t>(in.nx)+
