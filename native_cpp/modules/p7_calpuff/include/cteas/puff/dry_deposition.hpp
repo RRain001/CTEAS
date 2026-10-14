@@ -125,6 +125,10 @@ struct DryDepositionStep {
     // for independent original-vs-native precision diagnostics only.
     std::vector<double> deposition_layer_resistance_s_m; // RD
     std::vector<double> canopy_resistance_s_m;           // RC
+    std::vector<double> foliage_resistance_s_m;          // RF
+    std::vector<double> ground_resistance_s_m;           // RG
+    std::vector<double> cuticle_resistance_s_m;          // RCUT
+    double source_leaf_area_index=0.0;                   // XLAI
     std::vector<double> boundary_ratio;      // VDPVD(nspec)
     std::vector<double> fraction_remaining;  // FRACDRY(nspec)
     double boundary_diffusivity_m2_s = 0.0;  // DIFFK
