@@ -1,8 +1,9 @@
 #pragma once
 // P6G G9 exploratory multi-station WIND1 first-guess generalization.
 //
-// Extends the previously source-scoped 1-SS/1-US BIAS, inverse-square and
-// calm/missing rules to multiple land SS and US columns. This is a TESTED
+// Directly follows original calmet.for L36204-L36399 source ordering for
+// the no-overwater, no-barrier, IEXTRP=-4 selected route. Supports multiple
+// land SS and US columns with original sequential calm/missing reweighting. This is a TESTED
 // C++ multi-site kernel, NOT yet independent Fortran multi-site equivalence.
 // Frozen wind1_firstguess_selected.hpp remains the numerical authority for
 // the 50x50x9 single-pair baseline. Do not use this as P6 production physics
@@ -92,6 +93,10 @@ inline Wind1MultiField multi_station_wind1_firstguess(
             const float dy=in.station_y_m[l]*inv_grid-yc;
             const float r2=dx*dx+dy*dy;
             raw[l]=r2<1.f?1.f:1.f/r2;
+            // Original WIND1 excludes absent surface anemometer
+            // observations from the bulk weight normalization (L36239-42).
+            if(l<static_cast<std::size_t>(in.surface_count)&&!in.present[l])
+                raw[l]=0.f;
             total+=raw[l];
         }
         if(!std::isfinite(total)||total<=0.f)
@@ -118,35 +123,65 @@ inline Wind1MultiField multi_station_wind1_firstguess(
                 beta=(-bias+(1.f+bias)*surface_base)/surface_base;
                 gamma=1.f+bias;
             }
-            // Preserve exactly the frozen one-SS/one-US FLOAT32 execution
-            // order for *any* grid shape, especially the near-source
-            // ICALM=0 branch where a second normalization changes results.
-            // This is the 1+1 algebraic case of the general method, not a
-            // 50x50 or 100m hardcoded escape hatch.
-            if(in.surface_count==1&&in.upper_count==1) {
-                const std::size_t zs=k*nc,zu=zs+1;
-                if(!in.present[zs])
-                    throw std::invalid_argument("G9 WIND1 solitary surface missing");
-                float vsurface=beta*base[0];
-                float vupper=gamma*base[1];
-                if(in.icalm==0&&in.surface_speeds_mps[0]<0.0001f&&k>0){
-                    if(vsurface<0.9999f)
-                        vupper=vupper/(1.f-vsurface);
-                    else
-                        vupper=base[1]/(1.f-base[0]);
-                    vsurface=0.f;
+            // Exact selected source control order (calmet.for L36279-36395):
+            //   1. BIAS class multiplier by station,
+            //   2. each calm land station in ordinal order (ICALM=0),
+            //   3. each missing upper-air station in ordinal order,
+            //   4. unnormalized REAL*4 U/V accumulation over all stations.
+            // This must NOT be replaced by a combined missing-data
+            // renormalization: sequential divisions change the floating
+            // point result whenever multiple stations are invalid.
+            for(std::size_t l=0;l<nc;++l)
+                adjusted[l]=(l<static_cast<std::size_t>(in.surface_count)?
+                             beta:gamma)*base[l];
+            if(in.icalm==0)
+                for(int l=0;l<in.surface_count;++l){
+                    const std::size_t z=static_cast<std::size_t>(l);
+                    if(in.present[z]&&in.surface_speeds_mps[z]<0.0001f&&k>0){
+                        const float old=adjusted[z];
+                        if(old<0.9999f){
+                            const float inv=1.f-old;
+                            if(inv<=0.f)
+                                throw std::invalid_argument("G9 WIND1 calm sum singular");
+                            for(std::size_t ll=0;ll<nc;++ll)
+                                if(ll!=z)adjusted[ll]=adjusted[ll]/inv;
+                        }else{
+                            const float inverse=1.f-base[z];
+                            if(inverse<=0.f)
+                                throw std::invalid_argument("G9 WIND1 no valid upper for calm");
+                            for(std::size_t ll=static_cast<std::size_t>(in.surface_count);
+                                ll<nc;++ll)
+                                adjusted[ll]=base[ll]/inverse;
+                        }
+                        adjusted[z]=0.f;
+                    }
                 }
-                if(bias> -0.9999f&&!in.present[zu]){
-                    if(vupper==1.f)
-                        throw std::invalid_argument("G9 WIND1 missing forced upper wind");
-                    vsurface=vsurface/(1.f-vupper);
-                    vupper=0.f;
+            if(bias> -0.9999f)
+                for(std::size_t l=static_cast<std::size_t>(in.surface_count);
+                    l<nc;++l){
+                    if(!in.present[k*nc+l]){
+                        const float old=adjusted[l];
+                        if(old==1.f)
+                            throw std::invalid_argument("G9 WIND1 no other valid upper wind");
+                        const float denom=1.f-old;
+                        if(denom<=0.f)
+                            throw std::invalid_argument("G9 WIND1 invalid missing upper weight");
+                        for(std::size_t ll=0;ll<nc;++ll)
+                            if(ll!=l)adjusted[ll]=adjusted[ll]/denom;
+                        adjusted[l]=0.f;
+                    }
                 }
-                const float u=vsurface*in.station_u_mps[zs]+
-                              vupper*in.station_u_mps[zu];
-                const float v=vsurface*in.station_v_mps[zs]+
-                              vupper*in.station_v_mps[zu];
-                if(!std::isfinite(u)||!std::isfinite(v))
+            float u=0.f,v=0.f;
+            bool have=false;
+            for(std::size_t l=0;l<nc;++l){
+                const float wt=adjusted[l];
+                if(wt>0.f&&in.present[k*nc+l])have=true;
+                u=u+wt*in.station_u_mps[k*nc+l];
+                v=v+wt*in.station_v_mps[k*nc+l];
+            }
+            if(!have)
+                throw std::invalid_argument("G9 WIND1 no usable observations");
+            if(!std::isfinite(u)||!std::isfinite(v))
                     throw std::invalid_argument("G9 WIND1 nonfinite single-pair wind");
                 const std::size_t idx=k*cells+
                     static_cast<std::size_t>(j-1)*static_cast<std::size_t>(in.nx)+
