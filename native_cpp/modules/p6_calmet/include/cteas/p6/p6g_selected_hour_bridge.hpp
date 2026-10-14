@@ -264,8 +264,9 @@ inline SelectedBridgeHour selected_multisite_hour(
         out.top_center_w_mps=tail.w_face_mps[levels*cells+center];
         for(float w:tail.w_face_mps)
             if(std::abs(w)>1.e-10f)++out.nonzero_w_faces;
-        if(out.nonzero_w_faces==0||
-           !std::isfinite(out.final_center_u_mps)||
+        // A physically calm or horizontally non-divergent flow can have
+        // identically zero W; this is valid, not a DIAGNO failure.
+        if(!std::isfinite(out.final_center_u_mps)||
            !std::isfinite(out.final_center_v_mps)||
            !std::isfinite(out.top_center_w_mps))
             throw std::invalid_argument("G10 no valid selected DIAGNO W after INTER2");
