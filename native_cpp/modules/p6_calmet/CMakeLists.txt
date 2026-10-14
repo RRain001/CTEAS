@@ -68,6 +68,17 @@ else()
   target_compile_options(cteas_p6g_g8_10km_year_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME p6g_g8_multisite_10km_8784h_selected_source_bridge COMMAND cteas_p6g_g8_10km_year_tests)
+
+# G9 independent multi-station WIND1 source-selected regression.
+add_executable(cteas_p6g_g9_multi_wind1_tests tests/p6g_g9_multi_wind1_tests.cpp)
+target_link_libraries(cteas_p6g_g9_multi_wind1_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g9_multi_wind1_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g9_multi_wind1_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g9_expanded_10km_multi_wind1_frozen_pair_parity COMMAND cteas_p6g_g9_multi_wind1_tests)
+
 set_tests_properties(p6g_g8_multisite_10km_8784h_selected_source_bridge PROPERTIES TIMEOUT 900)
 
 
