@@ -39,6 +39,10 @@ inline p6e::MixdtSounding g18b_read_observed_thermal(
     }
     return data;
 }
+inline bool g18b_equal_thermal(
+    const p6e::MixdtSounding& a,const p6e::MixdtSounding& b) {
+    return a.height_m==b.height_m&&a.temp_k==b.temp_k;
+}
 class G18BUpperBufferClock {
 public:
     // A fresh instance belongs to exactly one chronological G14 simulation.
@@ -142,6 +146,14 @@ public:
            prepared.turnovers!=source.turnovers||
            prepared.source_reads!=source.source_reads)
             throw std::invalid_argument("G18B stale or fabricated source buffer commit");
+        for(std::size_t i=0;i<source.station_ids.size();++i)
+            if(!g18b_equal_thermal(
+                   prepared.physical_sounding[0].at(i),
+                   source.physical_sounding[0].at(i))||
+               !g18b_equal_thermal(
+                   prepared.physical_sounding[1].at(i),
+                   source.physical_sounding[1].at(i)))
+                throw std::invalid_argument("G18B mutated UP thermal source before cache commit");
         last_older_=source.chronological_older;
         previous_end_=frame.input.end;
         previous_hour_=frame.hour_index;
@@ -177,8 +189,14 @@ inline void g18b_bind_physical_upper(
            source.chronological_older[i]!=bracket.earlier||
            source.chronological_newer[i]!=bracket.later||
            source.physical_aa_index[i]!=(source.justa[i]>0?bracket.earlier:bracket.later)||
-           source.physical_bb_index[i]!=(source.justa[i]>0?bracket.later:bracket.earlier))
-            throw std::invalid_argument("G18B source AA/BB identity overwritten");
+           source.physical_bb_index[i]!=(source.justa[i]>0?bracket.later:bracket.earlier)||
+           !g18b_equal_thermal(source.physical_sounding[0][i],
+               g18b_read_observed_thermal(
+                   frame.upper[i].soundings[source.physical_aa_index[i]]))||
+           !g18b_equal_thermal(source.physical_sounding[1][i],
+               g18b_read_observed_thermal(
+                   frame.upper[i].soundings[source.physical_bb_index[i]])))
+            throw std::invalid_argument("G18B source AA/BB identity/thermal overwritten");
     }
     mixed.justa=source.justa;
     mixed.sounding=source.physical_sounding;
