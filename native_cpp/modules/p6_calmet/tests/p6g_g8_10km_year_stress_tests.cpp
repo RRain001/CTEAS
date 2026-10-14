@@ -161,6 +161,7 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     grid.smoothing_passes={1,0,2,1,0,2,1,0,1};
     auto hour_thermo=[&](std::size_t time){
         TerrainHourG11 state;
+        state.end=begin+hours{static_cast<int>(time)+1};
         state.provenance=TerrainHourProvenance::SyntheticReferenceFixture;
         state.isurft=-1;
         state.domain_temperature_k=285.f;
@@ -224,6 +225,16 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
                 &first_thermal);
         }catch(const std::invalid_argument&){denied=true;}
         require_test(denied,"G11 contradictory identity/terrain modes accepted");
+        auto shifted=hour_thermo(0);
+        shifted.end+=hours{1};
+        denied=false;
+        try {
+            (void)selected_multisite_hour(
+                deck,surface.hourly.front(),clock.front(),prepared,grid,
+                &shifted);
+        }catch(const std::invalid_argument&){denied=true;}
+        require_test(denied,
+                     "G11 accepted thermal fields from next UTC hour");
     }
     std::uint64_t hash=1469598103934665603ULL;
     bool varied=false, crossed=false;
