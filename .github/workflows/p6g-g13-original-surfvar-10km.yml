@@ -38,10 +38,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet/p6e -B "$RUNNER_TEMP/p6e-g13" -DCMAKE_BUILD_TYPE=${{ matrix.mode }}
-          cmake --build "$RUNNER_TEMP/p6e-g13" --target p6e_surfvar_multistation_reference --parallel 2
           cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/p6g-g13" -DCMAKE_BUILD_TYPE=${{ matrix.mode }}
-          cmake --build "$RUNNER_TEMP/p6g-g13" --target cteas_p6g_g12_thermal_tests --parallel 2
+          cmake --build "$RUNNER_TEMP/p6g-g13" --target cteas_p6g_g13_surfvar_10km_reference cteas_p6g_g12_thermal_tests --parallel 2
           ctest --test-dir "$RUNNER_TEMP/p6g-g13" --output-on-failure -R '^p6g_g12_10km_2surface_observed_temp_selected_heatfx_contract$'
       - name: Unmodified original CALMET full SURFVAR 2SS 10km 12x12 direct field comparison
         shell: bash
@@ -49,7 +47,7 @@ jobs:
           set -euo pipefail
           python3 native_cpp/modules/p6_calmet/reference/compare_g13_original_surfvar_10km.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
-            --cpp "$RUNNER_TEMP/p6e-g13/p6e_surfvar_multistation_reference" \
+            --cpp "$RUNNER_TEMP/p6g-g13/cteas_p6g_g13_surfvar_10km_reference" \
             --out "$RUNNER_TEMP/g13-surfvar-10km-${{ matrix.mode }}.json"
       - name: Archive per-cell scientific gate
         uses: actions/upload-artifact@v4
