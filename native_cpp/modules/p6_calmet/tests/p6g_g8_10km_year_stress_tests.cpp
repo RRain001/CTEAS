@@ -286,8 +286,9 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     solar_inputs.domain_temperature_k=285.f;
     solar_inputs.critfn=10.f;
     const auto cells=static_cast<std::size_t>(nx*ny);
-    for(int j=0;j<ny;++j)for(int i=0;i<nx;++i)
-        solar_inputs.nearest_surface.push_back(i<nx/2?1:2);
+    // Not source physical input: assert the file-loaded station geometry
+    // reproduces SETCOM's 1-based NEARS exactly, even across the annual case.
+    solar_inputs.nearest_surface=source_setcom_nears(geo,deck);
     solar_inputs.initial_water_qh_wm2.assign(cells,0.f);
     solar_inputs.lapse_k_per_m.assign(cells,0.002f);
     const auto midnight=observed_solar_heat_selected(
