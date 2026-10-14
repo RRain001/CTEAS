@@ -284,7 +284,21 @@ int main(int argc,char** argv) {
         // Trace native CALCPF events without changing any sampler arithmetic.
         // Next H9 first residual following exact (21,1) source parity.
         const bool trace_h9_cell24=hour_index==8U && probe_hours>=9U;
-        const std::size_t trace_cell=trace_h9_cell24 ? 24U :
+        // The formerly first H9 receptor (25,1) remains the default; the
+        // selected physical first-difference receptor can be traced without
+        // editing production sampling or the preexisting accepted gates.
+        std::size_t h9_trace_index=24U;
+        if(trace_h9_cell24) {
+            if(const char* target=std::getenv("CTEAS_P7_H9_RECEIVER_CELL0")) {
+                char* end=nullptr;
+                const long index=std::strtol(target,&end,10);
+                require(end && end!=target && *end=='\0' &&
+                        index>=0L && index<2500L,
+                        "H9 receiver trace cell must be a 0-based 50x50 index");
+                h9_trace_index=static_cast<std::size_t>(index);
+            }
+        }
+        const std::size_t trace_cell=trace_h9_cell24 ? h9_trace_index :
             (hour_index==1U?1374U:646U);
         std::vector<NativeH3ReceptorRow> trace_rows;
         OriginalCalcpfIntermediateHook stage_hook;
@@ -293,7 +307,7 @@ int main(int argc,char** argv) {
                 const RiseCompSamplingState& state,
                 const OriginalCalcpfReceiverIntermediate& row){
                 if(row.receptor_index!=trace_cell)return;
-                if(trace_h9_cell24 && state.puff_id==594) {
+                if(trace_h9_cell24 && trace_cell==24U && state.puff_id==594) {
                     require(state.receptor_calm_sigma.has_value(),
                             "H9 source residual requires native LCALM CSIGMA");
                     const auto& v=state.sigmas.step;
@@ -468,13 +482,14 @@ int main(int argc,char** argv) {
             require(bool(stage_file),"H9 native receiver stages not flushed");
             std::cout<<std::setprecision(10)
                      <<"P7_REAL_H9_NATIVE_CALCPF_FIRST_DIFFERENT_CELL"
-                     <<" GRID_I=25 GRID_J=1"
+                     <<" GRID_I="<<(trace_cell%50U+1U)
+                     <<" GRID_J="<<(trace_cell/50U+1U)
                      <<" SOURCE_RECEPTOR_CELL12_PARITY=PASS"
                      <<" STAGE_RECORDS="<<total
                      <<" NATIVE_HOURLY_CELL_CONC="
-                     <<hour.receptor_concentrations.at(24)
+                     <<hour.receptor_concentrations.at(trace_cell)
                      <<" ORIGINAL_HOURLY_CELL_CONC="
-                     <<original.at(hour_index).values.at(24)
+                     <<original.at(hour_index).values.at(trace_cell)
                      <<" ORIGINAL_STAGE_PARITY=NOT_YET_COMPARED\n";
         }
         if(hour_index<6U)
