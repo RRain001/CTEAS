@@ -8,6 +8,7 @@
 #include "cteas/p6/p6g_g17c3_station_diagi.hpp"
 #include "cteas/p6/p6g_g18a_selected_comp_mixht.hpp"
 #include "cteas/p6/p6g_g18b3_upper_choice.hpp"
+#include "cteas/p6/p6g_g18b4_cgamma_clock.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -835,6 +836,9 @@ static void verify_g18b_asynchronous_upper_turnover() {
     prior.ziconv_m.assign(144,0.f);
     prior.dptt_k.assign(144,0.f);
     p6g::G18BUpperBufferClock clock;
+    p6g::G18B4CGammaClock gamma_clock;
+    std::vector<p6::CGammaState> independent_gamma(2);
+    bool saw_cgamma_conv=false,saw_cgamma_retained=false;
     bool saw_different_turnover=false,saw_negative_justa=false;
     for(std::size_t h=0;h<input.size();++h){
         const p6g::MultiHourFrame frame{
@@ -881,6 +885,63 @@ static void verify_g18b_asynchronous_upper_turnover() {
                   "G18B physical AA/BB thermal data crossed upper station");
             saw_negative_justa|=sign<0;
         }
+        // The source CGAMMA kernel is original #53; each US retains its own
+        // convective history, but no state may commit before G14 completes.
+        const std::vector<float> station_previous_ziconv{
+            h==1?300.f:0.f,0.f};
+        rejects([&]{
+            (void)gamma_clock.prepare(
+                frame,observed,station_previous_ziconv,200.f,false);
+        },"G18B4 accepted unsourced CGAMMA controls as production");
+        if(h==8) {
+            rejects([&]{
+                (void)gamma_clock.prepare(
+                    frame,observed,{0.f},200.f,true);
+            },"G18B4 accepted incomplete 2US previous ZICONV");
+        }
+        const auto gamma=gamma_clock.prepare(
+            frame,observed,station_previous_ziconv,200.f,true);
+        check(gamma.end==frame.input.end&&
+              gamma.station_ids==std::vector<int>({58424,58425})&&
+              gamma.lapse.size()==2,
+              "G18B4 per-upper source CGAMMA station state absent");
+        for(std::size_t us=0;us<2;++us) {
+            p6::Upper2022 direct;
+            direct.station_id=upper[us].station_id;
+            direct.soundings={
+                upper[us].soundings[input[h].upper[us].earlier],
+                upper[us].soundings[input[h].upper[us].later]};
+            p6::CompBufferedHour hour;
+            hour.aa_profile=0;hour.bb_profile=1;
+            hour.jorder=observed.justa[us];
+            hour.interpolated.end=input[h].end;
+            hour.interpolated.gap_seconds=observed.gap_seconds[us];
+            hour.interpolated.to_go_seconds=observed.to_go_seconds[us];
+            const auto expected=independent_gamma[us].calculate(
+                direct,hour,200.f,station_previous_ziconv[us]);
+            check(gamma.lapse[us].branch==expected.branch &&
+                  gamma.lapse[us].kelvin_per_m==expected.kelvin_per_m,
+                  "G18B4 frozen CGAMMA numerical/branch parity mismatch");
+        }
+        if(h==1) {
+            check(gamma.lapse[0].branch==1&&
+                  gamma.lapse[1].branch==0,
+                  "G18B4 first US CGAMMA convection leaked into second US");
+            saw_cgamma_conv=true;
+        }
+        if(h==2) {
+            check(gamma.lapse[0].branch==2&&
+                  gamma.lapse[1].branch==0,
+                  "G18B4 retained CGAMMA history not independent per UP");
+            saw_cgamma_retained=true;
+        }
+        rejects([&]{
+            gamma_clock.commit_after_completed_g14_hour(gamma,h);
+        },"G18B4 committed convective history before accepted G14 hour");
+        const auto repeated=gamma_clock.prepare(
+            frame,observed,station_previous_ziconv,200.f,true);
+        check(repeated.lapse[0].kelvin_per_m==gamma.lapse[0].kelvin_per_m,
+              "G18B4 failed atomic candidate retry after later COMP failure");
         rejects([&]{
             clock.commit_after_completed_g14_hour(frame,observed,h);
         },"G18B accepted a source cache commit before G14 completed this hour");
@@ -888,6 +949,12 @@ static void verify_g18b_asynchronous_upper_turnover() {
         check(second_prepare.justa==observed.justa,
               "G18B failed to retry the same source hour after later COMP failure");
         clock.commit_after_completed_g14_hour(frame,observed,h+1);
+        gamma_clock.commit_after_completed_g14_hour(gamma,h+1);
+        check(gamma_clock.committed_end()==input[h].end,
+              "G18B4 frozen CGAMMA prior state not committed after G14 hour");
+        rejects([&]{
+            gamma_clock.commit_after_completed_g14_hour(gamma,h+1);
+        },"G18B4 accepted duplicate current-hour CGAMMA state");
         check(clock.last_hour()==input[h].end,
               "G18B successful G14 hour did not advance source AA/BB clock");
         rejects([&]{
@@ -896,6 +963,8 @@ static void verify_g18b_asynchronous_upper_turnover() {
         saw_different_turnover|=observed.chronological_older[0]!=
                                 observed.chronological_older[1];
     }
+    check(saw_cgamma_conv&&saw_cgamma_retained,
+          "G18B4 did not exercise both current and retained convective history");
     check(saw_different_turnover&&saw_negative_justa &&
           input.front().end<sys_days{year{2025}/January/1} &&
           input.back().end>sys_days{year{2025}/January/1},
@@ -988,6 +1057,7 @@ int main(int argc,char** argv){
                     "G18A_PRIOR_COMP_MIXHT_STATION_DPTT_WSTARR_SOURCE_PASS "
                     "G18B_SOURCE_UP_AABB_JUSTA_TEMPORAL_PASS "
                     "G18B3_SOURCE_IUPT_CANDIDATE_NEARU_TEST_ONLY_PASS "
+                    "G18B4_PER_UP_FROZEN_CGAMMA_TRANSACTIONAL_HISTORY_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
