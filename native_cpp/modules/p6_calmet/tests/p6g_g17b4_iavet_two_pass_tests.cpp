@@ -2,6 +2,7 @@
 // original selected SURFVAR+AVETMP kernels. Actual 45-field multi-site
 // physics is NOT accepted; WIND1/FRADJ arrays are controlled stage fixtures.
 #include "cteas/p6/p6g_g17b4_iavet_two_pass.hpp"
+#include "cteas/p6/p6g_g17_staged_terrain.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -36,6 +37,8 @@ struct Input {
                    sys_seconds begin) : controls(source){
         grid.nx=12;grid.ny=12;grid.grid_km=10.f;
         grid.iwat1=50;grid.iwat2=55;grid.landuse.assign(144,20);
+        for(int j=0;j<12;++j)for(int i=0;i<12;++i)
+            grid.terrain_m.push_back(100.f+150.f*i+100.f*j);
         station_set.surface={station(58321,10000.f,10000.f),
                              station(58322,100000.f,100000.f)};
         series.begin=begin;series.end=begin+hours{1};
@@ -43,10 +46,18 @@ struct Input {
         p6g::SurfaceHour hour;
         hour.start=begin;hour.end=series.end;
         hour.by_station.resize(2);
+        hour.by_station[0].wind_valid=true;
+        hour.by_station[0].wind_speed_mps=5.f;
+        hour.by_station[0].pressure_valid=true;
+        hour.by_station[0].pressure_mb=1013.f;
         hour.by_station[0].temperature_valid=true;
         hour.by_station[0].temperature_k=281.f;
         hour.by_station[0].humidity_valid=true;
         hour.by_station[0].humidity_pct=60;
+        hour.by_station[1].wind_valid=true;
+        hour.by_station[1].wind_speed_mps=6.f;
+        hour.by_station[1].pressure_valid=true;
+        hour.by_station[1].pressure_mb=997.f;
         hour.by_station[1].temperature_valid=true;
         hour.by_station[1].temperature_k=302.f;
         hour.by_station[1].humidity_valid=true;
@@ -153,6 +164,120 @@ static void verify(const p6g::G17B4SurfaceControls& controls,
     rejects([&]{(void)invalid.make();},
             "G17B4 invented missing multi-site TEMP2D observations");
 }
+static void verify_source_staged_iavet(
+    const p6g::G17B4SurfaceControls& controls,
+    const p6g::OriginalWindControls& wind,
+    sys_seconds begin){
+    Input f(controls,begin);
+    auto surface=f.make();
+    p6g::G16ObservedProfiles profiles;
+    profiles.end=f.series.end;
+    profiles.station_ids={58321,58322,58424,58425};
+    for(int k=0;k<9;++k) {
+        const std::vector<float> u{3.f,-3.f,8.f,9.f};
+        const std::vector<float> v{4.f,4.f,-2.f,10.f};
+        profiles.wind1_u_mps.insert(
+            profiles.wind1_u_mps.end(),u.begin(),u.end());
+        profiles.wind1_v_mps.insert(
+            profiles.wind1_v_mps.end(),v.begin(),v.end());
+    }
+    profiles.wind1_present.assign(36,1);
+    profiles.inter2_u_mps=profiles.wind1_u_mps;
+    profiles.inter2_v_mps=profiles.wind1_v_mps;
+    profiles.inter2_present=profiles.wind1_present;
+    for(std::size_t k=4;k<9;++k) {
+        profiles.inter2_present[k*4]=0;
+        profiles.inter2_u_mps[k*4]=999.f;
+        profiles.inter2_v_mps[k*4]=999.f;
+    }
+    const auto terrain=p6g::prepare_g11_terrain(f.grid,35.f);
+    p6g::G17FradjSource forcing;
+    forcing.end=f.series.end;
+    forcing.provenance=p6g::TerrainHourProvenance::SyntheticReferenceFixture;
+    forcing.isurft=-1;
+    forcing.domain_temperature_k=285.f;
+    forcing.critfn=10.f;
+    forcing.lapse_k_per_m.assign(144,0.002f);
+    // No externally invented TEMP2D. The first G17B4 SURFVAR fills it
+    // using precisely G17's native WIND1 output.
+    p6g::G17SelectedTerrainFixturePhysics stages(
+        std::move(profiles),terrain,std::move(forcing));
+    p6g::StationSet all=f.station_set;
+    all.upper={station(58424,20000.f,20000.f),
+               station(58425,50000.f,50000.f)};
+    p6g::InputHour slot{};
+    slot.end=f.series.end;slot.upper.resize(2);
+    std::vector<p6g::UpperSeries> upper(2);
+    upper[0].station_id=58424;upper[1].station_id=58425;
+    p6::NativeGridMemory prior;
+    prior.zi_m.assign(144,0.f);
+    prior.ziconv_m.assign(144,0.f);
+    prior.dptt_k.assign(144,0.f);
+    p6g::MultiHourFrame frame{
+        0,f.grid,all,f.series.hourly.front(),slot,upper,
+        &wind,prior,prior,{}};
+    rejects([&]{stages.prepare_original_iavet1_before_fradj(surface);},
+            "G17B4 allowed first SURFVAR before source WIND1");
+    check(stages.run(p6::NativeHourStage::DiagnoWind1,frame).completed,
+          "G17B4 staged native WIND1 failed");
+    stages.prepare_original_iavet1_before_fradj(surface);
+    check(surface.first_stage_wind_matches(
+              stages.wind_stages().first_guess.u_mps,
+              stages.wind_stages().first_guess.v_mps),
+          "G17B4 first SURFVAR did not use actual source WIND1");
+    rejects([&]{stages.finish_original_iavet1_after_fradj(surface);},
+            "G17B4 allowed second SURFVAR before native FRADJ");
+    check(stages.run(p6::NativeHourStage::DiagnoFradj,frame).completed,
+          "G17B4 source FRADJ rejected original first TEMP2D");
+    stages.finish_original_iavet1_after_fradj(surface);
+    check(surface.second_ready(),
+          "G17B4 second original SURFVAR not computed after FRADJ");
+    const auto second=surface.final_temperature();
+    // Independent raw temperature + immutable AVETMP comparison based on
+    // this G17 instance's actual FRADJ-adjusted lower-layer winds.
+    p6e::AvetmpInput av;
+    av.nx=12;av.ny=12;av.dgrid_m=10000.f;
+    av.hafang_deg=controls.hafang_deg;av.mnmdav=controls.mnmdav;
+    av.temperature_k=surface.raw_observed_temperature();
+    const auto& fr=stages.after_fradj();
+    av.u_ms.assign(fr.u.begin(),fr.u.begin()+144);
+    av.v_ms.assign(fr.v.begin(),fr.v.begin()+144);
+    check(second==p6e::avetmp(av),
+          "G17B4 second source TEMP2D not based on native FRADJ wind");
+    bool changed=false;
+    for(std::size_t i=0;i<144;++i)
+        changed|=(second[i]!=surface.first_temperature()[i]);
+    check(changed,"G17B4 physical G17 FRADJ did not alter source TEMP2D");
+    rejects([&]{
+        stages.prepare_selected_airden(frame,surface.first_temperature());
+    },"G17B4 AIRDEN incorrectly reuses pre-FRADJ TEMP2D");
+    stages.prepare_selected_airden(frame,second);
+    check(stages.run(p6::NativeHourStage::DiagnoAirden,frame).completed,
+          "G17B4 source AIRDEN did not consume final observed TEMP2D");
+    const auto& rho=stages.selected_air_density();
+    for(std::size_t i=0;i<144;++i)
+        check(rho[i]>0.f&&std::isfinite(rho[i]),
+              "G17B4 AIRDEN invalid after two original SURFVAR passes");
+    p6g::G17SlopeHeatSource heat;
+    heat.end=f.series.end;
+    heat.provenance=p6g::TerrainHourProvenance::SyntheticReferenceFixture;
+    heat.temperature_k=surface.first_temperature();
+    heat.sensible_heat_w_m2.assign(144,-120.f);
+    rejects([&]{stages.provide_slope_heat(heat);},
+            "G17B4 SLOPE accepted obsolete first TEMP2D");
+    heat.temperature_k=second;
+    stages.provide_slope_heat(heat);
+    check(stages.run(p6::NativeHourStage::DiagnoSlope,frame).completed,
+          "G17B4 SLOPE failed with original post-FRADJ TEMP2D");
+    check(stages.run(p6::NativeHourStage::DiagnoWindbcFirstGuess,frame).completed,
+          "G17B4 first WINDBC did not preserve corrected U/V");
+    check(stages.run(p6::NativeHourStage::DiagnoInter2,frame).completed,
+          "G17B4 original selected INTER2 rejected two-pass thermal fields");
+    check(!stages.run(p6::NativeHourStage::CompGridMixht,frame).completed,
+          "G17B4 invented native multi-station COMP acceptance");
+    check(frame.next.ziconv_m==prior.ziconv_m,
+          "G17B4 selected two-pass test modified n-1 accepted P6E state");
+}
 int main(int argc,char** argv){
     try{
         check(argc==2,"G17B4 pinned met.inp required");
@@ -161,12 +286,14 @@ int main(int argc,char** argv){
         const std::string deck((std::istreambuf_iterator<char>(file)),
                                std::istreambuf_iterator<char>());
         const auto control=p6g::parse_g17b4_surface_controls(deck);
+        const auto wind=p6g::parse_original_wind_controls(deck);
         check(control.source.iavet==1&&control.mnmdav==1&&
               control.hafang_deg==30.f&&control.source.irad==1&&
               control.source.numts==5&&control.source.trad_km==500.f,
               "G17B4 original Hefei wind-averaging controls diverged");
         const auto begin=sys_days{year{2024}/January/1}+hours{2};
         verify(control,begin);
+        verify_source_staged_iavet(control,wind,begin);
         verify(control,begin+hours{11});
         auto bad=deck;
         const auto p=bad.find("! IAVET = 1");
