@@ -55,7 +55,10 @@ int main(int argc,char** argv) {
             deck.required_int("MXSAM")==99,
             "unapproved frozen 2022 CALPUFF controls");
     const auto original=read_conc_species_fields(argv[3],50,50);
-    require(original.size()==286U &&
+    // Original WROUT1 emits 143 H-3 concentration fields. Its 286
+    // period/grid descriptors are NOT 286 species fields; HE-3 is a
+    // modeled species in NSPEC=2 but has no concentration OUTPUT record.
+    require(original.size()==143U &&
             original.front().species_index==1 &&
             original.front().label.find("H-3")!=std::string::npos,
             "original 143-hour H3/HE3 concentration oracle changed");
@@ -175,15 +178,12 @@ int main(int argc,char** argv) {
                     active_before.empty(),
                     "first real original COMP hour was not preserved");
 
-        // Read-only oracle: index 2*h is original H-3 for this hour;
-        // index 2*h+1 is original HE-3, never fed into native physics.
-        const auto& reference=original.at(2U*hour_index);
-        const auto& he3=original.at(2U*hour_index+1U);
+        // Read-only oracle: exactly one gridded H-3 field per hour;
+        // HE-3 is carried in native species mass, not emitted as puff.con.
+        const auto& reference=original.at(hour_index);
         require(reference.species_index==1 &&
                 reference.label.find("H-3")!=std::string::npos &&
-                he3.species_index==2 &&
-                reference.values.size()==2500U &&
-                he3.values.size()==2500U,
+                reference.values.size()==2500U,
                 "original H3/HE3 hourly record order or field size changed");
         std::size_t matches=0U,nonzero=0U,first_cell=2500U;
         double max_abs=0.0,sum_abs=0.0,native_sum=0.0,original_sum=0.0;
