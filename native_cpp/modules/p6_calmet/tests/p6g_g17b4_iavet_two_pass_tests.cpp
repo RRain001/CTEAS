@@ -13,6 +13,7 @@
 #include "cteas/p6/p6g_g18b7_previous_ziconv.hpp"
 #include "cteas/p6/p6g_g18b8_gamma_grid.hpp"
 #include "cteas/p6/p6g_g18b9_original_gamma_controls.hpp"
+#include "cteas/p6/p6g_g18c1_avemix.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -729,6 +730,35 @@ static void verify_source_staged_iavet(
         (void)p6g::selected_comp_mixht_with_observed_upper(
             frame,selected,elustr,diagi,corrupt_source,comp);
     },"G18B accepted fabricated same-ID AA thermal observation");
+    const auto av_ctrl=p6g::g18c1_parse_original_avemix(source_metinp);
+    check(av_ctrl.iavezi==1&&av_ctrl.ilevzi==1&&av_ctrl.mnmdav==1&&
+          av_ctrl.hafang_deg==30.f,
+          "G18C1 AVEMIX source controls must come from pinned met.inp");
+    rejects([&]{
+        (void)p6g::g18c1_selected_after_mixht(
+            frame,calculated,av_ctrl,false);
+    },"G18C1 accepted unsourced candidate ZI mixing as completed COMP");
+    const auto averaged=p6g::g18c1_selected_after_mixht(
+        frame,calculated,av_ctrl,true);
+    check(averaged.zi_m.size()==144&&averaged.ziconv_m.size()==144,
+          "G18C1 source AVEMIX failed after G18A MIXHT");
+    for(std::size_t cell=0;cell<144;++cell)
+        check(std::isfinite(averaged.zi_m[cell])&&
+              std::isfinite(averaged.ziconv_m[cell])&&
+              averaged.zi_m[cell]>=0.f&&averaged.ziconv_m[cell]>=0.f,
+              "G18C1 AVEMIX invalid averaged heights");
+    const auto original_zi=calculated.candidate_next.zi_m;
+    const auto original_ziconv=calculated.candidate_next.ziconv_m;
+    auto invalid_ctrl=av_ctrl;
+    invalid_ctrl.iavezi=0;
+    rejects([&]{
+        (void)p6g::g18c1_selected_after_mixht(
+            frame,calculated,invalid_ctrl,true);
+    },"G18C1 accepted original CALMET IAVEZI=0 as averaged source");
+    check(calculated.candidate_next.zi_m==original_zi&&
+          calculated.candidate_next.ziconv_m==original_ziconv&&
+          frame.next.ziconv_m==prior.ziconv_m,
+          "G18C1 mutated pre-AVEMIX or previous-hour committed state");
     check(calculated.end==frame.input.end&&
           calculated.candidate_next.zi_m.size()==144&&
           calculated.candidate_next.ziconv_m.size()==144&&
@@ -1217,6 +1247,7 @@ int main(int argc,char** argv){
                     "G18B7_SOURCE_PREVIOUS_IIUP_JJUP_ZICONV_PASS "
                     "G18B8_SOURCE_IUPT_GAMMA_HOURLY_HANDOFF_PASS "
                     "G18B9_ORIGINAL_ZUPT_IDIOPT2_IUPT_SOURCE_CONTROLS_PASS "
+                    "G18C1_SOURCE_IAVEZI_MNMDAV_HAFANG_AVEMIX_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
