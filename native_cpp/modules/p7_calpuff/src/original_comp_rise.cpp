@@ -492,6 +492,14 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             0.5F*(before.x_cells+moved.state.x_cells),
             0.5F*(before.y_cells+moved.state.y_cells),met.nx,met.ny);
         const auto index=dry_cell.offset_0based;
+        // COMP retains the pre-ADVECT wind/stability/roughness authority
+        // for aerodynamic and deposition-layer resistance (RA/RD).
+        // Only TDEGK and QSW must follow post-ADVECT midpoint IXMET/IYMET
+        // for stomatal pore/foliage resistance (RS/RF).
+        // Actual 36-step original puff200 gate after switching *all* fields
+        // to midpoint: RF/QM bitwise 36/36, but RA/RD fell from 36/36 to
+        // 14/36. Preserve the independently accepted pre-step RA/RD inputs.
+        const auto wind_index=sampled.cell.offset_0based;
         const auto has_cell=[index](const auto& field){
             return index<field.size();
         };
@@ -502,16 +510,19 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
                 has_cell(met.wstar)&&
                 has_cell(statics.land_use)&&
                 has_cell(statics.roughness_m)&&
-                has_cell(statics.leaf_area_index),
+                has_cell(statics.leaf_area_index) &&
+                wind_index<met.ustar.size() &&
+                wind_index<met.el.size() &&
+                wind_index<statics.roughness_m.size(),
                 "native DRY requires exact METFM1 hourly and static cell inputs");
         DryDepositionEnvironment e;
         e.u10_ms=met.u[index];
         e.v10_ms=met.v[index];
         e.land_use=statics.land_use[index];
-        e.roughness_m=statics.roughness_m[index];
+        e.roughness_m=statics.roughness_m[wind_index];
         e.temperature_k=met.tempk[index];
-        e.friction_velocity_ms=met.ustar[index];
-        e.monin_obukhov_m=met.el[index];
+        e.friction_velocity_ms=met.ustar[wind_index];
+        e.monin_obukhov_m=met.el[wind_index];
         e.leaf_area_index=statics.leaf_area_index[index];
         e.shortwave_w_m2=met.qsw[index];
         e.vegetation_state=setup.vegetation_state;
