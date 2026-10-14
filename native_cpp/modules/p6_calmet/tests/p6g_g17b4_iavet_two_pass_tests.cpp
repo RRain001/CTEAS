@@ -348,6 +348,14 @@ static void verify_source_staged_iavet(
           elustr.el_m.size()==144 &&
           elustr.stable_cells+elustr.daytime_cells==144,
           "G17C2 original ELUSTR branch contract failed");
+    const auto utc_h=duration_cast<hours>(
+        f.series.begin-floor<days>(f.series.begin)).count();
+    if(utc_h==14)
+        check(elustr.stable_cells>0,
+              "G17C2 night fixture failed to exercise frozen stable ELUSTR");
+    if(utc_h==2)
+        check(elustr.daytime_cells>0,
+              "G17C2 daylight fixture failed to exercise frozen daytime ELUSTR");
     // Independently call the exact two immutable PR #53 physics headers.
     // One branch is masked out as water at each cell, as the production
     // single-site numerical driver already does before merging the result.
@@ -444,6 +452,7 @@ int main(int argc,char** argv){
         const auto begin=sys_days{year{2024}/January/1}+hours{2};
         verify(control,begin);
         verify_source_staged_iavet(control,wind,begin);
+        verify_source_staged_iavet(control,wind,begin+hours{12});
         verify(control,begin+hours{11});
         // Accept original Fortran freeform control spacing, not a
         // hardcoded literal (e.g. source uses ! IAVET =   1 !).
