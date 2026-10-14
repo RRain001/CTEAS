@@ -103,6 +103,11 @@ inline OriginalWindControls parse_original_wind_controls(
     array("BIAS",v.bias);
     array("NSMTH",v.nsmth);
     array("NINTR2",v.nintr2);
+    // READCF calmet.for L26579-L26612 is a mandatory post-parse mutation.
+    // In accepted PR #53 realcase_wind_field_main.cpp L280-288, IEXTRP<0
+    // forces surface-only first layer BIAS(1)=-1, even when the user's
+    // met.inp says BIAS(1)=0. This is source-effective state, not raw input.
+    if(v.iextrp<0&&v.noobs!=2)v.bias[0]=-1.f;
     // This is the fully source-scoped path verified by G9/G10/G11. Other
     // modes require their own direct original-Fortran acceptance first.
     if(v.iextrp!=-4||v.iprog!=0||v.noobs!=0||
