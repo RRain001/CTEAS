@@ -61,6 +61,31 @@ int main(){
   ctrl.calm_mdisp3->original_turbulence.svmin.fill(.5F);
   ctrl.calm_mdisp3->original_turbulence.swmin.fill(.06F);
 
+  // Source COMP L10863-10883: JSUP is applied BEFORE SWMIN lookup,
+  // only above the bounded mixed layer and only when PGT ISTAB<5.
+  // The frozen original H9 /CSIGMA/ audit found 0.03 m/s (JSUP=5)
+  // rather than the unadjusted PGT C value 0.08 m/s.
+  check(original_comp_turbset_jdstab(3,5,160.0F,50.0F)==5 &&
+        original_comp_turbset_jdstab(3,5,50.0F,50.0F)==3 &&
+        original_comp_turbset_jdstab(3,0,160.0F,50.0F)==3 &&
+        original_comp_turbset_jdstab(5,6,160.0F,50.0F)==5 &&
+        original_comp_turbset_jdstab(6,5,160.0F,50.0F)==6,
+        "source COMP above-lid JSUP conditional was not ported");
+  auto source_swmin=ctrl.calm_mdisp3->original_turbulence;
+  source_swmin.swmin[2]=.08F; // Original land C, SWMIN(3,1)
+  source_swmin.swmin[4]=.03F; // Original land E, SWMIN(5,1)
+  const auto source_upper=original_turbset_mdisp3_minimum(
+      source_swmin,original_comp_turbset_jdstab(3,5,160.0F,50.0F),1);
+  const auto source_lower=original_turbset_mdisp3_minimum(
+      source_swmin,original_comp_turbset_jdstab(3,5,49.0F,50.0F),1);
+  check(source_upper.sigw_ms==.03F && source_lower.sigw_ms==.08F,
+        "original H9 MDISP3 above-PBL SWMIN .03/.08 selector drift");
+  std::cout<<"P7_ORIGINAL_COMP_JSUP_TURBSET_ABOVE_PBL=PASS"
+           <<" ABOVE_SIGW="<<source_upper.sigw_ms
+           <<" BELOW_SIGW="<<source_lower.sigw_ms
+           <<" JSUP5_FROM_SOURCE_DECK=REQUIRED"
+           <<" HEFEI_H9_REAL4=NOT_YET_ACCEPTED\\n";
+
   // Use identical native puff history and wind to exercise the
   // original stable ELS>0 logarithmic SIGTZ inversion in production,
   // independently of the ELS<=0 physical substeps below.
