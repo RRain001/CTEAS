@@ -97,7 +97,8 @@ inline SelectedBridgeHour selected_multisite_hour(
     if(grid.synthetic_identity_diagno_tail&&grid.source_terrain_diagno_tail)
         throw std::invalid_argument("G11 identity and terrain DIAGNO audit modes conflict");
     if((thermal_hour!=nullptr)!=grid.source_terrain_diagno_tail ||
-       (grid.source_terrain_diagno_tail&&!grid.terrain))
+       (grid.source_terrain_diagno_tail&&!grid.terrain) ||
+       (thermal_hour!=nullptr&&thermal_hour->end!=input.end))
         throw std::invalid_argument("G11 original terrain needs explicit GEO and hourly thermal input");
     for(std::size_t i=1;i<grid.zface_m.size();++i)
         if(!(grid.zface_m[i]>grid.zface_m[i-1]))
