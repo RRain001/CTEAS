@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -141,7 +142,21 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
         {upper1_file,upper2_file},{58424,58425});
     // Expand geographic station separation from 35km to 100km in the
     // 120km annual test, while keeping the short 60km case unchanged.
-    const std::string deck_text=
+    std::ostringstream controls;
+    controls << "! PMAP = UTM !\\n"
+             << "! DATUM = WGS-84 !\\n"
+             << "! IUTMZN = 50 !\\n"
+             << "! UTMHEM = N !\\n"
+             << "! NX = " << nx << " !\\n"
+             << "! NY = " << ny << " !\\n"
+             << "! NZ = 9 !\\n"
+             << "! DGRIDKM = 10.0 !\\n"
+             << "! XORIGKM = 510.885 !\\n"
+             << "! YORIGKM = 3531.269 !\\n"
+             << "! NSSTA = 2 !\\n"
+             << "! NUSTA = 2 !\\n"
+             << "! ZFACE = 0,20,40,80,160,320,640,1200,2000,3000 !\\n";
+    const std::string deck_text=controls.str()+
         (nx>6 ? std::string(
             "! SS2 = 'S2' 58322 610.885 3631.269 0 10.0 !\n"
             "! US2 = 'U2' 58425 600.885 3621.269 0 !\n") :
