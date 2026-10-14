@@ -20,6 +20,7 @@
 #include "cteas/p6/p6g_g18c5_selected_p6f_fields.hpp"
 #include "cteas/p6/p6g_g18c6_selected_p6f_dataset.hpp"
 #include "cteas/p6/p6g_g18d1_p6f_precommit.hpp"
+#include "cteas/p6/p6g_g18d3_heat_source_defaults.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -320,9 +321,16 @@ static void verify_source_staged_iavet(
     for(std::size_t i=0;i<144;++i)
         changed|=(second[i]!=surface.first_temperature()[i]);
     check(changed,"G17B4 physical G17 FRADJ did not alter source TEMP2D");
-    p6g::G17CSelectedHeatInputs ancillary;
-    ancillary.coefficients={990.f,-30.f,-0.75f,3.4f,0.f,0.f,1.f};
-    ancillary.initial_water_qh_wm2.assign(144,0.f);
+    auto ancillary=p6g::g18d3_source_hflux_inputs(
+        f.grid,source_metinp,false);
+    check(ancillary.coefficients.hc1==5.31e-13f&&
+          ancillary.coefficients.hc2==60.f&&
+          ancillary.coefficients.hc3p1==0.12f+1.f,
+          "G18D3 default vendor HC1/HC2/HC3 source values mismatched");
+    rejects([&]{
+        (void)p6g::g18d3_source_hflux_inputs(
+            f.grid,source_metinp+"\n! HC1 = 0. !",true);
+    },"G18D3 ignored met.inp HFLUX override before source READCF parity");
     rejects([&]{
         (void)p6g::selected_iavet1_heat_after_fradj(
             f.grid,all,f.series.hourly.front(),surface,ancillary);
@@ -352,8 +360,10 @@ static void verify_source_staged_iavet(
     // second-pass TEMP2D, actual solar and cloud from 2SS, never the first.
     p6e::HeatFluxInput hi;
     hi.nx=12;hi.ny=12;hi.mcloud=1;hi.water_first=50;hi.water_last=55;
-    hi.ha1=990.f;hi.ha2=-30.f;hi.hb1=-0.75f;hi.hb2=3.4f;
-    hi.hc1=0.f;hi.hc2=0.f;hi.hc3p1=1.f;
+    const auto& coeff=ancillary.coefficients;
+    hi.ha1=coeff.ha1;hi.ha2=coeff.ha2;
+    hi.hb1=coeff.hb1;hi.hb2=coeff.hb2;
+    hi.hc1=coeff.hc1;hi.hc2=coeff.hc2;hi.hc3p1=coeff.hc3p1;
     hi.station_cloud={2,7};hi.nearest=selected.nearest_surface;
     hi.landuse=f.grid.landuse;hi.sun=selected.sun_sine;
     hi.temp_k=second;hi.cloud_grid.assign(144,0.f);
@@ -1557,6 +1567,7 @@ int main(int argc,char** argv){
                     "G18C5_SELECTED_45_P6F_NO_REFERENCE_BACKFILL_PASS "
                     "G18C6_SELECTED_CALMET_DAT21_BINARY_NO_REFERENCE_STATICS_PASS "
                     "G18D1_P6F_45_RECORDS_G14_PRECOMMIT_ORIGIN_PASS "
+                    "G18D3_LITERAL_VENDOR_HFLUX_DEFAULTS_SOURCE_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
