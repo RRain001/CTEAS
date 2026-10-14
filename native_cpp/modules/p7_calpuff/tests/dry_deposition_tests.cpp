@@ -5,6 +5,8 @@
 #include "cteas/puff/control.hpp"
 #include "cteas/puff/dry_deposition.hpp"
 
+#include <bit>
+#include <cstdint>
 #include <cmath>
 #include <fstream>
 #include <iterator>
@@ -208,6 +210,20 @@ void test_setup_from_control() {
     // DRYI: pdiff = .1509 cm**2/s -> 1.509e-5 m**2/s, rm = 0 s/cm -> 0 s/m
     require_close_relative(setup.diffusivity_m2_s[0], 1.509e-5, 1.0e-6, "diffusivity to m**2/s");
     require_close_relative(setup.mesophyll_resistance_s_m[0], 0.0, 1.0e-6, "mesophyll resistance");
+    // Vendor DRYI L26969 first stores 0.1509 as REAL*4 and only then
+    // multiplies by the REAL*4 literal 1.E-4.  A double multiplication
+    // rounded once to float gives the adjacent, incorrect binary32 word.
+    const float vendor_pdiff=0.1509F*1.0e-4F;
+    const float incorrectly_widened=static_cast<float>(0.1509*1.0e-4);
+    require(std::bit_cast<std::uint32_t>(vendor_pdiff)==0x377d2b0fU &&
+                std::bit_cast<std::uint32_t>(incorrectly_widened)==0x377d2b0eU,
+            "DRYI regression fixture must distinguish REAL4 from promoted REAL8");
+    require(std::bit_cast<std::uint32_t>(
+                static_cast<float>(setup.diffusivity_m2_s[0]))==
+                std::bit_cast<std::uint32_t>(vendor_pdiff),
+            "DRYI input .1509 must be converted to m2/s in two REAL4 steps");
+    std::cout<<"P7F_DRYI_REAL4_DIFFUSIVITY_BITS=PASS H3_PDIFF=0x377d2b0f"
+                " DOUBLE_PROMOTION_REJECTED=YES\\n";
     // DRYI: sc = vair/pdiff, rd1 = d1*sc**d2/vk  (vair = 0.15e-4, d1 = 2.0, d2 = 2/3, vk = 0.4)
     const double schmidt = 0.15e-4 / 1.509e-5;
     require_close_relative(setup.deposition_layer_term[0],
