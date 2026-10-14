@@ -94,8 +94,6 @@ inline Wind1MultiField multi_station_wind1_firstguess(
             raw[l]=r2<1.f?1.f:1.f/r2;
             total+=raw[l];
         }
-        if(!(total>0.f)&&std::isfinite(total))
-            throw std::invalid_argument("G9 WIND1 empty inverse-square weights");
         if(!std::isfinite(total)||total<=0.f)
             throw std::invalid_argument("G9 WIND1 singular inverse-square total");
         const float inverse=1.f/total;
@@ -119,6 +117,42 @@ inline Wind1MultiField multi_station_wind1_firstguess(
             }else{
                 beta=(-bias+(1.f+bias)*surface_base)/surface_base;
                 gamma=1.f+bias;
+            }
+            // Preserve exactly the frozen one-SS/one-US FLOAT32 execution
+            // order for *any* grid shape, especially the near-source
+            // ICALM=0 branch where a second normalization changes results.
+            // This is the 1+1 algebraic case of the general method, not a
+            // 50x50 or 100m hardcoded escape hatch.
+            if(in.surface_count==1&&in.upper_count==1) {
+                const std::size_t zs=k*nc,zu=zs+1;
+                if(!in.present[zs])
+                    throw std::invalid_argument("G9 WIND1 solitary surface missing");
+                float vsurface=beta*base[0];
+                float vupper=gamma*base[1];
+                if(in.icalm==0&&in.surface_speeds_mps[0]<0.0001f&&k>0){
+                    if(vsurface<0.9999f)
+                        vupper=vupper/(1.f-vsurface);
+                    else
+                        vupper=base[1]/(1.f-base[0]);
+                    vsurface=0.f;
+                }
+                if(bias> -0.9999f&&!in.present[zu]){
+                    if(vupper==1.f)
+                        throw std::invalid_argument("G9 WIND1 missing forced upper wind");
+                    vsurface=vsurface/(1.f-vupper);
+                    vupper=0.f;
+                }
+                const float u=vsurface*in.station_u_mps[zs]+
+                              vupper*in.station_u_mps[zu];
+                const float v=vsurface*in.station_v_mps[zs]+
+                              vupper*in.station_v_mps[zu];
+                if(!std::isfinite(u)||!std::isfinite(v))
+                    throw std::invalid_argument("G9 WIND1 nonfinite single-pair wind");
+                const std::size_t idx=k*cells+
+                    static_cast<std::size_t>(j-1)*static_cast<std::size_t>(in.nx)+
+                    static_cast<std::size_t>(i-1);
+                out.u_mps[idx]=u;out.v_mps[idx]=v;
+                continue;
             }
             float kept=0.f;
             for(std::size_t l=0;l<nc;++l){
