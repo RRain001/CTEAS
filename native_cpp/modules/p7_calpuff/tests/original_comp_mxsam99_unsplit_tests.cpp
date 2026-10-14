@@ -1185,6 +1185,11 @@ INPUT GROUP: 7 -- Chemical parameters for dry deposition of gases
         calm_control.calm_mdisp3->original_turbulence.swmin.fill(0.06F);
         auto calm_point=single_mass;
         calm_point.point.x_final_m=0.0F;
+        // Enforce the actual original PRFIN WSSTK<WSSTK0 branch rather
+        // than forging zero XFINAL while retaining a high stack wind.
+        calm_point.point.stack_wind_speed_ms=0.2F;
+        calm_point.point.x_final_buoyancy_m=0.0F;
+        calm_point.point.x_final_momentum_m=0.0F;
         calm_point.cadence.wind_speed_ms=0.2F;
         const auto original_calm_receptor=make_original_flat_calcpf_sampler(
             plume_grid,100.0F,3600.0F,3.0F,
