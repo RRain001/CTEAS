@@ -61,7 +61,7 @@ c --- Diagnostic COMMON is entirely separate from any CALPUFF physics COMMON.
       return
       end
       subroutine p7enddump(ii,ksam)
-      integer ii,ksam,hit,epid,step_count
+      integer ii,ksam,hit,epid,step_count,traceunit
       real rat,sig0,strain,adj,sige,vt,vd
       common /p7dgend/ hit,epid,rat,sig0,strain,adj,sige,vt,vd
       save step_count
@@ -69,11 +69,11 @@ c --- Diagnostic COMMON is entirely separate from any CALPUFF physics COMMON.
       step_count=step_count+1
       if(step_count.ne.3874) return
       if(ii.ne.138.or.ksam.ne.23.or.hit.ne.2.or.epid.ne.ii) stop 97
-      open(unit=98,file='dgm_setpuf_end_3874.bin',
+      open(newunit=traceunit,file='dgm_setpuf_end_3874.bin',
      &     form='unformatted',access='stream',status='replace')
-      write(98) step_count,ii,ksam,hit,
+      write(traceunit) step_count,ii,ksam,hit,
      &          rat,sig0,strain,adj,sige,vt,vd
-      close(98)
+      close(traceunit)
       return
       end
 """
