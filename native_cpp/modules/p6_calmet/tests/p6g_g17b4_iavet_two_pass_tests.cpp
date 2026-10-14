@@ -767,6 +767,106 @@ static void verify_source_staged_iavet(
     check(frame.next.ziconv_m==prior.ziconv_m,
           "G17C selected heat bridge modified n-1 accepted P6E state");
 }
+static void verify_g18b_asynchronous_upper_turnover() {
+    const auto begin=sys_days{year{2024}/December/31}+hours{18};
+    p6g::StationSet sites;
+    sites.surface={station(58321,10000.f,10000.f),
+                   station(58322,30000.f,30000.f)};
+    sites.upper={station(58424,20000.f,20000.f),
+                 station(58425,40000.f,40000.f)};
+    p6g::GeoGrid grid;
+    grid.nx=12;grid.ny=12;grid.zone=50;grid.hemisphere='N';
+    grid.grid_km=10.f;grid.landuse.assign(144,20);
+    p6g::SurfaceSeries surf;
+    surf.begin=begin;surf.end=begin+hours{30};
+    surf.station_ids={58321,58322};
+    for(int h=0;h<30;++h){
+        p6g::SurfaceHour sh;
+        sh.start=begin+hours{h};sh.end=sh.start+hours{1};
+        sh.by_station.resize(2);
+        surf.hourly.push_back(sh);
+    }
+    std::vector<p6g::UpperSeries> upper(2);
+    for(int site=0;site<2;++site){
+        auto& row=upper[static_cast<std::size_t>(site)];
+        row.station_id=site?58425:58424;
+        const int offset=site?-8:-12;
+        for(int h=offset;h<52;h+=12){
+            p6::UpperSounding profile;
+            profile.station_id=row.station_id;
+            profile.start=begin+hours{h};profile.end=profile.start;
+            for(int k=0;k<4;++k){
+                p6::UpperLevel level;
+                level.height_valid=true;level.temperature_valid=true;
+                level.height_lgl_m=500.f*static_cast<float>(k);
+                level.temperature_k=280.f+static_cast<float>(site*10+h/12+k);
+                profile.data.push_back(level);
+            }
+            row.soundings.push_back(std::move(profile));
+        }
+    }
+    const auto input=p6g::bind_original_calmet_station_inputs(sites,surf,upper);
+    check(input.size()==30,"G18B cross-year station inputs truncated");
+    p6g::OriginalWindControls controls;
+    p6::NativeGridMemory prior;
+    prior.zi_m.assign(144,0.f);
+    prior.ziconv_m.assign(144,0.f);
+    prior.dptt_k.assign(144,0.f);
+    p6g::G18BUpperBufferClock clock;
+    bool saw_different_turnover=false,saw_negative_justa=false;
+    for(std::size_t h=0;h<input.size();++h){
+        const p6g::MultiHourFrame frame{
+            h,grid,sites,surf.hourly[h],input[h],upper,&controls,prior,prior,{}};
+        if(h==8){
+            auto bad_upper=upper;
+            bad_upper[1].soundings[input[h].upper[1].later].station_id=12345;
+            const p6g::MultiHourFrame bad{
+                h,grid,sites,surf.hourly[h],input[h],bad_upper,
+                &controls,prior,prior,{}};
+            rejects([&]{(void)clock.select(bad);},
+                    "G18B advanced first upper on second-station failure");
+        }
+        const auto observed=clock.select(frame);
+        check(observed.end==input[h].end &&
+              observed.justa.size()==2 &&
+              observed.source_reads.size()==2 &&
+              clock.last_hour()==input[h].end,
+              "G18B hourly clock or source UP count failed");
+        auto empty=p6e::MixhtObservedMcInput{};
+        p6g::g18b_bind_physical_upper(empty,frame,observed);
+        check(empty.justa==observed.justa &&
+              empty.sounding[0].size()==2 &&
+              empty.sounding[1].size()==2,
+              "G18B failed frozen MIXHT physical AA/BB array binding");
+        for(std::size_t site=0;site<2;++site) {
+            const auto earlier=input[h].upper[site].earlier;
+            const auto later=input[h].upper[site].later;
+            const auto sign=(earlier%2==0)?1:-1;
+            check(observed.justa[site]==sign &&
+                  observed.chronological_older[site]==earlier &&
+                  observed.chronological_newer[site]==later &&
+                  observed.turnovers[site]==static_cast<int>(earlier) &&
+                  observed.source_reads[site]==static_cast<int>(later+1) &&
+                  observed.physical_aa_index[site]==(sign>0?earlier:later) &&
+                  observed.physical_bb_index[site]==(sign>0?later:earlier),
+                  "G18B source independent upper buffer turnover parity failed");
+            const auto aa=observed.physical_aa_index[site];
+            const auto bb=observed.physical_bb_index[site];
+            check(empty.sounding[0][site].temp_k[0]==
+                      upper[site].soundings[aa].data[0].temperature_k &&
+                  empty.sounding[1][site].temp_k[0]==
+                      upper[site].soundings[bb].data[0].temperature_k,
+                  "G18B physical AA/BB thermal data crossed upper station");
+            saw_negative_justa|=sign<0;
+        }
+        saw_different_turnover|=observed.chronological_older[0]!=
+                                observed.chronological_older[1];
+    }
+    check(saw_different_turnover&&saw_negative_justa &&
+          input.front().end<sys_days{year{2025}/January/1} &&
+          input.back().end>sys_days{year{2025}/January/1},
+          "G18B did not test asynchronous multi-UP rollover and cross-year clock");
+}
 int main(int argc,char** argv){
     try{
         check(argc==2,"G17B4 pinned met.inp required");
@@ -784,6 +884,7 @@ int main(int argc,char** argv){
         verify(control,begin);
         verify_source_staged_iavet(control,wind,begin);
         verify_source_staged_iavet(control,wind,begin+hours{12});
+        verify_g18b_asynchronous_upper_turnover();
         verify(control,begin+hours{11});
         // Accept original Fortran freeform control spacing, not a
         // hardcoded literal (e.g. source uses ! IAVET =   1 !).
