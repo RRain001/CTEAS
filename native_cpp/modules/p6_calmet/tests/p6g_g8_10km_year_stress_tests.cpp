@@ -1,3 +1,4 @@
+#include "cteas/p6/p6g_case_loader.hpp"
 #include "cteas/p6/p6g_selected_hour_bridge.hpp"
 #include "cteas/p6/p6g_observed_thermal_hour.hpp"
 #include "cteas/p6/read_geo_dynamic.hpp"
@@ -151,6 +152,25 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
         "! US1 = 'U1' 58424 520.885 3541.269 0 !\n";
     const auto deck=original_calmet_multi_station_deck(
         deck_text,510.885f,3531.269f,2,2);
+    // G14B: the SAME on-disk original-format GEO/SURF/multi-UP sources
+    // now create the accepted-stage dynamic hourly authority. No other
+    // test-only input objects may be substituted by the case loader.
+    const std::string deck_file="p6g_g14_10km_met.inp";
+    {
+        std::ofstream input(deck_file);
+        require_test(static_cast<bool>(input),"cannot write G14 original met.inp station fixture");
+        input<<deck_text;
+        require_test(static_cast<bool>(input),"G14 met.inp station fixture write failed");
+    }
+    const auto file_backed=load_unified_multistation_case(
+        {geo_file,surface_file,{upper1_file,upper2_file},deck_file,
+         {nx,ny,50,'N',510.885,3531.269,10.0},2,2});
+    require_test(file_backed.planned_hours()==static_cast<std::size_t>(expected_hours)&&
+                 file_backed.grid().nx==nx&&file_backed.grid().ny==ny&&
+                 file_backed.stations().surface.size()==2&&
+                 file_backed.stations().upper.size()==2&&
+                 file_backed.completed_hours()==0,
+                 "G14B source-file-backed single hourly authority not initialized");
     const auto clock=bind_original_calmet_station_inputs(deck,surface,upper);
     require_test(clock.size()==static_cast<std::size_t>(expected_hours),
                  "year duration not present in G8 input chain");
@@ -328,6 +348,7 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     std::remove(upper1_file.c_str());
     std::remove(upper2_file.c_str());
     std::remove(geo_file.c_str());
+    std::remove("p6g_g14_10km_met.inp");
 }
 int main(){
     try{
