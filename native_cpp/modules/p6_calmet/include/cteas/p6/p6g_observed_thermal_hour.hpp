@@ -108,6 +108,10 @@ inline G12ThermalResult source_selected_g12_thermal_hour(
     heat.nearest=forcing.nearest_surface;
     heat.landuse=geo.landuse;
     heat.sun=forcing.sun_sine;
+    // HEATFX requires a correctly sized cloud-grid workspace even for
+    // MCLOUD=1, where station-cloud values (via NEARS) are authoritative.
+    // Zeros here are unreachable scratch storage, not inferred cloud data.
+    heat.cloud_grid.assign(n,0.f);
     heat.temp_k=observed.temp2d_k;
     heat.albedo=geo.albedo;
     heat.bowen=geo.bowen;
