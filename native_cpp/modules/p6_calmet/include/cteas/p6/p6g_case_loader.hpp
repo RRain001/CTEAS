@@ -116,6 +116,10 @@ inline UnifiedMultistationHourlyScheduler load_unified_multistation_case(
         throw std::runtime_error("P6G G14B met.inp unreadable");
     validate_original_calmet_deck_grid(
         text,paths.expected_grid,paths.surface_count,paths.upper_count);
+    // Source wind controls are materialized exactly once, here, from the
+    // same met.inp validated for GEO/SS/US input geometry. READCF effective
+    // BIAS(1) mutation belongs to this authoritative model state.
+    const auto wind_controls=parse_original_wind_controls(text);
     // GEO.DAT origin and met.inp station origin are taken from one
     // authoritative numerical-grid config, never geographic case centre.
     auto geo=read_geo_dynamic(paths.geo_file,paths.expected_grid);
@@ -131,6 +135,6 @@ inline UnifiedMultistationHourlyScheduler load_unified_multistation_case(
     auto upper=read_upper_station_set(paths.upper_files,upper_ids);
     return UnifiedMultistationHourlyScheduler(
         std::move(geo),std::move(stations),
-        std::move(surface),std::move(upper));
+        std::move(surface),std::move(upper),wind_controls);
 }
 } // namespace cteas::calmet::p6g
