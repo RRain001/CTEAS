@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 import original_puff_step_dump as base
 
-RECORD=struct.Struct("<3i8f")
+RECORD=struct.Struct("<3i11f")
 FULL_DGM_SHA="cbbdaa29c6222e6ca6aefe9f605ad13e7dd6d258f6ad243afcac07cb578108c6"
 HELPERS="""
 c --- Diagnostic-only COMP MASS COMMON, not part of source/physical COMMON.
@@ -35,14 +35,18 @@ c --- Diagnostic-only COMP MASS COMMON, not part of source/physical COMMON.
       subroutine p7massbefore(ii,ksam,oldmass)
       integer ii,ksam,seq,seen,episode,substep
       real oldmass,prior
-      real massvc,massconst
+      real massvc,massconst,massra,massrd,massrc
       common /p7masvc/ massvc,massconst
+      common /p7masres/ massra,massrd,massrc
       common /p7masdiag/ seq,seen,episode,substep,prior
       if(ii.ne.200) return
       if(episode.ne.ii.or.substep.ne.ksam) stop 92
       prior=oldmass
       massvc=0.
       massconst=0.
+      massra=0.
+      massrd=0.
+      massrc=0.
       seen=1
       return
       end
@@ -55,10 +59,23 @@ c --- Diagnostic-only COMP MASS COMMON, not part of source/physical COMMON.
       massconst=c
       return
       end
+      subroutine p7massres(j,ra,rd,rc)
+      integer j,seq,seen,episode,substep
+      real ra,rd,rc,prior,massra,massrd,massrc
+      common /p7masdiag/ seq,seen,episode,substep,prior
+      common /p7masres/ massra,massrd,massrc
+      if(episode.ne.200.or.j.ne.1) return
+      massra=ra
+      massrd=rd
+      massrc=rc
+      return
+      end
       subroutine p7massafter(ii,ksam,newmass,frac,vd,ratio,tsamp)
       integer ii,ksam,seq,seen,episode,substep,unit
       real newmass,frac,vd,ratio,tsamp,prior,massvc,massconst
+      real massra,massrd,massrc
       common /p7masvc/ massvc,massconst
+      common /p7masres/ massra,massrd,massrc
       logical opened
       save opened,unit
       data opened/.false./
@@ -71,7 +88,7 @@ c --- Diagnostic-only COMP MASS COMMON, not part of source/physical COMMON.
          opened=.true.
       endif
       write(unit) seq,ii,ksam,prior,newmass,frac,vd,ratio,tsamp,
-     &            massvc,massconst
+     &            massvc,massconst,massra,massrd,massrc
       seen=2
       return
       end
@@ -115,6 +132,10 @@ def main()->None:
     dry_line_start=dry_entry+dry_match.start()
     dry_end=source.index("\n",dry_line_start)+1
     source=source[:dry_end]+"          call p7massvc(jp,f1,const)\n"+source[dry_end:]
+    vd_anchor="vd(j)=1.0/(ra+rd+rc)"
+    vdpos=source.index(vd_anchor)
+    endpos=source.index("\n",vdpos)+1
+    source=source[:endpos]+"      call p7massres(j,ra,rd,rc)\n"+source[endpos:]
     target.write_text(source+HELPERS,encoding="latin-1")
     alias=base._alias_tree(vendor,out/"include-alias")
     executable=out/"bin"/"puff-original-mass.x"
@@ -146,7 +167,8 @@ def main()->None:
               f" QOLD={row[3]:.9g} QNEW={row[4]:.9g}"
               f" FRACDRY={row[5]:.9g} VD={row[6]:.9g}"
               f" VDPVD={row[7]:.9g} TSAMP={row[8]:.9g}"
-              f" VCBAR={row[9]:.9g} CONST={row[10]:.9g}")
+              f" VCBAR={row[9]:.9g} CONST={row[10]:.9g}"
+              f" RA={row[11]:.9g} RD={row[12]:.9g} RC={row[13]:.9g}")
 
 if __name__=="__main__":
     main()
