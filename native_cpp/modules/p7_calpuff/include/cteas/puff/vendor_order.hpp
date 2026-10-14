@@ -73,10 +73,12 @@ public:
     void completed(VendorSubstepPhase phase) {
         if (next_ >= kVendorSubstepOrder.size() || phase != kVendorSubstepOrder[next_])
             throw std::logic_error("P7 original COMP phase order violation");
+        const bool missing_qold=(dry_enabled_ || receptors_enabled_) &&
+                                !qold_captured_;
+        const bool missing_dry=dry_enabled_ && !dry_completed_;
+        const bool missing_receptor=receptors_enabled_ && !receptor_completed_;
         if (phase == VendorSubstepPhase::CommitNextStepHistory &&
-            ((dry_enabled_ || receptors_enabled_) && !qold_captured_ ||
-             (dry_enabled_ && !dry_completed_) ||
-             (receptors_enabled_ && !receptor_completed_)))
+            (missing_qold || missing_dry || missing_receptor))
             throw std::logic_error("P7 next-step history before QOLD/DRY/CALCPF");
         ++next_;
     }
