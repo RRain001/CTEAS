@@ -10,6 +10,7 @@
 #include "cteas/p6/p6g_g18b3_upper_choice.hpp"
 #include "cteas/p6/p6g_g18b4_cgamma_clock.hpp"
 #include "cteas/p6/p6g_g18b5_upper_temp_faces.hpp"
+#include "cteas/p6/p6g_g18b7_previous_ziconv.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -844,6 +845,14 @@ static void verify_g18b_asynchronous_upper_turnover() {
     bool saw_cgamma_conv=false,saw_cgamma_retained=false;
     bool saw_different_turnover=false,saw_negative_justa=false;
     for(std::size_t h=0;h<input.size();++h){
+        prior.ziconv_m.assign(144,0.f);
+        if(h==1) {
+            const auto first=p6::upper_reference_cell(
+                {sites.upper[0].local_x_m,sites.upper[0].local_y_m},
+                grid.nx,grid.ny,grid.grid_km*1000.f);
+            prior.ziconv_m[static_cast<std::size_t>(first.j-1)*grid.nx+
+                           static_cast<std::size_t>(first.i-1)]=300.f;
+        }
         const p6g::MultiHourFrame frame{
             h,grid,sites,surf.hourly[h],input[h],upper,&controls,prior,prior,{}};
         if(h==8){
@@ -917,6 +926,20 @@ static void verify_g18b_asynchronous_upper_turnover() {
         // convective history, but no state may commit before G14 completes.
         const std::vector<float> station_previous_ziconv{
             h==1?300.f:0.f,0.f};
+        const auto sampled=p6g::g18b7_source_previous_station_ziconv(
+            frame,observed);
+        check(sampled==station_previous_ziconv,
+              "G18B7 previous-ZICONV must sample source IIUP/JJUP per US");
+        if(h==4){
+            auto modified=sites;
+            std::swap(modified.upper[0],modified.upper[1]);
+            const p6g::MultiHourFrame bad{
+                h,grid,modified,surf.hourly[h],input[h],upper,
+                &controls,prior,prior,{}};
+            rejects([&]{
+                (void)p6g::g18b7_source_previous_station_ziconv(bad,observed);
+            },"G18B7 accepted swapped upper stations with stale prior sampling");
+        }
         rejects([&]{
             (void)gamma_clock.prepare(
                 frame,observed,station_previous_ziconv,200.f,false);
@@ -927,8 +950,8 @@ static void verify_g18b_asynchronous_upper_turnover() {
                     frame,observed,{0.f},200.f,true);
             },"G18B4 accepted incomplete 2US previous ZICONV");
         }
-        const auto gamma=gamma_clock.prepare(
-            frame,observed,station_previous_ziconv,200.f,true);
+        const auto gamma=p6g::g18b7_prepare_source_grid_cgamma(
+            gamma_clock,frame,observed,200.f,true);
         check(gamma.end==frame.input.end&&
               gamma.station_ids==std::vector<int>({58424,58425})&&
               gamma.lapse.size()==2,
@@ -1087,6 +1110,7 @@ int main(int argc,char** argv){
                     "G18B3_SOURCE_IUPT_CANDIDATE_NEARU_TEST_ONLY_PASS "
                     "G18B4_PER_UP_FROZEN_CGAMMA_TRANSACTIONAL_HISTORY_PASS "
                     "G18B5_FROZEN_FACET_MULTISITE_SOURCE_FACES_PASS "
+                    "G18B7_SOURCE_PREVIOUS_IIUP_JJUP_ZICONV_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
