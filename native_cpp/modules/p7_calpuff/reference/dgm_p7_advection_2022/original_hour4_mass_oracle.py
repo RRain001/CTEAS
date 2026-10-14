@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 import original_puff_step_dump as base
 
-RECORD=struct.Struct("<3i6f")
+RECORD=struct.Struct("<3i8f")
 FULL_DGM_SHA="cbbdaa29c6222e6ca6aefe9f605ad13e7dd6d258f6ad243afcac07cb578108c6"
 HELPERS="""
 c --- Diagnostic-only COMP MASS COMMON, not part of source/physical COMMON.
@@ -35,16 +35,30 @@ c --- Diagnostic-only COMP MASS COMMON, not part of source/physical COMMON.
       subroutine p7massbefore(ii,ksam,oldmass)
       integer ii,ksam,seq,seen,episode,substep
       real oldmass,prior
+      real massvc,massconst
+      common /p7masvc/ massvc,massconst
       common /p7masdiag/ seq,seen,episode,substep,prior
       if(ii.ne.200) return
       if(episode.ne.ii.or.substep.ne.ksam) stop 92
       prior=oldmass
+      massvc=0.
+      massconst=0.
       seen=1
+      return
+      end
+      subroutine p7massvc(ii,vc,c)
+      integer ii
+      real vc,c,massvc,massconst
+      common /p7masvc/ massvc,massconst
+      if(ii.ne.200) return
+      massvc=vc
+      massconst=c
       return
       end
       subroutine p7massafter(ii,ksam,newmass,frac,vd,ratio,tsamp)
       integer ii,ksam,seq,seen,episode,substep,unit
-      real newmass,frac,vd,ratio,tsamp,prior
+      real newmass,frac,vd,ratio,tsamp,prior,massvc,massconst
+      common /p7masvc/ massvc,massconst
       logical opened
       save opened,unit
       data opened/.false./
@@ -56,7 +70,8 @@ c --- Diagnostic-only COMP MASS COMMON, not part of source/physical COMMON.
      &        access='stream',form='unformatted',status='replace')
          opened=.true.
       endif
-      write(unit) seq,ii,ksam,prior,newmass,frac,vd,ratio,tsamp
+      write(unit) seq,ii,ksam,prior,newmass,frac,vd,ratio,tsamp,
+     &            massvc,massconst
       seen=2
       return
       end
@@ -93,6 +108,12 @@ def main()->None:
         "     &        vd(1),vdpvd(1),tsamp)\n"+source[pos_after:])
     source=(source[:pos_before]+
         "         call p7massbefore(ii,ksam,qold(1))\n"+source[pos_before:])
+    dry_anchor="          const=tsamp*f1"
+    if source.count(dry_anchor)!=1:
+        raise AssertionError("original DRY Gaussian VCBAR/CONST anchor drifted")
+    source=source.replace(dry_anchor+"\n",
+        dry_anchor+"\n"
+        "          call p7massvc(jp,f1,const)\n")
     target.write_text(source+HELPERS,encoding="latin-1")
     alias=base._alias_tree(vendor,out/"include-alias")
     executable=out/"bin"/"puff-original-mass.x"
@@ -123,7 +144,8 @@ def main()->None:
               f" SEQ={row[0]} PUFF={row[1]} KSAM={row[2]}"
               f" QOLD={row[3]:.9g} QNEW={row[4]:.9g}"
               f" FRACDRY={row[5]:.9g} VD={row[6]:.9g}"
-              f" VDPVD={row[7]:.9g} TSAMP={row[8]:.9g}")
+              f" VDPVD={row[7]:.9g} TSAMP={row[8]:.9g}"
+              f" VCBAR={row[9]:.9g} CONST={row[10]:.9g}")
 
 if __name__=="__main__":
     main()
