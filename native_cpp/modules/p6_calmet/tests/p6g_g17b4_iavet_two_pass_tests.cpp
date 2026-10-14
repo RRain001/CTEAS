@@ -30,6 +30,7 @@
 #include "cteas/p6/p6g_g18e5_slope_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18e6_wind_tail_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18e7_live_comp_stage_adapter.hpp"
+#include "cteas/p6/p6g_g18e8_p6f_commit_stage_adapter.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -1558,6 +1559,64 @@ static void verify_source_staged_iavet(
     rejects([&]{
         live_comp.run_selected(p6::NativeHourStage::CompTemp3d,frame,true);
     },"G18E7 duplicated finished original COMP");
+    // G18E8 completes the selected G14 original stage list's final
+    // slot 16, using THIS frame (not pending_g14 or detached G18D4).
+    // No publication occurs until the caller's scheduler precommit.
+    p6g::G18E8SelectedP6fCommitStageAdapter final_output(
+        live_comp,heat_stage,source_metinp);
+    check(!final_output.run(p6::NativeHourStage::CommitOutput,frame).completed,
+          "G18E8 fixture P6F output wrongly promoted to production");
+    rejects([&]{
+        (void)final_output.selected_bytes_for(frame);
+    },"G18E8 exposed output before original slot 16");
+    rejects([&]{
+        final_output.run_selected(
+            p6::NativeHourStage::CompTemp3d,frame,true);
+    },"G18E8 accepted CommitOutput before original stage 16");
+    rejects([&]{
+        final_output.run_selected(
+            p6::NativeHourStage::CommitOutput,frame,false);
+    },"G18E8 allowed selected P6F fixture as production output");
+    auto copied_output_frame=frame;
+    rejects([&]{
+        final_output.run_selected(
+            p6::NativeHourStage::CommitOutput,copied_output_frame,true);
+    },"G18E8 accepted a detached full-hour COMP frame");
+    const float saved_output_qh=frame.fields.qh_wm2[0];
+    frame.fields.qh_wm2[0]+=1.f;
+    rejects([&]{
+        final_output.run_selected(
+            p6::NativeHourStage::CommitOutput,frame,true);
+    },"G18E8 prepared P6F bytes after QH was changed after COMP");
+    frame.fields.qh_wm2[0]=saved_output_qh;
+    const float original_output_dptt=prior.dptt_k[0];
+    prior.dptt_k[0]+=1.f;
+    rejects([&]{
+        final_output.run_selected(
+            p6::NativeHourStage::CommitOutput,frame,true);
+    },"G18E8 staged P6F from mutated previous-hour DPTT");
+    prior.dptt_k[0]=original_output_dptt;
+    final_output.run_selected(p6::NativeHourStage::CommitOutput,frame,true);
+    const auto& exact_prepared=final_output.selected_bytes_for(frame);
+    check(exact_prepared==bytes && exact_prepared==precommitted,
+          "G18E8 live G14 slot-16 P6F differed from independent selected 45-field file");
+    rejects([&]{
+        (void)final_output.selected_bytes_for(copied_output_frame);
+    },"G18E8 leaked current-hour bytes into cloned frame");
+    const float original_output_zi=frame.next.zi_m[0];
+    frame.next.zi_m[0]+=1.f;
+    rejects([&]{
+        (void)final_output.selected_bytes_for(frame);
+    },"G18E8 P6F byte image survived mutation of pending COMP ZI");
+    frame.next.zi_m[0]=original_output_zi;
+    check(final_output.selected_bytes_for(frame)==bytes,
+          "G18E8 prepared result was lost after a rejected, restored pending-state probe");
+    rejects([&]{
+        final_output.run_selected(p6::NativeHourStage::CommitOutput,frame,true);
+    },"G18E8 allowed double output stage in the same G14 hour");
+    check(frame.previous.ziconv_m==prior.ziconv_m &&
+          frame.previous.dptt_k==prior.dptt_k,
+          "G18E8 stage validation wrote previous-hour CALMET memory");
 }
 static void verify_g18b_asynchronous_upper_turnover(
     const std::string& source_metinp) {
