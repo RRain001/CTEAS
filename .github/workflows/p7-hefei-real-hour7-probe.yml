@@ -1,4 +1,4 @@
-name: P7 real Hefei hour7 first-divergence probe
+name: P7 real Hefei first 24h divergence probe
 on:
   pull_request:
     paths:
@@ -48,8 +48,8 @@ jobs:
             --case "$root/frozen" --out "$root/vendor" --compiler /usr/bin/gfortran-11 \
             --hour 2 --receptor-i 25 --receptor-j 28
           test -s "$root/vendor/case/run/puff/dgm_puffstep.bin"
-          echo "P7_HOUR7_ORIGINAL_DGM=PINNED_VENDOR_FULL_143H_ORACLE"
-      - name: Diagnose first native COMP hour7 divergence without weakening accepted six-hour gate
+          echo "P7_EXTENDED_ORIGINAL_DGM=PINNED_VENDOR_FULL_143H_ORACLE"
+      - name: Diagnose first native COMP mismatch through hour24 without weakening six-hour gate
         shell: bash
         run: |
           set -euo pipefail
@@ -57,18 +57,18 @@ jobs:
           cmake -S native_cpp/modules/p7_calpuff -B "$root/build" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$root/build" --parallel 2 --target cteas_p7_hefei_sixhour_native_h3_receptors_tests
           set +e
-          CTEAS_P7_PROBE_HOURS=7 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
+          CTEAS_P7_PROBE_HOURS=24 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
             project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
             project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
             "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/hour7-probe.log" 2>&1
           code=$?
           set -e
-          grep -E 'P7_REAL_EXTENDED_PROBE|P7_HEFEI_REAL_HOUR7|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE' "$root/hour7-probe.log" || true
+          grep -E 'P7_REAL_EXTENDED_PROBE|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE' "$root/hour7-probe.log" || true
           if [ "$code" -eq 0 ]; then
-            echo "P7_HOUR7_PROBE_STATUS=SEVEN_HOURS_BITWISE_ACCEPTED 143H=OPEN WROUT1=OPEN"
+            echo "P7_EXTENDED_PROBE_STATUS=TWENTY_FOUR_HOURS_BITWISE_ACCEPTED 143H=OPEN WROUT1=OPEN"
           else
-            echo "P7_HOUR7_PROBE_STATUS=BLOCKED DIAGNOSTIC_ONLY=YES EXIT_CODE=$code"
+            echo "P7_EXTENDED_PROBE_STATUS=BLOCKED DIAGNOSTIC_ONLY=YES EXIT_CODE=$code"
             tail -n 24 "$root/hour7-probe.log"
           fi
           # This exploratory diagnostic is intentionally non-gating.
@@ -77,7 +77,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p7-real-hour7-first-divergence-log
+          name: p7-real-first-24h-divergence-log
           path: ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour7-probe.log
           retention-days: 7
           if-no-files-found: warn
