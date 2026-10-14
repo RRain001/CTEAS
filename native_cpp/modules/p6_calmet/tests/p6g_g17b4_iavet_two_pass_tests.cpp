@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <regex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -295,10 +296,14 @@ int main(int argc,char** argv){
         verify(control,begin);
         verify_source_staged_iavet(control,wind,begin);
         verify(control,begin+hours{11});
-        auto bad=deck;
-        const auto p=bad.find("! IAVET = 1");
-        check(p!=std::string::npos,"source IAVET control missing");
-        bad.replace(p,11,"! IAVET = 0");
+        // Accept original Fortran freeform control spacing, not a
+        // hardcoded literal (e.g. source uses ! IAVET =   1 !).
+        const std::regex control_pattern(
+            R"(!\s*IAVET\s*=\s*1\s*!)",std::regex_constants::icase);
+        check(std::regex_search(deck,control_pattern),
+              "original source IAVET=1 field not found");
+        const auto bad=std::regex_replace(
+            deck,control_pattern,"! IAVET = 0 !");
         rejects([&]{(void)p6g::parse_g17b4_surface_controls(bad);},
                 "G17B4 silently accepted source IAVET=0 alternative");
         std::cout<<"PASS_G17B4_SOURCE_IAVET1_TWO_PASS "
