@@ -155,7 +155,24 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
              << "! YORIGKM = 3531.269 !\n"
              << "! NSSTA = 2 !\n"
              << "! NUSTA = 2 !\n"
-             << "! ZFACE = 0,20,40,80,160,320,640,1200,2000,3000 !\n";
+             << "! ZFACE = 0,20,40,80,160,320,640,1200,2000,3000 !\n"
+             << "! IEXTRP = -4 !\n"
+             << "! ICALM = 0 !\n"
+             << "! IPROG = 0 !\n"
+             << "! NOOBS = 0 !\n"
+             << "! IFRADJ = 1 !\n"
+             << "! ISLOPE = 1 !\n"
+             << "! IOBR = 0 !\n"
+             << "! LVARY = F !\n"
+             << "! RMIN = 0.5 !\n"
+             << "! RMAX1 = 150.0 !\n"
+             << "! RMAX2 = 150.0 !\n"
+             << "! RMAX3 = 150.0 !\n"
+             << "! R1 = 50.0 !\n"
+             << "! R2 = 80.0 !\n"
+             << "! BIAS = 0,0,0,0,0,0,0,0,0 !\n"
+             << "! NSMTH = 1,0,2,1,0,2,1,0,1 !\n"
+             << "! NINTR2 = 99,99,99,99,99,99,99,99,99 !\n";
     const std::string deck_text=controls.str()+
         (nx>6 ? std::string(
             "! SS2 = 'S2' 58322 610.885 3631.269 0 10.0 !\n"
@@ -221,7 +238,9 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     grid.synthetic_identity_diagno_tail=false;
     grid.source_terrain_diagno_tail=true;
     grid.terrain=prepare_g11_terrain(geo,35.0f);
-    grid.smoothing_passes={1,0,2,1,0,2,1,0,1};
+    grid.source_controls=parse_original_wind_controls(deck_text);
+    grid.smoothing_passes.assign(grid.source_controls->nsmth.begin(),
+                                 grid.source_controls->nsmth.end());
     // Selected P6E P6G G12: observed SURF.DAT 2SS temperatures enter
     // source-matched SURFVAR. Solar and coefficients stay explicitly
     // synthetic, while original HEATFX computes the actual QH field.
