@@ -153,6 +153,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                 s.vmass.mass_mixed.size()!=2 :
                 s.vmass.mass_mixed.size()!=1) ||
            s.vmass.mass_above.size()!=s.vmass.mass_mixed.size() ||
+           (selected_h3_from_multispecies &&
+            s.receptor_qold_mixed.size()!=s.vmass.mass_mixed.size()) ||
            !std::isfinite(s.step_seconds) || s.step_seconds<=0.0F ||
            s.step_seconds>averaging_period_s) {
             throw std::invalid_argument(
