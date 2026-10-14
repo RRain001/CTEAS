@@ -64,6 +64,9 @@ int main(int argc,char** argv){
                 v.rmax2_km==200.f&&v.rmax3_km==200.f&&
                 v.r1_km==50.f&&v.r2_km==100.f,
                 "G15 original 2022 wind radii were replaced by G8 test constants");
+        require(v.zface_m[0]==0.f&&v.zface_m[1]==20.f&&
+                v.zface_m[9]==3000.f,
+                "G15 source vertical faces were replaced by G8 hardcoding");
         require(v.nsmth[0]==2&&v.nsmth[1]==4&&
                 v.nsmth[8]==4&&v.nintr2[0]==99&&v.nintr2[8]==99,
                 "G15 original smoothing/station count array incorrect");
