@@ -361,7 +361,7 @@ private:
         smooth_input_=std::move(input);
         return {p6::NativeHourSource::NativeCpp,true};
     }
-    p6::NativeHourStageResult final_mass_w(const MultiHourFrame& frame) {
+    p6::NativeHourStageResult final_mass_w(MultiHourFrame& frame) {
         verify_hour(frame);
         if(!smooth_input_||final_wind_||
            !wind_.selected_result().inter2_complete||
