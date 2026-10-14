@@ -20,7 +20,7 @@ New `p6g_g18c6_selected_p6f_dataset.hpp` assembles:
   use the original packed begin-hour and end-seconds=3600 convention.
 - `Calmet21Statics`: source `OriginalWindControls.zface_m` checked
   against the same met.inp's `ZFACE`; dynamic `GeoGrid` original
-  `Z0/ILANDU/ELEV/XLAI`, one-based `SETCOM NEARS`, the original
+  `Z0/ILANDU/ELEV/XLAI`, one-based `SETCOM NEARS` **recomputed exactly from current source geometry (also rejecting fabricated but in-range ordinals)**, the original
   *ordered* local-metre SS/US positions, and the source CRS. No original
   CALMET.DAT static array is copied as a shortcut.
 - All **45** `Calmet21Field` rows in exactly frozen P6F's own
@@ -51,6 +51,10 @@ translation unit **without modifying it**, and tests the actual
 file-walker CTest **depends** on the writer test so that a missing/failed
 producer cannot be misclassified as an independent PASS. Both are in the
 GitHub-hosted Ubuntu Debug/Release `^p6g_` suite.
+
+## G18C6 selected code gate
+
+[GitHub-hosted Ubuntu #38560073138](https://github.com/RRain001/CTEAS/actions/runs/38560073138) at SHA `f0353ff742dabe3ccca83ade286615cfc7319024`: **Debug 21/21 PASS, Release 21/21 PASS**, including the independent binary record walker and frozen PR #53 163-file guard. The later exact source SETCOM NEARS hardening has a separate SHA and must be validated independently.
 
 ## Scientific acceptance boundaries
 
