@@ -252,6 +252,9 @@ static void verify_selected_slope_bridge(
           "G17B source-observed-SOLAR-HEATFX corrected U/V differ from native G11");
     check(stages.run(p6::NativeHourStage::DiagnoWindbcFirstGuess,frame).completed,
           "G17B did not snapshot first source WINDBC before INTER2");
+    reject([&]{stages.run(p6::NativeHourStage::DiagnoInter2,frame);},
+           "G17B skipped STHEOR DIAGI profile handoff before INTER2");
+    stages.provide_selected_diagi_before_inter2(profiles);
     check(stages.run(p6::NativeHourStage::DiagnoInter2,frame).completed,
           "G17B source heat chain did not reach INTER2");
     check(!stages.run(p6::NativeHourStage::CompGridMixht,frame).completed,
