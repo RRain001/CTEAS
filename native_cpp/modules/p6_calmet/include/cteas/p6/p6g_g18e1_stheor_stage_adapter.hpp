@@ -53,6 +53,9 @@ public:
         profiles_after_diagi_=merged;
         completed_=true;
         source_hour_=frame.hour_index;
+        source_end_=frame.input.end;
+        source_frame_=&frame;
+        previous_snapshot_=frame.previous;
     }
 
     [[nodiscard]] bool selected_complete() const noexcept {
@@ -62,6 +65,20 @@ public:
     [[nodiscard]] const std::vector<G17C3StationDiagi>& stations() const {
         if(!selected_complete())
             throw std::logic_error("G18E1 STHEOR stage not completed");
+        return *selected_;
+    }
+    // Downstream COMP MUST consume this exact G14-stage result from the
+    // same live hour frame and the identical immutable previous-hour
+    // CALMET memory.  A same-timestamp preview clone is not authoritative.
+    [[nodiscard]] const std::vector<G17C3StationDiagi>&
+    stations_for_comp(const MultiHourFrame& frame) const {
+        if(!selected_complete()||&frame!=source_frame_||
+           frame.hour_index!=source_hour_||frame.input.end!=source_end_||
+           frame.previous.zi_m!=previous_snapshot_.zi_m||
+           frame.previous.ziconv_m!=previous_snapshot_.ziconv_m||
+           frame.previous.dptt_k!=previous_snapshot_.dptt_k)
+            throw std::logic_error(
+                "G18E1 COMP requires same G14 STHEOR hour frame and previous state");
         return *selected_;
     }
     [[nodiscard]] const G16ObservedProfiles& observed_after_diagi() const {
@@ -83,6 +100,9 @@ private:
     std::optional<std::vector<G17C3StationDiagi>> selected_;
     std::optional<G16ObservedProfiles> profiles_after_diagi_;
     std::size_t source_hour_=0;
+    std::chrono::sys_seconds source_end_{};
+    const MultiHourFrame* source_frame_=nullptr;
+    p6::NativeGridMemory previous_snapshot_;
     bool completed_=false;
 };
 } // namespace cteas::calmet::p6g
