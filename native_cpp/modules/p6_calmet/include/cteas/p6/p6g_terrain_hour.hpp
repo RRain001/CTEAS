@@ -47,7 +47,10 @@ inline TerrainStaticG11 prepare_g11_terrain(
 enum class TerrainHourProvenance {
     Missing=0,
     SyntheticReferenceFixture=1,
-    ValidatedP6EHourlyPhysics=2
+    ValidatedP6EHourlyPhysics=2,
+    // Observed source-selected SURFVAR TEMP2D + HEATFX QH, but solar,
+    // coefficients and GAMMA are still controlled synthetic test inputs.
+    ObservedSurfvarSyntheticSolarFixture=3
 };
 struct TerrainHourG11 {
     std::chrono::sys_seconds end{}; // G11 clock gate checks original UTC SURF/UP hour-end.
@@ -72,7 +75,8 @@ inline TerrainCorrectionG11 apply_g11_terrain_after_wind1(
        static_input.hmax_m.size()!=n||static_input.hmin_m.size()!=n||
        static_input.dist_hmax_m.size()!=n||static_input.dist_hmin_m.size()!=n||
        static_input.water_first>static_input.water_last||
-       hour.provenance!=TerrainHourProvenance::SyntheticReferenceFixture||
+       (hour.provenance!=TerrainHourProvenance::SyntheticReferenceFixture&&
+        hour.provenance!=TerrainHourProvenance::ObservedSurfvarSyntheticSolarFixture)||
        hour.isurft!=-1||
        hour.lapse_k_per_m.size()!=n||hour.temperature_k.size()!=n||
        hour.sensible_heat_w_m2.size()!=n||
