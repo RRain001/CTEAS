@@ -104,6 +104,17 @@ add_test(NAME p6g_g12_10km_2surface_observed_temp_selected_heatfx_contract COMMA
 
 
 
+# G13 separate 10km original-source SURFVAR reference: do not reuse the old
+# P6E 100m reference driver which silently defaults its DGRID to 100m.
+add_executable(cteas_p6g_g13_surfvar_10km_reference src/p6g_g13_surfvar_10km_reference_main.cpp)
+target_link_libraries(cteas_p6g_g13_surfvar_10km_reference PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6g_g13_surfvar_10km_reference PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+if(MSVC)
+  target_compile_options(cteas_p6g_g13_surfvar_10km_reference PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g13_surfvar_10km_reference PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 # G10 original-Fortran 10km selected DIAGNO tail source-lift reference.
 # Distinct from frozen 100m DIAGNO and from any real terrain/heat acceptance.
 add_executable(cteas_p6g_g10_diagno_reference src/p6g_g10_10km_diagno_reference_main.cpp)
