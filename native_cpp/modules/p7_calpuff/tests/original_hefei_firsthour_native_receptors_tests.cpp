@@ -190,6 +190,7 @@ int main(int argc,char** argv) {
             need(bool(stage_file),"cannot create requested read-only native H3 trace");
             stage_file<<std::setprecision(9);
             std::size_t previous_step=0;
+            std::size_t traced_rows=0;
             bool have_previous=false;
             for(const auto& item:native_h3_stages) {
                 std::size_t matched=hour.steps.size();
@@ -210,6 +211,25 @@ int main(int argc,char** argv) {
                 have_previous=true;
                 const auto& st=hour.steps[matched];
                 const auto& v=item.intermediate;
+                if(traced_rows<8U) {
+                    const auto& physical=st.step.sigma.step;
+                    std::cout<<std::setprecision(9)
+                        <<"P7_NATIVE_H3_PUFRECS_VIRTUAL"
+                        <<" SEQ="<<matched+1U
+                        <<" II="<<item.puff_id
+                        <<" KSAM="<<st.ksam
+                        <<" frac="<<v.receptor_fraction
+                        <<" vtyb="<<physical.virtual_time_y_begin_s
+                        <<" vtye="<<physical.virtual_time_y_end_s
+                        <<" vdyb="<<physical.virtual_distance_y_begin_km
+                        <<" vdye="<<physical.virtual_distance_y_end_km
+                        <<" vtzb="<<physical.virtual_time_z_begin_s
+                        <<" vtze="<<physical.virtual_time_z_end_s
+                        <<" vdzb="<<physical.virtual_distance_z_begin_km
+                        <<" vdze="<<physical.virtual_distance_z_end_km
+                        <<"\n";
+                }
+                ++traced_rows;
                 stage_file<<matched+1U<<" "<<item.puff_id<<" "<<st.ksam<<" "
                           <<v.sigma_y_m<<" "<<v.sigma_z_m<<" "
                           <<v.puff_height_m<<" "<<v.receptor_pole_m<<" "
