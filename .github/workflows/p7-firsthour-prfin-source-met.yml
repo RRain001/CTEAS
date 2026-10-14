@@ -77,6 +77,30 @@ jobs:
                     f'xynew=({f[38]:.9g},{f[39]:.9g}) sigin=({f[21]:.9g},{f[22]:.9g})')
           print('P7_ORIGINAL_ADMISSION_SOURCE_REVIEW=PASS NATIVE_ADMISSIONS=NOT_YET_ACCEPTED')
           PY
+      - name: Source-audit SETPUF horizontal SY0SQ BIDFNL and POINTS1 source initialization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,hashlib,re
+          path=pathlib.Path('engine/vendor/src/CALPUFF_v7.2.1_L150618/calpuff.for')
+          raw=path.read_bytes()
+          assert hashlib.sha256(raw).hexdigest()=='da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568'
+          rows=raw.decode('latin-1').splitlines()
+          for start,end in ((48476,48525),(48565,48612),(48638,48676),(15590,15680)):
+              for i in range(start-1,end):
+                  print(f'P7_VENDOR_HORIZONTAL_SIGMA {i+1:6d} {rows[i]}')
+          tokens=('sy0sq','sy0(','syipt1','sysrc','bidfnl','symin','sigyb(')
+          hits=[i for i,row in enumerate(rows) if any(t in row.lower() for t in tokens) and not row.lower().startswith('c')]
+          nearby=[i for i in hits if 9000<i<11500 or 15400<i<16200 or 48000<i<49000]
+          shown=set()
+          for i in nearby:
+              for j in range(max(0,i-2),min(len(rows),i+4)):
+                  if j not in shown:
+                      print(f'P7_VENDOR_HORIZONTAL_ASSIGN {j+1:6d} {rows[j]}')
+                      shown.add(j)
+          print('P7_VENDOR_HORIZONTAL_SOURCE_PIN=PASS')
+          PY
       - name: Trace original first-hour pre-SETPUF SIGZB vertical adjustment
         shell: bash
         run: |
