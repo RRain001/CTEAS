@@ -26,6 +26,7 @@
 #include "cteas/p6/p6g_g18d6_station_upper_assignment.hpp"
 #include "cteas/p6/p6g_g18e1_stheor_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18e2_heatfx_stage_adapter.hpp"
+#include "cteas/p6/p6g_g18e3_airden_elustr_stage_adapter.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -443,22 +444,66 @@ static void verify_source_staged_iavet(
     rejects([&]{
         stages.prepare_selected_airden(frame,surface.first_temperature());
     },"G17C AIRDEN incorrectly reuses pre-FRADJ TEMP2D");
-    stages.prepare_selected_airden(frame,selected.temperature_k);
-    check(stages.run(p6::NativeHourStage::DiagnoAirden,frame).completed &&
-          stages.selected_air_density()==selected.density_kg_m3,
-          "G17C source AIRDEN did not consume selected native second TEMP2D");
-    // ELUSTR's true input winds are the G17 source FRADJ output, before
-    // SLOPE. Keep all thermodynamic input values from G17C1 source fields.
     p6g::G17C2SelectedElustrControls ec;
     ec.ipsifcn=0;
     ec.zm_m=0.5f*(wind.zface_m[0]+wind.zface_m[1]);
+    ec.explicitly_test_only=true;
+    p6g::G18E3SelectedAirdenElustrStageAdapter thermal_stage(
+        stages,heat_stage,surface,ec);
+    check(!thermal_stage.run(
+              p6::NativeHourStage::DiagnoAirden,frame).completed,
+          "G18E3 fixture AIRDEN falsely promoted to production");
+    rejects([&]{
+        thermal_stage.run_selected(p6::NativeHourStage::DiagnoElustr,frame,true);
+    },"G18E3 permitted ELUSTR before original AIRDEN");
+    rejects([&]{
+        thermal_stage.run_selected(p6::NativeHourStage::DiagnoAirden,frame,false);
+    },"G18E3 AIRDEN unverified fixture promoted to production");
+    thermal_stage.run_selected(p6::NativeHourStage::DiagnoAirden,frame,true);
+    check(stages.run(p6::NativeHourStage::DiagnoAirden,frame).completed &&
+          stages.selected_air_density()==selected.density_kg_m3,
+          "G18E3 source AIRDEN did not consume G18E2 stage HEATFX density");
+    rejects([&]{
+        thermal_stage.run_selected(p6::NativeHourStage::DiagnoAirden,frame,true);
+    },"G18E3 duplicated original G14 AIRDEN");
+    // ELUSTR's true input winds are the G17 source FRADJ output, before
+    // SLOPE. Keep all thermodynamic input values from G17C1 source fields.
+    auto unverified_ec=ec;
+    unverified_ec.explicitly_test_only=false;
     rejects([&]{
         (void)p6g::selected_iavet1_elustr_after_heatfx(
-            f.grid,all,f.series.hourly.front(),surface,selected,fr,ec);
+            f.grid,all,f.series.hourly.front(),surface,selected,fr,unverified_ec);
     },"G17C2 certified fixture coefficient heat as production ELUSTR");
-    ec.explicitly_test_only=true;
-    auto elustr=p6g::selected_iavet1_elustr_after_heatfx(
+    rejects([&]{
+        (void)thermal_stage.selected_elustr_for(frame);
+    },"G18E3 returned ELUSTR before its original stage");
+    auto fake_elustr_frame=frame;
+    rejects([&]{
+        thermal_stage.run_selected(
+            p6::NativeHourStage::DiagnoElustr,fake_elustr_frame,true);
+    },"G18E3 allowed same-hour cloned G14 frame in ELUSTR");
+    const float previous_dptt=prior.dptt_k[0];
+    prior.dptt_k[0]=previous_dptt+1.f;
+    rejects([&]{
+        thermal_stage.run_selected(
+            p6::NativeHourStage::DiagnoElustr,frame,true);
+    },"G18E3 accepted mutated prior-hour thermal memory");
+    prior.dptt_k[0]=previous_dptt;
+    thermal_stage.run_selected(p6::NativeHourStage::DiagnoElustr,frame,true);
+    const auto direct_elustr=p6g::selected_iavet1_elustr_after_heatfx(
         f.grid,all,f.series.hourly.front(),surface,selected,fr,ec);
+    const auto& elustr=thermal_stage.selected_elustr_for(frame);
+    check(thermal_stage.selected_complete()&&
+          elustr.qh_wm2==direct_elustr.qh_wm2&&
+          elustr.ustar_mps==direct_elustr.ustar_mps&&
+          elustr.el_m==direct_elustr.el_m&&
+          elustr.stable_cells==direct_elustr.stable_cells&&
+          elustr.daytime_cells==direct_elustr.daytime_cells,
+          "G18E3 selected-stage ELUSTR differs from independent original kernel");
+    rejects([&]{
+        thermal_stage.run_selected(
+            p6::NativeHourStage::DiagnoElustr,frame,true);
+    },"G18E3 duplicated original G14 ELUSTR");
     check(elustr.end==f.series.end &&
           elustr.qh_wm2.size()==144 &&
           elustr.ustar_mps.size()==144 &&
