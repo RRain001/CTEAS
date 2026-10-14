@@ -93,6 +93,24 @@ static p6g::G16PostSlopeFields controlled_corrected(sys_seconds end,
     correct.u_mps=wind.first_guess.u_mps;
     correct.v_mps=wind.first_guess.v_mps;
     correct.observation_weight.assign(correct.u_mps.size(),1.f);
+    const auto nx=static_cast<std::size_t>(wind.first_guess.nx);
+    const auto ny=static_cast<std::size_t>(wind.first_guess.ny);
+    const auto cells=nx*ny;
+    correct.ub_west_east_mps.resize(9*2*ny);
+    correct.vb_south_north_mps.resize(9*2*nx);
+    for(std::size_t k=0;k<9;++k){
+        for(std::size_t j=0;j<ny;++j){
+            const auto row=k*cells+j*nx,edge=k*2*ny+j;
+            correct.ub_west_east_mps[edge]=correct.u_mps[row];
+            correct.ub_west_east_mps[edge+ny]=correct.u_mps[row+nx-1];
+        }
+        for(std::size_t i=0;i<nx;++i){
+            const auto row=k*cells+i,edge=k*2*nx+i;
+            correct.vb_south_north_mps[edge]=correct.v_mps[row];
+            correct.vb_south_north_mps[edge+nx]=
+                correct.v_mps[row+(ny-1)*nx];
+        }
+    }
     return correct;
 }
 int main(int argc,char** argv) {
@@ -154,6 +172,14 @@ int main(int argc,char** argv) {
         refuse([&]{(void)stages.run(p6::NativeHourStage::DiagnoInter2,hour);},
                "G16 accepted INTER2 without explicit corrected wind and WO");
         auto corrected=controlled_corrected(end,stages.selected_result());
+        auto missing_windbc=corrected;
+        missing_windbc.ub_west_east_mps.pop_back();
+        refuse([&]{stages.provide_post_slope(missing_windbc);},
+               "G16 accepted absent first source WINDBC boundary");
+        auto wrong_windbc=corrected;
+        wrong_windbc.ub_west_east_mps[0]+=1.f;
+        refuse([&]{stages.provide_post_slope(wrong_windbc);},
+               "G16 accepted boundary reconstructed from incorrect first-pass U");
         stages.provide_post_slope(corrected);
         const auto b=stages.run(p6::NativeHourStage::DiagnoInter2,hour);
         need(b.completed&&b.source==p6::NativeHourSource::NativeCpp&&
@@ -162,6 +188,11 @@ int main(int argc,char** argv) {
         need(stages.selected_result().blended_u.component_mps.size()==81&&
              stages.selected_result().blended_v.component_mps.size()==81,
              "G16 did not generate full three-dimensional INTER2 fields");
+        need(stages.selected_result().original_ub_west_east_mps==
+                 corrected.ub_west_east_mps&&
+             stages.selected_result().original_vb_south_north_mps==
+                 corrected.vb_south_north_mps,
+             "G16 re-initialized source first WINDBC after INTER2");
         // Independent direct invocation of the same immutable #53 INTER2
         // kernel verifies that stage-correct parameter/array mapping holds.
         p6::Inter2SelectedInput inter;
