@@ -291,6 +291,7 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
             // test L4241-4247 MUST follow PUFRECS SIGTY at this receptor.
             if(!screen.has_impact)
                 continue;
+            float receptor_fraction=0.0F;
             float receptor_sigma_y=sy;
             float receptor_sigma_z=sz;
             float receptor_height_m=midz;
@@ -300,6 +301,7 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                 const auto geometry=original_pufrecs_grid_receptor_geometry(
                     grid_step,i);
                 const auto pufrecs=receptor_pg_sigma(s,geometry,*curves);
+                receptor_fraction=geometry.fraction;
                 receptor_sigma_y=pufrecs.y;
                 receptor_sigma_z=pufrecs.z;
                 // Vendor CALCPF L4234–4275: PUFRECS computes per-receptor
@@ -365,7 +367,7 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                 const float t2=static_cast<float>(ints.i2)*dinv;
                 const float t1=static_cast<float>(ints.i1)*dinv-t2;
                 trace_hook(s,OriginalCalcpfReceiverIntermediate{
-                    i,receptor_sigma_y,receptor_sigma_z,
+                    i,receptor_fraction,receptor_sigma_y,receptor_sigma_z,
                     receptor_height_m,receptor_pole_m,receptor_vertical,
                     static_cast<float>(ints.i1),static_cast<float>(ints.i2),
                     t1,t2,qold,qnew,static_cast<float>(receptor_vertical*frac),
