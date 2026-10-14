@@ -11,6 +11,7 @@
 #include "cteas/p6/terrain_envelope.hpp"
 #include "cteas/p6/froude_adjust.hpp"
 #include "cteas/p6/slope_flow.hpp"
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -49,6 +50,7 @@ enum class TerrainHourProvenance {
     ValidatedP6EHourlyPhysics=2
 };
 struct TerrainHourG11 {
+    std::chrono::sys_seconds end{}; // G11 clock gate checks original UTC SURF/UP hour-end.
     TerrainHourProvenance provenance=TerrainHourProvenance::Missing;
     // Physical 2-D inputs, not hidden defaults. No temporal extrapolation.
     int isurft=-1;
