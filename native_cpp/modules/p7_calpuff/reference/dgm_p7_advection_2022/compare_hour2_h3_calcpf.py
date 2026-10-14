@@ -68,6 +68,10 @@ def main() -> None:
     p.add_argument("--native",type=Path,required=True)
     p.add_argument("--out",type=Path,required=True)
     p.add_argument("--hour",type=int,choices=(2,4,9),default=2)
+    p.add_argument("--receptor-i",type=int,default=None,
+                   help="1-based receiver i; H9 first-residual trace override")
+    p.add_argument("--receptor-j",type=int,default=None,
+                   help="1-based receiver j; H9 first-residual trace override")
     a=p.parse_args()
     lower,upper,puff_max,ix,jy={
         2:(1276,3517,137,25,28),
@@ -75,6 +79,12 @@ def main() -> None:
         # First residual after source-exact 8 contiguous hours.
         9:(16420,16679,618,25,1)
     }[a.hour]
+    if (a.receptor_i is None)!=(a.receptor_j is None):
+        raise ValueError("both receptor coordinates must be specified")
+    if a.receptor_i is not None:
+        if a.hour!=9 or not (1<=a.receptor_i<=50 and 1<=a.receptor_j<=50):
+            raise ValueError("receptor override is only supported for H9 frozen 50x50")
+        ix,jy=a.receptor_i,a.receptor_j
     source=read_original(a.original,lower,upper,puff_max)
     native=read_native(a.native,lower,upper)
     common=sorted(source.keys() & native.keys())
