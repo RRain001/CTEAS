@@ -11,6 +11,9 @@
 #include "cteas/puff/original_vertical_divergence.hpp"
 #include <optional>
 #include <stdexcept>
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace cteas::puff {
 
@@ -46,6 +49,13 @@ struct NativeGaussianDryControls {
 struct NativeCalmMdisp3Controls {
     OriginalTurbsetMdisp3 original_turbulence;
     int iwat1=0, iwat2=0;
+    // Original COMP L10863-10883: JDSTAB=JSUP for a puff above the
+    // mixing layer when ISTAB<5 and JSUP>0, BEFORE SVMIN/SWMIN selection.
+    // Zero disables the synthetic fixture override; real cases MUST read
+    // JSUP and the clipped mixing-layer bounds from original puff.inp.
+    int jsup=0;
+    float minimum_mixing_height_m=0.0F;
+    float maximum_mixing_height_m=std::numeric_limits<float>::max();
 };
 // Use the *same* immutable puff.inp and makegeo.inp accepted by the
 // original case, not user supplied/fitted turbulence defaults.
@@ -55,8 +65,19 @@ struct NativeCalmMdisp3Controls {
     out.original_turbulence=original_turbset_mdisp3_from_control(puff_control);
     out.iwat1=makegeo_control.required_int("IWAT1");
     out.iwat2=makegeo_control.required_int("IWAT2");
-    if(out.iwat1<0||out.iwat1>out.iwat2)
-        throw std::invalid_argument("invalid source MAKEGEO IWAT1/IWAT2");
+    out.jsup=puff_control.required_int("JSUP");
+    const auto xmin=puff_control.required_float_list("XMINZI");
+    const auto xmax=puff_control.required_float_list("XMAXZI");
+    if(xmin.size()!=1U||xmax.size()!=1U ||
+       !std::isfinite(xmin[0])||!std::isfinite(xmax[0]) ||
+       xmin[0]<=0.0||xmin[0]>xmax[0] ||
+       xmax[0]>static_cast<double>(std::numeric_limits<float>::max()) ||
+       out.jsup<0||out.jsup>6 ||
+       out.iwat1<0||out.iwat1>out.iwat2)
+        throw std::invalid_argument(
+            "invalid source COMP JSUP/XMINZI/XMAXZI or MAKEGEO IWAT1/IWAT2");
+    out.minimum_mixing_height_m=static_cast<float>(xmin[0]);
+    out.maximum_mixing_height_m=static_cast<float>(xmax[0]);
     return out;
 }
 struct NeutralCompControls {
