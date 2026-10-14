@@ -698,11 +698,12 @@ static void verify_source_staged_iavet(
     rejects([&]{
         (void)stheor_stage.stations_for_comp(counterfeit_stheor_frame);
     },"G18E1 permitted stage station memory from a cloned G14 frame");
-    prior.zi_m[0]+=1.f;
+    const float original_prior_zi=prior.zi_m[0];
+    prior.zi_m[0]=original_prior_zi+1.f;
     rejects([&]{
         (void)stheor_stage.stations_for_comp(frame);
     },"G18E1 allowed prior-hour ZI mutation before COMP");
-    prior.zi_m[0]-=1.f;
+    prior.zi_m[0]=original_prior_zi;
     check(stheor_stage.stations_for_comp(frame).size()==diagi.size(),
           "G18E1 did not authorize the same source G14 COMP frame");
     const auto& staged_profiles=stheor_stage.observed_after_diagi();
@@ -1160,24 +1161,26 @@ static void verify_source_staged_iavet(
         routed_comp.run_selected(
             p6::NativeHourStage::CompAvemix,cloned_comp_frame,true);
     },"G18D4 accepted AVEMIX from a cloned, same-hour G14 frame");
-    staged_frame.fields.u_mps[0]+=1.f;
+    const float original_wind_u=staged_frame.fields.u_mps[0];
+    staged_frame.fields.u_mps[0]=original_wind_u+1.f;
     rejects([&]{
         routed_comp.run_selected(
             p6::NativeHourStage::CompAvemix,staged_frame,true);
     },"G18D4 accepted mutated DIAGNO wind between COMP stages");
-    staged_frame.fields.u_mps[0]-=1.f;
-    staged_frame.next.zi_m[0]+=1.f;
+    staged_frame.fields.u_mps[0]=original_wind_u;
+    const float original_pending_zi=staged_frame.next.zi_m[0];
+    staged_frame.next.zi_m[0]=original_pending_zi+1.f;
     rejects([&]{
         routed_comp.run_selected(
             p6::NativeHourStage::CompAvemix,staged_frame,true);
     },"G18D4 accepted uncommitted MIXHT/COMP memory injected between stages");
-    staged_frame.next.zi_m[0]-=1.f;
-    prior.zi_m[0]+=1.f;
+    staged_frame.next.zi_m[0]=original_pending_zi;
+    prior.zi_m[0]=original_prior_zi+1.f;
     rejects([&]{
         routed_comp.run_selected(
             p6::NativeHourStage::CompAvemix,staged_frame,true);
     },"G18D4 accepted external mutation of prior-hour memory");
-    prior.zi_m[0]-=1.f;
+    prior.zi_m[0]=original_prior_zi;
     rejects([&]{
         routed_comp.run_selected(
             p6::NativeHourStage::CompWstarr,staged_frame,true);
