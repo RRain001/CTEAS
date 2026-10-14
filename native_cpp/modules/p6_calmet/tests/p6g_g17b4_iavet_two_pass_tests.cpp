@@ -1123,6 +1123,38 @@ static void verify_g18b3_source_iupt_choice(const std::string& deck) {
         mixed,grid,stations,forced,true);
     check(mixed.iupt==2&&mixed.nearu==choice.nearu,
           "G18B3 positive source IUPT not bound to reused MIXHT kernel");
+    const auto selected_controls=p6g::g18b9_parse_original_gamma_controls(
+        deck,stations.upper.size());
+    const auto forced_controls=p6g::g18b9_parse_original_gamma_controls(
+        user_forced,stations.upper.size());
+    check(selected_controls.iupt==-1&&selected_controls.idiopt2==0&&
+          selected_controls.zupt_m==200.f&&forced_controls.iupt==2,
+          "G18B9 source-defined ZUPT/IDIOPT2/IUPT values diverged");
+    const auto zupt_pattern=std::regex(
+        R"(!\s*ZUPT\s*=\s*200\.\s*!)",std::regex_constants::icase);
+    const auto idiopt_pattern=std::regex(
+        R"(!\s*IDIOPT2\s*=\s*0\s*!)",std::regex_constants::icase);
+    check(std::regex_search(deck,zupt_pattern)&&
+          std::regex_search(deck,idiopt_pattern),
+          "G18B9 missing original source DIAGNO gamma controls");
+    for(const auto& value:{"-1","0","NaN","garbage","200.0 trailing"}) {
+        const auto modified=std::regex_replace(
+            deck,zupt_pattern,std::string("! ZUPT = ")+value+" !");
+        rejects([&]{
+            (void)p6g::g18b9_parse_original_gamma_controls(
+                modified,stations.upper.size());
+        },"G18B9 accepted invalid source ZUPT");
+    }
+    const auto diagnostic_file=std::regex_replace(
+        deck,idiopt_pattern,"! IDIOPT2 = 1 !");
+    rejects([&]{
+        (void)p6g::g18b9_parse_original_gamma_controls(
+            diagnostic_file,stations.upper.size());
+    },"G18B9 silently accepted unsupported source diagnostic-file lapse");
+    rejects([&]{
+        (void)p6g::g18b9_parse_original_gamma_controls(
+            deck+"\n! ZUPT = 200. !",stations.upper.size());
+    },"G18B9 ignored duplicate original ZUPT control");
     for(const auto& v:{"0","3","-2","1.5","abc"}) {
         const auto invalid=std::regex_replace(
             deck,token,std::string("! IUPT = ")+v+" !");
