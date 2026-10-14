@@ -79,7 +79,8 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/compare_puff200_mass.py \
             --original "$root/vendor/case/run/puff/dgm_mass_puff200.bin" \
             --native "$root/native-puff200-mass.tsv" \
-            --out "$root/first-puff200-mass-divergence.json"
+            --out "$root/first-puff200-mass-divergence.json" \
+            --require-bitwise
           echo "P7_PUFF200_REAL4_MASS_HISTORY=DIAGNOSTIC SCIENTIFIC_SIXHOUR_H3_PARITY=OPEN"
       - uses: actions/upload-artifact@v4
         if: always()
