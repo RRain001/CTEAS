@@ -8,6 +8,7 @@
 #include "cteas/p6/p6g_terrain_hour.hpp"
 #include "cteas/p6/p6g_g17b_setcom_airden.hpp"
 #include "cteas/p6/p6g_g17b4_iavet_two_pass.hpp"
+#include "cteas/p6/diagno_segment.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -51,6 +52,24 @@ public:
     [[nodiscard]] const p6::WindUV& after_slope() const {
         if(!after_slope_)throw std::logic_error("G17 SLOPE not yet computed");
         return *after_slope_;
+    }
+    // The G17D tail must only be called on the selected original READGE
+    // HTFAC=1 branch. GEO.DAT is currently constrained to HTFAC=1 by the
+    // P6G source reader; manually constructed grids need this explicit
+    // TEST-only declaration, never an inferred default.
+    void provide_selected_readge_htfac_fixture(float htfac,bool explicitly_test_only) {
+        if(wind_.selected_result().wind1_complete||htfac_selected_||
+           !explicitly_test_only||htfac!=1.f)
+            throw std::invalid_argument("G17D source GEO HTFAC=1 scope not proven");
+        htfac_selected_=true;
+    }
+    [[nodiscard]] const p6::FinalWindSegment& selected_final_wind() const {
+        if(!final_wind_)throw std::logic_error("G17D final W unavailable before mass segment");
+        return *final_wind_;
+    }
+    [[nodiscard]] const p6::SmoothInput& selected_post_inter2_windbc() const {
+        if(!smooth_input_)throw std::logic_error("G17D second WINDBC not completed");
+        return *smooth_input_;
     }
     // Bind the actual stage WIND1 vector to the FIRST original SURFVAR
     // before FRADJ. Do not let a separately prepared wind or temperature
@@ -180,7 +199,11 @@ public:
                 "G17 INTER2 before first source WINDBC");
             return wind_.run(stage,frame);
         }
-        // HEATFX/ELUSTR and DIAGI stability-dependent SIMILT are
+        if(stage==p6::NativeHourStage::DiagnoWindbcPostInter2Htfac1)
+            return second_windbc(frame);
+        if(stage==p6::NativeHourStage::DiagnoSmoothDivcelW)
+            return final_mass_w(frame);
+        // Full HEATFX/ELUSTR and DIAGI stability-dependent SIMILT are
         // NOT implemented; neither are COMP, P6F, final mass-consistency.
         return {p6::NativeHourSource::Unknown,false};
     }
@@ -298,6 +321,70 @@ private:
         first_windbc_=true;
         return {p6::NativeHourSource::NativeCpp,true};
     }
+    p6::NativeHourStageResult second_windbc(const MultiHourFrame& frame) {
+        verify_hour(frame);
+        if(!htfac_selected_||!first_windbc_||
+           !wind_.selected_result().inter2_complete||
+           smooth_input_||final_wind_)
+            throw std::logic_error("G17D second WINDBC requires accepted INTER2/HTFAC=1");
+        const auto& first=wind_.selected_result();
+        const auto nx=static_cast<std::size_t>(terrain_.nx);
+        const auto ny=static_cast<std::size_t>(terrain_.ny);
+        const auto plane=nx*ny;
+        const auto count=plane*9;
+        const auto& u=first.blended_u.component_mps;
+        const auto& v=first.blended_v.component_mps;
+        require_array(u,count);require_array(v,count);
+        p6::SmoothInput input;
+        input.nx=terrain_.nx;input.ny=terrain_.ny;input.nz=9;
+        input.lake_breeze=false; // source selected LLBREZE=F, not generalized
+        input.passes_per_layer.assign(frame.source_controls->nsmth.begin(),
+                                       frame.source_controls->nsmth.end());
+        input.u_mps=u;input.v_mps=v;
+        input.ub_west_east_mps.resize(18*ny);
+        input.vb_south_north_mps.resize(18*nx);
+        // Original CALMET L6092-6101: HTFAC>0 performs SECOND WINDBC(U,V)
+        // after INTER2, overwriting the pre-INTER2 boundary snapshots.
+        // The G16 original_ub/original_vb arrays remain unchanged for audit.
+        for(std::size_t k=0;k<9;++k) {
+            for(std::size_t j=0;j<ny;++j) {
+                const auto off=k*plane+j*nx;
+                input.ub_west_east_mps[k*2*ny+j]=u[off];
+                input.ub_west_east_mps[k*2*ny+ny+j]=u[off+nx-1];
+            }
+            for(std::size_t i=0;i<nx;++i) {
+                const auto off=k*plane+i;
+                input.vb_south_north_mps[k*2*nx+i]=v[off];
+                input.vb_south_north_mps[k*2*nx+nx+i]=v[off+(ny-1)*nx];
+            }
+        }
+        smooth_input_=std::move(input);
+        return {p6::NativeHourSource::NativeCpp,true};
+    }
+    p6::NativeHourStageResult final_mass_w(const MultiHourFrame& frame) {
+        verify_hour(frame);
+        if(!smooth_input_||final_wind_||
+           !wind_.selected_result().inter2_complete||
+           frame.source_controls->iobr!=0)
+            throw std::logic_error("G17D final SMOOTH/DIVCEL/W outside source stage");
+        std::vector<float> dz;
+        dz.reserve(9);
+        for(std::size_t k=0;k<9;++k) {
+            const auto lo=frame.source_controls->zface_m[k];
+            const auto hi=frame.source_controls->zface_m[k+1];
+            if(!std::isfinite(lo)||!std::isfinite(hi)||hi<=lo)
+                throw std::invalid_argument("G17D invalid source ZFACE/DZ");
+            dz.push_back(hi-lo);
+        }
+        // Exact PR #53 source-checked final segment, no duplicated physics
+        // and no replacement of previous COMP ZI/ZICONV/DPTT state.
+        final_wind_=p6::original_smooth_divcel_w(
+            *smooth_input_,terrain_.spacing_m,terrain_.spacing_m,dz,false);
+        frame.fields.u_mps=final_wind_->u_mps;
+        frame.fields.v_mps=final_wind_->v_mps;
+        frame.fields.w_face_mps=final_wind_->w_face_mps;
+        return {p6::NativeHourSource::NativeCpp,true};
+    }
     G16SelectedWindPhysics wind_;
     TerrainStaticG11 terrain_;
     G17FradjSource fradj_;
@@ -306,6 +393,8 @@ private:
     std::optional<std::vector<float>> iavet1_final_;
     std::optional<G17SlopeHeatSource> heat_;
     std::optional<std::vector<float>> airden_;
-    bool first_windbc_=false;
+    bool first_windbc_=false,htfac_selected_=false;
+    std::optional<p6::SmoothInput> smooth_input_;
+    std::optional<p6::FinalWindSegment> final_wind_;
 };
 } // namespace cteas::calmet::p6g
