@@ -30,7 +30,7 @@ jobs:
           lines=raw.decode('latin-1').splitlines()
           for left,right,label in ((48465,48565,'SETPUF-BEGIN-END'),
                                    (48600,48685,'SETPUF-CTADJ2-END'),
-                                   (20480,20570,'CTADJ2-ENTRY')):
+                                   (20542,20845,'CTADJ2-FULL')):
               for i in range(left-1,right):
                   print(f'P7_VENDOR_{label} {i+1:6d} {lines[i]}')
           print('P7_ORIGINAL_SETPUF_END_SOURCE=PASS SHA256=PINNED')
