@@ -184,7 +184,7 @@ def main():
             for i,(a,b) in enumerate(zip(original_rows[index],native_rows[index])):
                 delta=abs(a-b)
                 highest=max(highest,delta)
-                if abs(a-(-3.f if i==0 else -1.f))>1.e-4:
+                if abs(a-(-3.0 if i==0 else -1.0))>1.e-4:
                     adjusted+=1
                 if delta>2e-4 and len(failures)<10:
                     failures.append((index,i,a,b,delta))
