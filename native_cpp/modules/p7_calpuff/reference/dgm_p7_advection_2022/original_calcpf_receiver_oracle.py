@@ -123,7 +123,18 @@ def main() -> None:
     staged = out / "case"
     original._stage_case(case, staged)
     run = staged / "run" / "puff"
-    result = original._run(executable, run)
+    try:
+        result = original._run(executable, run)
+    except SystemExit:
+        vendor_log = run / "puff_runtime.log"
+        if vendor_log.exists():
+            print("P7_ORIGINAL_CALCPF_INSTRUMENTED_VENDOR_RUNTIME_TAIL_BEGIN",
+                  file=sys.stderr)
+            print(vendor_log.read_text(errors="replace")[-8000:],
+                  file=sys.stderr)
+            print("P7_ORIGINAL_CALCPF_INSTRUMENTED_VENDOR_RUNTIME_TAIL_END",
+                  file=sys.stderr)
+        raise
     if result["puff_con_sha256"] != original.TARGET_PUFF_CON_SHA256:
         raise AssertionError(
             "original CALPUFF receiver instrumentation changed puff.con: "
