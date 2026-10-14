@@ -1,0 +1,40 @@
+name: P6G G9 multi-station WIND1 expanded 10km annual
+
+on:
+  push:
+    branches:
+      - codex/p6g-g9-multistation-wind1-expanded-10km-20261014
+  pull_request:
+    paths:
+      - "native_cpp/modules/p6_calmet/include/cteas/p6/p6g_multi_wind1_firstguess.hpp"
+      - "native_cpp/modules/p6_calmet/include/cteas/p6/p6g_selected_hour_bridge.hpp"
+      - "native_cpp/modules/p6_calmet/tests/p6g_g9_multi_wind1_tests.cpp"
+      - "native_cpp/modules/p6_calmet/tests/p6g_g8_10km_year_stress_tests.cpp"
+      - "native_cpp/modules/p6_calmet/CMakeLists.txt"
+      - ".github/workflows/p6g-g9-10km-wind1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  multi-wind1-expanded-domain:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure GCC 11 strict C++20
+        run: cmake -S native_cpp/modules/p6_calmet -B "${{ runner.temp }}/p6g-g9" -DCMAKE_BUILD_TYPE=${{ matrix.build }}
+      - name: Build candidate multi-site WIND1, annual bridge and frozen comparison
+        run: |
+          cmake --build "${{ runner.temp }}/p6g-g9" --target \
+            cteas_p6g_g9_multi_wind1_tests cteas_p6g_g8_10km_year_tests \
+            cteas_p6_wind1_firstguess_tests cteas_p6_inter2_tests -j2
+      - name: Run frozen pair and 60-120km 10km multi-station WIND1+INTER2 tests
+        run: |
+          ctest --test-dir "${{ runner.temp }}/p6g-g9" --output-on-failure \
+            -R 'p6g_g9_expanded_10km_multi_wind1_frozen_pair_parity|p6g_g8_multisite_10km_8784h_selected_source_bridge|p6d8b_original_wind1_firstguess_selected_software|p6d_original_inter2_selected_software'
