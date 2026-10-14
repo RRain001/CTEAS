@@ -88,7 +88,7 @@ void test_original_zero_xfinal_point_release() {
     rejects([&]{(void)original_point_hour_from_prfin(in,rise,src);},
             "inconsistent PRFIN buoyancy XFINAL cannot pass source guard");
     std::cout<<"P7_ORIGINAL_POINT_ZERO_XFINAL_WIND_LT_1=PASS"
-             <<" INVALID_NONCALM_AND_NEGATIVE_REJECTED=YES\\n";
+             <<" INVALID_NONCALM_AND_NEGATIVE_REJECTED=YES\n";
 }
 void run(int total_hours){
     OriginalCompRiseMultiPuffHours scheduler;
