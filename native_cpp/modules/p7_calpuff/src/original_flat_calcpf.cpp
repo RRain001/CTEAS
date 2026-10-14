@@ -369,7 +369,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                 throw std::overflow_error("flat CALCPF receptor REAL4 overflow");
             if(trace_hook) {
                 // Read-only: the trace is not fed back into PFSAMP/CALCPF.
-                const float denom=6.2831853F*receptor_sigma_y*receptor_sigma_y;
+                // Read-only mirror of CALCPF L4293: 6.2831853*SYREC**2.
+                const float denom=6.2831853F*(receptor_sigma_y*receptor_sigma_y);
                 const float dinv=1.0F/denom;
                 const float t2=static_cast<float>(ints.i2)*dinv;
                 const float t1=static_cast<float>(ints.i1)*dinv-t2;
