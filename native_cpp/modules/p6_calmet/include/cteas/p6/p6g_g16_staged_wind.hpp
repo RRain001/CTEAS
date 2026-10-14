@@ -35,11 +35,16 @@ struct G16PostSlopeFields {
     // Mandatory source-computed fields AFTER FRADJ, HEATFX, SLOPE and first
     // WINDBC, never a substitute built by copying the WIND1 first guess.
     std::vector<float> u_mps,v_mps,observation_weight;
+    // Original L5748 first WINDBC boundary, saved BEFORE INTER2.
+    // k-major; WEST/EAST: k*2*ny + [0..ny-1] / [ny..2ny-1]
+    // SOUTH/NORTH: k*2*nx + [0..nx-1] / [nx..2nx-1].
+    std::vector<float> ub_west_east_mps,vb_south_north_mps;
 };
 struct G16WindStages {
     std::chrono::sys_seconds end{};
     Wind1MultiField first_guess;
     p6::Inter2SelectedOutput blended_u,blended_v;
+    std::vector<float> original_ub_west_east_mps,original_vb_south_north_mps;
     bool wind1_complete=false,inter2_complete=false;
 };
 class G16SelectedWindPhysics final : public MultiHourPhysics {
@@ -55,6 +60,36 @@ public:
             throw std::logic_error("G16 post-SLOPE handoff out of source order");
         if(input.end!=stage_.end)
             throw std::invalid_argument("G16 post-SLOPE wind has wrong UTC hour");
+        const auto nx=static_cast<std::size_t>(stage_.first_guess.nx);
+        const auto ny=static_cast<std::size_t>(stage_.first_guess.ny);
+        const auto cells=nx*ny;
+        require_finite(input.u_mps,cells*9,"post-SLOPE U");
+        require_finite(input.v_mps,cells*9,"post-SLOPE V");
+        require_finite(input.observation_weight,cells*9,"post-SLOPE WO");
+        require_finite(input.ub_west_east_mps,9*2*ny,"pre-INTER2 UB");
+        require_finite(input.vb_south_north_mps,9*2*nx,"pre-INTER2 VB");
+        for(float w:input.observation_weight)
+            if(w<0.f||w>1.f)
+                throw std::invalid_argument("G16 original WO outside 0..1");
+        for(std::size_t k=0;k<9;++k) {
+            for(std::size_t j=0;j<ny;++j) {
+                const auto row=k*cells+j*nx;
+                const auto face=k*2*ny+j;
+                if(input.ub_west_east_mps[face]!=input.u_mps[row]||
+                   input.ub_west_east_mps[face+ny]!=input.u_mps[row+nx-1])
+                    throw std::invalid_argument(
+                        "G16 first WINDBC U not from pre-INTER2 corrected U");
+            }
+            for(std::size_t i=0;i<nx;++i) {
+                const auto row=k*cells+i;
+                const auto face=k*2*nx+i;
+                if(input.vb_south_north_mps[face]!=input.v_mps[row]||
+                   input.vb_south_north_mps[face+nx]!=
+                       input.v_mps[row+(ny-1)*nx])
+                    throw std::invalid_argument(
+                        "G16 first WINDBC V not from pre-INTER2 corrected V");
+            }
+        }
         corrected_=std::move(input);
     }
 
@@ -198,6 +233,10 @@ private:
         // source-level ambiguity in the old G8 selected-source bridge.
         const auto u=make_component(profiles_.inter2_u_mps,corrected_->u_mps);
         const auto v=make_component(profiles_.inter2_v_mps,corrected_->v_mps);
+        // Preserve original L5748 snapshots for later SMOOTH/DIVCEL/W;
+        // do not recompute lateral boundaries from INTER2-blended U/V.
+        stage_.original_ub_west_east_mps=corrected_->ub_west_east_mps;
+        stage_.original_vb_south_north_mps=corrected_->vb_south_north_mps;
         stage_.blended_u=u;
         stage_.blended_v=v;
         stage_.inter2_complete=true;
