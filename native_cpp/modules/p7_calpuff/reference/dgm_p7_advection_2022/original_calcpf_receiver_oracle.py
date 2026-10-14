@@ -276,9 +276,19 @@ def audit_h9_mctadj2_trace(path: Path, out: Path) -> None:
             if not all(math.isfinite(v) for v in vals):
                 raise AssertionError("source H9 MCTADJ2 nonfinite operand")
             samples.append((seq,puff,ksam,vals))
-    expected=((16480,596,2),(16486,597,6),(16495,598,7))
-    if tuple(row[:3] for row in samples)!=expected:
-        raise AssertionError(f"source H9 terrain physical keys drifted: {samples}")
+    # MCTADJ2 trace is inside the original BVF>0 branch. A CALCPF
+    # receptor contribution does NOT imply that branch was entered.
+    # Preserve observed source keys and report missing ones explicitly;
+    # never create an invented third source observation.
+    requested=((16480,596,2),(16486,597,6),(16495,598,7))
+    observed=tuple(row[:3] for row in samples)
+    if not observed or any(key not in requested for key in observed) or (
+        tuple(key for key in requested if key in observed)!=observed):
+        raise AssertionError(f"unexpected H9 MCTADJ2 source physical keys: {observed}")
+    missing=tuple(key for key in requested if key not in observed)
+    print(f"P7_ORIGINAL_H9_MCTADJ2_COVERAGE"
+          f" OBSERVED={observed} MISSING={missing}"
+          " ABSENT_KEY_IS_NOT_ZERO_OR_PARITY")
     entries=[]
     for seq,puff,ksam,vals in samples:
         values=dict(zip(H9_MCTADJ2_LABELS,vals))
@@ -295,6 +305,10 @@ def audit_h9_mctadj2_trace(path: Path, out: Path) -> None:
         "status":"ORIGINAL_H9_SOURCE_ONLY",
         "scope":"original PUFRECS MCTADJ2 (42,11), 3 REAL4 events",
         "events":entries,
+        "requested_keys":requested,
+        "observed_keys":observed,
+        "missing_keys":missing,
+        "coverage":"PARTIAL_SOURCE_ONLY" if missing else "FULL_SOURCE_ONLY",
         "trace_sha256":original.sha256_file(path),
         "vendor_source_sha256":original.ORIGINAL_CALPUFF_SHA256,
         "native_state_injected":False
