@@ -290,7 +290,7 @@ int main(int argc,char** argv) {
                         <<" BIT_B=0x"<<std::bit_cast<std::uint32_t>(opening)
                         <<" BIT_RS=0x"<<std::bit_cast<std::uint32_t>(rs)
                         <<std::dec<<" ORIGINAL_VDCOMP_INPUT_PARITY=TO_BE_COMPARED"
-                        <<"\\n";
+                        <<"\n";
                 }
                 // Pinned original SETPUF #3874: record the native CTADJ2
                 // end calculation even after full SIGZ parity is achieved.
