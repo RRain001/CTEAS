@@ -173,6 +173,21 @@ add_test(NAME p6g_g16_source_wind1_then_explicit_post_slope_inter2_no_comp
          COMMAND cteas_p6g_g16_staged_wind_tests
            "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
 
+# G17A: selected source-ordered native FRADJ and SLOPE between G16 WIND1
+# and INTER2, with first WINDBC snapshot and explicit fixture provenance.
+add_executable(cteas_p6g_g17_staged_terrain_tests
+               tests/p6g_g17_staged_terrain_tests.cpp)
+target_link_libraries(cteas_p6g_g17_staged_terrain_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g17_staged_terrain_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g17_staged_terrain_tests PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g17_fradj_slope_first_windbc_native_stage_source_parity
+         COMMAND cteas_p6g_g17_staged_terrain_tests
+           "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
+
 add_executable(cteas_p6a_contract_tests tests/p6_contract_tests.cpp)
 target_link_libraries(cteas_p6a_contract_tests PRIVATE cteas_p6a_contracts)
 add_executable(cteas_p6_terset src/terrain_envelope_main.cpp)
