@@ -105,7 +105,8 @@ static void write_geo(const std::string& path,int nx,int ny) {
         for(int i=0;i<nx;++i)out<<"20"<<(i==nx-1?"\n":",");
     out<<"1 - terrain height factor\n";
     for(int j=ny-1;j>=0;--j)
-        for(int i=0;i<nx;++i)out<<"100"<<(i==nx-1?"\n":",");
+        for(int i=0;i<nx;++i)
+            out<<(100+250*i+150*j)<<(i==nx-1?"\n":",");
     for(int k=0;k<6;++k){
         out<<"2 - gridded property\n";
         for(int j=ny-1;j>=0;--j)
@@ -154,8 +155,24 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
         nx,ny,10.0f,geo.zone,geo.hemisphere,
         {0,20,40,80,160,320,640,1200,2000,3000},geo.landuse
     };
-    grid.synthetic_identity_diagno_tail=true;
+    grid.synthetic_identity_diagno_tail=false;
+    grid.source_terrain_diagno_tail=true;
+    grid.terrain=prepare_g11_terrain(geo,35.0f);
     grid.smoothing_passes={1,0,2,1,0,2,1,0,1};
+    auto hour_thermo=[&](std::size_t time){
+        TerrainHourG11 state;
+        state.provenance=TerrainHourProvenance::SyntheticReferenceFixture;
+        state.isurft=-1;
+        state.domain_temperature_k=285.f;
+        state.critfn=10.f;
+        const auto plane=static_cast<std::size_t>(nx*ny);
+        state.lapse_k_per_m.assign(plane,0.002f);
+        state.temperature_k.assign(
+            plane,280.f+float(time%12)*0.25f);
+        state.sensible_heat_w_m2.assign(
+            plane,-120.f-float(time%9)*4.f);
+        return state;
+    };
     // 6x6 (60 km) short cross-year; expanded 12x12 (120 km) annual.
     require_test(grid.nx*grid.ny==nx*ny&&grid.spacing_km==10.f,
                  "G8 must test precisely 10km cells");
@@ -167,17 +184,20 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
     {
         auto no_tail=grid;
         no_tail.synthetic_identity_diagno_tail=false;
+        no_tail.source_terrain_diagno_tail=false;
+        no_tail.terrain.reset();
         no_tail.smoothing_passes.clear();
         const auto first=selected_multisite_hour(
             deck,surface.hourly.front(),clock.front(),prepared,no_tail);
         require_test(!first.selected_tail_exercised&&first.nonzero_w_faces==0,
                      "G10 DIAGNO tail must be opt-in, never silently inferred");
         auto malformed=grid;
+        auto first_thermal=hour_thermo(0);
         malformed.smoothing_passes.pop_back();
         bool denied=false;
         try {
             (void)selected_multisite_hour(
-                deck,surface.hourly.front(),clock.front(),prepared,malformed);
+                deck,surface.hourly.front(),clock.front(),prepared,malformed,&first_thermal);
         }catch(const std::invalid_argument&){denied=true;}
         require_test(denied,
                      "G10 short/missing SMOOTH pass vector accepted");
@@ -186,23 +206,44 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
         denied=false;
         try {
             (void)selected_multisite_hour(
-                deck,surface.hourly.front(),clock.front(),prepared,malformed);
+                deck,surface.hourly.front(),clock.front(),prepared,malformed,&first_thermal);
         }catch(const std::invalid_argument&){denied=true;}
         require_test(denied,"G10 negative SMOOTH pass count accepted");
+        denied=false;
+        try {
+            (void)selected_multisite_hour(
+                deck,surface.hourly.front(),clock.front(),prepared,grid);
+        }catch(const std::invalid_argument&){denied=true;}
+        require_test(denied,"G11 terrain silently accepted without hourly thermal provider");
+        malformed=grid;
+        malformed.synthetic_identity_diagno_tail=true;
+        denied=false;
+        try {
+            (void)selected_multisite_hour(
+                deck,surface.hourly.front(),clock.front(),prepared,malformed,
+                &first_thermal);
+        }catch(const std::invalid_argument&){denied=true;}
+        require_test(denied,"G11 contradictory identity/terrain modes accepted");
     }
     std::uint64_t hash=1469598103934665603ULL;
     bool varied=false, crossed=false;
     float first_u=0.f;
     auto last=begin;
     std::size_t total_contributions=0;
+    std::size_t total_fradj_changed=0,total_slope_changed=0;
     for(std::size_t hour=0;hour<clock.size();++hour) {
         const auto& input=clock[hour];
         require_test(input.end==begin+hours{static_cast<int>(hour)+1},
                      "G8 one-hour input clock drifted");
+        auto thermal=hour_thermo(hour);
         const auto output=selected_multisite_hour(
-            deck,surface.hourly[hour],input,prepared,grid);
+            deck,surface.hourly[hour],input,prepared,grid,&thermal);
         require_test(output.end==input.end,
                      "G10 source-selected DIAGNO returned wrong hour");
+        require_test(output.original_terrain_kernels_exercised,
+                     "G11 FRADJ/SLOPE not executed");
+        total_fradj_changed+=output.fradj_changed_cells;
+        total_slope_changed+=output.slope_changed_cells;
         require_test(output.selected_tail_exercised&&
                      output.nonzero_w_faces>0&&
                      std::isfinite(output.top_center_w_mps),
@@ -228,10 +269,14 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
                  "G8 selected multi-observation fields not active/variable");
     require_test(!require_year_boundary||crossed,
                  "G8 did not exercise Gregorian year boundary");
-    require_test(hash!=1469598103934665603ULL,"G8 digest unchanged");
-    std::cout<<"G10_10KM_SYNTHETIC_MULTISTATION_WIND1_INTER2_DIAGNO_TAIL hours="<<expected_hours
+    require_test(total_slope_changed>0,
+                 "G11 nonflat source GEO and negative sensible heat did not produce slope flow");
+    require_test(hash!=1469598103934665603ULL,"G11 digest unchanged");
+    std::cout<<"G11_10KM_MULTISTATION_TERRAIN_FRADJ_SLOPE_DIAGNO_TAIL hours="<<expected_hours
              <<" grid="<<nx<<"x"<<ny<<"x9 spacing_km=10 surface=2 upper=2"
              <<" contributions="<<total_contributions
+             <<" fradj_changed="<<total_fradj_changed
+             <<" slope_changed="<<total_slope_changed
              <<" signature="<<std::hex<<hash<<std::dec<<"\n";
     std::remove(surface_file.c_str());
     std::remove(upper1_file.c_str());
@@ -247,7 +292,7 @@ int main(){
         // 2024 is a leap year: actual 8784 consecutive UTC hours.
         const auto annual=sys_days{year{2024}/January/1};
         exercise_period(annual,annual+hours{8784},8784,true,12,12);
-        std::cout<<"PASS P6G_G10_10KM_EXPANDED_MULTI_WIND1_INTER2_SELECTED_DIAGNO_TAIL_8784H\n";
+        std::cout<<"PASS P6G_G11_10KM_MULTISTATION_TERRAIN_DIAGNO_TAIL_8784H\n";
         return 0;
     }catch(const std::exception& e){
         std::cerr<<"P6G_G8_10KM_FAIL "<<e.what()<<"\n";
