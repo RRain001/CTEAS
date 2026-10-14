@@ -621,13 +621,26 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     // Full CALCPF PUFRECS/VCBAR and CHEM/WET/DRY remain outside scope.
     std::vector<float> receptor_increments;
     if(sampling_kernel){
+        // Original SETPUF calpuff.for L48600-48604 and L48664-48668:
+        // LCALM writes SY0/SZ0 from the CURRENT midpoint (with BID)
+        // before COMP calls CALCPF L11169-11178. Previous-step floors
+        // are persisted only when the entire native transaction commits,
+        // but PUFRECS must read these current-step values immediately.
+        // This is read-only staging; do not mutate the committed puff
+        // until receptor sampling and all substeps have succeeded.
+        const float receptor_sy0=lcalm?
+            r4(sigma.adjust.minimum_sigma_y_m,"LCALM current SY0") :
+            state.minimum_sigma_y_m;
+        const float receptor_sz0=lcalm?
+            r4(sigma.adjust.minimum_sigma_z_m,"LCALM current SZ0") :
+            state.minimum_sigma_z_m;
         const RiseCompSamplingState at_receptor{
             id,before,moved.state,v.state(id),sigma,mass,
             r4(substep.step_s,"native sample step seconds"),
             curves.environment(),state.physics,state.x_final_m,
             state.buoyancy_variance_m2,
             state.initial_sigma_y_squared_m2,
-            state.minimum_sigma_y_m,state.minimum_sigma_z_m,
+            receptor_sy0,receptor_sz0,
             ctadj2_step,current_receptor_bvf,ws,original_qold_mixed,
             native_receptor_calm
         };
