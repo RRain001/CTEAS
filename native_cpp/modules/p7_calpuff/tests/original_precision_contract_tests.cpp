@@ -5,6 +5,7 @@
 #include "cteas/puff/step.hpp"
 #include "cteas/puff/step_integration.hpp"
 
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -39,6 +40,21 @@ int main() {
             qa.x_km != 513.385009765625F ||
             qa.y_km == rounded_source)
             throw std::runtime_error("original REAL4 source/origin rounding has changed");
+        // Independent source-verified hour-2 puff 52, KSAM=1,
+        // global COMP row1607; exact Fortran XTEMP bit pattern was
+        // captured with original write-only CALCPF instrumentation.
+        const float tsamp=43.37349319458008F;
+        const float f1=7.08527070347742e-10F;
+        const float source_fraction=original_calcpf_time_fraction(tsamp,3600.0F);
+        const float vendor_xtemp=f1*source_fraction;
+        const float incorrect_xtemp=f1*(tsamp/3600.0F);
+        if(std::bit_cast<std::uint32_t>(vendor_xtemp)!=0x2d162cd9U ||
+           std::bit_cast<std::uint32_t>(incorrect_xtemp)!=0x2d162cd8U ||
+           vendor_xtemp==incorrect_xtemp)
+            throw std::runtime_error("CALCPF TFRACT REAL4 reciprocal ordering drifted");
+        std::cout << "P7_ORIGINAL_CALCPF_TFRACT_REAL4=PASS"
+                     " ORIGINAL_XTEMP_BITS=0x2d162cd9"
+                     " DIRECT_DIVISION_BITS=0x2d162cd8\n";
         std::cout << "P7_ORIGINAL_CPP_PRECISION=PASS"
                      " COMMON_REAL_BYTES=4 EXPLICIT_DOUBLE_BYTES=8"
                      " COMMON_INTEGER_BYTES=4 REAL4_SOURCE_VS_MET_ORIGIN=DIFFERENT"
