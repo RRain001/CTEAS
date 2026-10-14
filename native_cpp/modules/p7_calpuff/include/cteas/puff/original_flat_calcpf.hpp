@@ -20,6 +20,23 @@ enum class OriginalFlatVerticalMethod {
     // No defaults for authentic CTADJ2 step, TRELIEF and GETELEV.
     receptor_pg_vcoup_mctadj2
 };
+// Diagnostic-only stage values for exact same-puff/same-KSAM receptor comparison.
+// Values are captured from the live native CALCPF calculation, never used
+// as inputs; the optional hook is disabled in every production path.
+struct OriginalCalcpfReceiverIntermediate {
+    std::size_t receptor_index=0;
+    float sigma_y_m=0.0F;
+    float sigma_z_m=0.0F;
+    float puff_height_m=0.0F;
+    float receptor_pole_m=0.0F;
+    float vertical_factor=0.0F;
+    float xi1=0.0F,xi2=0.0F,t1=0.0F,t2=0.0F;
+    float qold=0.0F,qnew=0.0F,xtemp=0.0F,concentration=0.0F;
+};
+using OriginalCalcpfIntermediateHook=std::function<void(
+    const RiseCompSamplingState&,
+    const OriginalCalcpfReceiverIntermediate&)>;
+
 using OriginalMctadj2TerrainLookup=std::function<
     OriginalMctadj2ReceptorTerrain(
         const RiseCompSamplingState&,std::size_t,
@@ -44,6 +61,7 @@ using OriginalMctadj2TerrainLookup=std::function<
     OriginalFlatVerticalMethod vertical_method =
         OriginalFlatVerticalMethod::midpoint_vcoup,
     OriginalMctadj2TerrainLookup terrain_lookup={},
-    bool selected_h3_from_multispecies=false);
+    bool selected_h3_from_multispecies=false,
+    OriginalCalcpfIntermediateHook trace_hook={});
 
 } // namespace cteas::puff
