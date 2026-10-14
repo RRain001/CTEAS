@@ -405,11 +405,15 @@ static void verify_source_staged_iavet(
           "G17C2 accidentally promoted selected ELUSTR to production");
     check(frame.next.ziconv_m==prior.ziconv_m,
           "G17C2 ELUSTR test modified previous-hour committed state");
-    auto stale_heat=selected.selected_slope_fixture();
+    auto stale_heat=elustr.selected_slope_fixture(selected);
     stale_heat.temperature_k=surface.first_temperature();
     rejects([&]{stages.provide_slope_heat(stale_heat);},
-            "G17C SLOPE accepted obsolete first TEMP2D");
-    stages.provide_slope_heat(selected.selected_slope_fixture());
+            "G17C2 SLOPE accepted obsolete first TEMP2D");
+    const auto genuine_heat=elustr.selected_slope_fixture(selected);
+    check(genuine_heat.sensible_heat_w_m2==elustr.qh_wm2 &&
+          genuine_heat.temperature_k==selected.temperature_k,
+          "G17C2 stale HEATFX QH used after stable ELUSTR");
+    stages.provide_slope_heat(genuine_heat);
     // Scoped inputs are still test-only: do not claim production HEATFX/COMP.
     check(!stages.run(p6::NativeHourStage::DiagnoHeatfx,frame).completed,
           "G17C marked experimental coefficient-controlled heat as production");
