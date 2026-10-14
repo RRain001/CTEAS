@@ -5,6 +5,7 @@
 // SETCOM/STHEOR station selection and full COMP state pass independent parity.
 // NEVER marks full CALMET DIAGNO/COMP native acceptance.
 #include "cteas/p6/p6g_g17c2_elustr_handoff.hpp"
+#include "cteas/p6/p6g_g18d7_source_station_cell.hpp"
 #include "cteas/p6/station_elustr2.hpp"
 #include "cteas/p6/station_mixhtst.hpp"
 #include "cteas/p6/similt_profile.hpp"
@@ -97,9 +98,7 @@ inline std::vector<G17C3StationDiagi> selected_station_diagi_from_previous_comp(
            station.local_x_m>=static_cast<float>(grid.nx)*dx||
            station.local_y_m>=static_cast<float>(grid.ny)*dx)
             throw std::invalid_argument("G17C3 station outside source GEO");
-        const auto ix=static_cast<std::size_t>(station.local_x_m/dx);
-        const auto iy=static_cast<std::size_t>(station.local_y_m/dx);
-        const auto cell=iy*static_cast<std::size_t>(grid.nx)+ix;
+        const auto cell=g18d7_source_diagi_station_cell(grid,station);
         if(grid.landuse[cell]>=grid.iwat1&&grid.landuse[cell]<=grid.iwat2)
             throw std::invalid_argument("G17C3 station WATER2 not source-accepted");
         // Select the newest sounding at or before the model HOUR START,
