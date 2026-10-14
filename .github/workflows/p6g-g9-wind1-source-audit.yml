@@ -1,0 +1,30 @@
+name: P6G G9 forensic original WIND1 source audit
+
+on:
+  push:
+    branches:
+      - codex/p6g-g9-multistation-wind1-expanded-10km-20261014
+    paths:
+      - '.github/workflows/p6g-g9-wind1-source-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-source-scope:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect vendor CALMET 6.5.0 original WIND1 line sequence
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE=engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for
+          test -s "$SOURCE"
+          sha256sum "$SOURCE"
+          wc -l "$SOURCE"
+          echo "BEGIN_ORIGINAL_WIND1_SCOPE"
+          sed -n '36000,36430{=;p;}' "$SOURCE" | sed 'N;s/\n/ /'
+          echo "END_ORIGINAL_WIND1_SCOPE"
