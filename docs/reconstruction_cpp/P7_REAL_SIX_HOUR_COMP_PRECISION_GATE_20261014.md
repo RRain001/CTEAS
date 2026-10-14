@@ -60,6 +60,59 @@ complete 6h H3 **OPEN**; complete 143h output, forced MXPUFF
 
 ---
 
+## Source-backed CTADJ2 fixed-stage acceptance and hour-4 first mass divergence
+
+**Direct original/native binary32 source gate PASS**:
+[GitHub-hosted #38518929684](https://github.com/RRain001/CTEAS/actions/runs/38518929684).
+The identical original Fortran DGM #3874 endpoint and production native
+C++ now compare exactly in all four isolated expressions:
+
+| Original SETPUF end/CTADJ2 REAL4 parameter | Original | Native | Exact |
+| --- | --- | --- | --- |
+| `R` before CTADJ2 | `0x3f76113e` | `0x3f76113e` | PASS |
+| `CTADJ2 STRAIN` | `0x3f806eea` | `0x3f806eea` | PASS |
+| `SZADJ=SZE1*STRAIN` | `0x4306a3c2` | `0x4306a3c2` | PASS |
+| `SZE1` after SIGTZ | `0x4306a3c2` | `0x4306a3c2` | PASS |
+
+All **11,458/11,458** original six-hour COMP puff keys, post-ADVECT
+X/Y, stored SIGY and stored SIGZ are exact. This is now a strict
+fail-closed test; previous diagnostic's expectation of a divergence was
+withdrawn, **not** a loosening of its numeric comparison.
+
+**Fourth-hour first divergence is mass, not dispersion geometry**:
+[GitHub-hosted write-only Fortran/native stage comparison #38518929871](https://github.com/RRain001/CTEAS/actions/runs/38518929871)
+(complete 143-hour `puff.con` and original DGM hash unchanged).
+At original 1-based receptor `(i=47,j=13)` = 0-based flat index
+`646`, there are **482/482 same physical substep keys**.
+Exactly **482/482** `SYREC, SZREC, ZPR, ZRPOLE, VCOUP F1,
+PFSAMP XI1/XI2, CALCPF T1/T2, XTEMP` are float32-bit equal.
+
+**First source-stage discrepancy**: global DGM substep **5847**,
+hour4 puff **200**, `KSAM=25`, **QOLD**:
+- Original `41,251,240 Bq`, float32 bits `0x4c1d5c6a`
+- Native `41,251,248 Bq`, float32 bits `0x4c1d5c6c`
+- Same step `QNEW`: original `41,215,896 Bq`, native
+  `41,215,904 Bq`. Both diverge in the same direction.
+- Full 482 stages: `QOLD` 436/482 bitwise, `QNEW` 432/482,
+  final `CONC` 435/482; every geometry and horizontal/vertical
+  receptor factor listed above **482/482 bitwise**.
+
+**Consequence:** Do not modify `CTADJ2`, `SIGTZ`, `PFSAMP`,
+`PUFRECS`, `T1/T2` or directly widen floats. The next first-source
+audit must instrument original **hour-4 puff 200 pre-VMASS mass,
+post-VMASS/pre-DRY QOLD, post-DRY QM and dry-removal fraction/VCBAR**
+on identical steps to distinguish a mass-history rounding error
+from the current-step DRY evaluation. Original source outputs
+are read-only oracles and must never initialize native mass states.
+
+**Scientific scope:** first three real hours **7,500/7,500 H3
+concentration words** ACCEPTED; six-hour source DGM stored
+XY/SIGY/SIGZ **11,458/11,458** ACCEPTED; complete 6-hour
+H3 fields **14,696/15,000** REAL4 bits (remaining 304, beginning
+hour4) **OPEN**. Original 143h and complete WROUT1 remain OPEN.
+
+---
+
 ## One source-ordered native scheduling authority
 
 `OriginalCompRiseMultiPuffHours::advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled`
