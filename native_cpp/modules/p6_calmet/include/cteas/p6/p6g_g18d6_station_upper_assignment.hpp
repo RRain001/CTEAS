@@ -5,6 +5,7 @@
 // Only original pinned IUPT=-1 and inside-GEO land-station branch;
 // full G14 production station physics/45-field parity still requires gates.
 #include "cteas/p6/p6g_g18b3_upper_choice.hpp"
+#include "cteas/p6/p6g_g18d7_source_station_cell.hpp"
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -38,10 +39,9 @@ inline std::vector<std::size_t> g18d6_station_uppers_from_source_setcom(
            station.local_y_m>=static_cast<float>(ny)*dx)
             throw std::invalid_argument(
                 "G18D6 STHEOR source station lies outside local GEO");
-        // Same station grid-cell conversion as selected original STHEOR.
-        const auto i=static_cast<std::size_t>(station.local_x_m/dx);
-        const auto j=static_cast<std::size_t>(station.local_y_m/dx);
-        const auto cell=j*nx+i;
+        // DIAGI REAL*4 division+addition precedes integer truncation.
+        // Preserve original STHEOR grid-cell ownership at ULP boundaries.
+        const auto cell=g18d7_source_diagi_station_cell(grid,station);
         if(grid.landuse[cell]>=grid.iwat1&&
            grid.landuse[cell]<=grid.iwat2)
             throw std::invalid_argument("G18D6 water station STHEOR not accepted");
