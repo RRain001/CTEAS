@@ -278,10 +278,15 @@ int main(int argc,char** argv) {
         const bool trace_this_hour=
             (argc>=6 && hour_index==1U) ||
             (argc>=7 && hour_index==3U);
-        const std::size_t trace_cell=hour_index==1U?1374U:646U;
+        // First new physical failure after strict H1-H8: H9 i=13,j=1.
+        // Original source emits NO CALCPF receiver-stage rows for this cell.
+        // Trace native CALCPF events without changing any sampler arithmetic.
+        const bool trace_h9_cell12=hour_index==8U && probe_hours>=9U;
+        const std::size_t trace_cell=trace_h9_cell12 ? 12U :
+            (hour_index==1U?1374U:646U);
         std::vector<NativeH3ReceptorRow> trace_rows;
         OriginalCalcpfIntermediateHook stage_hook;
-        if(trace_this_hour) {
+        if(trace_this_hour || trace_h9_cell12) {
             stage_hook=[&trace_rows,trace_cell](
                 const RiseCompSamplingState& state,
                 const OriginalCalcpfReceiverIntermediate& row){
@@ -316,6 +321,49 @@ int main(int argc,char** argv) {
                 hour.receptor_concentrations.size()==2500U &&
                 hour.steps.size()>0U,
                 "real sixhour COMP hour transaction/cadence invalid");
+        if(trace_h9_cell12) {
+            double receptor_events_sum=0.0;
+            std::size_t nonzero_events=0U;
+            for(const auto& item:trace_rows) {
+                require(std::isfinite(item.values.concentration),
+                        "H9 native CALCPF diagnostic contains nonfinite contribution");
+                receptor_events_sum+=item.values.concentration;
+                nonzero_events+=item.values.concentration!=0.0F?1U:0U;
+            }
+            std::cout<<std::setprecision(10)
+                     <<"P7_REAL_H9_NATIVE_CALCPF_CELL12"
+                     <<" GRID_I=13 GRID_J=1"
+                     <<" STAGE_RECORDS="<<trace_rows.size()
+                     <<" NONZERO_RECORDS="<<nonzero_events
+                     <<" SUM_EVENT_CONC="<<receptor_events_sum
+                     <<" NATIVE_HOURLY_CELL_CONC="<<hour.receptor_concentrations.at(12)
+                     <<" ORIGINAL_STAGE_RECORDS=0"
+                     <<" SOURCE_ONLY_REFERENCE_NO_PARITY_CLAIM=YES\n";
+            for(std::size_t k=0;k<std::min<std::size_t>(trace_rows.size(),5U);++k) {
+                const auto& item=trace_rows[k];
+                int matched_ksam=-1;
+                for(const auto& step:hour.steps) {
+                    if(step.puff_id==item.episode &&
+                       step.step.before.travel_time_s==item.time_before &&
+                       step.step.after.travel_time_s==item.time_after) {
+                        matched_ksam=step.ksam;
+                        break;
+                    }
+                }
+                std::cout<<std::setprecision(10)
+                         <<"P7_REAL_H9_NATIVE_CALCPF_CELL12_FIRST_EVENTS"
+                         <<" ORDER="<<k+1U
+                         <<" PUFF="<<item.episode
+                         <<" KSAM="<<matched_ksam
+                         <<" SYREC="<<item.values.sigma_y_m
+                         <<" SZREC="<<item.values.sigma_z_m
+                         <<" QOLD="<<item.values.qold
+                         <<" QNEW="<<item.values.qnew
+                         <<" VCOUP="<<item.values.vertical_factor
+                         <<" CONC="<<item.values.concentration
+                         <<" VENDOR_SAME_RECEPTOR_EVENTS=ZERO\n";
+            }
+        }
         if(hour_index<6U)
             require(hour.steps.size()==original_hour_steps[hour_index] &&
                     hour.steps.front().puff_id==original_first_puff[hour_index] &&
