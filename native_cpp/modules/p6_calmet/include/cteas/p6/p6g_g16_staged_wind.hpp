@@ -98,7 +98,7 @@ public:
     void provide_selected_diagi_after_wind1(
         const G16ObservedProfiles& observed) {
         if(!stage_.wind1_complete||stage_.inter2_complete||diagi_refreshed_||
-           observed.end!=stage_.end||
+           !corrected_||observed.end!=stage_.end||
            observed.station_ids!=profiles_.station_ids||
            observed.wind1_u_mps!=profiles_.wind1_u_mps||
            observed.wind1_v_mps!=profiles_.wind1_v_mps||
