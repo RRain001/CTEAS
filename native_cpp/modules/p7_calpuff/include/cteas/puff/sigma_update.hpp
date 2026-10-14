@@ -115,6 +115,14 @@ struct OriginalTerrainSigmaState {
     float z_mid_m=0.0F,z_end_m=0.0F;  // ZM1, ZE1
     float fracz_end=0.0F;             // FRACZ1, at END of step
     bool upslope_end=false;           // LUP1, at END of step
+    // Read-only REAL4 provenance for the ORIGINAL SETPUF L48627-48631
+    // end-point branch. Never used to advance solver state or drive SIGTZ.
+    float end_ratio=0.0F;             // R=SIGZB/SZE1 before CTADJ2
+    float end_sigma_before_strain_m=0.0F; // SZE1 before CTADJ2
+    float end_strain=0.0F;            // STRAIN from CTADJ2
+    float end_sigma_adjusted_m=0.0F; // SZADJ=SZE1*STRAIN
+    float end_sigma_after_sigtz_m=0.0F; // SZE1 after SIGTZ
+    float end_virtual_distance_km=0.0F; // VDZE1 after SIGTZ
 };
 struct SigmaUpdateResult {
     SigmaStep step;
