@@ -1,0 +1,52 @@
+name: P6G original-vendor G9 G10 G11 source parity
+on:
+  push:
+    branches: [codex/p6g-multistation-on-accepted-p6a-p6f-20261014]
+    paths:
+      - '.github/workflows/p6g-vendor-g9-g11.yml'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g9_original_wind1_multisite.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g11_original_terrain_10km.py'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/p6g_*.hpp'
+      - 'native_cpp/modules/p6_calmet/tests/p6g_g9_*'
+  pull_request:
+    paths:
+      - '.github/workflows/p6g-vendor-g9-g11.yml'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g9_original_wind1_multisite.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g11_original_terrain_10km.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  selected-vendor-parity:
+    name: literal CALMET G9-G11 selected 10km (${{ matrix.mode }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify original CALMET source and hosted compiler
+        run: |
+          test -s engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for
+          command -v gfortran
+          command -v g++
+          command -v cmake
+      - name: Strict build on accepted Hefei P6A-P6F branch
+        run: |
+          cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/p6g-vendor" -DCMAKE_BUILD_TYPE=${{ matrix.mode }}
+          cmake --build "$RUNNER_TEMP/p6g-vendor" --target \
+            cteas_p6g_g10_diagno_reference cteas_p6g_g9_multi_wind1_tests \
+            cteas_p6g_g11_terrain_tests --parallel 2
+      - name: Original Fortran WIND1 G9 10km multi-station
+        run: python3 native_cpp/modules/p6_calmet/reference/compare_g9_original_wind1_multisite.py --mode ${{ matrix.mode }}
+      - name: Original Fortran DIAGNO tail G10 10km
+        run: |
+          python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
+            --mode ${{ matrix.mode }} \
+            --cpp "$RUNNER_TEMP/p6g-vendor/cteas_p6g_g10_diagno_reference"
+      - name: Original Fortran TERSET FRADJ SLOPE G11 10km
+        run: python3 native_cpp/modules/p6_calmet/reference/compare_g11_original_terrain_10km.py --mode ${{ matrix.mode }}
