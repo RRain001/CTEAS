@@ -14,6 +14,7 @@
 #include "cteas/p6/p6g_g18b8_gamma_grid.hpp"
 #include "cteas/p6/p6g_g18b9_original_gamma_controls.hpp"
 #include "cteas/p6/p6g_g18c1_avemix.hpp"
+#include "cteas/p6/p6g_g18c2_wstarr_after_avemix.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -759,6 +760,39 @@ static void verify_source_staged_iavet(
           calculated.candidate_next.ziconv_m==original_ziconv&&
           frame.next.ziconv_m==prior.ziconv_m,
           "G18C1 mutated pre-AVEMIX or previous-hour committed state");
+    rejects([&]{
+        (void)p6g::g18c2_wstarr_after_avemix(
+            frame,calculated,averaged,selected,elustr,false);
+    },"G18C2 promoted partial COMP result as accepted native hour");
+    const auto final_conv=p6g::g18c2_wstarr_after_avemix(
+        frame,calculated,averaged,selected,elustr,true);
+    p6e::WstarrInput independent_conv;
+    independent_conv.nx=12;independent_conv.ny=12;
+    independent_conv.water_first=f.grid.iwat1;
+    independent_conv.water_last=f.grid.iwat2;
+    independent_conv.landuse=f.grid.landuse;
+    independent_conv.zi_conv_m=averaged.ziconv_m;
+    independent_conv.heat_flux_wm2=elustr.qh_wm2;
+    independent_conv.temp_k=selected.temperature_k;
+    independent_conv.rho_kgm3=selected.density_kg_m3;
+    independent_conv.initial_wstar_ms.assign(144,0.f);
+    const auto source_conv=p6e::wstarr(independent_conv);
+    check(final_conv.end==frame.input.end&&
+          final_conv.candidate_next.zi_m==averaged.zi_m&&
+          final_conv.candidate_next.ziconv_m==averaged.ziconv_m&&
+          final_conv.candidate_next.dptt_k==calculated.candidate_next.dptt_k&&
+          final_conv.wstar_mps==source_conv,
+          "G18C2 failed original source AVEMIX->WSTARR ordering and DPTT preservation");
+    auto wrong_avemix=averaged;
+    wrong_avemix.ziconv_m.pop_back();
+    rejects([&]{
+        (void)p6g::g18c2_wstarr_after_avemix(
+            frame,calculated,wrong_avemix,selected,elustr,true);
+    },"G18C2 accepted incomplete source AVEMIX ZICONV field");
+    check(frame.next.zi_m==prior.zi_m&&
+          frame.next.ziconv_m==prior.ziconv_m&&
+          frame.next.dptt_k==prior.dptt_k,
+          "G18C2 prematurely committed source COMP candidate to G14");
     check(calculated.end==frame.input.end&&
           calculated.candidate_next.zi_m.size()==144&&
           calculated.candidate_next.ziconv_m.size()==144&&
@@ -1248,6 +1282,7 @@ int main(int argc,char** argv){
                     "G18B8_SOURCE_IUPT_GAMMA_HOURLY_HANDOFF_PASS "
                     "G18B9_ORIGINAL_ZUPT_IDIOPT2_IUPT_SOURCE_CONTROLS_PASS "
                     "G18C1_SOURCE_IAVEZI_MNMDAV_HAFANG_AVEMIX_PASS "
+                    "G18C2_AVEMIX_BEFORE_FROZEN_WSTARR_ORDER_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
