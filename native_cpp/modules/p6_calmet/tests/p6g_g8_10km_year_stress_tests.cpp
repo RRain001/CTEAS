@@ -1,4 +1,5 @@
 #include "cteas/p6/p6g_case_loader.hpp"
+#include "cteas/p6/p6g_g17b_observed_solar_heat.hpp"
 #include "cteas/p6/p6g_selected_hour_bridge.hpp"
 #include "cteas/p6/p6g_observed_thermal_hour.hpp"
 #include "cteas/p6/read_geo_dynamic.hpp"
@@ -273,6 +274,40 @@ static void exercise_period(sys_seconds begin,sys_seconds end,
         return source_selected_g12_thermal_hour(
             deck,surface,surface.hourly.at(time),geo,forcing);
     };
+    // G17B original-format FILE-BACKED smoke: the same GEO/SURF/UP
+    // created above and accepted by G14B now feeds actual COORDLIB/UTC
+    // SOLAR -> observed SURFVAR -> native HEATFX. The heat ancillaries
+    // stay explicit fixture-only, so no production P6E state is claimed.
+    G17BExplicitAncillaryFixture solar_inputs;
+    solar_inputs.explicitly_test_only=true;
+    solar_inputs.irad=1;solar_inputs.numts=2;solar_inputs.trad_grid=20.f;
+    solar_inputs.coefficients={990.f,-30.f,-0.75f,3.4f,0.f,0.f,1.f};
+    solar_inputs.isurft=-1;
+    solar_inputs.domain_temperature_k=285.f;
+    solar_inputs.critfn=10.f;
+    const auto cells=static_cast<std::size_t>(nx*ny);
+    for(int j=0;j<ny;++j)for(int i=0;i<nx;++i)
+        solar_inputs.nearest_surface.push_back(i<nx/2?1:2);
+    solar_inputs.initial_water_qh_wm2.assign(cells,0.f);
+    solar_inputs.lapse_k_per_m.assign(cells,0.002f);
+    const auto midnight=observed_solar_heat_selected(
+        geo,deck,surface,surface.hourly.at(0),solar_inputs);
+    const auto daytime=observed_solar_heat_selected(
+        geo,deck,surface,surface.hourly.at(4),solar_inputs);
+    require_test(midnight.sun_sine.size()==cells&&
+                 daytime.sun_sine.size()==cells&&
+                 daytime.observed.temp2d_k.size()==cells&&
+                 daytime.sensible_heat_wm2.size()==cells,
+                 "G17B real parsed-source GEO/SURF solar/TEMP2D/QH incomplete");
+    const auto center=cells/2;
+    require_test(midnight.sun_sine[center]<daytime.sun_sine[center]&&
+                 midnight.shortwave_wm2[center]<daytime.shortwave_wm2[center],
+                 "G17B original-format source solar did not follow UTC hour");
+    require_test(daytime.fradj_fixture.temperature_k==
+                     daytime.slope_fixture.temperature_k&&
+                 daytime.slope_fixture.sensible_heat_w_m2==
+                     daytime.sensible_heat_wm2,
+                 "G17B file-backed thermal result cannot be staged into G17");
     // 6x6 (60 km) short cross-year; expanded 12x12 (120 km) annual.
     require_test(grid.nx*grid.ny==nx*ny&&grid.spacing_km==10.f,
                  "G8 must test precisely 10km cells");
