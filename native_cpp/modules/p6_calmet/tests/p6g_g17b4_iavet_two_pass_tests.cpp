@@ -15,6 +15,7 @@
 #include "cteas/p6/p6g_g18b9_original_gamma_controls.hpp"
 #include "cteas/p6/p6g_g18c1_avemix.hpp"
 #include "cteas/p6/p6g_g18c2_wstarr_after_avemix.hpp"
+#include "cteas/p6/p6g_g18c3_temp3d_after_comp.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -777,6 +778,65 @@ static void verify_source_staged_iavet(
     independent_conv.rho_kgm3=selected.density_kg_m3;
     independent_conv.initial_wstar_ms.assign(144,0.f);
     const auto source_conv=p6e::wstarr(independent_conv);
+    const auto temp_controls=p6g::g18c3_parse_original_temp3d_controls(
+        source_metinp);
+    check(temp_controls.lcalgrd&&temp_controls.itprog==0&&
+          temp_controls.irad==1,
+          "G18C3 actual source TEMP3D controls not selected");
+    const auto source_faces=p6g::g18b5_selected_native_temperature_faces(
+        frame,observed_upper);
+    rejects([&]{
+        (void)p6g::g18c3_selected_native_temp3d(
+            frame,observed_upper,source_faces,selected,
+            final_conv,temp_controls,false);
+    },"G18C3 fixture TEMP3D falsely promoted to production CALMET");
+    const auto selected_temp=p6g::g18c3_selected_native_temp3d(
+        frame,observed_upper,source_faces,selected,
+        final_conv,temp_controls,true);
+    check(selected_temp.end==frame.input.end&&
+          selected_temp.station_ids==std::vector<int>({58424,58425})&&
+          selected_temp.temperature_k.size()==144*9,
+          "G18C3 native multi-UP TEMP3D dimensions/clock invalid");
+    p6e::Temp3dObservedInput independent_temperature;
+    independent_temperature.nx=12;independent_temperature.ny=12;
+    independent_temperature.nz=9;independent_temperature.irad=1;
+    independent_temperature.dgrid_m=f.grid.grid_km*1000.f;
+    independent_temperature.current_hour_utc=static_cast<int>(
+        duration_cast<hours>(
+            frame.input.end-floor<days>(frame.input.end)).count()%12);
+    independent_temperature.face_z_m=source_faces.face_height_m;
+    independent_temperature.justa=source_faces.justa;
+    independent_temperature.past_seconds=source_faces.past_seconds;
+    independent_temperature.to_go_seconds=source_faces.to_go_seconds;
+    independent_temperature.aa_face_temp_k=source_faces.aa_face_k;
+    independent_temperature.bb_face_temp_k=source_faces.bb_face_k;
+    independent_temperature.surface_temp_k=selected.temperature_k;
+    independent_temperature.convective_zi_m=final_conv.candidate_next.ziconv_m;
+    for(const auto& st:all.upper) {
+        independent_temperature.station_x_m.push_back(st.local_x_m);
+        independent_temperature.station_y_m.push_back(st.local_y_m);
+    }
+    const auto expected_temp=p6e::temp3d_observed_land(independent_temperature);
+    check(selected_temp.temperature_k==expected_temp,
+          "G18C3 native 2UP TEMP3D differs from immutable PR #53 physical kernel");
+    for(std::size_t idx=0;idx<144;++idx)
+        check(selected_temp.temperature_k[idx]==selected.temperature_k[idx],
+              "G18C3 original TEMP3D level-1 was not second SURFVAR TEMP2D");
+    auto tampered_faces=source_faces;
+    tampered_faces.aa_face_k[1]+=1.f;
+    rejects([&]{
+        (void)p6g::g18c3_selected_native_temp3d(
+            frame,observed_upper,tampered_faces,selected,
+            final_conv,temp_controls,true);
+    },"G18C3 accepted fabricated same-hour upper FACET thermal contents");
+    const auto wrong_temp=final_conv;
+    auto stale_temp=wrong_temp;
+    stale_temp.end+=hours{1};
+    rejects([&]{
+        (void)p6g::g18c3_selected_native_temp3d(
+            frame,observed_upper,source_faces,selected,
+            stale_temp,temp_controls,true);
+    },"G18C3 accepted previous/future hour COMP mixing-height");
     check(final_conv.end==frame.input.end&&
           final_conv.candidate_next.zi_m==averaged.zi_m&&
           final_conv.candidate_next.ziconv_m==averaged.ziconv_m&&
@@ -1283,6 +1343,7 @@ int main(int argc,char** argv){
                     "G18B9_ORIGINAL_ZUPT_IDIOPT2_IUPT_SOURCE_CONTROLS_PASS "
                     "G18C1_SOURCE_IAVEZI_MNMDAV_HAFANG_AVEMIX_PASS "
                     "G18C2_AVEMIX_BEFORE_FROZEN_WSTARR_ORDER_PASS "
+                    "G18C3_TRUE_UP_FACET_POST_AVEMIX_TEMP3D_PASS "
                     "IAVET1_FULL_MULTI_SITE_PHYSICS=NOT_YET_ACCEPTED\n";
         return 0;
     }catch(const std::exception& e){
