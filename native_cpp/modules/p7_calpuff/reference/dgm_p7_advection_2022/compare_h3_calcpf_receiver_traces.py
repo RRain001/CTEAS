@@ -123,8 +123,27 @@ def main() -> None:
                         "all_stage_values_native": nval,
                     }
                     break
+    # Independent original-stage equivalence for the specifically supported
+    # 196 CALCPF first-hour H-3 hotspot events. These are exact source
+    # contracts, not a replacement for full concentration field acceptance.
+    mandatory_fields=("qold","qnew","syrec","szrec","zpr","zrpole","f1",
+                      "xi1","xtemp")
+    if (len(original)!=196 or len(native)!=196 or orig_keys!=native_keys):
+        raise AssertionError("frozen first-hour H3 CALCPF event set diverged")
+    for field in mandatory_fields:
+        if equal_per_field[field]!=len(both):
+            raise AssertionError(
+                f"frozen H3 CALCPF mandatory original stage {field} "
+                f"only {equal_per_field[field]}/{len(both)} REAL4 equal")
+    print("P7_HEFEI_H3_PUFRECS_STAGE_REAL4=PASS"
+          " RECEPTOR_I=19 RECEPTOR_J=50 SUBSTEPS=196"
+          " MASS_QOLD_QNEW=BITWISE"
+          " RECEPTOR_SIGTY_SIGTZ=BITWISE"
+          " ZPR_ZRPOLE_VCOUP=BITWISE"
+          " PFSAMP_XI1=BITWISE"
+          " PFSAMP_XI2_AND_FINAL_CONCENTRATION=OPEN")
     summary = {
-        "status": "DIAGNOSTIC_NOT_ACCEPTANCE",
+        "status": "DIAGNOSTIC_WITH_EXACT_UPSTREAM_PARITY_GATE",
         "original_sampled_substeps": len(original),
         "native_sampled_substeps": len(native),
         "exactly_aligned_step_keys": len(both),
