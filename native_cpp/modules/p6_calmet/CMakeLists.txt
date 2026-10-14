@@ -79,6 +79,18 @@ else()
 endif()
 add_test(NAME p6g_g9_expanded_10km_multi_wind1_frozen_pair_parity COMMAND cteas_p6g_g9_multi_wind1_tests)
 
+# G11 source-selected genuine TERSET→FRADJ→SLOPE, dynamic 10km grid.
+# All thermodynamics are test-synthetic, NOT independently verified P6E.
+add_executable(cteas_p6g_g11_terrain_tests tests/p6g_g11_source_terrain_tests.cpp)
+target_link_libraries(cteas_p6g_g11_terrain_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g11_terrain_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g11_terrain_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g11_original_terrain_dynamic_10km_source_contract COMMAND cteas_p6g_g11_terrain_tests)
+
+
 # G10 original-Fortran 10km selected DIAGNO tail source-lift reference.
 # Distinct from frozen 100m DIAGNO and from any real terrain/heat acceptance.
 add_executable(cteas_p6g_g10_diagno_reference src/p6g_g10_10km_diagno_reference_main.cpp)
