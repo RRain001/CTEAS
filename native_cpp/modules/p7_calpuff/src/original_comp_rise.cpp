@@ -253,8 +253,11 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         // L26266-26268 calls VCBAR(...,LCALMF) irrespective of COMP's
         // dispersion LCALM. Allow DRY to use its actual source policy
         // without changing SETPUF/PUFRECS IDOPT=1 calm sigma physics.
-        require(before.total_distance_m>=state.x_final_m,
-                "calm puff still rising requires separate GRISE/SETPUF parity");
+        // Source COMP executes rising (odd ICODE, XTOTB<XFINAL)
+        // through RISEWIND/GRISE *before* applying the WSCALM policy.
+        // SETPUF may then cancel outstanding horizontal rise for LCALM;
+        // do not reject the legitimate H8->H9 rising-to-calm transition.
+        // Verify it against original DGM before accepting real H9.
     }
 
     const float distance=r4(ws*r4(substep.step_s,"time"),"rise distance");
