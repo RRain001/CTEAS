@@ -94,6 +94,25 @@ public:
         return *source_controls_;
     }
 
+    // G18D2: source-bound read-only preview of the NEXT authoritative
+    // hour, exclusively for transactional PREPDI AA/BB and CGAMMA
+    // candidates. The returned frame owns a copied next-state, but its
+    // previous state always references the actual committed G14 memory.
+    // No second scheduler or independent hour-index authority is created.
+    [[nodiscard]] MultiHourFrame preview_next_hour() const {
+        if(completed_>=input_.size())
+            throw std::invalid_argument("P6G no remaining hour to preview");
+        const auto i=completed_;
+        const auto& obs=surface_.hourly[i];
+        const auto& slot=input_[i];
+        if(obs.end!=slot.end||
+           obs.end-obs.start!=std::chrono::hours{1})
+            throw std::runtime_error("P6G source SURF/UP hour drift");
+        return {i,grid_,stations_,obs,slot,upper_,
+                source_controls_?&*source_controls_:nullptr,
+                memory_,memory_,{}};
+    }
+
     // G18D1: precommit is invoked only AFTER every original G14 stage
     // and ALL eight physical field + historical-memory checks succeed.
     // A P6F source writer can serialize and independently validate the
@@ -109,16 +128,7 @@ public:
     template<class PrecommitGate>
     void advance_with_precommit(MultiHourPhysics& physics,
                                 PrecommitGate&& verify_output) {
-        if (completed_ >= input_.size())
-            throw std::invalid_argument("P6G cannot advance beyond declared SURF hour window");
-        const auto i = completed_;
-        const auto& obs = surface_.hourly[i];
-        const auto& slot = input_[i];
-        if (obs.end != slot.end || obs.end - obs.start != std::chrono::hours{1})
-            throw std::runtime_error("P6G SURF and upper bound hour no longer coincide");
-        MultiHourFrame frame{i, grid_, stations_, obs, slot, upper_,
-                             source_controls_ ? &*source_controls_ : nullptr,
-                             memory_, memory_, {}};
+        MultiHourFrame frame=preview_next_hour();
         // Reuse the accepted #53 stage list byte-for-byte: no second physics
         // scheduler authority or altered DIAGNO/COMP execution order.
         for (const auto stage : p6::kHefeiOriginalStageOrder) {
