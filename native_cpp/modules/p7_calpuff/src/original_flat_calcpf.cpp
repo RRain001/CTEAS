@@ -234,8 +234,14 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
         // Original CALCPF Gaussian path evaluates VCOUP using the result
         // of each receptor-specific PUFRECS. Global VCBAR=0 cannot be
         // used to discard that receptor's possible concentration.
+        // Original CALCPF L4295/L4304 integrates QOLD*T1+QNEW*T2.
+        // A dry-removal substep may leave QNEW=0 while pre-removal
+        // QOLD remains positive; do not discard that valid contribution.
+        const float qnew=s.vmass.mass_mixed[0];
+        const float qold=selected_h3_from_multispecies ?
+            s.receptor_qold_mixed[0] : qnew;
         if((vfactor==0.0F && !per_receptor_vertical) ||
-           s.vmass.mass_mixed[0]<=0.0F)
+           (qnew<=0.0F && qold<=0.0F))
             return values;
         const float radius=impact_sigma_multiple*end_sy/met_spacing_m;
         const float at_rec=sy/met_spacing_m;
