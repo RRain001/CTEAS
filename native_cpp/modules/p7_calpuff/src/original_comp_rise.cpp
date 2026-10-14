@@ -26,7 +26,14 @@ void OriginalCompRisePointDriver::admit(
     require(source.source_type==1 && source.downwash_code==0 &&
             source.stack_height_m>0.0 &&
             source.effective_height_m>source.stack_height_m &&
-            source.x_final_m>0.0 &&
+            // Vendor PRFIN WSSTK<1 gives XFINAL=0 and completed
+            // vertical rise. Native GRISE/RISEWIND already implements
+            // the source condition XTOTB<XFINAL, which is false here.
+            // Reject zero XFINAL outside the exact non-windy PRFIN branch.
+            (source.x_final_m>0.0 ||
+             (source.x_final_m==0.0 && source.stack_wind_speed_ms<1.0 &&
+              source.x_final_buoyancy_m==0.0 &&
+              source.x_final_momentum_m==0.0)) &&
             source.exit_velocity_ms>=0.0 &&
             source.diameter_m>=0.0 &&
             (source.buoyancy_flux>0.0 || source.momentum_flux>0.0) &&
