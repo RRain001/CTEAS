@@ -75,7 +75,7 @@ int main(int argc,char** argv) {
     if(extended){
         char* end=nullptr;
         const long requested=std::strtol(extended,&end,10);
-        require(end && end!=extended && *end=='\\0' &&
+        require(end && end!=extended && *end=='\0' &&
                 requested>=7L && requested<=143L,
                 "CTEAS_P7_PROBE_HOURS must be a whole number in 7..143");
         probe_hours=static_cast<std::size_t>(requested);
@@ -610,7 +610,7 @@ int main(int argc,char** argv) {
                  <<" HOURS="<<probe_hours
                  <<" ORIGINAL_DGM_ROWS="<<physical_steps
                  <<" H3_REAL4_WORDS="<<matching_words<<"/"<<2500U*probe_hours
-                 <<" FIRST_DIFFERENCE=NONE 143H_ACCEPTED=NO\\n";
+                 <<" FIRST_DIFFERENCE=NONE 143H_ACCEPTED=NO\n";
     if(probe_hours==6U)std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
              <<" ORIGINAL_DGM_ROWS=11458/11458"
              <<" HOURLY_ROWS=1275,2242,1906,2132,1742,2161"
