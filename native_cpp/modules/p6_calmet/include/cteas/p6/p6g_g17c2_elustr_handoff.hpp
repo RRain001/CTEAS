@@ -23,6 +23,15 @@ struct G17C2SelectedElustrResult {
     std::chrono::sys_seconds end{};
     std::vector<float> qh_wm2,ustar_mps,el_m;
     std::size_t stable_cells=0,daytime_cells=0;
+    [[nodiscard]] G17SlopeHeatSource selected_slope_fixture(
+        const G17CSelectedHeatResult& heat) const {
+        if(end!=heat.end||qh_wm2.size()!=heat.temperature_k.size())
+            throw std::invalid_argument("G17C2 SLOPE heat/temperature mismatch");
+        // Original source calls ELUSTR before SLOPE; stable ELUSTR may
+        // replace HEATFX's QH. Never forward the stale pre-ELUSTR QH.
+        return {end,TerrainHourProvenance::SyntheticReferenceFixture,
+                qh_wm2,heat.temperature_k};
+    }
     // Deliberately no NativeHourStageResult: these values are fixture-scoped.
 };
 inline G17C2SelectedElustrResult selected_iavet1_elustr_after_heatfx(
