@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <regex>
 #include <stdexcept>
 #include <string>
@@ -900,6 +901,53 @@ static void verify_g18b_asynchronous_upper_turnover() {
           input.back().end>sys_days{year{2025}/January/1},
           "G18B did not test asynchronous multi-UP rollover and cross-year clock");
 }
+static void verify_g18b3_source_iupt_choice(const std::string& deck) {
+    p6g::GeoGrid grid;grid.nx=2;grid.ny=2;grid.grid_km=10.f;
+    grid.zone=50;grid.hemisphere='N';
+    p6g::StationSet stations;
+    stations.upper={station(58424,0.f,5000.f),
+                    station(58425,10000.f,5000.f)};
+    const auto choice=p6g::g18b3_source_deck_upper_choice(grid,stations,deck);
+    check(choice.iupt==-1&&choice.nearu.size()==4&&
+          choice.nearu[0]==1&&choice.nearu[1]==2 &&
+          !choice.independently_fortran_verified,
+          "G18B3 original -1 IUPT and REAL4 strict first-US distance tie");
+    auto altered=stations;
+    std::swap(altered.upper[0],altered.upper[1]);
+    const auto reordered=p6g::g18b3_source_deck_upper_choice(grid,altered,deck);
+    check(reordered.nearu[0]==1&&reordered.nearu[1]==1,
+          "G18B3 source US ordinal tie and actual distance not respected");
+    const auto token=std::regex(
+        R"(!\s*IUPT\s*=\s*-1\s*!)",std::regex_constants::icase);
+    check(std::regex_search(deck,token),
+          "G18B3 original met.inp lacks expected IUPT=-1");
+    const auto user_forced=std::regex_replace(deck,token,"! IUPT = 2 !");
+    const auto forced=p6g::g18b3_source_deck_upper_choice(
+        grid,stations,user_forced);
+    check(forced.iupt==2&&forced.nearu==choice.nearu,
+          "G18B3 positive IUPT replaced geometry rather than selecting US");
+    p6e::MixhtObservedMcInput mixed;
+    p6g::g18b3_bind_test_only_upper_choice(
+        mixed,grid,stations,forced,true);
+    check(mixed.iupt==2&&mixed.nearu==choice.nearu,
+          "G18B3 positive source IUPT not bound to reused MIXHT kernel");
+    for(const auto& v:{"0","3","-2","1.5","abc"}) {
+        const auto invalid=std::regex_replace(
+            deck,token,std::string("! IUPT = ")+v+" !");
+        rejects([&]{
+            (void)p6g::g18b3_source_deck_upper_choice(grid,stations,invalid);
+        },"G18B3 accepted malformed/out-of-range original IUPT");
+    }
+    rejects([&]{
+        (void)p6g::g18b3_source_deck_upper_choice(
+            grid,stations,deck+"\n! IUPT = -1 !");
+    },"G18B3 silently accepted duplicate source IUPT");
+    auto bad=stations;
+    bad.upper[0].local_y_m=std::numeric_limits<float>::infinity();
+    rejects([&]{
+        (void)p6g::g18b3_source_deck_upper_choice(grid,bad,deck);
+    },"G18B3 silently accepted invalid original UTM upper station");
+}
 int main(int argc,char** argv){
     try{
         check(argc==2,"G17B4 pinned met.inp required");
@@ -918,6 +966,7 @@ int main(int argc,char** argv){
         verify_source_staged_iavet(control,wind,begin,deck);
         verify_source_staged_iavet(control,wind,begin+hours{12},deck);
         verify_g18b_asynchronous_upper_turnover();
+        verify_g18b3_source_iupt_choice(deck);
         verify(control,begin+hours{11});
         // Accept original Fortran freeform control spacing, not a
         // hardcoded literal (e.g. source uses ! IAVET =   1 !).
