@@ -6,9 +6,11 @@
 // No edits to #53 P6SinglePassHourlyScheduler or its native physics drivers.
 #include "cteas/p6/hourly_comp_scheduler.hpp"
 #include "cteas/p6/observation_input_contract.hpp"
+#include "cteas/p6/p6g_original_wind_controls.hpp"
 #include "cteas/p6/read_geo_dynamic.hpp"
 #include <chrono>
 #include <cmath>
+#include <optional>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
@@ -43,9 +45,11 @@ class UnifiedMultistationHourlyScheduler {
 public:
     UnifiedMultistationHourlyScheduler(GeoGrid grid, StationSet stations,
                                        SurfaceSeries surface,
-                                       std::vector<UpperSeries> upper)
+                                       std::vector<UpperSeries> upper,
+                                       std::optional<OriginalWindControls> source_controls=std::nullopt)
         : grid_(std::move(grid)), stations_(std::move(stations)),
           surface_(std::move(surface)), upper_(std::move(upper)),
+          source_controls_(std::move(source_controls)),
           input_(bind_original_calmet_station_inputs(
               stations_, surface_, upper_)) {
         // Only 9-layer CALMET physics is source-checked at present.
@@ -77,6 +81,15 @@ public:
     }
     [[nodiscard]] const GeoGrid& grid() const noexcept {return grid_;}
     [[nodiscard]] const StationSet& stations() const noexcept {return stations_;}
+    [[nodiscard]] bool has_original_controls() const noexcept {
+        return source_controls_.has_value();
+    }
+    [[nodiscard]] const OriginalWindControls& original_controls() const {
+        if(!source_controls_)
+            throw std::runtime_error(
+                "P6G synthetic in-memory scheduler has no source-controlled met.inp");
+        return *source_controls_;
+    }
 
     // The caller cannot select an arbitrary/stale hourly input. All sources
     // are already bound in exact SURF / met.inp / UP order and UTC hour-end.
@@ -147,6 +160,7 @@ private:
     StationSet stations_;
     SurfaceSeries surface_;
     std::vector<UpperSeries> upper_;
+    std::optional<OriginalWindControls> source_controls_;
     std::vector<InputHour> input_;
     std::size_t completed_ = 0;
     p6::NativeGridMemory memory_;
