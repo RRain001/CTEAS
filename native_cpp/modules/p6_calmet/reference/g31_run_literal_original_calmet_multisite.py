@@ -152,6 +152,56 @@ def stage_vendor_geodat_header(data:str)->str:
     return result
 
 
+def stage_vendor_updat_header(data:str,expected_station:int)->str:
+    """Reformat only source header/UTC sounding metadata to RDHDU/RDUPN.
+
+    The original CALMET vendor uses (1X,8I5,F5.0,2I5) for the UP
+    interval and (9X,I8,2(4X,I4,I4,I3,I3,I5),8X,I5) for observations.
+    G19's physically identical 2UP synthetic observation records are
+    whitespace delimited for the C++ parser and require this *copy-only*
+    conversion. Slash-delimited meteorological level rows are untouched.
+    """
+    lines=data.splitlines(keepends=True)
+    if (len(lines)<10 or not lines[0].startswith("UP.DAT") or
+            lines[3].strip()!="NONE" or lines[4].strip()!="UTC+0000"):
+        raise ValueError("G31A source G19 UP header not expected")
+    head=lines[5].split()
+    if len(head)!=11:
+        raise ValueError("G31A 2UP original record timing corrupted")
+    ints=[int(v) for v in head[:8]]
+    ptop=float(head[8]); jdat=int(head[9]); fmt=int(head[10])
+    if ptop!=500.0 or jdat!=2 or fmt!=1:
+        raise ValueError("G31A source UP physical Ptop/type not accepted")
+    lines[5]=" "+ "".join(f"{k:5d}" for k in ints)+f"{ptop:5.0f}{jdat:5d}{fmt:5d}\n"
+    flags=lines[6].split()
+    if flags!=["F","F","F","F"]:
+        raise ValueError("G31A original UP missing thermometer/wind flags")
+    lines[6]=" "+ "".join("    "+k for k in flags)+"\n"
+    observations=0
+    for index in range(7,len(lines)):
+        pieces=lines[index].split()
+        if not pieces or pieces[0]!="6201":
+            continue
+        if len(pieces)!=14:
+            raise ValueError("G31A unexpected source sounding time schema")
+        station=int(pieces[1])
+        if station!=expected_station:
+            raise ValueError("G31A changed source UP station identity")
+        ints=[int(v) for v in pieces[2:12]]
+        if ints[0]<2023 or ints[0]>2024 or ints[5]<2023 or ints[5]>2024:
+            raise ValueError("G31A changed source sounding UTC year")
+        nlev=int(pieces[-1])
+        if nlev!=2 or int(pieces[-2])!=2:
+            raise ValueError("G31A source two-level sounding unsupported")
+        first="".join(f"    {ints[j]:4d}{ints[j+1]:4d}{ints[j+2]:3d}{ints[j+3]:3d}{ints[j+4]:5d}"
+                      for j in (0,5))
+        lines[index]=f"   6201  {station:8d}"+first+f"        {nlev:5d}\n"
+        observations+=1
+    if observations!=3:
+        raise ValueError("G31A original source upper sounding count changed")
+    return "".join(lines)
+
+
 def original_compiler(source:Path,exe:Path,mode:str,compiler:str):
     include=exe.parent/"include-alias"
     include.mkdir(parents=True,exist_ok=True)
@@ -208,6 +258,12 @@ def main():
         transformed=stage_vendor_geodat_header(geo.read_text())
         geo.write_text(transformed)
         evidence["staged_vendor_geodat_sha256"]=sha256(geo)
+        evidence["staged_vendor_updat_sha256"]={}
+        for filename,station_id in (("up1.dat",58424),("up2.dat",58425)):
+            source_upper=staged/filename
+            source_upper.write_text(stage_vendor_updat_header(
+                source_upper.read_text(),station_id))
+            evidence["staged_vendor_updat_sha256"][filename]=sha256(source_upper)
         met=(args.source/"met.inp")
         if not met.is_file():
             raise RuntimeError("G31A missing G19 original source controls")
