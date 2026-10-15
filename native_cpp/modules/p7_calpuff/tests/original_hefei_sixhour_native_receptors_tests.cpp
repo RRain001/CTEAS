@@ -288,7 +288,11 @@ int main(int argc,char** argv) {
         // Original source emits NO CALCPF receiver-stage rows for this cell.
         // Trace native CALCPF events without changing any sampler arithmetic.
         // Next H9 first residual following exact (21,1) source parity.
-        const bool trace_h9_cell24=hour_index==8U && probe_hours>=9U;
+        // Extra H9 stage diagnostics are optional; strict 24h/48h gates
+        // must not require a debug file path to prove physical parity.
+        const char* h9_trace_path=std::getenv("CTEAS_P7_H9_RECEIVER_TRACE");
+        const bool trace_h9_cell24=hour_index==8U && probe_hours>=9U &&
+            h9_trace_path && *h9_trace_path;
         // The formerly first H9 receptor (25,1) remains the default; the
         // selected physical first-difference receptor can be traced without
         // editing production sampling or the preexisting accepted gates.
@@ -481,16 +485,15 @@ int main(int argc,char** argv) {
                          <<" ORIGINAL_MASS_PARITY=NOT_YET_COMPARED\n";
             }
         }
-        if(trace_h9_cell24) {
-            // H9 original/new native i13,j1 must remain zero, closing
-            // the formerly spurious native puff594/KSAM5 event.
+        // Keep the previously accepted H9 source-regression mandatory,
+        // even when no optional receptor trace has been requested.
+        if(hour_index==8U) {
             require(equal_real4(hour.receptor_concentrations.at(12),
                                 original.at(hour_index).values.at(12)),
                     "H9 calm PUFRECS former cell12 source regression");
-            const char* h9_path=std::getenv("CTEAS_P7_H9_RECEIVER_TRACE");
-            require(h9_path && *h9_path,
-                    "H9 diagnostic requires an explicit native stage output");
-            std::ofstream stage_file(h9_path,std::ios::binary);
+        }
+        if(trace_h9_cell24) {
+            std::ofstream stage_file(h9_trace_path,std::ios::binary);
             require(bool(stage_file),"H9 native receptor stage output unavailable");
             stage_file<<std::setprecision(9);
             std::size_t total=0U;
