@@ -4,6 +4,7 @@
 #include "cteas/p6/p6g_g19_file_backed_case.hpp"
 #include "cteas/p6/p6g_g18e4_prepdi_stage_adapter.hpp"
 #include "cteas/p6/p6g_g20_file_backed_wind1_profiles.hpp"
+#include "cteas/p6/p6g_g21_file_backed_fradj.hpp"
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -426,6 +427,130 @@ int main(int argc,char** argv){
             (void)p6g::g20_file_backed_source_wind1_profiles(
                 negative_frame,true);
         },"G20 invented surface wind absent in real source SURF");
+
+        // G21: exercise actual file-backed PREPDI + G20 WIND1 +
+        // source CGAMMA/SETCOM GAMMA + first IAVET SURFVAR -> native
+        // FRADJ -> second IAVET SURFVAR on the SAME live G14 hour.
+        // Deliberately fail at HEATFX; neither G14 nor PREPDI clocks
+        // may be committed by this still incomplete selected route.
+        struct SourceBackedFradjProbe final:p6g::MultiHourPhysics {
+            p6g::G18E4SelectedPrepdiStageAdapter prepdi;
+            std::optional<p6g::G16SelectedWindPhysics> wind;
+            const p6g::G19FileBackedCase& source;
+            const p6g::MultiHourFrame* live;
+            std::size_t& stage_count;
+            std::optional<p6g::G21SelectedFradjFields>& output;
+            SourceBackedFradjProbe(
+                const p6g::UnifiedMultistationHourlyScheduler& owner,
+                p6g::G18D2StationClockAuthority& clocks,
+                const p6g::G19FileBackedCase& original,
+                const p6g::MultiHourFrame& frame,std::size_t& count,
+                std::optional<p6g::G21SelectedFradjFields>& capture)
+                :prepdi(owner,clocks,original.original_metinp),
+                 source(original),live(&frame),stage_count(count),output(capture){}
+            cteas::calmet::p6::NativeHourStageResult run(
+                cteas::calmet::p6::NativeHourStage stage,
+                p6g::MultiHourFrame& hour) override {
+                check(&hour==live,
+                      "G21 FRADJ did not receive original G14 live frame");
+                if(stage==cteas::calmet::p6::NativeHourStage::PrepdiPreviousZiconv) {
+                    prepdi.run_selected(stage,hour,true);
+                    ++stage_count;
+                    // Test-only PREPDI admittance to exercise downstream
+                    // real native WIND1; never a production claim.
+                    return {cteas::calmet::p6::NativeHourSource::NativeCpp,true};
+                }
+                if(stage==cteas::calmet::p6::NativeHourStage::DiagnoWind1) {
+                    wind.emplace(
+                        p6g::g20_file_backed_source_wind1_profiles(hour,true));
+                    const auto result=wind->run(stage,hour);
+                    check(result.completed,"G21 WIND1 not computed from original files");
+                    ++stage_count;
+                    return result;
+                }
+                if(stage==cteas::calmet::p6::NativeHourStage::DiagnoFradj) {
+                    check(wind.has_value(),"G21 FRADJ before WIND1");
+                    output.emplace(p6g::g21_selected_original_file_fradj(
+                        hour,source,prepdi.selected_gamma_for(hour),
+                        wind->selected_result().first_guess,true));
+                    ++stage_count;
+                    return {cteas::calmet::p6::NativeHourSource::NativeCpp,true};
+                }
+                return {cteas::calmet::p6::NativeHourSource::Unknown,false};
+            }
+        };
+        std::size_t g21_stages=0;
+        std::optional<p6g::G21SelectedFradjFields> actual_fradj;
+        rejects([&]{
+            scheduler.advance_with_fresh_physics(
+                [&](const p6g::MultiHourFrame& frame)
+                    ->std::unique_ptr<p6g::MultiHourPhysics> {
+                    return std::make_unique<SourceBackedFradjProbe>(
+                        scheduler,source_clocks,source_case,frame,
+                        g21_stages,actual_fradj);
+                });
+        },"G21 partial file-backed FRADJ was admitted as full CALMET");
+        check(g21_stages==3&&actual_fradj.has_value()&&
+              actual_fradj->end==standalone.input.end&&
+              actual_fradj->corrected_wind.u.size()==12u*12u*9u&&
+              actual_fradj->corrected_wind.v.size()==12u*12u*9u&&
+              actual_fradj->gamma_k_per_m.size()==144u&&
+              actual_fradj->temperature_before_k.size()==144u&&
+              actual_fradj->temperature_after_k.size()==144u&&
+              actual_fradj->source_terrad_km==
+                  p6g::g19_read_real_control(two,"TERRAD")&&
+              actual_fradj->source_critfn==
+                  p6g::g19_read_real_control(two,"CRITFN")&&
+              scheduler.completed_hours()==0&&
+              !source_clocks.has_published_hour()&&
+              scheduler.committed_memory().ziconv_m[0]==0.f,
+              "G21 source CGAMMA/TEMP2D/FRADJ not coherent or committed too early");
+
+        // Independent selected-stage result from the same original input;
+        // G18E4 preflight cannot be bypassed by an invented GAMMA field.
+        p6g::G18D2StationClockAuthority comparison_clock;
+        const auto candidate=comparison_clock.prepare_selected(
+            scheduler,source_case.original_metinp,true);
+        const auto independent_fradj=p6g::g21_selected_original_file_fradj(
+            standalone,source_case,candidate.cgamma,
+            independent.selected_result().first_guess,true);
+        check(actual_fradj->corrected_wind.u==independent_fradj.corrected_wind.u&&
+              actual_fradj->corrected_wind.v==independent_fradj.corrected_wind.v&&
+              actual_fradj->temperature_before_k==
+                  independent_fradj.temperature_before_k&&
+              actual_fradj->temperature_after_k==
+                  independent_fradj.temperature_after_k&&
+              actual_fradj->gamma_k_per_m==independent_fradj.gamma_k_per_m,
+              "G21 live source FRADJ differs from independently selected stage");
+        rejects([&]{
+            (void)p6g::g21_selected_original_file_fradj(
+                standalone,source_case,candidate.cgamma,
+                independent.selected_result().first_guess,false);
+        },"G21 selected FRADJ promoted without test-only scope");
+        auto stale_gamma=candidate.cgamma;
+        stale_gamma.end+=hours{1};
+        rejects([&]{
+            (void)p6g::g21_selected_original_file_fradj(
+                standalone,source_case,stale_gamma,
+                independent.selected_result().first_guess,true);
+        },"G21 accepted stale UP CGAMMA from another source hour");
+        auto wrong_deck=source_case;
+        wrong_deck.original_metinp=replace_one(two,"CRITFN","-1");
+        rejects([&]{
+            (void)p6g::g21_selected_original_file_fradj(
+                standalone,wrong_deck,candidate.cgamma,
+                independent.selected_result().first_guess,true);
+        },"G21 FRADJ accepted invalid original CRITFN");
+        wrong_deck=source_case;
+        wrong_deck.original_metinp=replace_one(two,"TERRAD","-1");
+        rejects([&]{
+            (void)p6g::g21_selected_original_file_fradj(
+                standalone,wrong_deck,candidate.cgamma,
+                independent.selected_result().first_guess,true);
+        },"G21 FRADJ accepted unsupported original TERRAD");
+        check(scheduler.completed_hours()==0&&
+              !source_clocks.has_published_hour(),
+              "G21 rejected source probes changed real hourly state");
 
         // Wrong case-file mapping must be rejected before a single step.
         paths.ordered_up_dat={cleanup[4],cleanup[3]};
