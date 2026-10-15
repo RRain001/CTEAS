@@ -70,7 +70,7 @@ def main():
     group_field_names=defaultdict(list)
     cell_overruns=[0]*N
     for source in verdict["fields"]:
-        label=source["label"]
+        label=source["label"].ljust(8)
         ref=original[label]
         got=candidate[label]
         abs_lim=source["abs_limit"]
