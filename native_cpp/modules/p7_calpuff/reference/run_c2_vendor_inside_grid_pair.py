@@ -103,9 +103,9 @@ def main()->int:
                 raise ValueError(f"vendor {arm} did not finish with listing+CONC and zero exit")
             listing=running["listing"].read_text(errors="replace")
             m=re.search(
-                r"LAST PERIOD PROCESSED ENDS AT:\\s*"
-                r"Year:\\s*(\\d+)\\s*Month:\\s*(\\d+)\\s*Day:\\s*(\\d+)\\s*"
-                r"Julian day:\\s*\\d+\\s*Hour:\\s*(\\d+)\\s*Second:\\s*(\\d+)",
+                r"LAST PERIOD PROCESSED ENDS AT:\s*"
+                r"Year:\s*(\d+)\s*Month:\s*(\d+)\s*Day:\s*(\d+)\s*"
+                r"Julian day:\s*\d+\s*Hour:\s*(\d+)\s*Second:\s*(\d+)",
                 listing,re.I)
             if not m or g36.stamp(*(int(v) for v in m.groups()))!=g36.EXPECTED_END:
                 raise ValueError(f"vendor {arm} did not complete genuine 143h 2024 run")
