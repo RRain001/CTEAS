@@ -28,6 +28,7 @@ c --- C2 read-only CALCPF receiver-stage trace from identical input
       subroutine c2rec(isamp,jsamp,ipol,syrec,szrec,zpr,
      &                 zrpole,f1,xi1,xi2,t1,t2,qold,
      &                 qnew,xtemp,conc,frec)
+      include 'datehr.puf'
       integer isamp,jsamp,ipol,seq
       real syrec,szrec,zpr,zrpole,f1,xi1,xi2,t1,t2
       real qold,qnew,xtemp,conc,frec
@@ -35,6 +36,8 @@ c --- C2 read-only CALCPF receiver-stage trace from identical input
       save seq,first
       data seq/0/,first/.true./
       if(isamp.ne.4.or.jsamp.ne.6.or.ipol.ne.1) return
+c --- H1 starts at 2024 Jan 1 02:00 in accepted PR63 G35 inputs
+      if(ndathrb.ne.202400102) return
       seq=seq+1
       if(seq.gt.250) return
       if(first)then
