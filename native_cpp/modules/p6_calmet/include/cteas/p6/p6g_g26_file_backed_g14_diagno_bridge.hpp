@@ -173,6 +173,20 @@ public:
         verify_frame(frame);
         return *g24_;
     }
+    [[nodiscard]] const G22SelectedThermalSlope& selected_thermal_for_comp(
+        const MultiHourFrame& frame) const {
+        if(!source_diagno_ready())throw std::logic_error(
+            "G26 source G22 heat/ELUSTR absent before completed DIAGNO");
+        verify_frame(frame);
+        return *g22_;
+    }
+    [[nodiscard]] const G18BUpperHour& selected_upper_for_comp(
+        const MultiHourFrame& frame) const {
+        if(!source_diagno_ready())throw std::logic_error(
+            "G26 original PREPDI AA/BB upper not ready for COMP");
+        verify_frame(frame);
+        return prepdi_.selected_upper_for(frame);
+    }
     void require_station_clock_preflight(const MultiHourFrame& frame) const {
         if(!source_diagno_ready())throw std::logic_error(
             "G26 source G14 cannot preflight before final wind");
