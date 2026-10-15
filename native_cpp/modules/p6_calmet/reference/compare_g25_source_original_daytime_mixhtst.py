@@ -37,7 +37,7 @@ DRIVER="""      program g25_daytime_mixhtst
      1 f,c,zimin,zimax,constn,land,iw1,iw2,imethod,
      2 dptmin,dzzi,threshl,onedte,twodte,tzicrlx,izicrlx
       read(10,*)nlev
-      if(nlev.lt.3.or.nlev.gt.mxlev)stop 92
+      if(nlev.lt.2.or.nlev.gt.mxlev)stop 92
       do k=1,nlev
         read(10,*)zlaa(1,k),tzaa(1,k)
       enddo
@@ -112,7 +112,7 @@ def source_input(p:Path)->dict:
         raise ValueError("G25C source MIXHTST day controls not 23 fields")
     xs=[float(v) for v in scalars]
     nlev=int(lines[1].strip())
-    if len(lines)!=nlev+2 or nlev<3 or nlev>80 or not all(map(math.isfinite,xs)):
+    if len(lines)!=nlev+2 or nlev<2 or nlev>80 or not all(map(math.isfinite,xs)):
         raise ValueError("G25C missing selected source older UP sounding")
     if not(xs[0]>0 and xs[1]>0 and xs[2]<0 and xs[3]>0 and
            xs[7]>0 and xs[8]>0 and xs[9]>0 and xs[12]<xs[13] and
