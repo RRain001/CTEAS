@@ -286,7 +286,7 @@ int main(int argc,char** argv){
                            penetration.mixed_fraction>=0.0F &&
                            penetration.mixed_fraction<=1.0F &&
                            penetration.final_rise_m<=
-                               static_cast<float>(rise.z_final_m)+0.0001F &&
+                               static_cast<float>(penetration.brigg.z_final_m) &&
                            penetration.effective_height_m>request.stack_height_m &&
                            std::isfinite(penetration.max_layer_height_m),
                            "native A-D PRFPP inversion penetration invalid");
