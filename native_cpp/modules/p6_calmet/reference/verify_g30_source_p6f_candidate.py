@@ -178,7 +178,7 @@ def main():
                  fields=45,real_fields=len(floats),integer_fields=len(ints),
                  exact_real4_source_records=38,
                  exact_real4_scalar_checks=38*N,
-                 45_field_original_CALMET_science_parity="NOT_TESTED",
+                 original_calmet_45_field_science_parity="NOT_TESTED",
                  stage_record_fields=list(expected), 
                  candidate_sha256=hashlib.sha256(a.candidate.read_bytes()).hexdigest(),
                  metadata=metadata,source_cases_scope="selected 2SS 2US first hour only; no G14 commit")
@@ -186,5 +186,5 @@ def main():
     a.out.write_text(json.dumps(outcome,indent=2)+"\n")
     print(json.dumps({key:outcome[key] for key in
           ("status","fields","exact_real4_source_records","exact_real4_scalar_checks",
-           "45_field_original_CALMET_science_parity")}))
+           "original_calmet_45_field_science_parity")}))
 if __name__=="__main__":main()
