@@ -11,6 +11,7 @@
 #include <cmath>
 #include <exception>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -232,9 +233,115 @@ static void case_hours(sys_seconds begin,std::size_t count){
     must_reject([&]{sched.advance(synthetic);},
                 "unbounded year-end hours accepted");
 }
+// G18F1 exercises the actual new G14 factory entry. All 17 stages still
+// pass through the one strict NativeCpp gate, but the executor is
+// independently allocated and destroyed on EVERY attempt. The captured
+// pointer proves that the factory receives the exact live frame, not a
+// stale detached next-hour preview. Numerical physics remain synthetic.
+struct FreshOwnedPhysics final : p6g::MultiHourPhysics {
+    SyntheticNativePhysics synthetic;
+    const p6g::MultiHourFrame* live;
+    std::size_t next_stage=0;
+    int* destroyed=nullptr;
+    bool stage_failure=false;
+    bool oracle_failure=false;
+    FreshOwnedPhysics(const p6g::MultiHourFrame& frame,int& counter,
+                      bool fail_stage,bool fail_oracle)
+        :live(&frame),destroyed(&counter),stage_failure(fail_stage),
+         oracle_failure(fail_oracle) {
+        synthetic.expect_source_controls=true;
+    }
+    ~FreshOwnedPhysics() override {++*destroyed;}
+    p6::NativeHourStageResult run(
+        p6::NativeHourStage stage,p6g::MultiHourFrame& frame) override {
+        check(&frame==live,
+              "G18F1 factory received copied preview rather than live G14 frame");
+        check(next_stage<p6::kHefeiOriginalStageOrder.size() &&
+              stage==p6::kHefeiOriginalStageOrder[next_stage],
+              "G18F1 new owned physics was given a reordered/duplicate source stage");
+        ++next_stage;
+        if(stage_failure&&stage==p6::NativeHourStage::CompGridMixht)
+            throw std::runtime_error("G18F1 injected stage failure");
+        if(oracle_failure&&stage==p6::NativeHourStage::CommitOutput)
+            return {p6::NativeHourSource::OriginalFortranOracle,true};
+        return synthetic.run(stage,frame);
+    }
+};
+static void case_fresh_owned_physics(sys_seconds begin) {
+    p6g::OriginalWindControls deck;
+    deck.bias[0]=-1.f;deck.rmax1_km=100.f;
+    p6g::UnifiedMultistationHourlyScheduler sched(
+        geo(),stations(),surface(begin,6),upper(begin,6),deck);
+    std::size_t allocated=0;
+    int destroyed=0;
+    bool fail_stage=true,fail_oracle=false;
+    auto factory=[&](const p6g::MultiHourFrame& live)
+        ->std::unique_ptr<p6g::MultiHourPhysics> {
+        check(live.hour_index==sched.completed_hours() &&
+              &live.previous==&sched.committed_memory() &&
+              live.input.end==live.surface.end &&
+              live.source_controls==&sched.original_controls(),
+              "G18F1 factory saw stale source data or different committed state");
+        ++allocated;
+        return std::make_unique<FreshOwnedPhysics>(
+            live,destroyed,fail_stage,fail_oracle);
+    };
+    must_reject([&]{sched.advance_with_fresh_physics(
+        [](const p6g::MultiHourFrame&)
+            ->std::unique_ptr<p6g::MultiHourPhysics>{return nullptr;});
+    },"G18F1 accepted absent owned native physics");
+    check(allocated==0&&destroyed==0&&sched.completed_hours()==0,
+          "G18F1 null factory advanced the G14 clock");
+    must_reject([&]{sched.advance_with_fresh_physics(factory);},
+                "G18F1 accepted interrupted source COMP without rollback");
+    check(allocated==1&&destroyed==1&&
+          sched.completed_hours()==0&&sched.committed_memory().ziconv_m[0]==0.f,
+          "G18F1 native stage failure retained state or leaked executor");
+    fail_stage=false;fail_oracle=true;
+    must_reject([&]{sched.advance_with_fresh_physics(factory);},
+                "G18F1 accepted original Fortran oracle as production physics");
+    check(allocated==2&&destroyed==2&&sched.completed_hours()==0,
+          "G18F1 oracle failure retained a poisoned physics object");
+    fail_oracle=false;
+    std::size_t checked=0;
+    must_reject([&]{
+        sched.advance_with_fresh_physics(factory,
+          [&](const p6g::MultiHourFrame& result){
+            ++checked;
+            check(result.hour_index==0&&result.next.ziconv_m[0]==1.f,
+                  "G18F1 precommit saw stale or uncomputed G14 COMP");
+            throw std::runtime_error("G18F1 synthetic P6F rejection");
+          });
+    },"G18F1 P6F failure committed prior-hour memory");
+    check(checked==1&&allocated==3&&destroyed==3&&
+          sched.completed_hours()==0&&sched.committed_memory().ziconv_m[0]==0.f,
+          "G18F1 failed P6F attempt was not isolated before retry");
+    for(std::size_t h=0;h<6;++h) {
+        sched.advance_with_fresh_physics(factory,
+          [&](const p6g::MultiHourFrame& result){
+            ++checked;
+            check(result.hour_index==h &&
+                  result.previous.ziconv_m[0]==static_cast<float>(h)&&
+                  result.next.ziconv_m[0]==static_cast<float>(h+1),
+                  "G18F1 accepted hour used stale n-1 CGAMMA/COMP memory");
+          });
+        check(sched.completed_hours()==h+1&&
+              sched.committed_memory().ziconv_m[0]==static_cast<float>(h+1)&&
+              allocated==h+4&&destroyed==static_cast<int>(h+4),
+              "G18F1 reused native physics across successful source hours");
+    }
+    sched.require_complete();
+    check(checked==7&&allocated==9&&destroyed==9,
+          "G18F1 did not destroy exactly one physics object per attempt");
+    must_reject([&]{sched.advance_with_fresh_physics(factory);},
+                "G18F1 accepted source hour after declared end of input");
+    check(allocated==9&&destroyed==9,
+          "G18F1 created a physics executor after final model hour");
+}
 int main(){
     try{
         original_station_cell_real4_boundary();
+        case_fresh_owned_physics(sys_days{year{2024}/January/1});
         const auto jan1=sys_days{year{2024}/January/1};
         case_hours(jan1,1);
         case_hours(jan1,6);
