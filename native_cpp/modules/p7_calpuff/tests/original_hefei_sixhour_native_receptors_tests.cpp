@@ -375,6 +375,7 @@ int main(int argc,char** argv) {
                         <<" xi1="<<r.xi1<<" xi2="<<r.xi2
                         <<" t1="<<r.t1<<" t2="<<r.t2
                         <<" qold="<<r.qold<<" qnew="<<r.qnew
+                        <<" vdpvd="<<state.receptor_deposition_ratio
                         <<" xtemp="<<r.xtemp<<" conc="<<r.concentration
                         <<" travel_begin="<<state.before.travel_time_s
                         <<" travel_end="<<state.after.travel_time_s
