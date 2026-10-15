@@ -145,10 +145,11 @@ inline G23SelectedSourceStheorInter2 g23_source_stheor_diagi_inter2(
     // Independent literal full CALMET G32D write-only US/VS snapshot proves:
     // two surface stations k=1 are valid, both upper stations k=1 are
     // EDIT=999 (missing), while all upper k>=2 are valid. The source G19
-    // synthetic UP soundings start at 120 m above local ground, beyond the
-    // native model's first face at 20 m. The previous G20 source column
-    // extrapolated its 120m/5500m pair down to the 0-20m layer and reused
-    // that extrapolated value in INTER2, which is NOT the real source
+    // synthetic UP soundings contain only two measured levels and their
+    // first-layer G20 VERTAV extrapolation must not be reused as a valid
+    // G23 INTER2 profile: the actual original CALMET source records 999.
+    // The previous G20 source column reused an extrapolated value,
+    // which is NOT the real source
     // PREPDI/DIAGI station-column missingness. WIND1 remains untouched.
     //
     // This narrowly admits only the G19 SYNTHETIC source geometry observed
