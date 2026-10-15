@@ -37,11 +37,13 @@ int main(int argc,char** argv) {
         paths.surf_dat=argv[3];
         std::string output_file,stage_file,slope_output_file,slope_stage_file;
         std::string inter2_output_file,inter2_original_stage_prefix;
+        std::string diagi_similt_prefix;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--output"||arg=="--source-stage"||
                arg=="--slope-output"||arg=="--slope-stage"||
-               arg=="--inter2-output"||arg=="--inter2-original-stage-prefix") {
+               arg=="--inter2-output"||arg=="--inter2-original-stage-prefix"||
+               arg=="--diagi-similt-prefix") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
                     throw std::invalid_argument("G21/G22 source output missing path");
                 auto& selected=arg=="--output"?output_file:
@@ -49,7 +51,8 @@ int main(int argc,char** argv) {
                                arg=="--slope-output"?slope_output_file:
                                arg=="--slope-stage"?slope_stage_file:
                                arg=="--inter2-output"?inter2_output_file:
-                               inter2_original_stage_prefix;
+                               arg=="--inter2-original-stage-prefix"?inter2_original_stage_prefix:
+                               diagi_similt_prefix;
                 if(!selected.empty())
                     throw std::invalid_argument("G21/G22 duplicate output argument");
                 selected=argv[++i];
@@ -62,13 +65,17 @@ int main(int argc,char** argv) {
            stage_file==output_file||paths.ordered_up_dat.size()<2||
            slope_output_file.empty()!=slope_stage_file.empty()||
            (!inter2_output_file.empty()&&slope_output_file.empty())||
-           (!inter2_original_stage_prefix.empty()&&inter2_output_file.empty()))
+           (!inter2_original_stage_prefix.empty()&&inter2_output_file.empty())||
+           (!diagi_similt_prefix.empty()&&inter2_output_file.empty()))
             throw std::invalid_argument("G21/G22 requires independent stage/output file pairs");
         const std::vector<std::string> outputs={
             output_file,stage_file,slope_output_file,slope_stage_file,
             inter2_output_file,
             inter2_original_stage_prefix.empty()?std::string{}:inter2_original_stage_prefix+".u.input",
-            inter2_original_stage_prefix.empty()?std::string{}:inter2_original_stage_prefix+".v.input"};
+            inter2_original_stage_prefix.empty()?std::string{}:inter2_original_stage_prefix+".v.input",
+            diagi_similt_prefix.empty()?std::string{}:diagi_similt_prefix+".s1.input",
+            diagi_similt_prefix.empty()?std::string{}:diagi_similt_prefix+".s2.input",
+            diagi_similt_prefix.empty()?std::string{}:diagi_similt_prefix+".native.csv"};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -298,6 +305,73 @@ int main(int argc,char** argv) {
                              <<"STATIONS="<<nst<<" LAYERS=9 "
                              <<"WIND_UV_VALUES="<<cells*9*2
                              <<" REFERENCE_CALCULATION=NOT_YET_PERFORMED\n";
+                }
+                if(!diagi_similt_prefix.empty()) {
+                    // Same actual STHEOR/MIXHTST physical station controls
+                    // passed into frozen original_similt_profile. The
+                    // independent source will rerun literal vendor SIMILT,
+                    // not any C++-reconstructed U/V or synthetic profiles.
+                    const auto projection=
+                        cteas::p6e::utm_north_projection(source.grid.zone);
+                    std::ofstream diagi_csv(diagi_similt_prefix+".native.csv",
+                                            std::ios::trunc);
+                    if(!diagi_csv)
+                        throw std::runtime_error("G23 native DIAGI CSV not writable");
+                    diagi_csv<<"surface_ordinal,surface_id,upper_id,"
+                                "levels_filled,k_1based,u_mps_real4,v_mps_real4\n";
+                    diagi_csv<<std::setprecision(
+                        std::numeric_limits<float>::max_digits10);
+                    if(station.station_diagi.size()!=source.stations.surface.size())
+                        throw std::logic_error("G23 DIAGI original site count incorrect");
+                    for(std::size_t ss=0;ss<station.station_diagi.size();++ss) {
+                        const auto& output=station.station_diagi[ss];
+                        const auto& site=source.stations.surface[ss];
+                        const auto& obs=frame.surface.by_station[ss];
+                        double latitude=0.,longitude=0.;
+                        cteas::p6e::utm_north_to_latlon_deg(
+                            projection,static_cast<double>(site.utm_x_km)*1000.,
+                            static_cast<double>(site.utm_y_km)*1000.,
+                            latitude,longitude);
+                        if(!std::isfinite(latitude)||latitude<=0.||
+                           output.surface_id!=site.id)
+                            throw std::logic_error("G23 DIAGI station source UTM invalid");
+                        const float radians=0.0174533f*obs.wind_direction_deg;
+                        const float u=-obs.wind_speed_mps*std::sin(radians);
+                        const float v=-obs.wind_speed_mps*std::cos(radians);
+                        std::ofstream input(diagi_similt_prefix+".s"+
+                                            std::to_string(ss+1)+".input",
+                                            std::ios::trunc);
+                        if(!input)
+                            throw std::runtime_error("G23 original SIMILT station input not writable");
+                        input<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                        input<<static_cast<float>(latitude)<<" "
+                             <<site.anemometer_height_m<<" "
+                             <<source.grid.z0_m[output.cell]<<" "
+                             <<u<<" "<<v<<" "
+                             <<output.station_flux.monin_obukhov_m<<" "
+                             <<output.station_mixing.zii_to_similt_m<<" "
+                             <<cteas::calmet::p6g::g18d5_source_scalar(
+                                source.original_metinp,"ZIMIN")
+                             <<" -4 0\n";
+                        for(const float z:source.controls.zface_m)input<<z<<" ";
+                        input<<"\n";
+                        input.flush();
+                        if(!input)
+                            throw std::runtime_error("G23 source SIMILT station input write failure");
+                        for(std::size_t k=0;k<9;++k) {
+                            diagi_csv<<(ss+1)<<","<<output.surface_id<<","
+                                     <<output.upper_id<<","
+                                     <<output.levels_filled<<","<<(k+1)<<","
+                                     <<output.diagi_profile.u_mps[k]<<","
+                                     <<output.diagi_profile.v_mps[k]<<"\n";
+                        }
+                    }
+                    diagi_csv.flush();
+                    if(!diagi_csv)
+                        throw std::runtime_error("G23 native DIAGI station CSV write failure");
+                    std::cout<<"PASS_P6G_G23_LITERAL_SIMILT_STATION_INPUT "
+                             <<"STATIONS="<<station.station_diagi.size()
+                             <<" ORIGINAL_SOURCE_REFERENCE=NOT_YET_EXECUTED\n";
                 }
                 std::cout<<"PASS_P6G_G23_SOURCE_STHEOR_DIAGI_INTER2 "
                          <<"STATIONS="<<station.station_diagi.size()
