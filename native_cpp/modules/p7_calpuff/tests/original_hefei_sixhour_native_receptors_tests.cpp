@@ -74,6 +74,9 @@ int main(int argc,char** argv) {
             "hour2 CALCPF trace requires an original DGM provenance input");
     // The accepted six-hour strict gate remains the DEFAULT. Longer
     // source-first probes are explicit opt-ins, never silent acceptance.
+    // Explicit integration opt-in, never used by the immutable original-MET gate.
+    const char* integration_mode=std::getenv("CTEAS_P7_INTEGRATION_C1");
+    const bool coupling_c1=integration_mode && std::string(integration_mode)=="1";
     const char* extended=std::getenv("CTEAS_P7_PROBE_HOURS");
     std::size_t probe_hours=6U;
     if(extended){
@@ -86,11 +89,11 @@ int main(int argc,char** argv) {
     }
     // Optional native stage trace (argv[5]) must never disable the
     // independent original DGM step oracle carried in argv[4].
-    require(probe_hours==6U || argc>=5,
+    require(probe_hours==6U || argc>=5 || coupling_c1,
             "extended source probe requires the FULL original 143h DGM file");
-    const auto dgm=argc>=5?read_original_dgm(argv[4],probe_hours>6U):
+    const auto dgm=(argc>=5 && !coupling_c1)?read_original_dgm(argv[4],probe_hours>6U):
                            std::vector<OriginalDgmStep>{};
-    require(argc!=6 || !dgm.empty(),
+    require(coupling_c1 || argc!=6 || !dgm.empty(),
             "hour2 source trace must retain pinned original sixhour DGM gate");
     // Source order: strict GETCELL for pre-step puff centre, original
     // GRIDIJ clamping for the mid/end meteorological cell after movement.
@@ -115,7 +118,7 @@ int main(int argc,char** argv) {
     std::unique_ptr<HourlyConcSeriesWriter> native_con_hours;
     if(original_con_output && *original_con_output)
         native_con_writer=create_original_hefei_2022_wrout1_writer(
-            original_con_output,control,argv[1]);
+            original_con_output,control,argv[1],coupling_c1);
     const auto deck=ControlFile::read_file(argv[2]);
     std::optional<NativeCalmMdisp3Controls> genuine_calm;
     if(probe_hours>6U){
@@ -191,12 +194,12 @@ int main(int argc,char** argv) {
                 header.dx_m==100.0F,
                 "Hefei consecutive original MET time/grid drift");
         if(hour_index>=6U) {
-            require(matching_words==2500U*hour_index &&
+            require(coupling_c1 || (matching_words==2500U*hour_index &&
                     first_mismatched_hour==0U &&
                     matched_step_keys==physical_steps &&
                     matched_new_xy==physical_steps &&
                     matched_stored_sigy==physical_steps &&
-                    matched_stored_sigz==physical_steps,
+                    matched_stored_sigz==physical_steps),
                     "extended probe cannot bypass preceding contiguous REAL4 gate");
             std::cout<<"P7_REAL_EXTENDED_PROBE_ENTER_HOUR="<<hour_index+1U
                      <<" ACTIVE_BEFORE="<<driver.active_count()
@@ -525,7 +528,7 @@ int main(int argc,char** argv) {
         }
         // Keep the previously accepted H9 source-regression mandatory,
         // even when no optional receptor trace has been requested.
-        if(hour_index==8U) {
+        if(hour_index==8U && !coupling_c1) {
             require(equal_real4(hour.receptor_concentrations.at(12),
                                 original.at(hour_index).values.at(12)),
                     "H9 calm PUFRECS former cell12 source regression");
@@ -573,7 +576,7 @@ int main(int argc,char** argv) {
                      <<original.at(hour_index).values.at(trace_cell)
                      <<" ORIGINAL_STAGE_PARITY=NOT_YET_COMPARED\n";
         }
-        if(hour_index<6U)
+        if(hour_index<6U && !coupling_c1)
             require(hour.steps.size()==original_hour_steps[hour_index] &&
                     hour.steps.front().puff_id==original_first_puff[hour_index] &&
                     hour.steps.back().puff_id==original_last_puff[hour_index],
@@ -883,7 +886,7 @@ int main(int argc,char** argv) {
             require(bool(mass_trace),"native original puff200 mass trace failed");
         }
         physical_steps+=hour.steps.size();
-        if(hour_index==0U)
+        if(hour_index==0U && !coupling_c1)
             require(hour.steps.size()==1275U &&
                     hour.release.puff_count==54 &&
                     active_before.empty(),
@@ -952,7 +955,7 @@ int main(int argc,char** argv) {
                  <<"\n";
         // Both first two source-real hours are now scientifically accepted.
         // This gate must not loosen when investigating the hour3 SIGZ.
-        require(hour_index>=3U || matches==2500U,
+        require(coupling_c1 || hour_index>=3U || matches==2500U,
                 "first three real H3 concentration fields lost REAL4 parity");
         if(hour_index==1U && !dgm.empty())
             require(first_dgm_mismatch_record==0U,
@@ -961,8 +964,8 @@ int main(int argc,char** argv) {
        },true);
     require(summary.intervals==143U&&completed==probe_hours&&
             driver.completed_hours()==probe_hours&&
-            physical_steps>=11458U&&
-            (probe_hours>6U||physical_steps==11458U),
+            (coupling_c1 || physical_steps>=11458U)&&
+            (coupling_c1 || probe_hours>6U||physical_steps==11458U),
             "frozen MET and requested contiguous native COMP hours required");
     if(!dgm.empty()) {
         require(matched_step_keys==physical_steps &&
@@ -983,9 +986,10 @@ int main(int argc,char** argv) {
     // The frozen native/original six-hour numerical equivalence is now
     // an acceptance gate, not a diagnostic trend. Do not silently reduce
     // it to first-three-hour parity or a floating-point tolerance.
-    require(every_hour_real4 && matching_words==2500U*probe_hours &&
-            first_mismatched_hour==0U && first_mismatched_cell==0U,
-            "real original/native H-3 must match every requested hour in REAL4 bits");
+    if(!coupling_c1)
+        require(every_hour_real4 && matching_words==2500U*probe_hours &&
+                first_mismatched_hour==0U && first_mismatched_cell==0U,
+                "real original/native H-3 must match every requested hour in REAL4 bits");
     if(native_con_writer) {
         require(native_con_hours &&
                 native_con_hours->hours_written()==probe_hours,
@@ -998,7 +1002,7 @@ int main(int argc,char** argv) {
         std::size_t first=0U;
         const auto shorter=std::min(actual.size(),frozen.size());
         while(first<shorter && actual[first]==frozen[first])++first;
-        if(first!=actual.size() || actual.size()>frozen.size()) {
+        if(!coupling_c1 && (first!=actual.size() || actual.size()>frozen.size())) {
             std::cout<<"P7_NATIVE_PUFF_CON_FIRST_DIFFERENCE"
                      <<" BYTE0="<<first
                      <<" NATIVE_BYTES="<<actual.size()
@@ -1006,12 +1010,19 @@ int main(int argc,char** argv) {
                      <<" HOURS="<<probe_hours<<"\n";
             require(false,"native WROUT1 prefix/data differs from frozen puff.con bytes");
         }
-        std::cout<<"P7_NATIVE_PUFF_CON_PREFIX=PASS"
+        if(coupling_c1) {
+            std::cout<<"P7_C1_NATIVE_PUFF_CON_CREATED"
+                     <<" HOURS="<<probe_hours
+                     <<" BYTES="<<actual.size()
+                     <<" HEADER_DIFFERENCE_FROM_VENDOR_ALLOWED=YES"
+                     <<" NO_ORACLE_INJECTION=YES\n";
+        }
+        if(!coupling_c1)std::cout<<"P7_NATIVE_PUFF_CON_PREFIX=PASS"
                  <<" HOURS="<<probe_hours
                  <<" RECORDS="<<(3226U+3U*probe_hours)
                  <<" BYTES="<<actual.size()
                  <<" BINARY_EXACT=YES NO_ORACLE_INJECTION=YES\n";
-        if(probe_hours==143U) {
+        if(probe_hours==143U && !coupling_c1) {
             require(actual.size()==frozen.size() &&
                     actual.size()==1896056U &&
                     native_con_writer->records_written()==435U,
@@ -1021,7 +1032,18 @@ int main(int argc,char** argv) {
                      <<" BINARY_EXACT=YES\n";
         }
     }
-    if(probe_hours>6U)
+    if(coupling_c1) {
+        std::cout<<"P7_C1_NATIVE_ON_PR53_MET"
+                 <<" HOURS="<<completed
+                 <<" REAL4_MATCHED="<<matching_words<<"/"<<2500U*completed
+                 <<" FIRST_MISMATCH_HOUR="<<first_mismatched_hour
+                 <<" FIRST_MISMATCH_CELL0="<<first_mismatched_cell
+                 <<" SAME_MET_VENDOR_PARITY="<<(every_hour_real4?"PASS":"MISMATCH")
+                 <<" NO_ORIGINAL_DGM_AS_INPUT=YES\n";
+        require(every_hour_real4 && matching_words==2500U*probe_hours,
+            "C1 native P7 vs vendor CALPUFF on SAME PR53 MET has REAL4 differences");
+    }
+    if(probe_hours>6U && !coupling_c1)
         std::cout<<"P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS"
                  <<" HOURS="<<probe_hours
                  <<" ORIGINAL_DGM_ROWS="<<physical_steps
