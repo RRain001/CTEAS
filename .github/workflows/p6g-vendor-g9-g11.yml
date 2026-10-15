@@ -22,6 +22,8 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/test_g30_source_p6f_fail_closed.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/g34_verify_original_six_hour_oracle.py'
+      - 'native_cpp/modules/p6_calmet/src/p6g_g34b_six_hour_selected_gate_main.cpp'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/p6g_g26_file_backed_g14_diagno_bridge.hpp'
       - 'native_cpp/modules/p6_calmet/reference/g31_extract_original_science_hour.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_diagnose_multistation_45field_residuals.py'
       - 'native_cpp/modules/p6_calmet/reference/g32_probe_original_multistation_diagno.py'
@@ -60,6 +62,8 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/test_g30_source_p6f_fail_closed.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/g34_verify_original_six_hour_oracle.py'
+      - 'native_cpp/modules/p6_calmet/src/p6g_g34b_six_hour_selected_gate_main.cpp'
+      - 'native_cpp/modules/p6_calmet/include/cteas/p6/p6g_g26_file_backed_g14_diagno_bridge.hpp'
       - 'native_cpp/modules/p6_calmet/reference/g31_extract_original_science_hour.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_diagnose_multistation_45field_residuals.py'
       - 'native_cpp/modules/p6_calmet/reference/g32_probe_original_multistation_diagno.py'
@@ -103,7 +107,8 @@ jobs:
             cteas_p6g_g11_terrain_tests \
             cteas_p6g_g19_file_backed_case_tests \
             cteas_p6g_g20_source_wind1_probe \
-            cteas_p6g_g21_source_fradj_probe --parallel 2
+            cteas_p6g_g21_source_fradj_probe \
+            cteas_p6g_g34b_six_hour_selected_gate --parallel 2
       - name: Original Fortran WIND1 G9 10km multi-station
         run: python3 native_cpp/modules/p6_calmet/reference/compare_g9_original_wind1_multisite.py --mode ${{ matrix.mode }}
       - name: Original literal CALMET WIND1 with G20 disk-backed SURF/UP station profiles
@@ -594,6 +599,42 @@ jobs:
             ${{ runner.temp }}/g34-original-six-hours-${{ matrix.mode }}/g31a-evidence.json
             ${{ runner.temp }}/g34-original-six-hours-${{ matrix.mode }}/original-met.lst
           if-no-files-found: warn
+          retention-days: 14
+      # This opt-in probe is NOT a green production gate: fail-closed native
+      # continuation and the strict original 6x45 numerical comparator are
+      # recorded separately. A failure must remain visible as a G34B blocker.
+      - name: G34B experimental native six-hour G14 transaction and original 270-field science
+        id: g34b_sixhour
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/p6g-vendor/cteas_p6g_g34b_six_hour_selected_gate" \
+            "$RUNNER_TEMP/g22-daylight-source/met.inp" \
+            "$RUNNER_TEMP/g22-daylight-source/GEO.DAT" \
+            "$RUNNER_TEMP/g22-daylight-source/SURF.DAT" \
+            "$RUNNER_TEMP/g22-daylight-source/UP1.DAT" \
+            "$RUNNER_TEMP/g22-daylight-source/UP2.DAT" \
+            "$RUNNER_TEMP/g34b-native-six-hour-${{ matrix.mode }}.calmet.dat"
+          "$RUNNER_TEMP/g31-p6e-comparator/p6e_calmet_dat21" compare \
+            --reference "$RUNNER_TEMP/g34-original-six-hours-${{ matrix.mode }}/original-met.dat" \
+            --candidate "$RUNNER_TEMP/g34b-native-six-hour-${{ matrix.mode }}.calmet.dat" \
+            --out "$RUNNER_TEMP/g34b-native-frozen-270-field-${{ matrix.mode }}.json"
+          echo "PASS_G34B_REAL_6H_NATIVE_VS_INDEPENDENT_ORIGINAL_270_FIELDS"
+      - name: Report G34B scientific gate disposition
+        if: always()
+        run: |
+          if [ "${{ steps.g34b_sixhour.outcome }}" = "success" ]; then
+            echo "G34B PASS: completed native six-hour transaction and frozen 270-field scientific comparator"
+          else
+            echo "::warning::G34B BLOCKED: native six-hour execution or strict original 270-field comparison failed; see G34B logs and artifact. No production promotion."
+          fi
+      - name: Upload G34B native six-hour scientific evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g34b-native-six-hour-science-${{ matrix.mode }}
+          path: ${{ runner.temp }}/g34b-native-frozen-270-field-${{ matrix.mode }}.json
+          if-no-files-found: ignore
           retention-days: 14
       - name: G31C forensic first-difference classification on true original 45-field failure
         # Science PASS has no failing original residual to diagnose.
