@@ -589,6 +589,20 @@ int main(int argc,char** argv){
                  independent.selected_result().first_guess.v_mps},
                 corrupted_g21,true);
         },"G22 promoted forged second SURFVAR TEMP2D into HEATFX");
+        // Original READCF derives IPSIFCN/ISFCMET from ICOARE, not from
+        // a nonexistent standalone source key. The otherwise valid
+        // ICOARE=0 branch switches ISFCMET=1 and is NOT the accepted
+        // two-pass IAVET=1 observed-temperature route.
+        auto unsupported_coare=source_case;
+        unsupported_coare.original_metinp=
+            replace_one(two,"ICOARE","0");
+        rejects([&]{
+            (void)p6g::g22_selected_source_thermal_slope(
+                standalone,unsupported_coare,
+                {independent.selected_result().first_guess.u_mps,
+                 independent.selected_result().first_guess.v_mps},
+                independent_fradj,true);
+        },"G22 substituted source ICOARE=0 ISFCMET=1 for selected thermal path");
         corrupted_g21=independent_fradj;
         corrupted_g21.end+=hours{1};
         rejects([&]{
