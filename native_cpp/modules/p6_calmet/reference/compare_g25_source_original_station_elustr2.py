@@ -91,6 +91,13 @@ c --- inputs WITHOUT asserting source MIXHTST has been validated.
       ustarprobe=ustar
       elprobe=el
       end
+c --- Original ITPROG=0 chooses MIXHTST, never the prognostic
+c --- ITPROG=2 MIXHT2ST branch. Provide a hard-stop linker stub.
+      subroutine mixht2st(el,ustar,qh,rho,ihrgmt,ist,jst,
+     1 ilandu,iwat1,iwat2,imixh,zi,ziconv)
+      real el,ustar,qh,rho,zi,ziconv
+      stop 98
+      end
 c --- Terminal SIMILT is a separate independently verified G23 kernel.
       subroutine similt(zzanem,el,z0,zi,ns,ipsifcn,us,vs,zimin)
       real zzanem,el,z0,zi,zimin,us(*),vs(*)
