@@ -600,12 +600,12 @@ jobs:
             ${{ runner.temp }}/g34-original-six-hours-${{ matrix.mode }}/original-met.lst
           if-no-files-found: warn
           retention-days: 14
-      # This opt-in probe is NOT a green production gate: fail-closed native
-      # continuation and the strict original 6x45 numerical comparator are
-      # recorded separately. A failure must remain visible as a G34B blocker.
-      - name: G34B experimental native six-hour G14 transaction and original 270-field science
+      # G34B is now an enforced scientific gate after genuine independent
+      # original 6x45 parity passed in BOTH hosted Debug and Release.
+      # Any failed native stage, memory/CGAMMA transaction, incomplete output,
+      # or frozen P6E comparator exceedance MUST fail the workflow.
+      - name: G34B strict native six-hour G14 transaction and original 270-field science
         id: g34b_sixhour
-        continue-on-error: true
         run: |
           set -euo pipefail
           "$RUNNER_TEMP/p6g-vendor/cteas_p6g_g34b_six_hour_selected_gate" \
