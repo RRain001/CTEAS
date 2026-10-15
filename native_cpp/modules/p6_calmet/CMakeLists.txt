@@ -185,6 +185,18 @@ else()
                          -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+# G21: compile source-file-driven native FRADJ/CGAMMA/SURFVAR first-hour
+# audit. This is NOT an accepted production multi-station CALMET solver.
+add_executable(cteas_p6g_g21_source_fradj_probe
+               src/p6g_g21_source_fradj_probe_main.cpp)
+target_link_libraries(cteas_p6g_g21_source_fradj_probe PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g21_source_fradj_probe PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g21_source_fradj_probe PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 # G15A: no independently hardcoded G8 wind radii or BIAS; verify against
 # the actual pinned 2022 met.inp with original READCF effective BIAS(1).
 add_executable(cteas_p6g_g15_original_controls_tests
