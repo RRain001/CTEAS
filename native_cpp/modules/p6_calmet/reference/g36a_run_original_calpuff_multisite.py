@@ -72,9 +72,11 @@ def time_bounds(control:bytes)->tuple[dt.datetime,dt.datetime]:
 
 
 def make_control(original:str)->str:
-    # CALPUFF specified IEHR denotes the last executed START hour;
-    # CALMET's IEEHR header denotes the EXCLUSIVE last-end hour.
-    last=EXPECTED_END-dt.timedelta(hours=1)
+    # CALPUFF original's IEHR denotes the LAST PROCESSED PERIOD END,
+    # not the beginning of the last hour: its listing prints this clock.
+    # G35 143h is 2024-01-01T02Z .. 2024-01-07T01Z (end exclusive).
+    # A previous Jan 07 00 control silently ran only 142h despite exit 0.
+    last=EXPECTED_END
     changes={
         "NX":"12","NY":"12","NZ":"9","DGRIDKM":"10.0",
         "IBCOMP":"1","JBCOMP":"1","IECOMP":"12","JECOMP":"12",
@@ -189,6 +191,23 @@ def execute(native_met:Path,out:Path,max_seconds:int)->dict:
             evidence["original_listing_tail"]=listing.read_text(errors="replace")[-4000:]
         if result.returncode or not evidence["listing_present"] or not evidence["concentration_present"]:
             raise RuntimeError("G36A original CALPUFF did not finish with valid listing/concentration")
+        # A zero exit code and CONC.DAT are insufficient: CALPUFF can end
+        # early with 142/143 hours while still producing valid files.
+        # Its unchanged listing explicitly states the LAST PERIOD END.
+        listing_text=listing.read_text(errors="replace")
+        ending=re.search(
+            r"LAST PERIOD PROCESSED ENDS AT:\\s*"
+            r"Year:\\s*(\\d+)\\s*Month:\\s*(\\d+)\\s*Day:\\s*(\\d+)\\s*"
+            r"Julian day:\\s*\\d+\\s*Hour:\\s*(\\d+)\\s*Second:\\s*(\\d+)",
+            listing_text,re.I)
+        if not ending:
+            raise RuntimeError("G36A original CALPUFF listing missing last processed UTC period")
+        actual_end=stamp(*(int(v) for v in ending.groups()))
+        evidence["original_last_period_end_utc"]=actual_end.isoformat()
+        evidence["original_processed_hour_count"]=int(
+            (actual_end-EXPECTED_START).total_seconds()//3600)
+        if actual_end!=EXPECTED_END or evidence["original_processed_hour_count"]!=143:
+            raise RuntimeError("G36A original CALPUFF did not process ALL 143 native hours")
         combined=evidence["original_runtime_tail"]+evidence.get("original_listing_tail","")
         if re.search(r"(?im)^\s*ERROR IN SUBR\.|\bFATAL\b|\bABORT\b|forrtl:\s*severe|segmentation fault",combined):
             raise RuntimeError("G36A original CALPUFF runtime printed fatal condition")
