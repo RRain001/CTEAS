@@ -18,7 +18,7 @@ int main(int argc,char** argv) {
         std::cout<<"Usage: cteas_p6g_g20_source_wind1_probe "
                     "<met.inp> <GEO.DAT> <SURF.DAT> "
                     "<US1_UP.DAT> <US2_UP.DAT> [US3_UP.DAT ...] "
-                    "--output <original-WIND1-candidate.csv>\n"
+                    "--output <original-WIND1-candidate.csv> [--wind1-profiles <profiles.dat>]\n"
                     "Output: first-hour native WIND1 U/V for every (k,j,i), "
                     "source-ordered original 2-6 SS/US and actual "
                     "READCF/READGE/SURF/RDUPN files. "
@@ -27,20 +27,40 @@ int main(int argc,char** argv) {
         return 0;
     }
     try {
-        if(argc<8||std::string(argv[argc-2])!="--output"||
-           std::string(argv[argc-1]).empty())
+        if(argc<8)
             throw std::invalid_argument(
                 "G20 needs 2+ ordered UP.DAT files and --output CSV");
         cteas::calmet::p6g::G19SourceFilePaths paths;
         paths.met_inp=argv[1];
         paths.geo_dat=argv[2];
         paths.surf_dat=argv[3];
-        for(int i=4;i<argc-2;++i)paths.ordered_up_dat.emplace_back(argv[i]);
+        std::string output_file,profile_file;
+        for(int i=4;i<argc;++i) {
+            const std::string arg=argv[i];
+            if(arg=="--output"||arg=="--wind1-profiles") {
+                if(i+1==argc||std::string(argv[i+1]).empty())
+                    throw std::invalid_argument("G20 requires a path after output option");
+                auto& destination=arg=="--output"?output_file:profile_file;
+                if(!destination.empty())
+                    throw std::invalid_argument("G20 duplicate output path option");
+                destination=argv[++i];
+            } else {
+                if(arg.starts_with("--"))
+                    throw std::invalid_argument("G20 unknown source argument");
+                paths.ordered_up_dat.push_back(arg);
+            }
+        }
+        if(output_file.empty()||paths.ordered_up_dat.size()<2||
+           (!profile_file.empty()&&output_file==profile_file))
+            throw std::invalid_argument("G20 source UP count/output path invalid");
         const auto source=cteas::calmet::p6g::g19_load_original_source_case(paths);
         auto scheduler=source.make_scheduler();
         auto frame=scheduler.preview_next_hour();
         auto profiles=cteas::calmet::p6g::g20_file_backed_source_wind1_profiles(
             frame,true);
+        // The stage observation columns are written only when requested,
+        // in READCF source ordinal/level order; never inferred from U/V.
+        const auto selected_profiles=profiles;
         cteas::calmet::p6g::G16SelectedWindPhysics native(std::move(profiles));
         const auto stage=native.run(
             cteas::calmet::p6::NativeHourStage::DiagnoWind1,frame);
@@ -56,7 +76,44 @@ int main(int argc,char** argv) {
             throw std::runtime_error("G20 original U/V output dimensions invalid");
         // Parse/physics complete first; never leave an output from a
         // partially validated original file-backed WIND1 source hour.
-        std::ofstream csv(argv[argc-1],std::ios::trunc);
+        if(!profile_file.empty()) {
+            std::ofstream values(profile_file,std::ios::trunc);
+            if(!values)
+                throw std::runtime_error("G20 original WIND1 station input output unavailable");
+            values<<std::setprecision(std::numeric_limits<float>::max_digits10);
+            const auto ns=source.stations.surface.size();
+            const auto nu=source.stations.upper.size();
+            const auto total=ns+nu;
+            values<<source.grid.nx<<" "<<source.grid.ny<<" 9 "
+                  <<ns<<" "<<nu<<" "<<source.controls.icalm<<" "
+                  <<source.grid.grid_km*1000.f<<"\n";
+            for(std::size_t i=0;i<ns;++i) {
+                const auto& st=source.stations.surface[i];
+                values<<st.local_x_m<<" "<<st.local_y_m<<" "
+                      <<frame.surface.by_station[i].wind_speed_mps<<"\n";
+            }
+            for(const auto& st:source.stations.upper)
+                values<<st.local_x_m<<" "<<st.local_y_m<<"\n";
+            for(const auto bias:source.controls.bias)values<<bias<<"\n";
+            if(selected_profiles.wind1_u_mps.size()!=9*total||
+               selected_profiles.wind1_v_mps.size()!=9*total||
+               selected_profiles.wind1_present.size()!=9*total)
+                throw std::runtime_error("G20 source WIND1 profile dimensions invalid");
+            for(std::size_t k=0;k<9;++k)
+                for(std::size_t station=0;station<total;++station) {
+                    const auto index=k*total+station;
+                    if(selected_profiles.wind1_present[index]!=1)
+                        throw std::runtime_error(
+                            "G20 vendor source-column export requires all winds present");
+                    values<<selected_profiles.wind1_u_mps[index]<<" "
+                          <<selected_profiles.wind1_v_mps[index]<<" "
+                          <<int(selected_profiles.wind1_present[index])<<"\n";
+                }
+            values.flush();
+            if(!values)
+                throw std::runtime_error("G20 original station input export failed");
+        }
+        std::ofstream csv(output_file,std::ios::trunc);
         if(!csv)throw std::runtime_error("G20 WIND1 output file unavailable");
         csv<<"hour_end_utc_seconds,k_1based,j_1based,i_1based,u_mps_real4,v_mps_real4\n";
         csv<<std::setprecision(std::numeric_limits<float>::max_digits10);
