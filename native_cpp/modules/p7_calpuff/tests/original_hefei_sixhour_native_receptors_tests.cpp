@@ -413,12 +413,16 @@ int main(int argc,char** argv) {
                 }
                 return t;
             },true,stage_hook,0.0F);
-        // 4096 capacity is intentionally non-binding in this SIX-HOUR
-        // instrumented gate. MXPUFF-pressure acceptance is a distinct test.
+        // The pinned vendor params.puf sets MXPUFF=300000 (the preceding
+        // 100000 assignment is commented out). An artificial 4096-slot
+        // limit would force premature ROLLDN on a real multi-day run and
+        // invalidate original COMP episode/slot authority comparisons.
+        // Source-capacity pressure remains a separate small-MXPUFF test.
+        constexpr std::size_t kOriginalVendorMxPuff=300000U;
         const OriginalCompPuffBounds bounds{0.0F,50.0F,0.0F,50.0F};
         const auto hour=driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
             met,static_met,controls,pg,false,source,bounds,
-            4096U,2500U,sampling);
+            kOriginalVendorMxPuff,2500U,sampling);
         require(driver.completed_hours()==hour_index+1U &&
                 hour.hour_index==hour_index &&
                 hour.receptor_concentrations.size()==2500U &&
