@@ -141,8 +141,8 @@ static std::string make_two_station_crossyear_deck(const std::string& original) 
             {"NSSTA","2"},{"NUSTA","2"},{"NX","12"},
             {"NY","12"},{"DGRIDKM","10"}})
         two=replace_one(std::move(two),key,value);
-    two+="\\n! SS2 = 'S002' 583220 543.385 3563.769 0 10.0 !\\n";
-    two+="! US2 = 'U002' 58425 553.384 3573.772 0 !\\n";
+    two+="\n! SS2 = 'S002' 583220 543.385 3563.769 0 10.0 !\n";
+    two+="! US2 = 'U002' 58425 553.384 3573.772 0 !\n";
     return two;
 }
 int main(int argc,char** argv){
@@ -167,10 +167,10 @@ int main(int argc,char** argv){
             check(g19.make_scheduler().planned_hours()==6,
                   "G20 export source case does not match tested 6-hour input");
             std::cout<<"PASS_G20_EXPORTED_ORIGINAL_FORMAT_SYNTHETIC_2SS_2US "
-                        "FULL_ORIGINAL_VENDOR_PARITY=NOT_ACCEPTED\\n";
+                        "FULL_ORIGINAL_VENDOR_PARITY=NOT_ACCEPTED\n";
             return 0;
         } catch(const std::exception& error) {
-            std::cerr<<"FAIL_G20_EXPORT_CASE "<<error.what()<<"\\n";
+            std::cerr<<"FAIL_G20_EXPORT_CASE "<<error.what()<<"\n";
             return 1;
         }
     }
