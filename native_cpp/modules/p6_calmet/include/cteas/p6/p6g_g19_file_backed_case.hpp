@@ -9,6 +9,9 @@
 #include "cteas/p6/read_surface_dynamic.hpp"
 #include "cteas/p6/read_upper_dynamic.hpp"
 #include "cteas/p6/p6g_g18c1_avemix.hpp"
+#include "cteas/p6/p6g_g18d6_station_upper_assignment.hpp"
+#include "cteas/p6/p6g_g18d3_heat_source_defaults.hpp"
+#include "cteas/p6/p6g_g17b4_iavet_two_pass.hpp"
 #include <cmath>
 #include <fstream>
 #include <iterator>
@@ -34,6 +37,13 @@ struct G19FileBackedCase {
     SurfaceSeries surface;
     std::vector<UpperSeries> upper;
     OriginalWindControls controls;
+    // Source-selected physical INPUTS, not completed source physics:
+    // original SETCOM nearest US ordinal for every STHEOR surface site,
+    // original READCF IAVET/AVETMP and default HFLUX coefficients.
+    // The actual G14 physical execution authority remains separate.
+    std::vector<std::size_t> stheor_upper_ordinal_for_surface;
+    G17B4SurfaceControls surface_controls;
+    G17CSelectedHeatInputs heat_inputs;
 
     // This intentionally creates only an input/clock authority.
     // It supplies NO native multistation physics or accepted P6F output.
@@ -114,6 +124,25 @@ inline G19FileBackedCase g19_load_original_source_case(
     for(const auto& st:result.stations.upper) us.push_back(st.id);
     result.surface=read_surface_dynamic(paths.surf_dat,ss);
     result.upper=read_upper_station_set(paths.ordered_up_dat,us);
+
+    // G19B source science admission. The current selected DIAGNO and
+    // P6E kernels are verified ONLY for the original nearest-US IUPT=-1,
+    // two-pass IAVET=1, observed thermal fields and default HFLUX path.
+    // Preserve original REAL*4 DIAGI station-to-cell/SETCOM NEARU mapping,
+    // reject out-of-GEO or water SS stations BEFORE any G14 hour begins.
+    // Other CALMET branches must earn their own Fortran source parity;
+    // never substitute nearest stations or synthetic heat constants.
+    result.stheor_upper_ordinal_for_surface=
+        g18d6_station_uppers_from_source_setcom(
+            result.grid,result.stations,result.original_metinp,true);
+    result.surface_controls=
+        parse_g17b4_surface_controls(result.original_metinp);
+    result.heat_inputs=g18d3_source_hflux_inputs(
+        result.grid,result.original_metinp,false);
+    if(result.stheor_upper_ordinal_for_surface.size()!=
+       result.stations.surface.size())
+        throw std::logic_error("G19B missing original STHEOR nearest-US station mapping");
+
     // Construct the real G14 source authority NOW, not after the caller
     // begins physics. This requires every hour to have every US bracket,
     // checks clock/order continuity, and forbids stale/missing source data.
