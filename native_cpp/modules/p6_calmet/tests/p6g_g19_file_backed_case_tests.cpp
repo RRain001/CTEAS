@@ -130,19 +130,26 @@ static void upper_sounding(std::ostream& out,int station,sys_seconds at){
     row(500,5500,259.8f,180,45);
     out<<"\n";
 }
-static void upper_file(const std::string& path,int site,sys_seconds begin){
+static void upper_file(const std::string& path,int site,sys_seconds begin,int hours_count=6){
     std::ofstream out(path);
     check(bool(out),"G19 UP test file");
     const auto day0=floor<days>(begin);
     const auto start=year_month_day{day0};
-    const auto day1=day0+days{2};
-    const auto end=year_month_day{day1};
+    // Cover BOTH upper-air brackets across every requested model hour;
+    // no replaying a three-sounding six-hour source for a 143-hour run.
+    if(hours_count!=6&&hours_count!=143)
+        throw std::invalid_argument("G35 original UP generation only 6h/143h");
+    const auto end_hour=std::chrono::duration_cast<hours>(
+        begin+hours{hours_count}-day0).count();
+    const auto last_sounding=((end_hour+11)/12)*12;
+    const auto coverage_end=day0+days{(last_sounding/24)+1};
+    const auto end=year_month_day{floor<days>(coverage_end)};
     out<<"UP.DAT          2.1             Hour Start and End Times with Seconds\n";
     out<<"1\nG19 original-format source UP\nNONE\nUTC+0000\n";
     out<<int(start.year())<<" "<<day_of_year(day0)<<" 0 0 "
-       <<int(end.year())<<" "<<day_of_year(day1)<<" 0 0 500.0 2 1\nF F F F\n";
-    for(const auto at:{day0+hours{12},day0+hours{24},day0+hours{36}})
-        upper_sounding(out,site,at);
+       <<int(end.year())<<" "<<day_of_year(coverage_end)<<" 0 0 500.0 2 1\nF F F F\n";
+    for(long long k=12;k<=last_sounding;k+=12)
+        upper_sounding(out,site,day0+hours{k});
 }
 static std::string make_two_station_crossyear_deck(const std::string& original) {
     std::string two=original;
@@ -155,16 +162,24 @@ static std::string make_two_station_crossyear_deck(const std::string& original) 
     return two;
 }
 int main(int argc,char** argv){
-    if(argc>=4&&argc<=6&&std::string(argv[1])=="--export-case") {
+    if(argc>=4&&argc<=8&&std::string(argv[1])=="--export-case") {
         try {
             const auto original=read(argv[2]);
             bool steep=false,daylight=false;
+            int export_hours=6;
+            bool hours_option=false;
             for(int i=4;i<argc;++i) {
                 const std::string arg=argv[i];
                 if(arg=="--fradj-stress"&&!steep)steep=true;
                 else if(arg=="--daylight-first-hour"&&!daylight)daylight=true;
-                else throw std::invalid_argument(
-                    "G22 repeated or unknown original-format case variant");
+                else if(arg=="--hours"&&!hours_option&&i+1<argc) {
+                    export_hours=std::stoi(argv[++i]);
+                    if(export_hours!=6&&export_hours!=143)
+                        throw std::invalid_argument(
+                            "G35 source duration must be explicitly 6 or 143 hours");
+                    hours_option=true;
+                } else throw std::invalid_argument(
+                    "G35 duplicate or unknown original-format case option");
             }
             auto two=make_two_station_crossyear_deck(original);
             if(steep) {
@@ -186,16 +201,17 @@ int main(int argc,char** argv){
             // UP 00/12 UTC bracket remains source-valid at the new hour.
             const auto begin=sys_days{year{2023}/December/31}+
                 hours{daylight?26:22};
-            surface_file(paths.surf_dat,begin,6);
+            surface_file(paths.surf_dat,begin,export_hours);
             const auto day=sys_days{year{2023}/December/31};
-            upper_file(paths.ordered_up_dat[0],58424,day);
-            upper_file(paths.ordered_up_dat[1],58425,day);
+            upper_file(paths.ordered_up_dat[0],58424,day,export_hours);
+            upper_file(paths.ordered_up_dat[1],58425,day,export_hours);
             const auto g19=p6g::g19_load_original_source_case(paths);
-            check(g19.make_scheduler().planned_hours()==6,
-                  "G20 export source case does not match tested 6-hour input");
+            check(g19.make_scheduler().planned_hours()==static_cast<std::size_t>(export_hours),
+                  "G35 exported source case time axis does not match original input");
             std::cout<<"PASS_G20_EXPORTED_ORIGINAL_FORMAT_SYNTHETIC_2SS_2US "
                      <<"FRADJ_STEEP_TERRAIN="<<steep<<" "
                      <<"DAYLIGHT_SOURCE_HOUR="<<daylight<<" "
+                     <<"HOURS="<<export_hours<<" "
                         "FULL_ORIGINAL_VENDOR_PARITY=NOT_ACCEPTED\n";
             return 0;
         } catch(const std::exception& error) {
