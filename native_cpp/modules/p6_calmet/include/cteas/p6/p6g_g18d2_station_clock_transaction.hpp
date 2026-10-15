@@ -54,6 +54,24 @@ public:
         return prepared;
     }
 
+    // G18F2: preflight source-clock admission while the authoritative
+    // G14 physical state is STILL n-1. This must run before the P6F
+    // precommit barrier returns. It proves that both independently
+    // precommitted station candidates can publish at exactly n+1,
+    // without touching clocks or creating a second hour authority.
+    [[nodiscard]] bool can_publish_after_next_g14_commit(
+        const UnifiedMultistationHourlyScheduler& scheduler,
+        const G18D2StagedStationClocks& prepared) const noexcept {
+        return !prepared.published&&prepared.owner==&scheduler&&
+               prepared.new_upper.has_hour()&&
+               prepared.new_gamma.has_committed_hour()&&
+               prepared.new_upper.last_hour()==prepared.source_end&&
+               prepared.new_gamma.committed_end()==prepared.source_end&&
+               scheduler.completed_hours()==prepared.hour_index&&
+               ((!has_published_&&prepared.hour_index==0)||
+                (has_published_&&prepared.hour_index==last_hour_+1));
+    }
+
     // G18F1: G14's fresh-owned per-hour executor must publish both
     // PREPDI/CGAMMA clocks AFTER accepted P6F and native physical memory,
     // but BEFORE the owning hourly executor is destroyed. This operation
