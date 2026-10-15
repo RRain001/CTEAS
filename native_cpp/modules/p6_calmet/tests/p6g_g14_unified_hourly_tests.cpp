@@ -274,6 +274,21 @@ static void case_fresh_owned_physics(sys_seconds begin) {
         geo(),stations(),surface(begin,6),upper(begin,6),deck);
     std::size_t allocated=0;
     int destroyed=0;
+    std::size_t published=0;
+    bool postcommit_valid=true;
+    // G18F1 final station-clock publication is strictly after G14
+    // P6F verification but before the owned per-hour executor destructs.
+    auto publish=[&](p6g::MultiHourPhysics& base,
+                     const p6g::UnifiedMultistationHourlyScheduler& committed) noexcept {
+        auto& owned=static_cast<FreshOwnedPhysics&>(base);
+        ++published;
+        postcommit_valid=postcommit_valid &&
+            owned.next_stage==p6::kHefeiOriginalStageOrder.size() &&
+            committed.completed_hours()==published &&
+            committed.committed_memory().ziconv_m[0]==
+                static_cast<float>(published) &&
+            destroyed==static_cast<int>(allocated-1);
+    };
     bool fail_stage=true,fail_oracle=false;
     auto factory=[&](const p6g::MultiHourFrame& live)
         ->std::unique_ptr<p6g::MultiHourPhysics> {
@@ -311,8 +326,10 @@ static void case_fresh_owned_physics(sys_seconds begin) {
             check(result.hour_index==0&&result.next.ziconv_m[0]==1.f,
                   "G18F1 precommit saw stale or uncomputed G14 COMP");
             throw std::runtime_error("G18F1 synthetic P6F rejection");
-          });
+          },publish);
     },"G18F1 P6F failure committed prior-hour memory");
+    check(published==0&&postcommit_valid,
+          "G18F1 erroneously published station clocks after P6F failure");
     check(checked==1&&allocated==3&&destroyed==3&&
           sched.completed_hours()==0&&sched.committed_memory().ziconv_m[0]==0.f,
           "G18F1 failed P6F attempt was not isolated before retry");
@@ -324,15 +341,18 @@ static void case_fresh_owned_physics(sys_seconds begin) {
                   result.previous.ziconv_m[0]==static_cast<float>(h)&&
                   result.next.ziconv_m[0]==static_cast<float>(h+1),
                   "G18F1 accepted hour used stale n-1 CGAMMA/COMP memory");
-          });
+          },publish);
+        check(published==h+1&&postcommit_valid,
+              "G18F1 publish was not after G14 memory commit/before executor destruction");
         check(sched.completed_hours()==h+1&&
               sched.committed_memory().ziconv_m[0]==static_cast<float>(h+1)&&
               allocated==h+4&&destroyed==static_cast<int>(h+4),
               "G18F1 reused native physics across successful source hours");
     }
     sched.require_complete();
-    check(checked==7&&allocated==9&&destroyed==9,
-          "G18F1 did not destroy exactly one physics object per attempt");
+    check(checked==7&&allocated==9&&destroyed==9&&
+          published==6&&postcommit_valid,
+          "G18F1 did not isolate the postcommit hook/executor per attempt");
     must_reject([&]{sched.advance_with_fresh_physics(factory);},
                 "G18F1 accepted source hour after declared end of input");
     check(allocated==9&&destroyed==9,
