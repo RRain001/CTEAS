@@ -165,6 +165,54 @@ int main(int argc,char** argv){
         upper_file(paths.ordered_up_dat[1],58425,sys_days{year{2023}/December/31});
         const auto source_case=p6g::g19_load_original_source_case(paths);
         auto scheduler=source_case.make_scheduler();
+        // G19/G14B must agree on exactly the same on-disk source data.
+        // Two independent input authorities with divergent READCF/UTM/UP
+        // semantics would make a later genuine physical solver unsafe.
+        const p6g::CaseInputPaths previous_paths{
+            paths.geo_dat,paths.surf_dat,paths.ordered_up_dat,
+            paths.met_inp,p6g::g19_source_grid_spec(two),2,2};
+        auto prior_loader=p6g::load_unified_multistation_case(previous_paths);
+        check(prior_loader.planned_hours()==scheduler.planned_hours()&&
+              prior_loader.grid().nx==scheduler.grid().nx&&
+              prior_loader.grid().ny==scheduler.grid().ny&&
+              prior_loader.grid().landuse==scheduler.grid().landuse&&
+              prior_loader.original_controls().zface_m==
+                  scheduler.original_controls().zface_m&&
+              prior_loader.original_controls().bias==
+                  scheduler.original_controls().bias,
+              "G19/G14B double entrypoint returned different original source model");
+        for(std::size_t idx=0;idx<scheduler.planned_hours();++idx) {
+            // Neither source-only scheduler may advance without physics;
+            // compare all disk-observed forcing through independent source
+            // readers instead of accidentally using one copied frame.
+            check(source_case.surface.hourly[idx].end==
+                      prior_loader.preview_next_hour().surface.end+hours{static_cast<int>(idx)},
+                  "G19/G14B source file UTC hour count unexpectedly differs");
+        }
+        const auto a=scheduler.preview_next_hour();
+        const auto b=prior_loader.preview_next_hour();
+        check(a.input.end==b.input.end&&a.surface.start==b.surface.start&&
+              a.stations.surface[0].local_x_m==b.stations.surface[0].local_x_m&&
+              a.stations.surface[1].local_y_m==b.stations.surface[1].local_y_m&&
+              a.stations.upper[0].local_x_m==b.stations.upper[0].local_x_m&&
+              a.surface.by_station[0].wind_speed_mps==
+                  b.surface.by_station[0].wind_speed_mps&&
+              a.surface.by_station[1].pressure_mb==
+                  b.surface.by_station[1].pressure_mb&&
+              a.input.upper.size()==b.input.upper.size(),
+              "G19/G14B first-hour forcing differed from identical GEO/SURF/UP");
+        for(std::size_t site=0;site<a.input.upper.size();++site) {
+            const auto& u=a.input.upper[site];
+            const auto& v=b.input.upper[site];
+            check(u.earlier==v.earlier&&u.later==v.later&&
+                  u.span_seconds==v.span_seconds&&
+                  u.past_seconds==v.past_seconds&&
+                  u.future_seconds==v.future_seconds&&
+                  a.upper[site].station_id==b.upper[site].station_id&&
+                  a.upper[site].soundings[u.earlier].data[0].temperature_k==
+                      b.upper[site].soundings[v.earlier].data[0].temperature_k,
+                  "G19/G14B per-station original PREPDI AA/BB differs");
+        }
         check(source_case.grid.nx==12&&source_case.grid.ny==12&&
               source_case.grid.grid_km==10.f&&
               source_case.stations.surface.size()==2&&
@@ -264,6 +312,19 @@ int main(int argc,char** argv){
         save(paths.met_inp,wrong_geo);
         rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
                 "G19 GEO / met.inp original NX mismatch was accepted");
+        save(paths.met_inp,two);
+
+        // Both old and new readers must fail identically for source
+        // coordinate system, datum, counts and grid geometry.
+        for(const auto& [key,value]:std::vector<std::pair<std::string,std::string>>{
+                {"PMAP","LCC"},{"DATUM","NAD83"},{"UTMHEM","S"}}) {
+            const auto bad_source=replace_one(two,key,value);
+            save(paths.met_inp,bad_source);
+            rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
+                    "G19 accepted a met.inp source CRS variant outside G14B");
+            rejects([&]{(void)p6g::load_unified_multistation_case(previous_paths);},
+                    "G14B accepted a met.inp source CRS variant outside G19");
+        }
         save(paths.met_inp,two);
 
         // G19B: original SETCOM IUPT, source IAVET/HFLUX, site-grid
