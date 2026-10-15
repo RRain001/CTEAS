@@ -9,6 +9,7 @@
 #include "cteas/p6/p6g_g23_file_backed_stheor_inter2.hpp"
 #include "cteas/p6/p6g_g24_file_backed_wind_tail.hpp"
 #include "cteas/p6/p6g_g26_file_backed_g14_diagno_bridge.hpp"
+#include "cteas/p6/p6g_g26b_file_backed_comp_bridge.hpp"
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -763,6 +764,66 @@ int main(int argc,char** argv){
               g26_scheduler.committed_memory().dptt_k[0]==0.f&&
               !g26_clocks.has_published_hour(),
               "G26 source DIAGNO failure changed committed G14 COMP/AA-BB-CGAMMA state");
+        // G26B: continue the same *actual* G14 frame from G26A final W
+        // into existing independently developed G18D4 four COMP kernels,
+        // using source met.inp controls and authentic physical UP AA/BB.
+        // This is only a selected first-hour P6F *candidate*, never a
+        // production G14 commit or official original 45-field acceptance.
+        p6g::G26BSourceFileBackedCompBridge g26b(g26,source_case);
+        rejects([&]{
+            g26b.run_selected(
+                cteas::calmet::p6::NativeHourStage::CompTemp3d,
+                g26_live,true);
+        },"G26B skipped original COMP MIXHT/AVEMIX/WSTARR");
+        rejects([&]{
+            g26b.run_selected(
+                cteas::calmet::p6::NativeHourStage::CompGridMixht,
+                g26_live,false);
+        },"G26B source COMP fixture became production physics");
+        rejects([&]{(void)g26b.selected_p6f_candidate(g26_live);},
+                "G26B exposed source P6F before COMP stages");
+        for(std::size_t step=12;step<16;++step) {
+            g26b.run_selected(
+                cteas::calmet::p6::kHefeiOriginalStageOrder[step],
+                g26_live,true);
+            if(step<15)
+                check(!g26b.source_comp_ready(),
+                      "G26B source COMP was published before physical TEMP3D");
+        }
+        const auto& g26b_p6f=g26b.selected_p6f_candidate(g26_live);
+        check(g26b.source_comp_ready()&&
+              g26b_p6f.end==g26_live.input.end&&
+              g26b_p6f.candidate_memory.zi_m.size()==144u&&
+              g26b_p6f.candidate_memory.ziconv_m.size()==144u&&
+              g26b_p6f.candidate_memory.dptt_k.size()==144u&&
+              g26b_p6f.candidate_fields.u_mps==g24.wind.u_mps&&
+              g26b_p6f.candidate_fields.v_mps==g24.wind.v_mps&&
+              g26b_p6f.candidate_fields.w_face_mps==g24.wind.w_face_mps&&
+              g26b_p6f.candidate_fields.temperature_k.size()==1296u&&
+              g26b_p6f.candidate_fields.qh_wm2.size()==144u&&
+              g26b_p6f.candidate_fields.ustar_mps.size()==144u&&
+              g26b_p6f.candidate_fields.el_m.size()==144u&&
+              g26b_p6f.candidate_fields.wstar_mps.size()==144u&&
+              g26_scheduler.completed_hours()==0&&
+              g26_scheduler.committed_memory().zi_m[0]==0.f&&
+              g26_scheduler.committed_memory().ziconv_m[0]==0.f&&
+              !g26_clocks.has_published_hour(),
+              "G26B selected original-source four COMP stages not complete/committed early");
+        rejects([&]{
+            g26b.run_selected(
+                cteas::calmet::p6::NativeHourStage::CommitOutput,
+                g26_live,true);
+        },"G26B permitted unverified P6F as original complete hour");
+        auto bad_g26b_frame=g26_scheduler.preview_next_hour();
+        rejects([&]{(void)g26b.selected_p6f_candidate(bad_g26b_frame);},
+                "G26B allowed detached G14 frame to borrow prior COMP candidate");
+        const auto g26b_source_admission=g26b.run(
+            cteas::calmet::p6::NativeHourStage::CompTemp3d,
+            g26_live);
+        check(!g26b_source_admission.completed&&
+              g26b_source_admission.source==
+                  cteas::calmet::p6::NativeHourSource::Unknown,
+              "G26B test-only source COMP promoted into G14 production");
         // Exercise G26 through G14's REAL 17-stage loop, not just a
         // manually sequenced preview. Only the test proxy can report
         // partial checkpoint advancement; stage [12] COMP MUST return
