@@ -257,10 +257,24 @@ int main(int argc,char** argv){
                             stable,statics,header,request);
                     }catch(const std::invalid_argument&){stable_rejected=true;}
                     demand(stable_rejected,
-                        "unimplemented stable PTLAPS was approximated in production PRFIN");
+                        "stable RLSMET must reject missing LCALGRD provenance");
+                    // Test native stable source PTLAPS using the real frozen
+                    // 3D CALMET temperature column, not frozen original DGM.
+                    auto stable_profile_request=request;
+                    stable_profile_request.use_calmet_profile_lapse=true;
+                    const auto stable_prfin=
+                        cteas::puff::original_point_prfin_metfm1(
+                            stable,statics,header,stable_profile_request);
+                    demand(stable_prfin.stability_class==5 &&
+                           std::isfinite(stable_prfin.sqrt_stability_s) &&
+                           stable_prfin.sqrt_stability_s>0.0F &&
+                           stable_prfin.mixed_fraction==1.0F &&
+                           stable_prfin.max_layer_height_m==stable.zi[cell] &&
+                           stable_prfin.final_rise_m>0.0F,
+                           "stable RLSMET PTLAPS / no-PRFPP branch invalid");
                     std::cout<<"P7_NATIVE_PRODUCTION_PRFIN_REUSE=PASS"
                              <<" SITE_IS_GRID_RELATIVE=YES"
-                             <<" STABLE_PTLAPS=FAIL_CLOSED"
+                             <<" STABLE_PTLAPS=PROFILE_REAL4"
                              <<" DGM_SEEDING=NO\\n";
                     std::cout<<"P7_FIRST_HOUR_PRFIN_DGM_COMPARE=PASS"
                              <<" HEFF_REAL4=BITWISE"
