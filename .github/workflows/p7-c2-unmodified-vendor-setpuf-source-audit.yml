@@ -26,7 +26,7 @@ jobs:
           print("P7_C2_VENDOR_CALPUFF_SHA256="+hashlib.sha256(raw).hexdigest())
           lines=raw.decode("latin-1").splitlines()
           print("SOURCE_LINES="+str(len(lines)))
-          for a,b in [(48500,48675),(4200,4275),(5300,5400),(20540,20610)]:
+          for a,b in [(48350,48505),(48595,48685),(20995,21105),(5285,5325)]:
               print(f"==== UNMODIFIED CALPUFF FORTRAN {a}-{b} ====")
               for i in range(a-1,min(b,len(lines))):
                   print(f"VENDOR_SOURCE_L{i+1}: {lines[i]}")
