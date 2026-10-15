@@ -40,6 +40,18 @@ The dedicated [`compare_p7_hourly_concentrations.py`](../../native_cpp/modules/p
 
 **Do not mark C1 accepted on a queued/running Actions job.** Inspect actual A/C, B/D, C/D scientific JSON and full generated D output. A failed C1 diagnostic must be debugged from the earliest source stage without injecting original puff states.
 
+## C2 measured original CALPUFF response with both real G35 MET.DAT files
+
+[GitHub-hosted run #38743223360](https://github.com/RRain001/CTEAS/actions/runs/38743223360) **SUCCESS** on C2 case input stage; this is **not** native P7 acceptance.
+
+The first non-trivial vendor pairing run [#38742236236](https://github.com/RRain001/CTEAS/actions/runs/38742236236) exposed a scientifically inadmissible all-zero H-3 field: reusing the frozen 2022 point-source XY (513.385, 3533.769 km) placed the source near the southwest corner of the 12×12 10km 2024 meteorological domain, yielding no measurable receptor concentration. The test blocked rather than passing based on vacuous all-zero agreement.
+
+The controlled repair moved only point-source XY to **(565.885, 3586.269 km)**, interior to the same static domain, for BOTH original and reconstructed weather runs; every other source operand (emission rate, stack height and diameter, effluent temperature and exit velocity) and dispersion/deposition/control option remains unchanged. `run_c2_vendor_inside_grid_pair.py` writes the actual 2024 modified source deck and publishes its SHA256/provenance.
+
+Observed true 143h original-vs-reconstructed CALMET parity remained **6,435 hourly original-format fields, zero tolerance exceedances**. Independent original CALPUFF 7.2.1 executed the same time window twice; each 143-hour 12×12 H-3 result contained 292 positive concentration cells. Comparing **20,592** total float32 H-3 words yielded **20,576 bitwise matches**, a maximum absolute difference of `7.450580596923828e-09 Bq/m³`. This demonstrates observable meteorology-to-concentration sensitivity without pretending that different MET inputs must produce the same output.
+
+**C2 next mandatory boundary:** rerun the same frozen original and PR63 METs with native P7 (B and D), compare A↔B and C↔D bitwise and B↔D meteorology sensitivity, audit both native full `puff.con` outputs and verify no oracle injection. The C2 opt-in driver changes grid/time/source-configuration admission only; original C1 and P7 frozen 2022 strict gates must remain intact.
+
 ## C2 planned sequence (not yet accepted)
 
 G35 original and native weather must be rebuilt or staged **within the same accepted 2024 12×12×9/10km scientific scope**, preserving their exact source manifest, first/last UTC timestamps, all 143×45 records, 2SS/2US upper-air bracket and G36 READY seal.
