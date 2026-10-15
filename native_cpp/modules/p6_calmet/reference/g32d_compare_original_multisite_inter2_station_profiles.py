@@ -111,7 +111,7 @@ def main():
     p.add_argument("--frozen-verdict", type=Path, required=True)
     p.add_argument("--native-u-stage", type=Path, required=True)
     p.add_argument("--native-v-stage", type=Path, required=True)
-    p.add_argument("--source-hour-end-unix", type=int, required=True)
+    p.add_argument("--source-clock", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
     args = p.parse_args()
     report = {"status": "BLOCKED", "scientific_status": "FAIL_NUMERIC",
@@ -124,8 +124,9 @@ def main():
             raise ValueError("G32D needs actual original frozen P6E fail")
         if sha(args.untouched_met) != sha(args.instrumented_met):
             raise ValueError("G32D write-only source instrumented MET.DAT not byte-identical")
-        clock = dt.datetime.fromtimestamp(
-            args.source_hour_end_unix - 3600, dt.timezone.utc)
+        from g32b_trace_original_multisite_slope_first_divergence import native_csv
+        _source_wind, hour_end = native_csv(args.source_clock)
+        clock = dt.datetime.fromtimestamp(hour_end - 3600, dt.timezone.utc)
         if clock.minute or clock.second:
             raise ValueError("G32D original hourly clock invalid")
         (source_u, source_v), packed = read_original(args.original_stations, clock)
