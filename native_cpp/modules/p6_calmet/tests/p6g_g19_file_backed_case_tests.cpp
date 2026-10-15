@@ -227,7 +227,7 @@ int main(int argc,char** argv){
         rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
                 "G19B allowed synthetic heat defaults into original HFLUX branch");
 
-        const std::regex ss1(R"(!\\s*SS1\\s*=\\s*'[^']*'[^!]*!)");
+        const std::regex ss1(R"(!\s*SS1\s*=\s*'[^']*'[^!]*!)");
         const auto displaced_site=std::regex_replace(
             two,ss1,"! SS1 = 'OUT' 583210 700.000 3533.769 0 10.0 !");
         check(displaced_site!=two,"G19B unable to modify original SSn source");
