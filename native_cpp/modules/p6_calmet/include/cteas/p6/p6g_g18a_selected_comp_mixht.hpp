@@ -26,6 +26,9 @@ struct G18ASelectedCompResult {
     std::chrono::sys_seconds end{};
     p6::NativeGridMemory candidate_next;
     std::vector<float> wstar_mps;
+    // G29 audit-only: actual pre-call AA/BB, NEARU, source scalars and
+    // prior-COMP/STHEOR inputs; NEVER the numerical Fortran reference.
+    p6e::MixhtObservedMcInput source_mixht_input;
     // No completed NativeHourStageResult or scheduler commit is implied.
 };
 inline G18ASelectedCompResult selected_comp_mixht_wstarr_from_previous(
@@ -121,7 +124,7 @@ inline G18ASelectedCompResult selected_comp_mixht_wstarr_from_previous(
     conv.rho_kgm3=source_heat.density_kg_m3;
     conv.initial_wstar_ms=ctrl.initial_wstar_mps;
     const auto velocity=p6e::wstarr(conv);
-    return {frame.input.end,{mixed.zi,mixed.ziconv,mixed.dptt},velocity};
+    return {frame.input.end,{mixed.zi,mixed.ziconv,mixed.dptt},velocity,in};
 }
 // In G18B, physical AA/BB/JUSTA are now derived from the actual model-hour
 // original UP station brackets, not copied from a stale fixture. NEARU,
