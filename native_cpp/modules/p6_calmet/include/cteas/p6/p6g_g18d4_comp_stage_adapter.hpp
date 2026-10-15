@@ -129,6 +129,21 @@ public:
             throw std::logic_error("G29B requested unexecuted source TEMP3D");
         return *temperature_;
     }
+    // G33D: only the actual completed COMP [12..15] owns the output
+    // HEATFX/TEMP2D/RHO/QSW fields. G22's earlier DIAGNO heat is for
+    // slope-flow computation and must never be recycled into final P6F.
+    [[nodiscard]] const G17CSelectedHeatResult& source_comp_heat_for_p6f(
+        const MultiHourFrame& frame) const {
+        (void)source_mixht_before_avemix(frame);
+        if(!selected_complete()||!result_||
+           heat_.end!=frame.input.end||
+           heat_.temperature_k.size()!=
+              static_cast<std::size_t>(frame.grid.nx)*
+              static_cast<std::size_t>(frame.grid.ny))
+            throw std::logic_error(
+                "G33D P6F surface heat requested before completed COMP source");
+        return heat_;
+    }
     [[nodiscard]] bool selected_complete() const noexcept {
         return stage_index_==4&&result_.has_value();
     }
