@@ -5,6 +5,7 @@
 #include "cteas/p6/p6g_g20_file_backed_wind1_profiles.hpp"
 #include "cteas/p6/p6g_g21_file_backed_fradj.hpp"
 #include "cteas/p6/p6g_g22_file_backed_thermal_slope.hpp"
+#include "cteas/p6/p6g_g23_file_backed_stheor_inter2.hpp"
 #include "cteas/p6/p6g_g18d2_station_clock_transaction.hpp"
 #include <cmath>
 #include <exception>
@@ -34,15 +35,18 @@ int main(int argc,char** argv) {
         paths.geo_dat=argv[2];
         paths.surf_dat=argv[3];
         std::string output_file,stage_file,slope_output_file,slope_stage_file;
+        std::string inter2_output_file;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--output"||arg=="--source-stage"||
-               arg=="--slope-output"||arg=="--slope-stage") {
+               arg=="--slope-output"||arg=="--slope-stage"||
+               arg=="--inter2-output") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
                     throw std::invalid_argument("G21/G22 source output missing path");
                 auto& selected=arg=="--output"?output_file:
                                arg=="--source-stage"?stage_file:
-                               arg=="--slope-output"?slope_output_file:slope_stage_file;
+                               arg=="--slope-output"?slope_output_file:
+                               arg=="--slope-stage"?slope_stage_file:inter2_output_file;
                 if(!selected.empty())
                     throw std::invalid_argument("G21/G22 duplicate output argument");
                 selected=argv[++i];
@@ -53,10 +57,12 @@ int main(int argc,char** argv) {
         }
         if(output_file.empty()||stage_file.empty()||
            stage_file==output_file||paths.ordered_up_dat.size()<2||
-           slope_output_file.empty()!=slope_stage_file.empty())
+           slope_output_file.empty()!=slope_stage_file.empty()||
+           (!inter2_output_file.empty()&&slope_output_file.empty()))
             throw std::invalid_argument("G21/G22 requires independent stage/output file pairs");
         const std::vector<std::string> outputs={
-            output_file,stage_file,slope_output_file,slope_stage_file};
+            output_file,stage_file,slope_output_file,slope_stage_file,
+            inter2_output_file};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -68,8 +74,9 @@ int main(int argc,char** argv) {
         cteas::calmet::p6g::G18D2StationClockAuthority clocks;
         const auto prepared=clocks.prepare_selected(
             scheduler,source.original_metinp,true);
-        cteas::calmet::p6g::G16SelectedWindPhysics wind(
-            cteas::calmet::p6g::g20_file_backed_source_wind1_profiles(frame,true));
+        const auto source_profiles=
+            cteas::calmet::p6g::g20_file_backed_source_wind1_profiles(frame,true);
+        cteas::calmet::p6g::G16SelectedWindPhysics wind(source_profiles);
         const auto result=wind.run(
             cteas::calmet::p6::NativeHourStage::DiagnoWind1,frame);
         if(!result.completed||
@@ -180,6 +187,43 @@ int main(int argc,char** argv) {
                     }
             csv22.flush();
             if(!csv22)throw std::runtime_error("G22 native SLOPE CSV failed");
+            if(!inter2_output_file.empty()) {
+                const auto station=cteas::calmet::p6g::g23_source_stheor_diagi_inter2(
+                    frame,source,source_profiles,selected,joined,true);
+                if(scheduler.completed_hours()!=0||clocks.has_published_hour())
+                    throw std::logic_error("G23 incomplete G14 hour was published");
+                std::ofstream i2(inter2_output_file,std::ios::trunc);
+                if(!i2)throw std::runtime_error("G23 source INTER2 output unavailable");
+                i2<<"hour_end_utc_seconds,k_1based,j_1based,i_1based,"
+                     "u_mps_real4,v_mps_real4\n";
+                i2<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                if(station.inter2_u.component_mps.size()!=cells*9||
+                   station.inter2_v.component_mps.size()!=cells*9)
+                    throw std::logic_error("G23 source INTER2 dimensions invalid");
+                for(std::size_t k=0;k<9;++k)
+                    for(std::size_t j=0;j<ny;++j)
+                        for(std::size_t i=0;i<nx;++i) {
+                            const auto p=k*cells+j*nx+i;
+                            const auto u=station.inter2_u.component_mps[p];
+                            const auto v=station.inter2_v.component_mps[p];
+                            if(!std::isfinite(u)||!std::isfinite(v))
+                                throw std::runtime_error("G23 source INTER2 nonfinite U/V");
+                            i2<<frame.input.end.time_since_epoch().count()<<","
+                              <<(k+1)<<","<<(j+1)<<","<<(i+1)<<","
+                              <<u<<","<<v<<"\n";
+                        }
+                i2.flush();
+                if(!i2)throw std::runtime_error("G23 source INTER2 CSV write failed");
+                std::cout<<"PASS_P6G_G23_SOURCE_STHEOR_DIAGI_INTER2 "
+                         <<"STATIONS="<<station.station_diagi.size()
+                         <<" CELLS="<<cells
+                         <<" UV_VALUES="<<cells*9*2
+                         <<" CHANGED_DIAGI_SS_COMPONENTS="
+                         <<station.replaced_surface_profile_values
+                         <<" SOURCE_CMECH="<<station.source_cmech
+                         <<" PREVIOUS_STATE_MUTATED=0 G14_HOURS_COMMITTED=0 "
+                           "FULL_VENDOR_45_FIELD=NOT_ACCEPTED\n";
+            }
             std::cout<<"PASS_P6G_G22_SOURCE_HEATFX_AIRDEN_ELUSTR_SLOPE "
                      <<"CELLS="<<cells<<" WIND_UV_VALUES="<<cells*9*2
                      <<" CHANGED_SLOPE_COMPONENTS="<<joined.changed_slope_components
