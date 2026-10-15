@@ -141,7 +141,7 @@ def main():
         raise RuntimeError("G29A requires real daytime original MIXHT branch")
 
     blob = VENDOR.read_bytes()
-    sha = hashlib.sha1(b"blob " + str(len(blob)).encode() + b"\\0" + blob).hexdigest()
+    sha = hashlib.sha1(b"blob " + str(len(blob)).encode() + b"\0" + blob).hexdigest()
     if sha != oracle.BLOB:
         raise RuntimeError("G29A original frozen CALMET source blob changed")
     source, portions = oracle.source(blob)
@@ -174,12 +174,12 @@ def main():
              str(work / "original.for"), str(work / "driver.for"), "-o", str(exe)],
             text=True, capture_output=True)
         if compiled.returncode:
-            raise RuntimeError("G29A literal original Fortran compile failure:\\n" +
+            raise RuntimeError("G29A literal original Fortran compile failure:\n" +
                                compiled.stderr[-4000:])
         process = subprocess.run([str(exe)], input=original_input.read_text(),
                                  text=True, capture_output=True)
         if process.returncode:
-            raise RuntimeError("G29A literal original Fortran execution failed:\\n" +
+            raise RuntimeError("G29A literal original Fortran execution failed:\n" +
                                (process.stderr + process.stdout)[-4000:])
         expected = parse_vendor_grid(process.stdout)
     # The vendor driver produces exactly 144 rows for this selected case.
@@ -218,7 +218,7 @@ def main():
         "previous_comp_nonzero_dptt_covered": meta["distribution"]["nonzero_prior_dptt"] > 0,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(verdict, indent=2) + "\\n")
+    args.out.write_text(json.dumps(verdict, indent=2) + "\n")
     print(json.dumps(verdict, indent=2))
     if mismatch:
         raise SystemExit(1)
