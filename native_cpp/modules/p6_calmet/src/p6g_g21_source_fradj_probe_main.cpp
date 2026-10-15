@@ -448,11 +448,27 @@ int main(int argc,char** argv) {
                 // The original G14 CommitOutput [16] is NOT advanced and
                 // no prior COMP/upper-station clock may be published here.
                 const auto& c=g26b.selected_p6f_candidate(frame);
-                const auto& source_heat=g26.selected_thermal_for_comp(frame).heat;
+                // G33D: original COMP SURFVAR runs THIRD on FINAL U/V
+                // then HEATFX/AIRDEN/ELUSTR; DIAGNO G22 density is stale.
+                // G32F demonstrated original COMP RHO/TEMP2D bit exact;
+                // use precisely that actual same-frame G26B source heat
+                // for original P6F TEMPK/RHO/QSW output records.
+                const auto& comp_heat=g26b.source_comp_heat_for_p6f(frame);
+                if(comp_heat.end!=frame.input.end||
+                   comp_heat.density_kg_m3.size()!=cells||
+                   comp_heat.temperature_k.size()!=cells||
+                   comp_heat.shortwave_wm2.size()!=cells)
+                    throw std::logic_error(
+                        "G33D source P6F COMP heat has no completed original hour");
                 const auto nears=cteas::calmet::p6g::source_setcom_nears(
                     frame.grid,frame.stations);
                 const auto records=cteas::calmet::p6g::g18c5_selected_p6f_fields(
-                    frame,source_heat,c,source.original_metinp,true);
+                    frame,comp_heat,c,source.original_metinp,true);
+                if(records.real.at("RHO     ")!=comp_heat.density_kg_m3||
+                   records.real.at("TEMPK   ")!=comp_heat.temperature_k||
+                   records.real.at("QSW     ")!=comp_heat.shortwave_wm2)
+                    throw std::logic_error(
+                        "G33D P6F output backfilled stale DIAGNO instead of COMP");
                 const auto dataset=cteas::calmet::p6g::g18c6_selected_one_hour_dataset(
                     frame,records,nears,source.original_metinp,true);
                 const auto bytes=cteas::calmet::p6g::g18d1_validate_p6f_precommit(
