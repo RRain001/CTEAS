@@ -497,7 +497,12 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     float current_receptor_bvf=0.0F;
     OriginalTerrainSigmaInputs terrain_inputs;
     const OriginalTerrainSigmaInputs* selected_terrain=nullptr;
-    if(control.mctadj2){
+    // SETPUF's SIGTZ/CTADJ2 terrain-strain subchain applies to odd
+    // vertical Gaussian puff codes. For even (uniform) codes sigma_step
+    // does not calculate the SIGTZ mid/end denominators that CTADJ2 needs.
+    // Do not run the Gaussian terrain-strain operator on a uniform puff.
+    // This branch needs independent original 2024 B/D scientific validation.
+    if(control.mctadj2 && (mass.puff_code % 2)==1){
         // SETPUF L48616-48631 owns the authoritative CTADJ2 state.
         // This must use the same *native* x/y/height and RISEWIND WS
         // as the step being committed; no historical DGM inputs.
