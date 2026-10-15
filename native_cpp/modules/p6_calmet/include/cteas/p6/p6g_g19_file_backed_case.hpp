@@ -4,7 +4,7 @@
 // this does NOT certify a native 17-stage CALMET physics implementation.
 // Each field is read from the caller's actual met.inp/GEO.DAT/SURF.DAT/
 // ordered UP.DAT files, never reconstructed from CALMET.DAT or an oracle.
-#include "cteas/p6/p6g_unified_hourly.hpp"
+#include "cteas/p6/p6g_case_loader.hpp"
 #include "cteas/p6/calmet_station_set.hpp"
 #include "cteas/p6/read_surface_dynamic.hpp"
 #include "cteas/p6/read_upper_dynamic.hpp"
@@ -113,6 +113,11 @@ inline G19FileBackedCase g19_load_original_source_case(
         throw std::invalid_argument(
             "G19 original CALMET output mode not accepted by selected P6F");
     const auto spec=g19_source_grid_spec(result.original_metinp);
+    // G14B already owns the frozen original READCF geometric contract.
+    // Reuse that exact parser/validator here instead of permitting two
+    // independently evolving PMAP/DATUM/UTM/ZFACE/NZ/count definitions.
+    validate_original_calmet_deck_grid(
+        result.original_metinp,spec,ns,nu);
     result.controls=parse_original_wind_controls(result.original_metinp);
     result.grid=read_geo_dynamic(paths.geo_dat,spec);
     result.stations=original_calmet_multi_station_deck(
