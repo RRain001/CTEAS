@@ -8,6 +8,7 @@
 #include "cteas/p6/p6g_g23_file_backed_stheor_inter2.hpp"
 #include "cteas/p6/p6g_g24_file_backed_wind_tail.hpp"
 #include "cteas/p6/p6g_g18d2_station_clock_transaction.hpp"
+#include "cteas/p6/p6g_g18b3_upper_choice.hpp"
 #include <cmath>
 #include <exception>
 #include <fstream>
@@ -39,7 +40,7 @@ int main(int argc,char** argv) {
         std::string output_file,stage_file,slope_output_file,slope_stage_file;
         std::string inter2_output_file,inter2_original_stage_prefix;
         std::string diagi_similt_prefix,wind_tail_stage,wind_tail_output,wind_tail_boundaries;
-        std::string station_flux_prefix;
+        std::string station_flux_prefix,original_nearu_prefix;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--output"||arg=="--source-stage"||
@@ -47,7 +48,7 @@ int main(int argc,char** argv) {
                arg=="--inter2-output"||arg=="--inter2-original-stage-prefix"||
                arg=="--diagi-similt-prefix"||arg=="--wind-tail-stage"||
                arg=="--wind-tail-output"||arg=="--wind-tail-boundaries"||
-               arg=="--station-flux-prefix") {
+               arg=="--station-flux-prefix"||arg=="--nearu-prefix") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
                     throw std::invalid_argument("G21/G22 source output missing path");
                 auto& selected=arg=="--output"?output_file:
@@ -60,7 +61,8 @@ int main(int argc,char** argv) {
                                arg=="--wind-tail-stage"?wind_tail_stage:
                                arg=="--wind-tail-output"?wind_tail_output:
                                arg=="--wind-tail-boundaries"?wind_tail_boundaries:
-                               station_flux_prefix;
+                               arg=="--station-flux-prefix"?station_flux_prefix:
+                               original_nearu_prefix;
                 if(!selected.empty())
                     throw std::invalid_argument("G21/G22 duplicate output argument");
                 selected=argv[++i];
@@ -97,7 +99,9 @@ int main(int argc,char** argv) {
             station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.s2.input",
             station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.native.csv",
             station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.day.s1.input",
-            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.day.s2.input"};
+            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.day.s2.input",
+            original_nearu_prefix.empty()?std::string{}:original_nearu_prefix+".source.input",
+            original_nearu_prefix.empty()?std::string{}:original_nearu_prefix+".native.csv"};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -132,6 +136,49 @@ int main(int argc,char** argv) {
            selected.temperature_before_k.size()!=cells)
             throw std::logic_error("G21 stage source geometry mismatch");
 
+        if(!original_nearu_prefix.empty()) {
+            // G27 independently invokes literal original SETCOM.
+            // Feed genuine G19 UTM-local REAL*4 grid and upper stations,
+            // never the C++ nearest ordinal as reference data.
+            const auto selected_upper=
+                cteas::calmet::p6g::g18b3_source_deck_upper_choice(
+                    frame.grid,frame.stations,source.original_metinp);
+            if(source.stations.upper.size()!=2||
+               selected_upper.iupt!=-1||
+               selected_upper.nearu.size()!=cells)
+                throw std::invalid_argument(
+                    "G27 original 2US SETCOM/IUPT=-1 branch unavailable");
+            std::ofstream inp(original_nearu_prefix+".source.input",std::ios::trunc);
+            if(!inp)throw std::runtime_error("G27 SETCOM source input unavailable");
+            inp<<std::setprecision(std::numeric_limits<float>::max_digits10);
+            inp<<nx<<" "<<ny<<" 9 "<<source.stations.upper.size()<<" "
+               <<source.grid.grid_km*1000.f<<"\n";
+            for(float z:source.controls.zface_m) inp<<z<<" ";
+            inp<<"\n";
+            for(const auto& us:source.stations.upper)
+                inp<<us.id<<" "<<us.local_x_m<<" "<<us.local_y_m<<"\n";
+            inp.flush();
+            if(!inp)throw std::runtime_error("G27 original SETCOM stage incomplete");
+            std::ofstream native(original_nearu_prefix+".native.csv",
+                                 std::ios::trunc);
+            if(!native)throw std::runtime_error("G27 C++ station choice unavailable");
+            native<<"i,j,upper_ordinal,upper_station_id\n";
+            for(std::size_t j=0;j<ny;++j)
+                for(std::size_t i=0;i<nx;++i) {
+                    const int u=selected_upper.nearu[j*nx+i];
+                    if(u<1||static_cast<std::size_t>(u)>source.stations.upper.size())
+                        throw std::logic_error("G27 C++ source NEARU ordinal invalid");
+                    native<<i+1<<","<<j+1<<","<<u<<","
+                          <<source.stations.upper[static_cast<std::size_t>(u-1)].id
+                          <<"\n";
+                }
+            native.flush();
+            if(!native)throw std::runtime_error("G27 native SETCOM output incomplete");
+            std::cout<<"PASS_P6G_G27_ORIGINAL_SETCOM_SOURCE_INPUT "
+                     <<"SITES="<<source.stations.upper.size()
+                     <<" CELLS="<<cells
+                     <<" ORIGINAL_VENDOR_PARITY=NOT_YET_CALCULATED\n";
+        }
         std::ofstream stage(stage_file,std::ios::trunc);
         if(!stage)throw std::runtime_error("G21 cannot write original FRADJ stage input");
         stage<<std::setprecision(std::numeric_limits<float>::max_digits10);
