@@ -138,6 +138,7 @@ jobs:
             --mode ${{ matrix.mode }} \
             --source-stage "$RUNNER_TEMP/g22-steep-original-input.dat" \
             --candidate "$RUNNER_TEMP/g22-steep-native-slope.csv" \
+            --require-nontrivial \
             --out "$RUNNER_TEMP/g22-steep-vendor-${{ matrix.mode }}.json"
       - uses: actions/upload-artifact@v4
         if: always()
