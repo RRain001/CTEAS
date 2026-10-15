@@ -457,8 +457,12 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     // represented in general NeutralCompControls.
     float vmass_dpbl=sampled.mixing_height_m;
     int vmass_stability=sampled.stability_class;
-    if(control.gaussian_dry && control.calm_mdisp3 &&
-       control.calm_mdisp3->jsup>0){
+    // Vendor COMP L10683-L10691 refreshes ISTAB/DPBL from IXMID/IYMID
+    // on EVERY substep before VMASS, irrespective of JSUP. JSUP only
+    // selects above-PBL dispersion stability later (L10863-L10867).
+    // The former jsup>0 guard reused pre-ADVECT DPBL in C2 JSUP=0,
+    // notably the last H1 puff crossing into a new start cell.
+    if(control.gaussian_dry && control.calm_mdisp3){
         const auto mid=original_met_cell_clamped(
             0.5F*(before.x_cells+moved.state.x_cells),
             0.5F*(before.y_cells+moved.state.y_cells),
