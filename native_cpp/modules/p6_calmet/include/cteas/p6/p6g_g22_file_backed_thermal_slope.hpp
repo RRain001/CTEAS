@@ -80,8 +80,20 @@ inline G22SelectedThermalSlope g22_selected_source_thermal_slope(
         nears,heat.temperature_k,live.surface);
     if(heat.nearest_surface!=nears||heat.density_kg_m3!=density)
         throw std::logic_error("G22 original SETCOM AIRDEN disagrees with HEATFX");
+    // Original CALMET READCF sets IPSIFCN internally, *not* through a
+    // met.inp IPSIFCN key. Literal unchanged vendor calmet.for:
+    //   IF(ICOARE.EQ.0) THEN
+    //     ISFCMET=1 ; IPSIFCN=1
+    //   ELSE
+    //     ISFCMET=0 ; IPSIFCN=0
+    // Current G19/G22 SURFVAR scope is ISFCMET=0, so reject ICOARE=0
+    // rather than silently running the other source physical path.
+    const int icoare=g18c1_source_integer(source.original_metinp,"ICOARE");
+    if(icoare<=0)
+        throw std::invalid_argument(
+            "G22 original ICOARE selects unverified ISFCMET/IPSIFCN path");
     G17C2SelectedElustrControls controls;
-    controls.ipsifcn=g18c1_source_integer(source.original_metinp,"IPSIFCN");
+    controls.ipsifcn=0; // original READCF selection for ICOARE>0
     controls.zm_m=0.5f*(live.source_controls->zface_m[0]+
                          live.source_controls->zface_m[1]);
     controls.explicitly_test_only=true;
