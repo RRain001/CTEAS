@@ -41,7 +41,14 @@ static std::string replace_one(std::string input,
     check(begin!=std::sregex_iterator(),"G19 original READCF control missing");
     auto next=begin;++next;
     check(next==std::sregex_iterator(),"G19 ambiguous source control");
-    return std::regex_replace(input,token,"$1"+value+" $2");
+    // Do NOT concatenate "$1" with a numeric value: for e.g. NX=12
+    // "$112" is interpreted by std::regex_replace as capture group 112,
+    // silently removing the original control instead of replacing it.
+    const auto match=*begin;
+    input.replace(static_cast<std::size_t>(match.position(0)),
+                  static_cast<std::size_t>(match.length(0)),
+                  match.str(1)+value+" "+match.str(2));
+    return input;
 }
 static int day_of_year(sys_seconds t){
     const auto d=floor<days>(t);
