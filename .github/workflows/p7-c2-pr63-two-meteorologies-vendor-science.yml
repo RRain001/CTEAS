@@ -13,6 +13,9 @@ on:
       - 'native_cpp/modules/p7_calpuff/src/original_comp_rise.cpp'
       - 'native_cpp/modules/p7_calpuff/reference/c2_vendor_receiver_stage_trace.py'
       - 'native_cpp/modules/p7_calpuff/reference/c2_compare_readonly_receiver_stages.py'
+      - 'native_cpp/modules/p7_calpuff/src/original_flat_calcpf.cpp'
+      - 'native_cpp/modules/p7_calpuff/src/receptors.cpp'
+      - 'native_cpp/modules/p7_calpuff/include/cteas/puff/original_comp_rise.hpp'
   workflow_dispatch:
 permissions:
   contents: read
@@ -130,6 +133,24 @@ jobs:
           cmake --build "$RUNNER_TEMP/p7-c2/p7-build" --parallel 2 \
             --target cteas_p7_hefei_sixhour_native_h3_receptors_tests cteas_p7_original_native_terrain_tests
           "$RUNNER_TEMP/p7-c2/p7-build/cteas_p7_original_native_terrain_tests"
+
+      - name: Protect accepted P7 2022 single-station first six hours after shared CALCPF change
+        id: protected_2022
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p7-c2"
+          CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
+            "$root/p7-build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
+            project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
+            > "$root/P7-2022-frozen-sixhour-protection.log" 2>&1 || {
+              tail -n 80 "$root/P7-2022-frozen-sixhour-protection.log"
+              exit 1
+            }
+          grep -F 'P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=PASS' \
+            "$root/P7-2022-frozen-sixhour-protection.log"
 
       - name: C2 physics preflight same original MET, first six authentic 2024 hours
         id: smoke_original
@@ -293,6 +314,7 @@ jobs:
             ${{ runner.temp }}/p7-c2/C2-original-P7-first6h.log
             ${{ runner.temp }}/p7-c2/C2-original-MET-P7-B-143h.log
             ${{ runner.temp }}/p7-c2/C2-native-MET-P7-D-143h.log
+            ${{ runner.temp }}/p7-c2/P7-2022-frozen-sixhour-protection.log
             ${{ runner.temp }}/p7-c2/C2-vendor-H1-readonly-stage.log
             ${{ runner.temp }}/p7-c2/H1-readonly-stage/C2-vendor-H1-receptor-4-6-stage.txt
             ${{ runner.temp }}/p7-c2/H1-readonly-stage/C2-vendor-H1-receptor-4-6-stage.json
