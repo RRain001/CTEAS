@@ -10,6 +10,7 @@
 #include "cteas/p6/read_geo_dynamic.hpp"
 #include <chrono>
 #include <cmath>
+#include <memory>
 #include <optional>
 #include <cstddef>
 #include <stdexcept>
@@ -129,23 +130,41 @@ public:
     void advance_with_precommit(MultiHourPhysics& physics,
                                 PrecommitGate&& verify_output) {
         MultiHourFrame frame=preview_next_hour();
-        // Reuse the accepted #53 stage list byte-for-byte: no second physics
-        // scheduler authority or altered DIAGNO/COMP execution order.
-        for (const auto stage : p6::kHefeiOriginalStageOrder) {
-            const auto result = physics.run(stage, frame);
-            if (!result.completed || result.source != p6::NativeHourSource::NativeCpp)
-                throw std::runtime_error(
-                    "P6G full CALMET native stage absent or Fortran/reference backfill");
-        }
-        validate_memory(frame.next);
-        validate_fields(frame.fields);
-        // Any output writer, read-back, source provenance or missing-field
-        // failure happens BEFORE committing previous-hour physics memory.
-        // No reference/oracle source can bypass the 17-stage gate above.
-        std::forward<PrecommitGate>(verify_output)(
-            static_cast<const MultiHourFrame&>(frame));
-        memory_ = std::move(frame.next);
-        ++completed_;
+        execute_and_commit_hour(
+            physics,frame,std::forward<PrecommitGate>(verify_output));
+    }
+
+    // G18F1: build a NEW, exclusively owned native physics executor for
+    // EVERY attempt, including a retry after P6F validation throws. The
+    // factory sees the exact live G14 frame used by the 17-stage loop,
+    // never a detached preview that could pass same-timestamp tests.
+    // This is a lifecycle/transaction authority only. Test-scoped
+    // G18E* adapters still return {Unknown,false} from run(), so they
+    // CANNOT bypass production admission by using this entry point.
+    // The factory must return a unique_ptr convertible to
+    // unique_ptr<MultiHourPhysics>; no physical executor is reused between
+    // successful hours, exceptions, or retry attempts.
+    template<class HourPhysicsFactory,class PrecommitGate>
+    void advance_with_fresh_physics(HourPhysicsFactory&& make_physics,
+                                    PrecommitGate&& verify_output) {
+        MultiHourFrame frame=preview_next_hour();
+        std::unique_ptr<MultiHourPhysics> physics=
+            std::forward<HourPhysicsFactory>(make_physics)(
+                static_cast<const MultiHourFrame&>(frame));
+        if(!physics)
+            throw std::invalid_argument(
+                "P6G hourly physics factory returned no native executor");
+        execute_and_commit_hour(
+            *physics,frame,std::forward<PrecommitGate>(verify_output));
+        // The executor is destroyed after G14 commits. Its temporary
+        // previous-hour references/station buffers cannot be reused.
+    }
+
+    template<class HourPhysicsFactory>
+    void advance_with_fresh_physics(HourPhysicsFactory&& make_physics) {
+        advance_with_fresh_physics(
+            std::forward<HourPhysicsFactory>(make_physics),
+            [](const MultiHourFrame&){});
     }
 
     void require_complete() const {
@@ -154,6 +173,29 @@ public:
     }
 
 private:
+    template<class PrecommitGate>
+    void execute_and_commit_hour(MultiHourPhysics& physics,
+                                 MultiHourFrame& frame,
+                                 PrecommitGate&& verify_output) {
+        // Both the legacy borrowed-executor path and the fresh-owned
+        // executor path share this ONE original #53 stage authority.
+        // Any native-stage, field or P6F precommit failure leaves G14's
+        // completed_ and prior-hour memory_ unchanged.
+        for(const auto stage:p6::kHefeiOriginalStageOrder) {
+            const auto result=physics.run(stage,frame);
+            if(!result.completed||
+               result.source!=p6::NativeHourSource::NativeCpp)
+                throw std::runtime_error(
+                    "P6G full CALMET native stage absent or Fortran/reference backfill");
+        }
+        validate_memory(frame.next);
+        validate_fields(frame.fields);
+        std::forward<PrecommitGate>(verify_output)(
+            static_cast<const MultiHourFrame&>(frame));
+        memory_=std::move(frame.next);
+        ++completed_;
+    }
+
     [[nodiscard]] std::size_t cells() const noexcept {
         return static_cast<std::size_t>(grid_.nx) *
                static_cast<std::size_t>(grid_.ny);
