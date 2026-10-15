@@ -479,18 +479,21 @@ jobs:
         run: |
           python3 native_cpp/modules/p6_calmet/reference/verify_g30_source_p6f_candidate.py \
             --candidate "$RUNNER_TEMP/g30-normal-candidate.calmet.dat" \
+            --source-clock "$RUNNER_TEMP/g21-native-fradj.csv" \
             --wind-tail "$RUNNER_TEMP/g24-original-native.csv" \
             --comp-prefix "$RUNNER_TEMP/g28-original-comp" \
             --temp3d-prefix "$RUNNER_TEMP/g29-original-temp3d" \
             --out "$RUNNER_TEMP/g30-normal-${{ matrix.mode }}.json"
           python3 native_cpp/modules/p6_calmet/reference/verify_g30_source_p6f_candidate.py \
             --candidate "$RUNNER_TEMP/g30-steep-candidate.calmet.dat" \
+            --source-clock "$RUNNER_TEMP/g21-steep-native-fradj.csv" \
             --wind-tail "$RUNNER_TEMP/g24-steep-native.csv" \
             --comp-prefix "$RUNNER_TEMP/g28-steep-comp" \
             --temp3d-prefix "$RUNNER_TEMP/g29-steep-temp3d" \
             --out "$RUNNER_TEMP/g30-steep-${{ matrix.mode }}.json"
           python3 native_cpp/modules/p6_calmet/reference/verify_g30_source_p6f_candidate.py \
             --candidate "$RUNNER_TEMP/g30-daylight-candidate.calmet.dat" \
+            --source-clock "$RUNNER_TEMP/g22-daylight-fradj.csv" \
             --wind-tail "$RUNNER_TEMP/g24-daylight-native.csv" \
             --comp-prefix "$RUNNER_TEMP/g28-daylight-comp" \
             --temp3d-prefix "$RUNNER_TEMP/g29-daylight-temp3d" \
