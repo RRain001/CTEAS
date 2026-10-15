@@ -1,12 +1,28 @@
 name: P7 real Hefei 143h source REAL4 and puff.con strict parity
 on:
-  # Branch-scoped hosted validation does not depend on PR synchronization
-  # catching up after a burst of GitHub App contents-API commits.
-  push:
+  # Strict real-case science only for relevant P7 code, pinned inputs, or this gate.
+  # Docs-only updates never consume a full Fortran 143-hour replay.
+  pull_request:
     branches:
-      - codex/p7a-original-input-semantics-20261012
+      - codex/cteas-p7-calpuff-20261011
     paths:
       - 'native_cpp/modules/p7_calpuff/**'
+      - 'engine/vendor/src/CALPUFF_v7.2.1_L150618/**'
+      - 'project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat'
+      - 'project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp'
+      - 'project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con'
+      - 'project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp'
+      - '.github/workflows/p7-hefei-real-143h-independent-probe.yml'
+  push:
+    branches:
+      - codex/cteas-p7-calpuff-20261011
+    paths:
+      - 'native_cpp/modules/p7_calpuff/**'
+      - 'engine/vendor/src/CALPUFF_v7.2.1_L150618/**'
+      - 'project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat'
+      - 'project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp'
+      - 'project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con'
+      - 'project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp'
       - '.github/workflows/p7-hefei-real-143h-independent-probe.yml'
   workflow_dispatch:
 permissions:
