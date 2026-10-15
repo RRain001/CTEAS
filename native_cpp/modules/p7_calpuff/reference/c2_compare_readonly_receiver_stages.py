@@ -14,7 +14,7 @@ import struct
 STAGES=[("frac","frec"),("sy","sy"),("sz","sz"),("zpr","zpr"),
         ("zrpole","zrpole"),("f1","f1"),("xi1","xi1"),("xi2","xi2"),
         ("t1","t1"),("t2","t2"),("qold","qold"),("qnew","qnew"),
-        ("xtemp","xtemp"),("conc","conc")]
+        ("vdpvd","vdpvd"),("xtemp","xtemp"),("conc","conc")]
 
 def load_native(path:Path):
     rows=[]
