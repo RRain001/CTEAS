@@ -25,13 +25,13 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[4]
 VENDOR=ROOT/"engine/vendor/src/CALMET_v6.5.0_L150223"
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from compare_original_g18d6_nearu import VENDOR_BLOB as EXPECTED_VENDOR_BLOB
+EXPECTED_VENDOR_BLOB="437f43bb7f0e51a1919e56664663e1a046986ed0"
 
 def sha256(file:Path)->str:
     return hashlib.sha256(file.read_bytes()).hexdigest()
 
 def git_blob(raw:bytes)->str:
-    return hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\\0"+raw).hexdigest()
+    return hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()
 
 def source_clock(path:Path):
     with path.open(newline="") as stream:
@@ -55,7 +55,7 @@ def source_clock(path:Path):
 
 def replace_control(deck:str,key:str,value:str)->str:
     # Source READCF control tokens are bracketed by ! !, no guessed defaults.
-    pattern=re.compile(r"(!\\s*"+re.escape(key)+r"\\s*=\\s*)([^!]*)(!)",re.I)
+    pattern=re.compile(r"(!\s*"+re.escape(key)+r"\s*=\s*)([^!]*)(!)",re.I)
     matches=list(pattern.finditer(deck))
     if len(matches)!=1:
         raise ValueError(f"G31A ambiguous or missing source READCF {key}: {len(matches)}")
@@ -78,13 +78,13 @@ def stage_deck(src:str,start:dt.datetime)->str:
     result=src
     for key,val in updates.items():
         result=replace_control(result,key,val)
-    matches=list(re.finditer(r"^UP1\\.DAT[^\\n]*!\\s*UPDAT\\s*=[^\\n]*!END!",result,re.M|re.I))
+    matches=list(re.finditer(r"^UP1\.DAT[^\n]*!\s*UPDAT\s*=[^\n]*!END!",result,re.M|re.I))
     if len(matches)!=1:
         raise ValueError("G31A original 1UP file-list anchor has drifted")
     m=matches[0]
     line="UP1.DAT       input     1  ! UPDAT=up1.dat !    !END!"
     extra="UP2.DAT       input     2  ! UPDAT=up2.dat !    !END!"
-    result=result[:m.start()]+line+"\\n"+extra+result[m.end():]
+    result=result[:m.start()]+line+"\n"+extra+result[m.end():]
     if result.count("UPDAT=")!=2:
         raise ValueError("G31A 2-UP vendor READCF group not exactly two")
     if src==result:
@@ -92,7 +92,7 @@ def stage_deck(src:str,start:dt.datetime)->str:
     # No interpolation or source-data fabrication is allowed here.
     for key in ("NSSTA","NUSTA","NX","NY","IUPT","IMIXH","IZICRLX",
                 "CRITFN","TERRAD","ZIMIN","ZIMAX","CONSTN","CONSTE"):
-        m=re.compile(r"!\\s*"+key+r"\\s*=\\s*([^!]+)!")
+        m=re.compile(r"!\s*"+key+r"\s*=\s*([^!]+)!")
         a=m.findall(src)
         b=m.findall(result)
         if len(a)!=1 or a!=b:
@@ -113,7 +113,7 @@ def original_compiler(source:Path,exe:Path,mode:str,compiler:str):
     cmd=[compiler,*flags,"-I"+str(include),str(source),"-o",str(exe)]
     p=subprocess.run(cmd,capture_output=True,text=True,timeout=240)
     if p.returncode or not exe.is_file():
-        raise RuntimeError("G31A literal original vendor compile failed\\n"+p.stderr[-5000:])
+        raise RuntimeError("G31A literal original vendor compile failed\n"+p.stderr[-5000:])
     return cmd
 
 def main():
@@ -187,7 +187,7 @@ def main():
         evidence["blocker"]=str(exc)
         raise
     finally:
-        report.write_text(json.dumps(evidence,indent=2)+"\\n")
+        report.write_text(json.dumps(evidence,indent=2)+"\n")
         print(json.dumps(evidence,indent=2))
 
 if __name__=="__main__":
