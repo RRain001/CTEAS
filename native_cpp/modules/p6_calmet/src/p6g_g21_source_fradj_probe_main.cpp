@@ -288,16 +288,16 @@ int main(int argc,char** argv) {
                                   std::ios::trunc);
                 if(!out)throw std::runtime_error("G29A original MIXHT source cannot open");
                 out<<std::setprecision(std::numeric_limits<float>::max_digits10);
-                out<<"1 "<<nx<<" "<<ny<<" 2 "<<nlev<<"\\n";
+                out<<"1 "<<nx<<" "<<ny<<" 2 "<<nlev<<"\n";
                 out<<m.iupt<<" "<<m.constn<<" "<<m.zimin<<" "<<m.zimax
                    <<" "<<m.threshl<<" "<<m.dptmin<<" "<<m.dzzi
                    <<" "<<m.onedte<<" "<<m.twodte<<" "<<m.izicrlx
-                   <<" "<<m.tzicrlx<<" "<<m.timestep_s<<" "<<m.imixh<<"\\n";
-                for(int k:m.justa)out<<k<<"\\n";
+                   <<" "<<m.tzicrlx<<" "<<m.timestep_s<<" "<<m.imixh<<"\n";
+                for(int k:m.justa)out<<k<<"\n";
                 for(const auto& buff:m.sounding)
                     for(const auto& site:buff)
                         for(std::size_t k=0;k<nlev;++k)
-                            out<<site.height_m[k]<<" "<<site.temp_k[k]<<"\\n";
+                            out<<site.height_m[k]<<" "<<site.temp_k[k]<<"\n";
                 // Original Fortran driver loops I outside J.
                 for(std::size_t i=0;i<nx;++i)
                     for(std::size_t j=0;j<ny;++j) {
@@ -306,20 +306,20 @@ int main(int argc,char** argv) {
                            <<m.rho[p]<<" "<<m.cmech[p]<<" "<<m.fcori[p]<<" "
                            <<m.landuse[p]<<" "<<m.nearu[p]<<" "
                            <<m.initial_zi[p]<<" "<<m.initial_ziconv[p]<<" "
-                           <<m.initial_dptt[p]<<"\\n";
+                           <<m.initial_dptt[p]<<"\n";
                     }
                 out.flush();
                 if(!out)throw std::runtime_error("G29A MIXHT input write failed");
                 std::ofstream native(mixht_original_prefix+".native.csv",
                                      std::ios::trunc);
                 if(!native)throw std::runtime_error("G29A MIXHT candidate cannot open");
-                native<<"i,j,zi_m,ziconv_m,dptt_k\\n";
+                native<<"i,j,zi_m,ziconv_m,dptt_k\n";
                 native<<std::setprecision(std::numeric_limits<float>::max_digits10);
                 for(std::size_t i=0;i<nx;++i)
                     for(std::size_t j=0;j<ny;++j) {
                         const auto p=j*nx+i;
                         native<<i+1<<","<<j+1<<","<<z.zi_m[p]<<","
-                              <<z.ziconv_m[p]<<","<<z.dptt_k[p]<<"\\n";
+                              <<z.ziconv_m[p]<<","<<z.dptt_k[p]<<"\n";
                     }
                 native.flush();
                 if(!native)throw std::runtime_error("G29A MIXHT output write failed");
@@ -327,7 +327,7 @@ int main(int argc,char** argv) {
                     throw std::logic_error("G29A incorrectly committed G14");
                 std::cout<<"PASS_P6G_G29A_SOURCE_MIXHT_INPUT CELLS="
                          <<cells<<" G14_HOURS_COMMITTED=0"
-                         <<" ORIGINAL_VENDOR_PARITY=NOT_YET_CALCULATED\\n";
+                         <<" ORIGINAL_VENDOR_PARITY=NOT_YET_CALCULATED\n";
             }
             std::cout<<"PASS_P6G_G28_SOURCE_ORIGINAL_AVEMIX_WSTARR_INPUT "
                      <<"CELLS="<<cells<<" CANDIDATE_COLUMNS=3 "
