@@ -87,6 +87,28 @@ def stage_deck(src:str,start:dt.datetime)->str:
     result=result[:m.start()]+line+"\n"+extra+result[m.end():]
     if result.count("UPDAT=")!=2:
         raise ValueError("G31A 2-UP vendor READCF group not exactly two")
+    # Unlike the G19 C++ input parser, untouched CALMET READCF scans for
+    # SS1 / US1 and then consumes exactly NSSTA / NUSTA *consecutive*
+    # station rows (vendor calmet.for 25884-25952). G19 appends SS2 / US2
+    # at EOF only for its C++ parser. Move the very same source station
+    # declarations after SS1 / US1 on the *staged copy*; never fabricate
+    # station IDs/coords or edit the original G19 case.
+    for prefix in ("SS","US"):
+        extra_re=re.compile(r"(?m)^! "+prefix+r"2\b[^\n]*")
+        found=list(extra_re.finditer(result))
+        if len(found)!=1:
+            raise ValueError("G31A G19 original station "+prefix+"2 not unique")
+        extra=found[0].group(0)
+        result=result[:found[0].start()]+result[found[0].end():]
+        existing=re.compile(r"(?m)^! "+prefix+r"1\b[^\n]*")
+        first=list(existing.finditer(result))
+        if len(first)!=1:
+            raise ValueError("G31A original "+prefix+"1 station group missing")
+        where=first[0].end()
+        result=result[:where]+"\n"+extra+result[where:]
+        if result.count(prefix+"2")!=1:
+            raise ValueError("G31A original second station duplicated")
+
     if src==result:
         raise ValueError("G31A source run deck not staged")
     # No interpolation or source-data fabrication is allowed here.
@@ -175,7 +197,7 @@ def main():
             evidence["original_listing_bytes"]=listing.stat().st_size
             shutil.copy2(listing,args.out/"original-met.lst")
             lines=listing.read_text(errors="replace").splitlines()
-            evidence["original_listing_tail"]="\\n".join(lines[-100:])
+            evidence["original_listing_tail"]="\n".join(lines[-100:])
             evidence["original_listing_errors"]=[
                 line[:300] for line in lines if
                 re.search(r"error|fatal|stop|invalid|missing|warning",line,re.I)
