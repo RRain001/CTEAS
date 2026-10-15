@@ -24,6 +24,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/g31_extract_original_science_hour.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_diagnose_multistation_45field_residuals.py'
       - 'native_cpp/modules/p6_calmet/reference/g32_probe_original_multistation_diagno.py'
+      - 'native_cpp/modules/p6_calmet/reference/g32b_trace_original_multisite_slope_first_divergence.py'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
@@ -55,6 +56,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/g31_extract_original_science_hour.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_diagnose_multistation_45field_residuals.py'
       - 'native_cpp/modules/p6_calmet/reference/g32_probe_original_multistation_diagno.py'
+      - 'native_cpp/modules/p6_calmet/reference/g32b_trace_original_multisite_slope_first_divergence.py'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
@@ -602,6 +604,32 @@ jobs:
             ${{ runner.temp }}/g32-daylight-${{ matrix.mode }}/g32a-diagnostic.json
             ${{ runner.temp }}/g32-daylight-${{ matrix.mode }}/instrumented-original-case/dgm_fields.bin
             ${{ runner.temp }}/g32-daylight-${{ matrix.mode }}/instrumented-original-case/dgm_cell.bin
+      - name: G32B single-site-pattern DIAGNO kpt7-8-9 first-divergence trace against native FRADJ SLOPE
+        if: always()
+        run: |
+          if test -s "$RUNNER_TEMP/g32-daylight-${{ matrix.mode }}/instrumented-original-case/dgm_fields.bin" \
+             && test -s "$RUNNER_TEMP/g32-daylight-${{ matrix.mode }}/instrumented-original-case/met.dat" \
+             && test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
+             && test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/g31-frozen-45field-verdict.json" \
+             && test -s "$RUNNER_TEMP/g22-daylight-fradj.csv" \
+             && test -s "$RUNNER_TEMP/g22-daylight-slope.csv"; then
+            python3 native_cpp/modules/p6_calmet/reference/g32b_trace_original_multisite_slope_first_divergence.py \
+              --original-dump "$RUNNER_TEMP/g32-daylight-${{ matrix.mode }}/instrumented-original-case/dgm_fields.bin" \
+              --untouched-met "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
+              --write-only-met "$RUNNER_TEMP/g32-daylight-${{ matrix.mode }}/instrumented-original-case/met.dat" \
+              --frozen-verdict "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/g31-frozen-45field-verdict.json" \
+              --native-pre-slope "$RUNNER_TEMP/g22-daylight-fradj.csv" \
+              --native-post-slope "$RUNNER_TEMP/g22-daylight-slope.csv" \
+              --out "$RUNNER_TEMP/g32-daylight-${{ matrix.mode }}/g32b-first-divergence.json"
+          else
+            echo 'G32B BLOCKED: missing true original write-only or native stage evidence'
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g32b-original-source-kpt789-first-divergence-${{ matrix.mode }}
+          path: ${{ runner.temp }}/g32-daylight-${{ matrix.mode }}/g32b-first-divergence.json
       - name: Original Fortran DIAGNO tail G10 10km
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
