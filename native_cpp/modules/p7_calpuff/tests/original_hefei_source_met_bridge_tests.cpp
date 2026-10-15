@@ -272,6 +272,39 @@ int main(int argc,char** argv){
                            stable_prfin.max_layer_height_m==stable.zi[cell] &&
                            stable_prfin.final_rise_m>0.0F,
                            "stable RLSMET PTLAPS / no-PRFPP branch invalid");
+                    // Force a true A-D inversion-penetration state from
+                    // the same native temperature/wind inputs. No oracle
+                    // or fitted constants are involved. This catches both
+                    // erroneously bypassing PRFPP and missing PTLAPS input.
+                    auto crossing=hour;
+                    crossing.zi[cell]=75.0F; // above stack by only 4.2 m
+                    const auto penetration=
+                        cteas::puff::original_point_prfin_metfm1(
+                            crossing,statics,header,stable_profile_request);
+                    demand(penetration.stability_class==4 &&
+                           penetration.final_rise_m>0.0F &&
+                           penetration.mixed_fraction>=0.0F &&
+                           penetration.mixed_fraction<=1.0F &&
+                           penetration.final_rise_m<=
+                               static_cast<float>(rise.z_final_m)+0.0001F &&
+                           penetration.effective_height_m>request.stack_height_m &&
+                           std::isfinite(penetration.max_layer_height_m),
+                           "native A-D PRFPP inversion penetration invalid");
+                    bool crossing_without_profile_rejected=false;
+                    try {
+                        (void)cteas::puff::original_point_prfin_metfm1(
+                            crossing,statics,header,request);
+                    } catch(const std::invalid_argument&) {
+                        crossing_without_profile_rejected=true;
+                    }
+                    demand(crossing_without_profile_rejected,
+                           "A-D PRFPP used invented inversion gradient");
+                    std::cout<<"P7_PRFPP_AD_INVERSION_NATIVE_TEST=PASS"
+                             <<" FMIX="<<penetration.mixed_fraction
+                             <<" RISE_M="<<penetration.final_rise_m
+                             <<" HMAX_M="<<penetration.max_layer_height_m
+                             <<" MISSING_PROFILE_REJECTED=YES"
+                             <<" ORIGINAL_H24_PARITY=OPEN\\n";
                     std::cout<<"P7_NATIVE_PRODUCTION_PRFIN_REUSE=PASS"
                              <<" SITE_IS_GRID_RELATIVE=YES"
                              <<" STABLE_PTLAPS=PROFILE_REAL4"
