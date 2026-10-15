@@ -117,7 +117,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-up-build -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-up-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-fno-strict-aliasing
           cmake --build /tmp/p6c-up-build --parallel 2
           ctest --test-dir /tmp/p6c-up-build --output-on-failure
           python3 native_cpp/modules/p6_calmet/reference/compare_fortran_upper_rdupn.py \
@@ -219,7 +219,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-surface-build -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-surface-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-fno-strict-aliasing
           cmake --build /tmp/p6c-surface-build --parallel 2
           ctest --test-dir /tmp/p6c-surface-build --output-on-failure
           python3 native_cpp/modules/p6_calmet/reference/compare_fortran_surface.py \

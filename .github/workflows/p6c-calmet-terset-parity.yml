@@ -52,7 +52,7 @@ jobs:
       - name: Build independent C++20 terrain kernel and software checks
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-build -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-fno-strict-aliasing
           cmake --build /tmp/p6c-build -j2
           ctest --test-dir /tmp/p6c-build --output-on-failure
       - name: Compare original TERSET and modern C++ across 60,000 physical fields

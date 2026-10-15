@@ -36,7 +36,7 @@ jobs:
       - name: Build all isolated P6 C++20 tests with Werror
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-diagi-build -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-diagi-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-fno-strict-aliasing
           cmake --build /tmp/p6c-diagi-build --parallel 2
           ctest --test-dir /tmp/p6c-diagi-build --output-on-failure
       - name: Compare literal original DIAGI station code with P6C C++20

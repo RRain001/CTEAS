@@ -47,7 +47,7 @@ jobs:
       - name: Build C++20 READGE with strict warnings
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-readge-build -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-readge-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-fno-strict-aliasing
           cmake --build /tmp/p6c-readge-build --parallel 2
           ctest --test-dir /tmp/p6c-readge-build --output-on-failure
       - name: Generate identical 2022 REAL P3 GEO.DAT via untouched original Fortran
