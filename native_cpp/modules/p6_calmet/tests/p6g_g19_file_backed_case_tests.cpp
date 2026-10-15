@@ -8,6 +8,7 @@
 #include "cteas/p6/p6g_g22_file_backed_thermal_slope.hpp"
 #include "cteas/p6/p6g_g23_file_backed_stheor_inter2.hpp"
 #include "cteas/p6/p6g_g24_file_backed_wind_tail.hpp"
+#include "cteas/p6/p6g_g26_file_backed_g14_diagno_bridge.hpp"
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -663,6 +664,105 @@ int main(int argc,char** argv){
             (void)p6g::g24_selected_original_wind_tail(
                 standalone,source_case,stale_g23,true);
         },"G24 accepted stale G23 INTER2 from another hour");
+        // G26: one and ONLY one live G14 input frame and source clock
+        // candidate bridges existing G18E4/G20/G21/G22/G23/G24
+        // first-hour DIAGNO to the exact original [12] COMP barrier.
+        // This test intentionally refuses production acceptance or any
+        // premature memory/AA/BB/CGAMMA publication.
+        auto g26_scheduler=source_case.make_scheduler();
+        p6g::G18D2StationClockAuthority g26_clocks;
+        auto g26_live=g26_scheduler.preview_next_hour();
+        p6g::G26SourceFileBackedG14DiagnoBridge g26(
+            g26_scheduler,g26_clocks,source_case);
+        check(!g26.source_diagno_ready()&&
+              g26.selected_checkpoints()==0&&
+              !g26_clocks.has_published_hour(),
+              "G26 already had an unearned completed source DIAGNO");
+        rejects([&]{
+            g26.run_selected(
+                cteas::calmet::p6::NativeHourStage::DiagnoFradj,
+                g26_live,true);
+        },"G26 permitted skipping G14 PREPDI/WIND1");
+        rejects([&]{
+            g26.run_selected(
+                cteas::calmet::p6::NativeHourStage::PrepdiPreviousZiconv,
+                g26_live,false);
+        },"G26 promoted selected original source stage to production");
+        g26.run_selected(cteas::calmet::p6::kHefeiOriginalStageOrder[0],
+                         g26_live,true);
+        auto detached_g26=g26_scheduler.preview_next_hour();
+        rejects([&]{
+            g26.run_selected(
+                cteas::calmet::p6::kHefeiOriginalStageOrder[1],
+                detached_g26,true);
+        },"G26 accepted detached clone of G14 original hour frame");
+        rejects([&]{(void)g26.selected_wind_for_comp(g26_live);},
+                "G26 emitted partial wind before full DIAGNO");
+        for(std::size_t step=1;step<12;++step) {
+            if(step==6) {
+                // Fail closed on tampered not-yet-COMP memory, rather
+                // than accidentally taking next ZICONV as previous ZICONV.
+                g26_live.next.zi_m[0]+=1.f;
+                rejects([&]{
+                    g26.run_selected(
+                        cteas::calmet::p6::kHefeiOriginalStageOrder[step],
+                        g26_live,true);
+                },"G26 accepted premature COMP mutation during DIAGNO");
+                g26_live.next.zi_m[0]=g26_live.previous.zi_m[0];
+            }
+            g26.run_selected(
+                cteas::calmet::p6::kHefeiOriginalStageOrder[step],
+                g26_live,true);
+            if(step<11)
+                check(!g26.source_diagno_ready(),
+                      "G26 source DIAGNO marked complete before original final W");
+        }
+        check(g26.source_diagno_ready()&&g26.selected_checkpoints()==12u&&
+              g26_live.fields.u_mps==g24.wind.u_mps&&
+              g26_live.fields.v_mps==g24.wind.v_mps&&
+              g26_live.fields.w_face_mps==g24.wind.w_face_mps&&
+              g26_live.fields.qh_wm2==selected_g22.elustr.qh_wm2&&
+              g26_live.fields.ustar_mps==selected_g22.elustr.ustar_mps&&
+              g26_live.fields.el_m==selected_g22.elustr.el_m&&
+              g26_live.fields.temperature_k.empty()&&
+              g26_live.fields.wstar_mps.empty()&&
+              g26_live.next.zi_m==g26_live.previous.zi_m&&
+              g26_live.next.ziconv_m==g26_live.previous.ziconv_m&&
+              g26_live.next.dptt_k==g26_live.previous.dptt_k&&
+              g26.selected_wind_for_comp(g26_live).wind.w_face_mps==
+                  g24.wind.w_face_mps&&
+              g26.selected_station_for_comp(g26_live).
+                  observed_after_diagi.inter2_u_mps==
+                  g23.observed_after_diagi.inter2_u_mps&&
+              g26_scheduler.completed_hours()==0&&
+              !g26_clocks.has_published_hour(),
+              "G26 live original 12-stage DIAGNO differ from independently vendor-verified G20-G25 or committed early");
+        // Station clock candidates can be independently PREVALIDATED,
+        // but without G14 full COMP/P6F there is NO state publication.
+        g26.require_station_clock_preflight(g26_live);
+        rejects([&]{
+            g26.run_selected(
+                cteas::calmet::p6::kHefeiOriginalStageOrder[12],
+                g26_live,true);
+        },"G26 pretended source COMP MIXHT completed with no COMP");
+        rejects([&]{
+            g26.run_selected(
+                cteas::calmet::p6::kHefeiOriginalStageOrder[11],
+                g26_live,true);
+        },"G26 permitted second original WINDBC and W stage execution");
+        const auto production=g26.run(
+            cteas::calmet::p6::kHefeiOriginalStageOrder[0],g26_live);
+        check(!production.completed&&
+              production.source==cteas::calmet::p6::NativeHourSource::Unknown,
+              "G26 selected source bridge falsified production stage admission");
+        rejects([&]{g26_scheduler.advance(g26);},
+                "G26 incomplete original source COMP/P6F bypassed G14 strict admission");
+        check(g26_scheduler.completed_hours()==0&&
+              g26_scheduler.committed_memory().zi_m[0]==0.f&&
+              g26_scheduler.committed_memory().ziconv_m[0]==0.f&&
+              g26_scheduler.committed_memory().dptt_k[0]==0.f&&
+              !g26_clocks.has_published_hour(),
+              "G26 source DIAGNO failure changed committed G14 COMP/AA-BB-CGAMMA state");
         for(std::size_t k=0;k<9;++k)
             for(std::size_t i=2;i<4;++i) {
                 const auto p=k*4+i;
