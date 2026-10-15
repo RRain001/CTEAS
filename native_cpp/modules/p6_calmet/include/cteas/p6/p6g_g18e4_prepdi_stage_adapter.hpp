@@ -85,6 +85,21 @@ public:
         return prepared_->cgamma;
     }
 
+    // G18F2: explicit precommit admission barrier. The PREPDI source
+    // clock candidates must already be prepared by the live G14 stage
+    // zero and independently committed on detached clock copies.
+    // Reject any foreign/stale candidate BEFORE G14 accepts P6F and
+    // changes its previous-hour memory. No clock is mutated here.
+    void require_publishable_before_g14_commit(
+        const MultiHourFrame& live) const {
+        verify_live(live);
+        if(scheduler_.completed_hours()!=live.hour_index||
+           !clocks_.can_publish_after_next_g14_commit(
+               scheduler_,*prepared_))
+            throw std::logic_error(
+                "G18F2 source PREPDI station clocks not preflighted for G14 commit");
+    }
+
     // Only the accepted G14 scheduler counter may publish both clocks.
     // No PREPDI state is committed during stages 0-16 or P6F precommit.
     // This is the strict throwing API retained for validation callers.
