@@ -22,7 +22,7 @@ jobs:
         with:
           script: |
             const prefixes = ["native_cpp/p1/","native_cpp/src/geo/","native_cpp/include/","calpuff_terrain_and_landuse_data_crop/hefei_5km/","engine/vendor/src/TERREL","engine/vendor/src/CTGPROC",".github/actions/cteas-linux-toolchain/"];
-            const exact = new Set(["native_cpp/CMakeLists.txt","native_cpp/reference/capture_p1_p2.py","native_cpp/reference/compare_p1_terrain.py"]);
+            const exact = new Set(["native_cpp/CMakeLists.txt","native_cpp/reference/capture_p1_p2.py","native_cpp/reference/compare_p1_terrain.py",".github/workflows/p1-terrel-reference-compare.yml"]);
             const isRelevant = (name) => Boolean(name) && (exact.has(name) || prefixes.some((prefix) => name.startsWith(prefix)));
             const changed = await github.paginate(github.rest.pulls.listFiles, {
               owner: context.repo.owner, repo: context.repo.repo,
@@ -42,15 +42,21 @@ jobs:
     if: >-
       needs.scope.outputs.relevant == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS')
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 16
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Select self-hosted C++20 and Fortran tools
+      - name: Install GitHub-hosted C++20 and Fortran toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-12 gfortran-12
+      - name: Select C++20 and original Fortran compilers
         uses: ./.github/actions/cteas-linux-toolchain
-      - name: Reset self-hosted scratch directories
+      - name: Reset job-local scratch directories
         shell: bash
         run: |
           rm -rf ${{ runner.temp }}/cteas-p1-build ${{ runner.temp }}/p1-reference
