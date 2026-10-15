@@ -62,7 +62,7 @@ static void stamp(std::ostream& out,sys_seconds t,bool ending=false) {
     int hour=at24?24:int(duration_cast<hours>(t-floor<days>(t)).count());
     out<<int(ymd.year())<<" "<<day_of_year(t)<<" "<<hour<<" 0";
 }
-static void geo_file(const std::string& path) {
+static void geo_file(const std::string& path,bool water_cell=false) {
     std::ofstream out(path);
     check(bool(out),"G19 GEO test file");
     out<<"GEO.DAT         2.1             Header structure with coordinate parameters\n";
@@ -71,7 +71,7 @@ static void geo_file(const std::string& path) {
     out<<"1 - land use\n14 50 55 - NLU IWAT1 IWAT2\n";
     out<<"10 -20 20 30 40 51 54 55 60 61 62 70 80 90 - categories\n";
     for(int j=11;j>=0;--j)
-        for(int i=0;i<12;++i)out<<"20"<<(i==11?"\n":",");
+        for(int i=0;i<12;++i)out<<(water_cell&&i==0&&j==0?51:20)<<(i==11?"\n":",");
     out<<"1.0000 - HTFAC\n";
     for(int j=11;j>=0;--j)
         for(int i=0;i<12;++i)out<<100+i+2*j<<(i==11?"\n":",");
@@ -173,7 +173,14 @@ int main(int argc,char** argv){
               source_case.upper[1].station_id==58425&&
               scheduler.planned_hours()==6&&scheduler.completed_hours()==0&&
               scheduler.preview_next_hour().input.end==begin+hours{1}&&
-              scheduler.has_original_controls(),
+              scheduler.has_original_controls()&&
+              source_case.stheor_upper_ordinal_for_surface==
+                  std::vector<std::size_t>({0,1})&&
+              source_case.surface_controls.source.iavet==1&&
+              source_case.surface_controls.source.itprog==0&&
+              source_case.surface_controls.source.irhprog==0&&
+              source_case.heat_inputs.coefficients.hc1==5.31e-13f&&
+              source_case.heat_inputs.coefficients.hc2==60.f,
               "G19 file-backed 2SS/2US UTC G14 source binding failed");
         // The assembly provides NO physics. A full hour must not commit
         // until a real source-authentic G14 executor exists.
@@ -204,6 +211,40 @@ int main(int argc,char** argv){
         rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
                 "G19 GEO / met.inp original NX mismatch was accepted");
         save(paths.met_inp,two);
+
+        // G19B: original SETCOM IUPT, source IAVET/HFLUX, site-grid
+        // position and all-land branch are declared input requirements,
+        // not convenient fallbacks to other unverified CALMET physics.
+        auto unsupported_iupt=replace_one(two,"IUPT","1");
+        save(paths.met_inp,unsupported_iupt);
+        rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
+                "G19B silently accepted fixed US instead of original nearest-US branch");
+        auto unsupported_iavet=replace_one(two,"IAVET","0");
+        save(paths.met_inp,unsupported_iavet);
+        rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
+                "G19B silently substituted IAVET=0 for original source two-pass path");
+        save(paths.met_inp,two+"\n! HC1 = 1. !\n");
+        rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
+                "G19B allowed synthetic heat defaults into original HFLUX branch");
+
+        const std::regex ss1(R"(!\\s*SS1\\s*=\\s*'[^']*'[^!]*!)");
+        const auto displaced_site=std::regex_replace(
+            two,ss1,"! SS1 = 'OUT' 583210 700.000 3533.769 0 10.0 !");
+        check(displaced_site!=two,"G19B unable to modify original SSn source");
+        save(paths.met_inp,displaced_site);
+        rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
+                "G19B SS outside GEO wrongly accepted for STHEOR");
+
+        save(paths.met_inp,two);
+        geo_file(paths.geo_dat,true);
+        rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
+                "G19B unsupported water landuse silently passed original HFLUX");
+        geo_file(paths.geo_dat);
+        check(p6g::g19_load_original_source_case(paths)
+                  .stheor_upper_ordinal_for_surface==
+                  std::vector<std::size_t>({0,1}),
+              "G19B original station assignment was changed by rejected source probes");
+
         paths.ordered_up_dat.pop_back();
         rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
                 "G19 missing second upper station input was accepted");
