@@ -44,7 +44,7 @@ int main(int argc,char** argv) {
         std::string diagi_similt_prefix,wind_tail_stage,wind_tail_output,wind_tail_boundaries;
         std::string station_flux_prefix,original_nearu_prefix,comp_original_prefix;
         std::string mixht_original_prefix,temp3d_original_prefix;
-        std::string p6f_candidate_file,surfvar_two_pass_output;
+        std::string p6f_candidate_file,surfvar_two_pass_output,comp_third_surfvar_output;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--output"||arg=="--source-stage"||
@@ -55,7 +55,8 @@ int main(int argc,char** argv) {
                arg=="--station-flux-prefix"||arg=="--nearu-prefix"||
                arg=="--comp-original-prefix"||arg=="--mixht-original-prefix"||
                arg=="--temp3d-original-prefix"||arg=="--p6f-candidate-file"||
-               arg=="--surfvar-two-pass-output") {
+               arg=="--surfvar-two-pass-output"||
+               arg=="--comp-third-surfvar-output") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
                     throw std::invalid_argument("G21/G22 source output missing path");
                 auto& selected=arg=="--output"?output_file:
@@ -73,6 +74,7 @@ int main(int argc,char** argv) {
                                arg=="--mixht-original-prefix"?mixht_original_prefix:
                                arg=="--temp3d-original-prefix"?temp3d_original_prefix:
                                arg=="--surfvar-two-pass-output"?surfvar_two_pass_output:
+                               arg=="--comp-third-surfvar-output"?comp_third_surfvar_output:
                                p6f_candidate_file;
                 if(!selected.empty())
                     throw std::invalid_argument("G21/G22 duplicate output argument");
@@ -92,6 +94,7 @@ int main(int argc,char** argv) {
            (!mixht_original_prefix.empty()&&comp_original_prefix.empty())||
            (!temp3d_original_prefix.empty()&&comp_original_prefix.empty())||
            (!p6f_candidate_file.empty()&&comp_original_prefix.empty())||
+           (!comp_third_surfvar_output.empty()&&wind_tail_stage.empty())||
            ((!wind_tail_stage.empty()||!wind_tail_output.empty()||
              !wind_tail_boundaries.empty())&&
             (wind_tail_stage.empty()||wind_tail_output.empty()||
@@ -122,7 +125,7 @@ int main(int argc,char** argv) {
             mixht_original_prefix.empty()?std::string{}:mixht_original_prefix+".native.csv",
             temp3d_original_prefix.empty()?std::string{}:temp3d_original_prefix+".source.input",
             temp3d_original_prefix.empty()?std::string{}:temp3d_original_prefix+".native.csv",
-            p6f_candidate_file,surfvar_two_pass_output};
+            p6f_candidate_file,surfvar_two_pass_output,comp_third_surfvar_output};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -915,6 +918,55 @@ int main(int argc,char** argv) {
                         frame,source,station,true);
                     if(scheduler.completed_hours()!=0||clocks.has_published_hour())
                         throw std::logic_error("G24 selected source wind leaked into G14");
+                    if(!comp_third_surfvar_output.empty()) {
+                        // G33B: genuine G19 source hour, original COMP runs
+                        // SURFVAR for the THIRD time with the DIAGNO-final
+                        // wind (U,V), unlike G22's second FRADJ-adjusted UG/VG.
+                        // Do not backfill oracle TEMP2D into COMP or P6F.
+                        cteas::calmet::p6g::G17B4TwoPassSurfvar three_pass(
+                            source.grid,frame.stations,source.surface,
+                            frame.surface,source.surface_controls);
+                        three_pass.after_wind1_before_fradj(
+                            frame.input.end,first.u_mps,first.v_mps);
+                        three_pass.after_fradj_before_heatfx(
+                            frame.input.end,selected.corrected_wind.u,
+                            selected.corrected_wind.v);
+                        if(three_pass.first_temperature()!=
+                             selected.temperature_before_k||
+                           three_pass.final_temperature()!=
+                             selected.temperature_after_k)
+                            throw std::logic_error(
+                                "G33B duplicate DIAGNO temperature mismatch");
+                        const auto comp_temp=
+                            three_pass.diagnostic_comp_final_wind_temperature(
+                                frame.input.end,g24.wind.u_mps,
+                                g24.wind.v_mps,true);
+                        if(comp_temp.size()!=cells||
+                           scheduler.completed_hours()!=0||
+                           clocks.has_published_hour())
+                            throw std::logic_error(
+                                "G33B COMP third SURFVAR leaked G14 state");
+                        std::ofstream third(comp_third_surfvar_output,
+                                            std::ios::trunc);
+                        if(!third)throw std::runtime_error(
+                            "G33B third SURFVAR diagnostic CSV unavailable");
+                        third<<"hour_end_utc_seconds,i,j,temp_k\n";
+                        third<<std::setprecision(
+                            std::numeric_limits<float>::max_digits10);
+                        for(std::size_t j=0;j<ny;++j)
+                            for(std::size_t i=0;i<nx;++i) {
+                                const auto p=j*nx+i;
+                                if(!std::isfinite(comp_temp[p]))
+                                    throw std::logic_error(
+                                        "G33B third SURFVAR nonfinite");
+                                third<<frame.input.end.time_since_epoch().count()
+                                     <<","<<i+1<<","<<j+1<<","
+                                     <<comp_temp[p]<<"\n";
+                            }
+                        third.flush();
+                        if(!third)throw std::runtime_error(
+                            "G33B third SURFVAR native export incomplete");
+                    }
                     std::ofstream stage24(wind_tail_stage,std::ios::trunc);
                     if(!stage24)
                         throw std::runtime_error("G24 original DIAGNO stage not writable");
