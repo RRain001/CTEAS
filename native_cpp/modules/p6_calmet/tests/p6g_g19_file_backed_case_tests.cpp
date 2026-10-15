@@ -791,6 +791,25 @@ int main(int argc,char** argv){
                       "G26B source COMP was published before physical TEMP3D");
         }
         const auto& g26b_p6f=g26b.selected_p6f_candidate(g26_live);
+        // G33D regression: a real G14 COMP source must own outgoing
+        // P6F TEMPK/RHO/QSW; the earlier G22 DIAGNO thermal pass is
+        // deliberately stale and cannot represent original final RHO.
+        const auto& comp_heat=g26b.source_comp_heat_for_p6f(g26_live);
+        const auto& diag_heat=g26.selected_thermal_for_comp(g26_live).heat;
+        const auto g33d_records=p6g::g18c5_selected_p6f_fields(
+            g26_live,comp_heat,g26b_p6f,source_case.original_metinp,true);
+        check(comp_heat.end==g26_live.input.end&&
+              comp_heat.temperature_k.size()==144u&&
+              comp_heat.density_kg_m3.size()==144u&&
+              g33d_records.real.at("TEMPK   ")==comp_heat.temperature_k&&
+              g33d_records.real.at("RHO     ")==comp_heat.density_kg_m3&&
+              g33d_records.real.at("QSW     ")==comp_heat.shortwave_wm2&&
+              diag_heat.temperature_k!=comp_heat.temperature_k&&
+              diag_heat.density_kg_m3!=comp_heat.density_kg_m3,
+              "G33D P6F reused stale DIAGNO heat/density instead of original COMP");
+        rejects([&]{
+            (void)g26b.source_comp_heat_for_p6f(detached_g26);
+        },"G33D exposed original COMP RHO across G14 source hour/owner");
         // G33C: third original COMP SURFVAR uses G24 FINAL U/V, not
         // G22 pre-SLOPE/intermediate UG/VG. Independently re-evaluate
         // same-hour native source with all three distinct stage winds;
