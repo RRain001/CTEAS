@@ -178,6 +178,7 @@ def stage_vendor_updat_header(data:str,expected_station:int)->str:
         raise ValueError("G31A original UP missing thermometer/wind flags")
     lines[6]=" "+ "".join("    "+k for k in flags)+"\n"
     observations=0
+    sounding_times=[]
     for index in range(7,len(lines)):
         pieces=lines[index].split()
         if not pieces or pieces[0]!="6201":
@@ -196,9 +197,15 @@ def stage_vendor_updat_header(data:str,expected_station:int)->str:
         first="".join(f"    {ints[j]:4d}{ints[j+1]:4d}{ints[j+2]:3d}{ints[j+3]:3d}{ints[j+4]:5d}"
                       for j in (0,5))
         lines[index]=f"   6201  {station:8d}"+first+f"        {nlev:5d}\n"
+        t=dt.datetime(ints[0],ints[1],ints[2],ints[3],ints[4],
+                      tzinfo=dt.timezone.utc)
+        if (ints[:5]!=ints[5:] or
+            (sounding_times and t-sounding_times[-1]!=dt.timedelta(hours=12))):
+            raise ValueError("G35 original source upper brackets shifted or not 12h")
+        sounding_times.append(t)
         observations+=1
-    if observations!=3:
-        raise ValueError("G31A original source upper sounding count changed")
+    if observations not in (3,15):
+        raise ValueError("G35 unexpected original upper sounding count")
     return "".join(lines)
 
 
@@ -225,8 +232,8 @@ def main():
     ap.add_argument("--source",type=Path,required=True,
                     help="G19 exported source folder with GEO.DAT, SURF.DAT, UP1/UP2.DAT, met.inp")
     ap.add_argument("--source-clock",type=Path,required=True)
-    ap.add_argument("--hours",type=int,choices=(1,6),default=1,
-                    help="original CALMET whole-run hours: G31B 1h or G34A 6h oracle")
+    ap.add_argument("--hours",type=int,choices=(1,6,143),default=1,
+                    help="original CALMET 1h, 6h or G35A 143h whole-run oracle")
     ap.add_argument("--out",type=Path,required=True)
     ap.add_argument("--compiler",default="gfortran")
     args=ap.parse_args()
@@ -270,6 +277,18 @@ def main():
             source_upper.write_text(stage_vendor_updat_header(
                 source_upper.read_text(),station_id))
             evidence["staged_vendor_updat_sha256"][filename]=sha256(source_upper)
+        # G35 original all six days are strictly covered by unmodified
+        # actual upper source, never reused 6h station buffers.
+        original_upper_text=(args.source/filename.replace(".dat",".DAT").upper()).read_text()
+        upper_dates=[]
+        for line in original_upper_text.splitlines()[7:]:
+            row=line.split()
+            if row and row[0]=="6201":
+                upper_dates.append(dt.datetime(*(int(n) for n in row[2:7]),
+                                               tzinfo=dt.timezone.utc))
+        if not upper_dates or not upper_dates[0]<=clock_start or upper_dates[-1]<run_end:
+            raise RuntimeError("G35 actual original UP soundings do not bracket full run")
+        evidence.setdefault("source_sounding_count",{})[filename]=len(upper_dates)
         met=(args.source/"met.inp")
         if not met.is_file():
             raise RuntimeError("G31A missing G19 original source controls")
@@ -283,7 +302,8 @@ def main():
         evidence["compiler_command"]=original_compiler(
             VENDOR/"calmet.for",binary,args.mode,args.compiler)
         proc=subprocess.run([str(binary),"met.inp"],cwd=staged,
-                            capture_output=True,text=True,timeout=180)
+                            capture_output=True,text=True,
+                            timeout=900 if args.hours==143 else 180)
         (args.out/"original-stdout.log").write_text(proc.stdout)
         (args.out/"original-stderr.log").write_text(proc.stderr)
         evidence["return_code"]=proc.returncode
