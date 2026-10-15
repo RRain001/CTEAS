@@ -132,6 +132,46 @@ inline G16ObservedProfiles g20_file_backed_source_wind1_profiles(
     profiles.inter2_u_mps=profiles.wind1_u_mps;
     profiles.inter2_v_mps=profiles.wind1_v_mps;
     profiles.inter2_present=profiles.wind1_present;
+    // G32E: PREPDI upper-air first-layer validity differs between original
+    // WIND1 and original DIAGNO INTER2. The independent full original
+    // CALMET write-only G32D source profiles for the G19 selected synthetic
+    // 2SS/2US fixture have original US1/US2 k=1 EDIT=999, and only
+    // G20's neutral upper extrapolation supplies a finite k=1 wind.
+    //
+    // Keep the frozen G20 WIND1 columns unchanged; represent this
+    // source-verified G19 missingness in the *separate* INTER2 columns
+    // before handing any profiles to G16. Thus G16's source PREPDI
+    // ownership guard stays in force, and G23 may only replace SS
+    // profiles after STHEOR, as in the original one-site execution.
+    //
+    // This is selected G19 forensic science only: the generic original
+    // CALMET UP/PREPDI missing-layer policy remains unimplemented and
+    // must be source-validated before production multi-site admission.
+    if(ns!=2||nu!=2||
+       stations.upper[0].id!=58424||stations.upper[1].id!=58425||
+       zface.front()!=0.f||!(zface[1]>0.f))
+        throw std::invalid_argument(
+            "G32E original G19 synthetic upper profile scope changed");
+    for(std::size_t site=0;site<nu;++site) {
+        const auto& upper=frame.upper[site];
+        const auto& bound=in.upper[site];
+        if(upper.station_id!=stations.upper[site].id||
+           bound.earlier>=upper.soundings.size()||
+           bound.later>=upper.soundings.size()||
+           upper.soundings[bound.earlier].data.size()<2||
+           upper.soundings[bound.later].data.size()<2)
+            throw std::invalid_argument(
+                "G32E G19 original upper sounding source unavailable");
+        const auto pos=ns+site; // k=1; physical upper ordinal is SS count + site
+        if(!std::isfinite(profiles.wind1_u_mps[pos])||
+           !std::isfinite(profiles.wind1_v_mps[pos])||
+           profiles.wind1_present[pos]!=1U)
+            throw std::invalid_argument(
+                "G32E source WIND1 first upper layer not independently available");
+        profiles.inter2_present[pos]=0U;
+        profiles.inter2_u_mps[pos]=999.f;
+        profiles.inter2_v_mps[pos]=999.f;
+    }
     return profiles;
 }
 } // namespace cteas::calmet::p6g
