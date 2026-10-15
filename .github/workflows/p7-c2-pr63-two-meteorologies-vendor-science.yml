@@ -16,7 +16,7 @@ concurrency:
 jobs:
   g35-double-meteorology-original-calpuff:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - name: Checkout C2 audit scripts and comparator
         uses: actions/checkout@v4
@@ -100,6 +100,97 @@ jobs:
           echo 'P7_C2_VENDOR_ORIGINAL_AND_PR63_MET_H3_TRANSPORT=MEASURED_NONZERO'
           echo 'P7_C2_NATIVE_P7_MULTISTATION=A_B_C_D_STILL_OPEN'
 
+      - name: Build full original-source P7 C++ COMP for the actual 2024 12x12 G35 case
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native_cpp/modules/p7_calpuff -B "$RUNNER_TEMP/p7-c2/p7-build" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$RUNNER_TEMP/p7-c2/p7-build" --parallel 2 \
+            --target cteas_p7_hefei_sixhour_native_h3_receptors_tests cteas_p7_original_native_terrain_tests
+          "$RUNNER_TEMP/p7-c2/p7-build/cteas_p7_original_native_terrain_tests"
+
+      - name: C2 physics preflight same original MET, first six authentic 2024 hours
+        id: smoke_original
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p7-c2"
+          CTEAS_P7_INTEGRATION_C2=1 \
+          CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
+            "$root/p7-build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
+            "$root/original/original-met.dat" \
+            "$root/internal-source-science/C2-source-inside-multistation-domain.inp" \
+            "$root/internal-source-science/A-original-calpuff.con" \
+            > "$root/C2-original-P7-first6h.log" 2>&1 || {
+              tail -n 90 "$root/C2-original-P7-first6h.log"
+              exit 1
+            }
+          grep -F 'P7_C2_NATIVE_ON_PR63_MET HOURS=6' "$root/C2-original-P7-first6h.log"
+
+      - name: C2 same original MET true 143h B native P7 — strict 20,592 REAL4 words
+        id: p7_B
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p7-c2"
+          CTEAS_P7_INTEGRATION_C2=1 \
+          CTEAS_P7_PROBE_HOURS=143 \
+          CTEAS_P7_NATIVE_PUFF_CON="$root/internal-source-science/B-original-met-native-p7.con" \
+          CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
+            "$root/p7-build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
+            "$root/original/original-met.dat" \
+            "$root/internal-source-science/C2-source-inside-multistation-domain.inp" \
+            "$root/internal-source-science/A-original-calpuff.con" \
+            > "$root/C2-original-MET-P7-B-143h.log" 2>&1 || {
+              tail -n 100 "$root/C2-original-MET-P7-B-143h.log"
+              exit 1
+            }
+          grep -F 'P7_C2_NATIVE_ON_PR63_MET HOURS=143 REAL4_MATCHED=20592/20592' "$root/C2-original-MET-P7-B-143h.log"
+
+      - name: C2 same PR63 native MET true 143h D native P7 — strict 20,592 REAL4 words
+        id: p7_D
+        if: success() || steps.p7_B.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p7-c2"
+          CTEAS_P7_INTEGRATION_C2=1 \
+          CTEAS_P7_PROBE_HOURS=143 \
+          CTEAS_P7_NATIVE_PUFF_CON="$root/internal-source-science/D-native-met-native-p7.con" \
+          CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
+            "$root/p7-build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
+            "$root/native-met.dat" \
+            "$root/internal-source-science/C2-source-inside-multistation-domain.inp" \
+            "$root/internal-source-science/C-original-calpuff.con" \
+            > "$root/C2-native-MET-P7-D-143h.log" 2>&1 || {
+              tail -n 100 "$root/C2-native-MET-P7-D-143h.log"
+              exit 1
+            }
+          grep -F 'P7_C2_NATIVE_ON_PR63_MET HOURS=143 REAL4_MATCHED=20592/20592' "$root/C2-native-MET-P7-D-143h.log"
+
+      - name: Independently compare real 2024 H-3 A/B and C/D and B/D field differences
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p7-c2/internal-source-science"
+          cmp_py=native_cpp/modules/p7_calpuff/reference/compare_p7_hourly_concentrations.py
+          if test -s "$root/B-original-met-native-p7.con"; then
+            python3 "$cmp_py" \
+              --a "$root/A-original-calpuff.con" --b "$root/B-original-met-native-p7.con" \
+              --nx 12 --ny 12 --hours 143 --report "$root/C2-same-MET-A-vs-B.json"
+          fi
+          if test -s "$root/D-native-met-native-p7.con"; then
+            python3 "$cmp_py" \
+              --a "$root/C-original-calpuff.con" --b "$root/D-native-met-native-p7.con" \
+              --nx 12 --ny 12 --hours 143 --report "$root/C2-same-MET-C-vs-D.json"
+          fi
+          if test -s "$root/B-original-met-native-p7.con" && test -s "$root/D-native-met-native-p7.con"; then
+            python3 "$cmp_py" \
+              --a "$root/B-original-met-native-p7.con" --b "$root/D-native-met-native-p7.con" \
+              --nx 12 --ny 12 --hours 143 --report "$root/C2-different-MET-B-vs-D.json"
+          fi
+
       - name: Publish independent C2 science verdicts even on an integration failure
         uses: actions/upload-artifact@v4
         if: always()
@@ -114,3 +205,9 @@ jobs:
             ${{ runner.temp }}/p7-c2/internal-source-science/C2-A-vs-C-science.json
             ${{ runner.temp }}/p7-c2/internal-source-science/C2-vendor-source-provenance.json
             ${{ runner.temp }}/p7-c2/internal-source-science/C2-source-inside-multistation-domain.inp
+            ${{ runner.temp }}/p7-c2/internal-source-science/C2-same-MET-A-vs-B.json
+            ${{ runner.temp }}/p7-c2/internal-source-science/C2-same-MET-C-vs-D.json
+            ${{ runner.temp }}/p7-c2/internal-source-science/C2-different-MET-B-vs-D.json
+            ${{ runner.temp }}/p7-c2/C2-original-P7-first6h.log
+            ${{ runner.temp }}/p7-c2/C2-original-MET-P7-B-143h.log
+            ${{ runner.temp }}/p7-c2/C2-native-MET-P7-D-143h.log
