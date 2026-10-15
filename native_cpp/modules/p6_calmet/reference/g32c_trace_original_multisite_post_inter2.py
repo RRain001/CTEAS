@@ -42,6 +42,27 @@ c --- G32C: write-only source full-grid after two original INTER2 calls
       write(94) (((v(i,j,k),i=1,nx),j=1,ny),k=1,nz)
       return
       end
+c --- G32D: independent write-only all 4 source station US/VS profiles
+c --- after STHEOR/DIAGI, before native/original INTER2 comparison.
+      subroutine dgm_p6g_inter2_sites
+      include 'params.met'
+      include 'gen.met'
+      include 'grid.met'
+      include 'd1.met'
+      integer k,l
+      logical opened
+      save opened
+      data opened/.false./
+      if(.not.opened)then
+         open(93,file='g32d_inter2_sites.bin',
+     1        form='unformatted',access='stream',status='replace')
+         opened=.true.
+      endif
+      write(93) 17,ndathrb,nsecb,4,nz,0
+      write(93) ((us(k,l),l=1,4),k=1,nz)
+      write(93) ((vs(k,l),l=1,4),k=1,nz)
+      return
+      end
 """
 
 
@@ -60,7 +81,8 @@ def patch_original(original: Path, destination: Path):
             or lines[6071].strip() != "ENDIF"
             or "Lake breeze region" not in lines[6075]):
         raise RuntimeError("G32C single-site original post-INTER2 anchors drifted")
-    lines.insert(6072, "      call dgm_p6g_post_inter2\n")
+    lines.insert(6072, "      call dgm_p6g_post_inter2\n"
+                       "      call dgm_p6g_inter2_sites\n")
     destination.write_text("".join(lines) + HELPER)
 
 
