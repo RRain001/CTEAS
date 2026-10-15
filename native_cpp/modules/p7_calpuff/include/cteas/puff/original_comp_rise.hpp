@@ -124,6 +124,16 @@ private:
     OriginalPuffMotionLifecycle motion_;
     OriginalVerticalLifecycle vertical_;
     std::unordered_map<int,RiseSource> rise_;
+    // Original /CURRENT/ COMMON carries FRACZ1/LUP1 between substeps.
+    // SETPUF updates them only for odd Gaussian ICODE (vendor L48613),
+    // while PUFRECS still invokes PUFFCT2 for all ICODE at MCTADJ=2
+    // (vendor L5321). This is GLOBAL source chronology, not per-puff.
+    // Initialized only from an actual native CTADJ2 step; no oracle seeding.
+    struct LastOriginalCurrentTerrain {
+        float fracz1=0.0F;
+        bool lup1=false;
+    };
+    std::optional<LastOriginalCurrentTerrain> last_ctadj2_current_;
 };
 
 } // namespace cteas::puff
