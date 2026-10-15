@@ -196,9 +196,9 @@ def execute(native_met:Path,out:Path,max_seconds:int)->dict:
         # Its unchanged listing explicitly states the LAST PERIOD END.
         listing_text=listing.read_text(errors="replace")
         ending=re.search(
-            r"LAST PERIOD PROCESSED ENDS AT:\\s*"
-            r"Year:\\s*(\\d+)\\s*Month:\\s*(\\d+)\\s*Day:\\s*(\\d+)\\s*"
-            r"Julian day:\\s*\\d+\\s*Hour:\\s*(\\d+)\\s*Second:\\s*(\\d+)",
+            r"LAST PERIOD PROCESSED ENDS AT:\s*"
+            r"Year:\s*(\d+)\s*Month:\s*(\d+)\s*Day:\s*(\d+)\s*"
+            r"Julian day:\s*\d+\s*Hour:\s*(\d+)\s*Second:\s*(\d+)",
             listing_text,re.I)
         if not ending:
             raise RuntimeError("G36A original CALPUFF listing missing last processed UTC period")
