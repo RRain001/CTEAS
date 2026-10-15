@@ -14,14 +14,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Provision GitHub-hosted GCC12 and Fortran12
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-12 gfortran-12
-      - name: Select isolated C++20 and Fortran compilers
-        uses: ./.github/actions/cteas-linux-toolchain
       - uses: actions/checkout@v4
       - name: Fetch official source, validate gzip and identify same station/year
         shell: bash

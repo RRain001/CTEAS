@@ -12,6 +12,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/compare_original_terset.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_original_fradj.py'
       - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
+      - '.github/workflows/p6c-calmet-terset-parity.yml'
   workflow_dispatch:
 permissions:
   contents: read

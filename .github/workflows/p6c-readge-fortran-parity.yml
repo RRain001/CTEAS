@@ -10,6 +10,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/*readge*'
       - 'native_cpp/modules/p6_calmet/tests/p6_read_geo_tests.cpp'
       - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
+      - '.github/workflows/p6c-readge-fortran-parity.yml'
   workflow_dispatch:
 permissions:
   contents: read

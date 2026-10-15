@@ -8,6 +8,7 @@ on:
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/comp_buffered_timeline.hpp'
       - 'native_cpp/modules/p6_calmet/reference/check_joint_observation_2022.py'
       - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
+      - '.github/workflows/p6c-comp-source-inspection.yml'
   workflow_dispatch:
 jobs:
   comp-source-audit:

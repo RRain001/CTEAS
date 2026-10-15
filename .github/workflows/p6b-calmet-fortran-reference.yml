@@ -10,6 +10,7 @@ on:
       - 'native_cpp/modules/p4_read62/**'
       - 'native_cpp/modules/p5_smerge/**'
       - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
+      - '.github/workflows/p6b-calmet-fortran-reference.yml'
   workflow_dispatch:
 jobs:
   original-calmet:
