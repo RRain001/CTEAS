@@ -223,6 +223,12 @@ int main(int argc,char** argv){
         save(paths.met_inp,unsupported_iavet);
         rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
                 "G19B silently substituted IAVET=0 for original source two-pass path");
+        save(paths.met_inp,replace_one(two,"NZ","8"));
+        rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
+                "G19B unsupported 8-layer deck silently fed G14 nine-layer physics");
+        save(paths.met_inp,replace_one(two,"ISURFT","1"));
+        rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
+                "G19B representative-station SURFVAR substituted for two-pass observed path");
         save(paths.met_inp,two+"\n! HC1 = 1. !\n");
         rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
                 "G19B allowed synthetic heat defaults into original HFLUX branch");
