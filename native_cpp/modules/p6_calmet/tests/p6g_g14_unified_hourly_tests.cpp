@@ -409,9 +409,9 @@ static void case_fresh_selected_prepdi_clock(sys_seconds begin) {
     p6g::G18D2StationClockAuthority clocks;
     const std::string deck=
         "! IUPT = -1 !\\n! IDIOPT2 = 0 !\\n! ZUPT = 200. !\\n";
-    std::size_t made=0,published=0;
+    std::size_t made=0,published=0,preflighted=0;
     int destroyed=0;
-    bool publication_valid=true;
+    bool publication_valid=true,fail_preflight=false;
     auto maker=[&](const p6g::MultiHourFrame& frame)
         ->std::unique_ptr<p6g::MultiHourPhysics> {
         check(frame.hour_index==sched.completed_hours(),
@@ -419,6 +419,17 @@ static void case_fresh_selected_prepdi_clock(sys_seconds begin) {
         ++made;
         return std::make_unique<FreshOwnedPrepdiPhysics>(
             sched,clocks,deck,frame,destroyed);
+    };
+    auto preflight=[&](p6g::MultiHourPhysics& base,
+                       const p6g::MultiHourFrame& live,
+                       const p6g::UnifiedMultistationHourlyScheduler& owner) {
+        check(&owner==&sched && sched.completed_hours()==live.hour_index,
+              "G18F2 precommit station-clock gate received foreign G14 owner");
+        auto& owned=static_cast<FreshOwnedPrepdiPhysics&>(base);
+        owned.selected.require_publishable_before_g14_commit(live);
+        ++preflighted;
+        if(fail_preflight)
+            throw std::runtime_error("G18F2 injected station clock admission failure");
     };
     auto publisher=[&](p6g::MultiHourPhysics& base,
                        const p6g::UnifiedMultistationHourlyScheduler& committed) noexcept {
@@ -444,11 +455,26 @@ static void case_fresh_selected_prepdi_clock(sys_seconds begin) {
                 check(live.hour_index==0,
                       "G18F2 source P6F preflight wrong failed hour");
                 throw std::runtime_error("G18F1 selected PREPDI P6F failure");
-            },publisher);
+            },preflight,publisher);
     },"G18F1 selected PREPDI source clocks published after rejected P6F");
-    check(made==1&&destroyed==1&&published==0&&
+    check(made==1&&destroyed==1&&published==0&&preflighted==0&&
           !clocks.has_published_hour()&&sched.completed_hours()==0,
-          "G18F1 prepared AA/BB or CGAMMA leaked across P6F failure");
+          "G18F2 P6F failure incorrectly reached station-clock preflight");
+    // All physical stages and P6F pass, but clock admission fails.
+    // An incomplete/stale PREPDI candidate must reject the entire hour
+    // BEFORE committing physical memory, not leave an orphaned clock.
+    fail_preflight=true;
+    must_reject([&]{
+        sched.advance_with_fresh_physics(
+            maker,[](const p6g::MultiHourFrame&){},
+            preflight,publisher);
+    },"G18F2 failed clock preflight committed G14 physical memory");
+    check(made==2&&destroyed==2&&preflighted==1&&published==0&&
+          !clocks.has_published_hour()&&
+          sched.completed_hours()==0&&
+          sched.committed_memory().ziconv_m[0]==0.f,
+          "G18F2 invalid PREPDI clock preflight poisoned physical hour");
+    fail_preflight=false;
     for(std::size_t h=0;h<6;++h) {
         sched.advance_with_fresh_physics(
             maker,[&](const p6g::MultiHourFrame& frame){
@@ -459,8 +485,9 @@ static void case_fresh_selected_prepdi_clock(sys_seconds begin) {
                       "G18F2 selected PREPDI preflight saw wrong prior-hour state");
                 // The full G14 physical-hour validation runs next,
                 // followed by noexcept source AA/BB + CGAMMA publish.
-            },publisher);
-        check(made==h+2&&destroyed==static_cast<int>(h+2)&&
+            },preflight,publisher);
+        check(made==h+3&&destroyed==static_cast<int>(h+3)&&
+              preflighted==h+2&&
               published==h+1&&publication_valid&&
               clocks.has_published_hour()&&
               clocks.latest_upper_hour()==begin+hours{static_cast<int>(h+1)}&&
