@@ -10,11 +10,12 @@ on:
       - 'native_cpp/modules/p4_read62/**'
       - 'native_cpp/modules/p5_smerge/**'
       - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
+      - '.github/workflows/p6b-calmet-fortran-reference.yml'
   workflow_dispatch:
 jobs:
   original-calmet:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -22,7 +23,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Select self-hosted C++20 and Fortran tools
+      - name: Provision GitHub-hosted GCC12 and Fortran12
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-12 gfortran-12
+      - name: Select isolated C++20 and Fortran compilers
         uses: ./.github/actions/cteas-linux-toolchain
       - name: Pin P4/P5/P3 upstream snapshots without merging branches
         shell: bash
@@ -110,7 +117,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-up-build -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-up-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-fno-strict-aliasing
           cmake --build /tmp/p6c-up-build --parallel 2
           ctest --test-dir /tmp/p6c-up-build --output-on-failure
           python3 native_cpp/modules/p6_calmet/reference/compare_fortran_upper_rdupn.py \
@@ -212,7 +219,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-surface-build -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-surface-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-fno-strict-aliasing
           cmake --build /tmp/p6c-surface-build --parallel 2
           ctest --test-dir /tmp/p6c-surface-build --output-on-failure
           python3 native_cpp/modules/p6_calmet/reference/compare_fortran_surface.py \
