@@ -165,6 +165,8 @@ def main():
         (args.out/"original-stdout.log").write_text(proc.stdout)
         (args.out/"original-stderr.log").write_text(proc.stderr)
         evidence["return_code"]=proc.returncode
+        evidence["stdout_tail"]=proc.stdout[-2500:]
+        evidence["stderr_tail"]=proc.stderr[-2500:]
         listing=staged/"met.lst"
         output=staged/"met.dat"
         evidence["original_listing_present"]=listing.exists()
@@ -172,6 +174,12 @@ def main():
             evidence["original_listing_sha256"]=sha256(listing)
             evidence["original_listing_bytes"]=listing.stat().st_size
             shutil.copy2(listing,args.out/"original-met.lst")
+            lines=listing.read_text(errors="replace").splitlines()
+            evidence["original_listing_tail"]="\\n".join(lines[-100:])
+            evidence["original_listing_errors"]=[
+                line[:300] for line in lines if
+                re.search(r"error|fatal|stop|invalid|missing|warning",line,re.I)
+            ][-30:]
         if proc.returncode:
             raise RuntimeError("G31A untouched original CALMET exited "+
                                str(proc.returncode)+"; inspect original-met.lst and original logs")
