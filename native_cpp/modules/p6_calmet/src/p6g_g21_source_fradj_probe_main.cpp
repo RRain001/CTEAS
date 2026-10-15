@@ -15,6 +15,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 int main(int argc,char** argv) {
@@ -35,18 +36,20 @@ int main(int argc,char** argv) {
         paths.geo_dat=argv[2];
         paths.surf_dat=argv[3];
         std::string output_file,stage_file,slope_output_file,slope_stage_file;
-        std::string inter2_output_file;
+        std::string inter2_output_file,inter2_original_stage_prefix;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--output"||arg=="--source-stage"||
                arg=="--slope-output"||arg=="--slope-stage"||
-               arg=="--inter2-output") {
+               arg=="--inter2-output"||arg=="--inter2-original-stage-prefix") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
                     throw std::invalid_argument("G21/G22 source output missing path");
                 auto& selected=arg=="--output"?output_file:
                                arg=="--source-stage"?stage_file:
                                arg=="--slope-output"?slope_output_file:
-                               arg=="--slope-stage"?slope_stage_file:inter2_output_file;
+                               arg=="--slope-stage"?slope_stage_file:
+                               arg=="--inter2-output"?inter2_output_file:
+                               inter2_original_stage_prefix;
                 if(!selected.empty())
                     throw std::invalid_argument("G21/G22 duplicate output argument");
                 selected=argv[++i];
@@ -58,11 +61,14 @@ int main(int argc,char** argv) {
         if(output_file.empty()||stage_file.empty()||
            stage_file==output_file||paths.ordered_up_dat.size()<2||
            slope_output_file.empty()!=slope_stage_file.empty()||
-           (!inter2_output_file.empty()&&slope_output_file.empty()))
+           (!inter2_output_file.empty()&&slope_output_file.empty())||
+           (!inter2_original_stage_prefix.empty()&&inter2_output_file.empty()))
             throw std::invalid_argument("G21/G22 requires independent stage/output file pairs");
         const std::vector<std::string> outputs={
             output_file,stage_file,slope_output_file,slope_stage_file,
-            inter2_output_file};
+            inter2_output_file,
+            inter2_original_stage_prefix.empty()?std::string{}:inter2_original_stage_prefix+".u.input",
+            inter2_original_stage_prefix.empty()?std::string{}:inter2_original_stage_prefix+".v.input"};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -214,6 +220,85 @@ int main(int argc,char** argv) {
                         }
                 i2.flush();
                 if(!i2)throw std::runtime_error("G23 source INTER2 CSV write failed");
+                if(!inter2_original_stage_prefix.empty()) {
+                    // Feed untouched original CALMET INTER2 its EXACT
+                    // source-file selected DIAGI(SS)/PREPDI(US), post-SLOPE
+                    // first-guess grid and original READCF radii.  This
+                    // captures intermediate *inputs*, NOT reference results.
+                    const auto& c=source.controls;
+                    const auto ns=source.stations.surface.size();
+                    const auto nu=source.stations.upper.size();
+                    const auto nst=ns+nu;
+                    const auto& profiles=station.observed_after_diagi;
+                    if(profiles.inter2_u_mps.size()!=9*nst||
+                       profiles.inter2_v_mps.size()!=9*nst||
+                       profiles.inter2_present.size()!=9*nst||
+                       c.iprog!=0||nst!=4u)
+                        throw std::logic_error("G23 original INTER2 reference input not sourced");
+                    for(const auto& [tag,observations,firstguess]:
+                        {std::tuple<const char*,const std::vector<float>*,
+                                    const std::vector<float>*>{
+                            "u",&profiles.inter2_u_mps,&joined.post_slope_wind.u},
+                         std::tuple<const char*,const std::vector<float>*,
+                                    const std::vector<float>*>{
+                            "v",&profiles.inter2_v_mps,&joined.post_slope_wind.v}}) {
+                        std::ofstream original(inter2_original_stage_prefix+
+                                              "."+tag+".input",std::ios::trunc);
+                        if(!original)
+                            throw std::runtime_error("G23 original INTER2 input not writable");
+                        original<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                        original<<nst<<" "<<static_cast<int>(c.lvary)<<" "
+                                <<c.rmin_km<<" "<<c.rmax1_km<<" "
+                                <<c.rmax2_km<<" "<<c.rmax3_km<<" "
+                                <<c.r1_km<<" "<<c.r2_km<<" 999999 999998\n";
+                        for(std::size_t k=0;k<9;++k)
+                            original<<std::min(c.nintr2[k],static_cast<int>(nst))<<" ";
+                        original<<"\n";
+                        for(const auto& st:source.stations.surface)
+                            original<<st.local_x_m*0.001f<<" ";
+                        for(const auto& st:source.stations.upper)
+                            original<<st.local_x_m*0.001f<<" ";
+                        original<<"\n";
+                        for(const auto& st:source.stations.surface)
+                            original<<st.local_y_m*0.001f<<" ";
+                        for(const auto& st:source.stations.upper)
+                            original<<st.local_y_m*0.001f<<" ";
+                        original<<"\n";
+                        for(std::size_t j=0;j<ny;++j) {
+                            for(std::size_t i=0;i<nx;++i)
+                                original<<source.grid.landuse[j*nx+i]<<" ";
+                            original<<"\n";
+                        }
+                        for(std::size_t k=0;k<9;++k) {
+                            for(std::size_t l=0;l<nst;++l) {
+                                const auto p=k*nst+l;
+                                original<<(profiles.inter2_present[p]?
+                                    (*observations)[p]:999999.f)<<" ";
+                            }
+                            original<<"\n";
+                        }
+                        for(std::size_t k=0;k<9;++k)
+                            for(std::size_t j=0;j<ny;++j) {
+                                for(std::size_t i=0;i<nx;++i)
+                                    original<<(*firstguess)[k*cells+j*nx+i]<<" ";
+                                original<<"\n";
+                            }
+                        // Same READCF IPROG=0 and original RDWT WO=1
+                        // physically consumed by frozen G16::do_inter2.
+                        for(std::size_t k=0;k<9;++k)
+                            for(std::size_t j=0;j<ny;++j) {
+                                for(std::size_t i=0;i<nx;++i)original<<"1 ";
+                                original<<"\n";
+                            }
+                        original.flush();
+                        if(!original)
+                            throw std::runtime_error("G23 source original INTER2 file not complete");
+                    }
+                    std::cout<<"PASS_P6G_G23_ORIGINAL_INTER2_INPUT_STAGES "
+                             <<"STATIONS="<<nst<<" LAYERS=9 "
+                             <<"WIND_UV_VALUES="<<cells*9*2
+                             <<" REFERENCE_CALCULATION=NOT_YET_PERFORMED\n";
+                }
                 std::cout<<"PASS_P6G_G23_SOURCE_STHEOR_DIAGI_INTER2 "
                          <<"STATIONS="<<station.station_diagi.size()
                          <<" CELLS="<<cells
