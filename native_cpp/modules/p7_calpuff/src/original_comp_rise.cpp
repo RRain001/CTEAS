@@ -497,12 +497,12 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     float current_receptor_bvf=0.0F;
     OriginalTerrainSigmaInputs terrain_inputs;
     const OriginalTerrainSigmaInputs* selected_terrain=nullptr;
-    // SETPUF's SIGTZ/CTADJ2 terrain-strain subchain applies to odd
-    // vertical Gaussian puff codes. For even (uniform) codes sigma_step
-    // does not calculate the SIGTZ mid/end denominators that CTADJ2 needs.
-    // Do not run the Gaussian terrain-strain operator on a uniform puff.
-    // This branch needs independent original 2024 B/D scientific validation.
-    if(control.mctadj2 && (mass.puff_code % 2)==1){
+    // Vendor COMP computes current meteorological BVF for PUFRECS
+    // regardless of vertical ICODE. Only the SETPUF SIGTZ terrain-strain
+    // branch is limited to odd Gaussian codes (L48613-48632).
+    // PUFFCT2 at L5321 still uses source-COMMON FRACZ1/LUP1 for even codes.
+    auto carried_ctadj2_current=last_ctadj2_current_;
+    if(control.mctadj2){
         // SETPUF L48616-48631 owns the authoritative CTADJ2 state.
         // This must use the same *native* x/y/height and RISEWIND WS
         // as the step being committed; no historical DGM inputs.
@@ -546,7 +546,8 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         current_receptor_bvf=bvf;
         terrain_inputs.brunt_vaisala_s=bvf;
         terrain_inputs.met_spacing_m=control.met_spacing_m;
-        selected_terrain=&terrain_inputs;
+        if((mass.puff_code % 2)==1)
+            selected_terrain=&terrain_inputs;
     }
     const auto sigma=v.commit_sigma(
         id,dispersion,sigma_y,sigma_z,selected_terrain);
@@ -565,9 +566,30 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             .terrain_fraction=sigma.terrain->fracz_end,
             .upslope=sigma.terrain->upslope_end
         };
+        carried_ctadj2_current=LastOriginalCurrentTerrain{
+            sigma.terrain->fracz_end,sigma.terrain->upslope_end};
         m.commit_setpuf_terrain_height(
             id,moved.state.z_m,terrain_height);
         moved.state=m.state(id);
+    } else if(control.mctadj2) {
+        // Original SETPUF never updates /CURRENT/ FRACZ1/LUP1 for
+        // even ICODE, but PUFRECS MCTADJ=2 nevertheless calls PUFFCT2.
+        // Keep these last authentic native CTADJ2 COMMON flags while
+        // using THIS puff's independently advanced x/y and z geometry.
+        // Do not invent zeros, inherit a frozen DGM, or call SIGTZ here.
+        require((mass.puff_code % 2)==0 &&
+                carried_ctadj2_current.has_value(),
+                "native even ICODE PUFFCT2 requires preceding actual CTADJ2 COMMON");
+        ctadj2_step=OriginalPuffct2Step{
+            .x_begin_m=before.x_cells*control.met_spacing_m,
+            .y_begin_m=before.y_cells*control.met_spacing_m,
+            .z_begin_m=before.z_m,
+            .x_end_m=moved.state.x_cells*control.met_spacing_m,
+            .y_end_m=moved.state.y_cells*control.met_spacing_m,
+            .z_end_m=moved.state.z_m,
+            .terrain_fraction=carried_ctadj2_current->fracz1,
+            .upslope=carried_ctadj2_current->lup1
+        };
     }
     order.completed(VendorSubstepPhase::CommitSetpuf);
     // Original COMP calpuff.for L11076–11097 invokes DRY after SETPUF,
@@ -743,6 +765,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     motion_=std::move(m);
     vertical_=std::move(v);
     found->second=std::move(state);
+    last_ctadj2_current_=carried_ctadj2_current;
     return outcome;
 }
 NativeVerticalWind OriginalCompRisePointDriver::pre_cadence_wind(
