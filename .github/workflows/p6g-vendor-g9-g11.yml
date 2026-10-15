@@ -147,6 +147,44 @@ jobs:
           path: |
             ${{ runner.temp }}/g22-vendor-${{ matrix.mode }}.json
             ${{ runner.temp }}/g22-steep-vendor-${{ matrix.mode }}.json
+      - name: G22 independent daylight ELUSTR plus real nonzero vendor FRADJ SLOPE
+        run: |
+          mkdir -p "$RUNNER_TEMP/g22-daylight-source"
+          "$RUNNER_TEMP/p6g-vendor/cteas_p6g_g19_file_backed_case_tests" \
+            --export-case project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp \
+            "$RUNNER_TEMP/g22-daylight-source" --fradj-stress --daylight-first-hour
+          "$RUNNER_TEMP/p6g-vendor/cteas_p6g_g21_source_fradj_probe" \
+            "$RUNNER_TEMP/g22-daylight-source/met.inp" \
+            "$RUNNER_TEMP/g22-daylight-source/GEO.DAT" \
+            "$RUNNER_TEMP/g22-daylight-source/SURF.DAT" \
+            "$RUNNER_TEMP/g22-daylight-source/UP1.DAT" \
+            "$RUNNER_TEMP/g22-daylight-source/UP2.DAT" \
+            --output "$RUNNER_TEMP/g22-daylight-fradj.csv" \
+            --source-stage "$RUNNER_TEMP/g22-daylight-fradj-input.dat" \
+            --slope-output "$RUNNER_TEMP/g22-daylight-slope.csv" \
+            --slope-stage "$RUNNER_TEMP/g22-daylight-slope-input.dat" \
+            | tee "$RUNNER_TEMP/g22-daylight-native-log.txt"
+          grep -Eq 'DAYTIME_CELLS=[1-9][0-9]*' "$RUNNER_TEMP/g22-daylight-native-log.txt"
+          python3 native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py \
+            --mode ${{ matrix.mode }} \
+            --source-stage "$RUNNER_TEMP/g22-daylight-fradj-input.dat" \
+            --candidate "$RUNNER_TEMP/g22-daylight-fradj.csv" \
+            --require-nontrivial \
+            --out "$RUNNER_TEMP/g22-daylight-fradj-${{ matrix.mode }}.json"
+          python3 native_cpp/modules/p6_calmet/reference/compare_g22_file_backed_original_slope.py \
+            --mode ${{ matrix.mode }} \
+            --source-stage "$RUNNER_TEMP/g22-daylight-slope-input.dat" \
+            --candidate "$RUNNER_TEMP/g22-daylight-slope.csv" \
+            --require-nontrivial \
+            --out "$RUNNER_TEMP/g22-daylight-slope-${{ matrix.mode }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g22-daylight-source-vendor-${{ matrix.mode }}
+          path: |
+            ${{ runner.temp }}/g22-daylight-fradj-${{ matrix.mode }}.json
+            ${{ runner.temp }}/g22-daylight-slope-${{ matrix.mode }}.json
+            ${{ runner.temp }}/g22-daylight-native-log.txt
       - name: Original Fortran DIAGNO tail G10 10km
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
