@@ -152,6 +152,12 @@ add_test(NAME p6g_g14_unified_2ss_2us_hourly_clock_state_1h_6h_143h_8784h
 add_executable(cteas_p6g_g34b_six_hour_selected_gate
                src/p6g_g34b_six_hour_selected_gate_main.cpp)
 target_link_libraries(cteas_p6g_g34b_six_hour_selected_gate PRIVATE cteas_p6a_contracts)
+# Link the EXACT frozen P6F serializer translation unit and include root,
+# identically to the already verified G30 first-hour candidate.
+target_sources(cteas_p6g_g34b_six_hour_selected_gate PRIVATE
+               p6f/src/calmet_dat21_writer.cpp)
+target_include_directories(cteas_p6g_g34b_six_hour_selected_gate PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/p6f/include)
 if(MSVC)
   target_compile_options(cteas_p6g_g34b_six_hour_selected_gate PRIVATE /W4 /WX)
 else()
