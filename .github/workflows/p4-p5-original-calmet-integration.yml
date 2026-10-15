@@ -4,13 +4,44 @@ concurrency:
   cancel-in-progress: true
 on:
   pull_request:
-    paths:
-      - '.github/workflows/p4-p5-original-calmet-integration.yml'
-      - 'native_cpp/**'
-      - 'project/cases/**'
+# Do NOT use workflow-level paths: skipped workflows can leave required checks
+# pending indefinitely. A GitHub-hosted scope job always determines whether
+# original Fortran/C++ comparison is genuinely relevant to this PR.
 jobs:
+  scope:
+    name: p4p5-source-scope
+    runs-on: ubuntu-22.04
+    permissions:
+      pull-requests: read
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Check changed PR files without self-hosted runner
+        id: filter
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prefixes = ["native_cpp/p1/","native_cpp/p2/","native_cpp/p3/","native_cpp/src/geo/","native_cpp/include/","native_cpp/modules/p4_read62/","native_cpp/modules/p5_smerge/","native_cpp/reference/","calpuff_terrain_and_landuse_data_crop/hefei_5km/","engine/vendor/src/TERREL","engine/vendor/src/CTGPROC","engine/vendor/src/MAKEGEO","engine/vendor/src/CALMET","engine/vendor/src/SMERGE","engine/vendor/src/READ62","engine/run_met/","engine/core/","engine/templates/","project/cases/smoke5d_coldstart_20260701/",".github/actions/cteas-linux-toolchain/"];
+            const exact = new Set(["native_cpp/CMakeLists.txt"]);
+            const isRelevant = (name) => Boolean(name) && (exact.has(name) || prefixes.some((prefix) => name.startsWith(prefix)));
+            const changed = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner, repo: context.repo.repo,
+              pull_number: context.issue.number, per_page: 100
+            });
+            if (changed.length >= 3000) {
+              core.setFailed('Changed-file list reached the GitHub API 3000-file limit; do not skip original numerical parity');
+              return;
+            }
+            const matched = changed.filter((item) => isRelevant(item.filename) || isRelevant(item.previous_filename));
+            core.setOutput('relevant', matched.length ? 'true' : 'false');
+            core.info('P4/P5 CALMET SOURCE_SCOPE=' + (matched.length ? 'REQUIRES_SELF_HOSTED_NUMERIC_COMPARISON' : 'UNRELATED_CHANGE_SKIP_SELF_HOSTED')
+              + ' FILES=' + changed.length + ' MATCHED=' + matched.map((item) => item.filename).join(','));
+  
   original-calmet:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
+    needs: scope
+    if: >-
+      needs.scope.outputs.relevant == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS')
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
     permissions:
