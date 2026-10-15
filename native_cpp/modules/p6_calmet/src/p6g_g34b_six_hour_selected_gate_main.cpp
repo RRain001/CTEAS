@@ -69,19 +69,26 @@ private:
 
 int main(int argc,char** argv) {
     try {
-        if(argc!=7)
+        if(argc!=7&&argc!=9)
             throw std::invalid_argument(
-                "Usage: g34b <met.inp> <GEO.DAT> <SURF.DAT> <UP1.DAT> <UP2.DAT> <candidate-calmet.dat>");
+                "Usage: g34b <met.inp> <GEO.DAT> <SURF.DAT> <UP1.DAT> <UP2.DAT> <candidate-calmet.dat> [--hours 143]");
+        std::size_t requested_hours=6;
+        if(argc==9) {
+            if(std::string(argv[7])!="--hours"||std::string(argv[8])!="143")
+                throw std::invalid_argument("G35 native long-run requires explicit --hours 143");
+            requested_hours=143;
+        }
         const p6g::G19SourceFilePaths paths{argv[1],argv[2],argv[3],{argv[4],argv[5]}};
         const auto source=p6g::g19_load_original_source_case(paths);
         auto scheduler=source.make_scheduler();
         if(source.stations.surface.size()!=2||source.stations.upper.size()!=2||
-           source.grid.nx!=12||source.grid.ny!=12||scheduler.planned_hours()!=6)
+           source.grid.nx!=12||source.grid.ny!=12||
+           scheduler.planned_hours()!=requested_hours)
             throw std::invalid_argument(
-                "G34B only original G19 12x12 2SS/2US six-hour test case");
+                "G35 only G19 12x12 2SS/2US 6h or 143h original-format case");
         p6g::G18D2StationClockAuthority clocks;
         std::optional<cteas::p6f::Calmet21File> six_hour;
-        for(std::size_t hour=0;hour<6;++hour) {
+        for(std::size_t hour=0;hour<requested_hours;++hour) {
             std::optional<cteas::p6f::Calmet21File> accepted;
             G34BSelectedOnlyHour* active=nullptr;
             bool published=false;
@@ -146,9 +153,9 @@ int main(int argc,char** argv) {
                      <<" AA_BB_CGAMMA_CLOCKS=1\n";
         }
         scheduler.require_complete();
-        if(!six_hour||six_hour->hourly.size()!=270||
-           six_hour->header.irlg!=6)
-            throw std::logic_error("G34B six-hour native output lacks 270 fields");
+        if(!six_hour||six_hour->hourly.size()!=45*requested_hours||
+           six_hour->header.irlg!=static_cast<int>(requested_hours))
+            throw std::logic_error("G35 native output lacks full 45 fields each hour");
         const auto bytes=cteas::p6f::serialize_calmet_dat21(*six_hour);
         std::ofstream output(argv[6],std::ios::binary|std::ios::trunc);
         if(!output)throw std::runtime_error("G34B output file unavailable");
@@ -156,8 +163,9 @@ int main(int argc,char** argv) {
                      static_cast<std::streamsize>(bytes.size()));
         output.flush();
         if(!output)throw std::runtime_error("G34B native output truncated");
-        std::cout<<"PASS_G34B_NATIVE_SIX_HOUR_TRANSACTION_TEST_ONLY "
-                 <<"HOURS=6 FIELDS=270 STATIONS=2SS_2US "
+        std::cout<<"PASS_G35_NATIVE_CONTINUOUS_HOUR_TRANSACTION_TEST_ONLY "
+                 <<"HOURS="<<requested_hours
+                 <<" FIELDS="<<45*requested_hours<<" STATIONS=2SS_2US "
                  <<"ORIGINAL_VENDOR_PARITY=NOT_YET_CALCULATED\n";
         return 0;
     } catch(const std::exception& error) {
