@@ -121,6 +121,23 @@ public:
         ++phase_;
     }
 
+    [[nodiscard]] const G18ASelectedCompResult& source_mixht_before_avemix(
+        const MultiHourFrame& frame) const {
+        if(phase_<1||!comp_||&frame!=live_||
+           frame.hour_index!=hour_index_||frame.input.end!=end_||
+           frame.previous.zi_m!=previous_.zi_m||
+           frame.previous.ziconv_m!=previous_.ziconv_m||
+           frame.previous.dptt_k!=previous_.dptt_k)
+            throw std::logic_error("G28 requested source MIXHT from foreign/unfinished G14");
+        return comp_->source_mixht_before_avemix(frame);
+    }
+    [[nodiscard]] const G18C1AvemixOutput& source_avemix_after_mixht(
+        const MultiHourFrame& frame) const {
+        (void)source_mixht_before_avemix(frame);
+        if(phase_<2)
+            throw std::logic_error("G28 requires original source AVEMIX after MIXHT");
+        return comp_->source_avemix_after_mixht(frame);
+    }
     [[nodiscard]] bool source_comp_ready() const noexcept {
         return phase_==4&&comp_.has_value()&&comp_->selected_complete();
     }
