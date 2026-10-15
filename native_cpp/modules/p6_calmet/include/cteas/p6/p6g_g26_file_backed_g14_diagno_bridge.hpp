@@ -211,6 +211,14 @@ public:
         verify_frame(frame);
         prepdi_.require_publishable_before_g14_commit(frame);
     }
+    // G34B: publish the G18D2 prepared AA/BB/CGAMMA clock candidates
+    // exclusively after G14 accepts the 17th P6F stage and memory commit.
+    // Selected/test-only: does NOT admit the G26 production run() interface.
+    [[nodiscard]] bool try_publish_after_selected_g14_commit_noexcept() noexcept {
+        if(!source_diagno_ready()||owner_.completed_hours()!=hour_index_+1)
+            return false;
+        return prepdi_.try_publish_after_completed_g14_hour_noexcept();
+    }
     [[nodiscard]] bool clocks_published() const noexcept {
         return clocks_.has_published_hour();
     }
@@ -222,9 +230,15 @@ private:
            frame.previous.zi_m!=previous_.zi_m||
            frame.previous.ziconv_m!=previous_.ziconv_m||
            frame.previous.dptt_k!=previous_.dptt_k||
-           clocks_.has_published_hour())
+           // Previous accepted hour MUST have published both station clocks.
+           // The old first-hour-only guard erroneously rejected every
+           // subsequent G14 frame as soon as hour zero was committed.
+           (hour_index_==0 ? clocks_.has_published_hour() :
+            (!clocks_.has_published_hour()||
+             clocks_.latest_upper_hour()!=frame.surface.start||
+             clocks_.latest_gamma_hour()!=frame.surface.start)))
             throw std::logic_error(
-                "G26 source frame detached, prior-hour COMP mutated or clocks pre-published");
+                "G26 source frame detached, prior-hour COMP mutated or station clocks stale");
     }
     const UnifiedMultistationHourlyScheduler& owner_;
     G18D2StationClockAuthority& clocks_;
