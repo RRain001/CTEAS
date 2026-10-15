@@ -139,49 +139,8 @@ inline G23SelectedSourceStheorInter2 g23_source_stheor_diagi_inter2(
     // grid ZI/ZICONV/DPTT, actual HEATFX, and source SETCOM station US.
     const auto candidate=selected_station_diagi_from_previous_comp(
         frame,surfvar,g22.heat,controls);
-    auto merged=merge_g17c3_surface_diagi(
+    const auto merged=merge_g17c3_surface_diagi(
         original_g20_profiles,frame.stations,candidate);
-    // G32E source-bounded 2SS/2US G19 first-hour upper missingness.
-    // Independent literal full CALMET G32D write-only US/VS snapshot proves:
-    // two surface stations k=1 are valid, both upper stations k=1 are
-    // EDIT=999 (missing), while all upper k>=2 are valid. The source G19
-    // synthetic UP soundings contain only two measured levels and their
-    // first-layer G20 VERTAV extrapolation must not be reused as a valid
-    // G23 INTER2 profile: the actual original CALMET source records 999.
-    // The previous G20 source column reused an extrapolated value,
-    // which is NOT the real source
-    // PREPDI/DIAGI station-column missingness. WIND1 remains untouched.
-    //
-    // This narrowly admits only the G19 SYNTHETIC source geometry observed
-    // in independent G32D; it is NOT an inferred general VERTAV rule.
-    // The correct general PREPDI/UP missingness semantics must later be
-    // implemented and source-tested for real meteorology before promotion.
-    if(frame.source_controls->zface_m[0]!=0.f||
-       !(frame.source_controls->zface_m[1]>0.f)||
-       frame.stations.surface.size()!=2||frame.stations.upper.size()!=2||
-       frame.stations.upper[0].id!=58424||
-       frame.stations.upper[1].id!=58425)
-        throw std::invalid_argument(
-            "G32E original G19 selected 2UP station identity/ZFACE scope changed");
-    for(std::size_t site=0;site<frame.stations.upper.size();++site) {
-        const auto& bracket=frame.input.upper[site];
-        const auto& soundings=frame.upper[site].soundings;
-        if(bracket.earlier>=soundings.size()||
-           bracket.later>=soundings.size()||
-           soundings[bracket.earlier].data.size()<2||
-           soundings[bracket.later].data.size()<2)
-            throw std::invalid_argument(
-                "G32E selected G19 upper soundings or source PREPDI hour missing");
-        const auto k1=frame.stations.surface.size()+site;
-        if(merged.inter2_present[k1]!=1U||
-           !std::isfinite(merged.inter2_u_mps[k1])||
-           !std::isfinite(merged.inter2_v_mps[k1]))
-            throw std::invalid_argument(
-                "G32E upper first-layer PREPDI input source not valid");
-        merged.inter2_present[k1]=0U;
-        merged.inter2_u_mps[k1]=999.f;
-        merged.inter2_v_mps[k1]=999.f;
-    }
 
     G16PostSlopeFields corrected;
     corrected.end=frame.input.end;
