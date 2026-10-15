@@ -7,6 +7,7 @@
 #include "cteas/p6/p6g_g21_file_backed_fradj.hpp"
 #include "cteas/p6/p6g_g22_file_backed_thermal_slope.hpp"
 #include "cteas/p6/p6g_g23_file_backed_stheor_inter2.hpp"
+#include "cteas/p6/p6g_g24_file_backed_wind_tail.hpp"
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -627,6 +628,41 @@ int main(int argc,char** argv){
               scheduler.completed_hours()==0&&
               !source_clocks.has_published_hour(),
               "G23 original source-file STHEOR/DIAGI/INTER2 missing or wrongly committed");
+        // G24: preserve original pre-INTER2 boundary, then reproduce
+        // original HTFAC>0 SECOND WINDBC before SMOOTH/DIVCEL/W.
+        const auto g24=p6g::g24_selected_original_wind_tail(
+            standalone,source_case,g23,true);
+        check(g24.end==standalone.input.end&&
+              g24.wind.u_mps.size()==1296u&&
+              g24.wind.v_mps.size()==1296u&&
+              g24.wind.w_face_mps.size()==1440u&&
+              g24.wind.divergence_per_s.size()==1296u&&
+              g24.pre_inter2_ub_west_east_mps==
+                  g23.original_ub_west_east_mps&&
+              g24.pre_inter2_vb_south_north_mps==
+                  g23.original_vb_south_north_mps&&
+              g24.second_ub_west_east_mps.size()==216u&&
+              g24.second_vb_south_north_mps.size()==216u&&
+              scheduler.completed_hours()==0&&
+              !source_clocks.has_published_hour(),
+              "G24 first/second WINDBC or selected DIVCEL/W source is incomplete");
+        const auto g24_repeat=p6g::g24_selected_original_wind_tail(
+            standalone,source_case,g23,true);
+        check(g24.wind.u_mps==g24_repeat.wind.u_mps&&
+              g24.wind.v_mps==g24_repeat.wind.v_mps&&
+              g24.wind.w_face_mps==g24_repeat.wind.w_face_mps&&
+              g24.wind.divergence_per_s==g24_repeat.wind.divergence_per_s,
+              "G24 source final U/V/W nondeterministic or mutated original previous");
+        rejects([&]{
+            (void)p6g::g24_selected_original_wind_tail(
+                standalone,source_case,g23,false);
+        },"G24 selected source WIND BC/SMOOTH/W promoted as production");
+        auto stale_g23=g23;
+        stale_g23.end+=hours{1};
+        rejects([&]{
+            (void)p6g::g24_selected_original_wind_tail(
+                standalone,source_case,stale_g23,true);
+        },"G24 accepted stale G23 INTER2 from another hour");
         for(std::size_t k=0;k<9;++k)
             for(std::size_t i=2;i<4;++i) {
                 const auto p=k*4+i;
