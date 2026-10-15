@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -134,7 +135,45 @@ static void upper_file(const std::string& path,int site,sys_seconds begin){
     for(const auto at:{day0+hours{12},day0+hours{24},day0+hours{36}})
         upper_sounding(out,site,at);
 }
+static std::string make_two_station_crossyear_deck(const std::string& original) {
+    std::string two=original;
+    for(const auto& [key,value]:std::vector<std::pair<std::string,std::string>>{
+            {"NSSTA","2"},{"NUSTA","2"},{"NX","12"},
+            {"NY","12"},{"DGRIDKM","10"}})
+        two=replace_one(std::move(two),key,value);
+    two+="\\n! SS2 = 'S002' 583220 543.385 3563.769 0 10.0 !\\n";
+    two+="! US2 = 'U002' 58425 553.384 3573.772 0 !\\n";
+    return two;
+}
 int main(int argc,char** argv){
+    if(argc==4&&std::string(argv[1])=="--export-case") {
+        try {
+            const auto original=read(argv[2]);
+            const auto two=make_two_station_crossyear_deck(original);
+            const auto root=std::filesystem::path(argv[3]);
+            std::filesystem::create_directories(root);
+            const p6g::G19SourceFilePaths paths{
+                (root/"met.inp").string(),(root/"GEO.DAT").string(),
+                (root/"SURF.DAT").string(),
+                {(root/"UP1.DAT").string(),(root/"UP2.DAT").string()}};
+            save(paths.met_inp,two);
+            geo_file(paths.geo_dat);
+            const auto begin=sys_days{year{2023}/December/31}+hours{22};
+            surface_file(paths.surf_dat,begin,6);
+            const auto day=sys_days{year{2023}/December/31};
+            upper_file(paths.ordered_up_dat[0],58424,day);
+            upper_file(paths.ordered_up_dat[1],58425,day);
+            const auto g19=p6g::g19_load_original_source_case(paths);
+            check(g19.make_scheduler().planned_hours()==6,
+                  "G20 export source case does not match tested 6-hour input");
+            std::cout<<"PASS_G20_EXPORTED_ORIGINAL_FORMAT_SYNTHETIC_2SS_2US "
+                        "FULL_ORIGINAL_VENDOR_PARITY=NOT_ACCEPTED\\n";
+            return 0;
+        } catch(const std::exception& error) {
+            std::cerr<<"FAIL_G20_EXPORT_CASE "<<error.what()<<"\\n";
+            return 1;
+        }
+    }
     std::vector<std::string> cleanup={
         "g19_met.inp","g19_geo.dat","g19_surf.dat","g19_up1.dat","g19_up2.dat"};
     try{
@@ -152,13 +191,7 @@ int main(int argc,char** argv){
         save(paths.met_inp,original);
         rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
                 "G19 promoted original single-site deck to multisite production");
-        std::string two=original;
-        for(const auto& [key,value]:std::vector<std::pair<std::string,std::string>>{
-                {"NSSTA","2"},{"NUSTA","2"},{"NX","12"},
-                {"NY","12"},{"DGRIDKM","10"}})
-            two=replace_one(std::move(two),key,value);
-        two+="\n! SS2 = 'S002' 583220 543.385 3563.769 0 10.0 !\n";
-        two+="! US2 = 'U002' 58425 553.384 3573.772 0 !\n";
+        const auto two=make_two_station_crossyear_deck(original);
         save(paths.met_inp,two);
         geo_file(paths.geo_dat);
         const auto begin=sys_days{year{2023}/December/31}+hours{22};
