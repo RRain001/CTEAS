@@ -98,10 +98,57 @@ public:
                frame.next.dptt_k!=frame.previous.dptt_k)
                 throw std::invalid_argument(
                     "G26B source COMP cannot start after candidate history was mutated");
-            // Real source parsers + original frozen C++ kernels, no copy
-            // of the prior numerical fixture's G18A mixing constants.
+            // G33C original COMP begins with its own SURFVAR(IALL=1)
+            // AFTER G24 has produced the FINAL physical U/V. The G22
+            // HEATFX/AIRDEN/ELUSTR was only DIAGNO's slope-flow
+            // estimate, not the later COMP thermal state. Independent
+            // original G33A/G33B proves first/second/third TEMP2D
+            // exactly and exposes 143 stale native COMP temperature
+            // cells when G22's second pass is reused.
+            //
+            // Rebuild source PREPDI's same-hour surface kernel stages
+            // from the authoritative G26A G20 WIND1 and G21 FRADJ,
+            // then run COMP's IALL=1 third pass on authentic G24 U/V.
+            // No original reference numerical fields enter C++.
+            const auto& wind1=diagno_.selected_wind1_for_comp(frame);
+            const auto& fradj=diagno_.selected_fradj_for_comp(frame);
+            G17B4TwoPassSurfvar surface(
+                frame.grid,frame.stations,source_.surface,frame.surface,
+                source_.surface_controls);
+            surface.after_wind1_before_fradj(
+                frame.input.end,wind1.u_mps,wind1.v_mps);
+            surface.after_fradj_before_heatfx(
+                frame.input.end,fradj.corrected_wind.u,
+                fradj.corrected_wind.v);
+            if(surface.first_temperature()!=fradj.temperature_before_k||
+               surface.final_temperature()!=fradj.temperature_after_k||
+               surface.final_temperature()!=thermal.heat.temperature_k)
+                throw std::logic_error(
+                    "G33C COMP reconstruction detached from frozen DIAGNO source");
+            surface.after_final_diagno_before_comp(
+                frame.input.end,final_wind.u_mps,final_wind.v_mps,true);
+            const auto comp_heat=selected_iavet1_heat_after_fradj(
+                frame.grid,frame.stations,frame.surface,surface,
+                g18d3_source_hflux_inputs(
+                    frame.grid,source_.original_metinp,true),true);
+            if(g18c1_source_integer(source_.original_metinp,"ICOARE")<=0)
+                throw std::invalid_argument(
+                    "G33C original COMP unsupported ISFCMET/IPSIFCN");
+            G17C2SelectedElustrControls comp_controls;
+            comp_controls.ipsifcn=0;
+            comp_controls.zm_m=0.5f*(
+                frame.source_controls->zface_m[0]+
+                frame.source_controls->zface_m[1]);
+            comp_controls.explicitly_test_only=true;
+            const auto comp_elustr=selected_iavet1_elustr_after_heatfx(
+                frame.grid,frame.stations,frame.surface,
+                surface,comp_heat,
+                {final_wind.u_mps,final_wind.v_mps},
+                comp_controls,true);
+            // Real source parsers and immutable accepted P6E numerical
+            // kernels only: MIXHT/AVEMIX/WSTARR/TEMP3D remain test-only.
             comp_.emplace(
-                thermal.heat,thermal.elustr,station.station_diagi,upper,
+                comp_heat,comp_elustr,station.station_diagi,upper,
                 g26b_source_test_comp_controls(frame,source_,true),
                 g18c1_parse_original_avemix(source_.original_metinp),
                 g18c3_parse_original_temp3d_controls(source_.original_metinp));
