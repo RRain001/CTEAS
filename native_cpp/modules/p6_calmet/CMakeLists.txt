@@ -145,6 +145,20 @@ endif()
 add_test(NAME p6g_g14_unified_2ss_2us_hourly_clock_state_1h_6h_143h_8784h
          COMMAND cteas_p6g_g14_unified_hourly_tests)
 
+# G34B: selectable scientific experiment only, isolated from the accepted
+# single-station physics and from all GUI/production G26 run() paths.
+# The candidate must complete six real G14 state transactions, then the
+# independent original 270-field numerical gate decides scientific parity.
+add_executable(cteas_p6g_g34b_six_hour_selected_gate
+               src/p6g_g34b_six_hour_selected_gate_main.cpp)
+target_link_libraries(cteas_p6g_g34b_six_hour_selected_gate PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g34b_six_hour_selected_gate PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g34b_six_hour_selected_gate PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 # G19: original file-backed 2SS/2US input provenance and G14 authority.
 # This is NOT a successful 17-stage physical model or Fortran 45-field gate.
 add_executable(cteas_p6g_g19_file_backed_case_tests
