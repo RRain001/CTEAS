@@ -31,6 +31,7 @@
 #include "cteas/p6/p6g_g18e6_wind_tail_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18e7_live_comp_stage_adapter.hpp"
 #include "cteas/p6/p6g_g18e8_p6f_commit_stage_adapter.hpp"
+#include "cteas/p6/p6g_g18e4_prepdi_stage_adapter.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -39,6 +40,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <regex>
 #include <stdexcept>
 #include <string>
@@ -247,6 +249,7 @@ static void verify_source_staged_iavet(
     forcing.domain_temperature_k=285.f;
     forcing.critfn=10.f;
     forcing.lapse_k_per_m.assign(144,0.002f);
+    const auto fresh_g14_fradj_source=forcing;
     // No externally invented TEMP2D. The first G17B4 SURFVAR fills it
     // using precisely G17's native WIND1 output.
     const auto initial_profiles=profiles;
@@ -1617,6 +1620,103 @@ static void verify_source_staged_iavet(
     check(frame.previous.ziconv_m==prior.ziconv_m &&
           frame.previous.dptt_k==prior.dptt_k,
           "G18E8 stage validation wrote previous-hour CALMET memory");
+
+    // G18F3: execute real selected PREPDI and source G17 WIND1/FRADJ
+    // through G14's *single* fresh-owned executor, not the detached
+    // direct-call frame used above. This is a partial physical-authority
+    // trace and MUST fail at unaccepted HEATFX. NativeCpp admission
+    // cannot be fabricated for the rest of the 17-stage chain.
+    struct PhysicalTrace {
+        bool prepdi=false,wind1=false,fradj=false;
+        p6::NativeHourStage first_missing=
+            p6::NativeHourStage::PrepdiPreviousZiconv;
+        std::vector<float> wind1_u,wind1_v,fradj_u,fradj_v,temp2d;
+    } physical_trace;
+    struct G18F3PartialSelectedExecutor final : p6g::MultiHourPhysics {
+        p6g::G18E4SelectedPrepdiStageAdapter prepdi;
+        p6g::G17SelectedTerrainFixturePhysics physics;
+        p6g::G17B4TwoPassSurfvar two_pass;
+        const p6g::MultiHourFrame* live;
+        PhysicalTrace& trace;
+        G18F3PartialSelectedExecutor(
+            const p6g::UnifiedMultistationHourlyScheduler& scheduler,
+            p6g::G18D2StationClockAuthority& clocks,
+            const std::string& deck,
+            const p6g::MultiHourFrame& source_frame,
+            const p6g::SurfaceSeries& source_surface,
+            const p6g::G17B4SurfaceControls& surf_controls,
+            const p6g::G16ObservedProfiles& native_profiles,
+            const p6g::TerrainStaticG11& static_terrain,
+            const p6g::G17FradjSource& source_fradj,
+            PhysicalTrace& captured)
+            :prepdi(scheduler,clocks,deck),
+             physics(native_profiles,static_terrain,source_fradj),
+             two_pass(source_frame.grid,source_frame.stations,
+                      source_surface,source_frame.surface,surf_controls),
+             live(&source_frame),trace(captured) {
+            physics.provide_selected_readge_htfac_fixture(1.f,true);
+        }
+        p6::NativeHourStageResult run(
+            p6::NativeHourStage stage,p6g::MultiHourFrame& hour) override {
+            check(&hour==live,
+                  "G18F3 actual native physics did not receive live G14 frame");
+            if(stage==p6::NativeHourStage::PrepdiPreviousZiconv) {
+                // Synthetic acceptance wrapper ONLY for testing that
+                // real G18E4 source candidates reach the following
+                // G17 physical kernels. Not a production PREPDI claim.
+                prepdi.run_selected(stage,hour,true);
+                prepdi.require_publishable_before_g14_commit(hour);
+                trace.prepdi=true;
+                return {p6::NativeHourSource::NativeCpp,true};
+            }
+            if(stage==p6::NativeHourStage::DiagnoWind1) {
+                const auto result=physics.run(stage,hour);
+                physics.prepare_original_iavet1_before_fradj(two_pass);
+                trace.wind1_u=physics.wind_stages().first_guess.u_mps;
+                trace.wind1_v=physics.wind_stages().first_guess.v_mps;
+                trace.wind1=true;
+                return result;
+            }
+            if(stage==p6::NativeHourStage::DiagnoFradj) {
+                const auto result=physics.run(stage,hour);
+                physics.finish_original_iavet1_after_fradj(two_pass);
+                trace.fradj_u=physics.after_fradj().u;
+                trace.fradj_v=physics.after_fradj().v;
+                trace.temp2d=two_pass.final_temperature();
+                trace.fradj=true;
+                return result;
+            }
+            trace.first_missing=stage;
+            return {p6::NativeHourSource::Unknown,false};
+        }
+    };
+    p6g::UnifiedMultistationHourlyScheduler fresh_owner(
+        f.grid,all,f.series,upper,wind);
+    p6g::G18D2StationClockAuthority fresh_station_clocks;
+    std::size_t fresh_attempts=0;
+    rejects([&]{
+        fresh_owner.advance_with_fresh_physics(
+            [&](const p6g::MultiHourFrame& live)
+                ->std::unique_ptr<p6g::MultiHourPhysics> {
+                ++fresh_attempts;
+                return std::make_unique<G18F3PartialSelectedExecutor>(
+                    fresh_owner,fresh_station_clocks,source_metinp,
+                    live,f.series,controls,initial_profiles,terrain,
+                    fresh_g14_fradj_source,physical_trace);
+            });
+    },"G18F3 allowed partial selected physical CALMET as a full G14 hour");
+    check(fresh_attempts==1 && physical_trace.prepdi &&
+          physical_trace.wind1 && physical_trace.fradj &&
+          physical_trace.first_missing==p6::NativeHourStage::DiagnoHeatfx &&
+          physical_trace.wind1_u==stages.wind_stages().first_guess.u_mps &&
+          physical_trace.wind1_v==stages.wind_stages().first_guess.v_mps &&
+          physical_trace.fradj_u==stages.after_fradj().u &&
+          physical_trace.fradj_v==stages.after_fradj().v &&
+          physical_trace.temp2d==surface.final_temperature() &&
+          fresh_owner.completed_hours()==0 &&
+          !fresh_station_clocks.has_published_hour() &&
+          fresh_owner.committed_memory().ziconv_m==prior.ziconv_m,
+          "G18F3 G14 failed original native WIND1/FRADJ or partial-hour rollback");
 }
 static void verify_g18b_asynchronous_upper_turnover(
     const std::string& source_metinp) {
