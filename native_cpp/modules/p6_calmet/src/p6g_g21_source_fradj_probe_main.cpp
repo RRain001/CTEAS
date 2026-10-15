@@ -92,7 +92,10 @@ int main(int argc,char** argv) {
             wind_tail_stage,wind_tail_output,wind_tail_boundaries,
             station_flux_prefix.empty()?std::string{}:station_flux_prefix+".s1.input",
             station_flux_prefix.empty()?std::string{}:station_flux_prefix+".s2.input",
-            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".native.csv"};
+            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".native.csv",
+            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.s1.input",
+            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.s2.input",
+            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.native.csv"};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -386,6 +389,57 @@ int main(int argc,char** argv) {
                     values.flush();
                     if(!values)
                         throw std::runtime_error("G25 original ELUSTR2 candidate output incomplete");
+                    // G25B: expose the *previous COMP* station-cell state
+                    // and source-read controls for literal original stable
+                    // MIXHTST, never synthesized prior station outputs.
+                    std::ofstream mix_values(station_flux_prefix+".mixht.native.csv",
+                                             std::ios::trunc);
+                    if(!mix_values)
+                        throw std::runtime_error("G25B native station mixing output unavailable");
+                    mix_values<<"surface_ordinal,surface_id,upper_id,zi_m,"
+                                  "ziconv_m,dptt_k\n";
+                    mix_values<<std::setprecision(
+                        std::numeric_limits<float>::max_digits10);
+                    const auto mix_controls=
+                        cteas::calmet::p6g::g23_stheor_original_readcf_controls(
+                            source,true);
+                    for(std::size_t ss=0;ss<station.station_diagi.size();++ss) {
+                        const auto& st=station.station_diagi[ss];
+                        const auto c=st.cell;
+                        std::ofstream orig(station_flux_prefix+".mixht.s"+
+                                           std::to_string(ss+1)+".input",
+                                           std::ios::trunc);
+                        if(!orig)
+                            throw std::runtime_error("G25B original station mixing source not writable");
+                        orig<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                        orig<<st.station_flux.sensible_wm2<<" "
+                            <<st.station_flux.friction_velocity_mps<<" "
+                            <<st.station_flux.monin_obukhov_m<<" "
+                            <<0.3484321f*frame.surface.by_station[ss].pressure_mb/
+                               joined.heat.temperature_k[c]<<" "
+                            <<frame.previous.zi_m[c]<<" "
+                            <<frame.previous.ziconv_m[c]<<" "
+                            <<frame.previous.dptt_k[c]<<" "
+                            <<mix_controls.fcori_s<<" "
+                            <<mix_controls.cmech<<" "
+                            <<mix_controls.zimin_m<<" "
+                            <<mix_controls.zimax_m<<" "
+                            <<mix_controls.constn<<" "
+                            <<source.grid.landuse[c]<<" "
+                            <<source.grid.iwat1<<" "<<source.grid.iwat2<<" "
+                            <<mix_controls.imixh<<"\n";
+                        orig.flush();
+                        if(!orig)
+                            throw std::runtime_error("G25B original station mixing input incomplete");
+                        mix_values<<(ss+1)<<","<<st.surface_id<<","
+                                  <<st.upper_id<<","
+                                  <<st.station_mixing.zii_to_similt_m<<","
+                                  <<st.station_mixing.ziconv_after_m<<","
+                                  <<st.station_mixing.dptt_for_comp_k<<"\n";
+                    }
+                    mix_values.flush();
+                    if(!mix_values)
+                        throw std::runtime_error("G25B station MIXHTST source output incomplete");
                     std::cout<<"PASS_P6G_G25_STATION_ELUSTR2_ORIGINAL_SOURCE_INPUT "
                              <<"STATIONS="<<station.station_diagi.size()
                              <<" ORIGINAL_VENDOR_PARITY=NOT_YET_CALCULATED "
