@@ -68,7 +68,8 @@ static void stamp(std::ostream& out,sys_seconds t,bool ending=false) {
     int hour=at24?24:int(duration_cast<hours>(t-floor<days>(t)).count());
     out<<int(ymd.year())<<" "<<day_of_year(t)<<" "<<hour<<" 0";
 }
-static void geo_file(const std::string& path,bool water_cell=false) {
+static void geo_file(const std::string& path,bool water_cell=false,
+                     bool steep_terrain=false) {
     std::ofstream out(path);
     check(bool(out),"G19 GEO test file");
     out<<"GEO.DAT         2.1             Header structure with coordinate parameters\n";
@@ -80,7 +81,8 @@ static void geo_file(const std::string& path,bool water_cell=false) {
         for(int i=0;i<12;++i)out<<(water_cell&&i==0&&j==0?51:20)<<(i==11?"\n":",");
     out<<"1.0000 - HTFAC\n";
     for(int j=11;j>=0;--j)
-        for(int i=0;i<12;++i)out<<100+i+2*j<<(i==11?"\n":",");
+        for(int i=0;i<12;++i)out<<(steep_terrain?100+250*i+150*j:100+i+2*j)
+               <<(i==11?"\n":",");
     for(int field=0;field<6;++field) {
         out<<"2 - gridded\n";
         for(int j=11;j>=0;--j)
@@ -147,10 +149,20 @@ static std::string make_two_station_crossyear_deck(const std::string& original) 
     return two;
 }
 int main(int argc,char** argv){
-    if(argc==4&&std::string(argv[1])=="--export-case") {
+    if((argc==4||argc==5)&&std::string(argv[1])=="--export-case") {
         try {
             const auto original=read(argv[2]);
-            const auto two=make_two_station_crossyear_deck(original);
+            const bool steep=(argc==5&&
+                               std::string(argv[4])=="--fradj-stress");
+            if(argc==5&&!steep)
+                throw std::invalid_argument("G21 unknown export-case option");
+            auto two=make_two_station_crossyear_deck(original);
+            if(steep) {
+                // Stress case is a genuine LEGAL original READCF parameter
+                // choice, not a fabricated native lapse or wind correction.
+                two=replace_one(std::move(two),"CRITFN","10");
+                two=replace_one(std::move(two),"TERRAD","35");
+            }
             const auto root=std::filesystem::path(argv[3]);
             std::filesystem::create_directories(root);
             const p6g::G19SourceFilePaths paths{
@@ -158,7 +170,7 @@ int main(int argc,char** argv){
                 (root/"SURF.DAT").string(),
                 {(root/"UP1.DAT").string(),(root/"UP2.DAT").string()}};
             save(paths.met_inp,two);
-            geo_file(paths.geo_dat);
+            geo_file(paths.geo_dat,false,steep);
             const auto begin=sys_days{year{2023}/December/31}+hours{22};
             surface_file(paths.surf_dat,begin,6);
             const auto day=sys_days{year{2023}/December/31};
@@ -168,6 +180,7 @@ int main(int argc,char** argv){
             check(g19.make_scheduler().planned_hours()==6,
                   "G20 export source case does not match tested 6-hour input");
             std::cout<<"PASS_G20_EXPORTED_ORIGINAL_FORMAT_SYNTHETIC_2SS_2US "
+                     <<"FRADJ_STEEP_TERRAIN="<<steep<<" "
                         "FULL_ORIGINAL_VENDOR_PARITY=NOT_ACCEPTED\n";
             return 0;
         } catch(const std::exception& error) {
