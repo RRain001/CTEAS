@@ -988,9 +988,10 @@ int main(int argc,char** argv){
                   !g26b_authoritative_clocks.has_published_hour(),
                   "G26B G14 fresh source executor failed retry/state isolation or genuine COMP");
         }
-        // G32E: the original source full-hour G32D station-state dump
-        // has EDIT=999 at US1/US2 k=1 for this 120m-first-sounding G19
-        // fixture, whereas G20 WIND1's neutral input remains unchanged.
+        // G32E: original full-hour G32D source has EDIT=999 at
+        // US1/US2 k=1, whereas G20 neutral WIND1 remains valid.
+        // Missingness belongs to G20's independent PREPDI/INTER2
+        // source columns, not a forbidden G23 upper-column edit.
         // All upper k>=2 must retain their independently sourced PREPDI
         // profile and both original SS1/SS2 k=1 stay source valid.
         for(std::size_t k=0;k<9;++k)
@@ -1000,7 +1001,8 @@ int main(int argc,char** argv){
                     check(g23.observed_after_diagi.inter2_u_mps[p]==999.f&&
                           g23.observed_after_diagi.inter2_v_mps[p]==999.f&&
                           g23.observed_after_diagi.inter2_present[p]==0U&&
-                          g23_profiles.inter2_present[p]==1U,
+                          g23_profiles.inter2_present[p]==0U&&
+                          g23_profiles.wind1_present[p]==1U,
                           "G32E original full-hour source upper k1 missingness not respected");
                 }else{
                     check(g23.observed_after_diagi.inter2_u_mps[p]==
