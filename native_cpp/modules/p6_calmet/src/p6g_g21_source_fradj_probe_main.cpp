@@ -42,7 +42,7 @@ int main(int argc,char** argv) {
         std::string inter2_output_file,inter2_original_stage_prefix;
         std::string diagi_similt_prefix,wind_tail_stage,wind_tail_output,wind_tail_boundaries;
         std::string station_flux_prefix,original_nearu_prefix,comp_original_prefix;
-        std::string mixht_original_prefix;
+        std::string mixht_original_prefix,temp3d_original_prefix;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--output"||arg=="--source-stage"||
@@ -51,7 +51,8 @@ int main(int argc,char** argv) {
                arg=="--diagi-similt-prefix"||arg=="--wind-tail-stage"||
                arg=="--wind-tail-output"||arg=="--wind-tail-boundaries"||
                arg=="--station-flux-prefix"||arg=="--nearu-prefix"||
-               arg=="--comp-original-prefix"||arg=="--mixht-original-prefix") {
+               arg=="--comp-original-prefix"||arg=="--mixht-original-prefix"||
+               arg=="--temp3d-original-prefix") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
                     throw std::invalid_argument("G21/G22 source output missing path");
                 auto& selected=arg=="--output"?output_file:
@@ -66,7 +67,8 @@ int main(int argc,char** argv) {
                                arg=="--wind-tail-boundaries"?wind_tail_boundaries:
                                arg=="--station-flux-prefix"?station_flux_prefix:
                                arg=="--nearu-prefix"?original_nearu_prefix:arg=="--comp-original-prefix"?comp_original_prefix:
-                               mixht_original_prefix;
+                               arg=="--mixht-original-prefix"?mixht_original_prefix:
+                               temp3d_original_prefix;
                 if(!selected.empty())
                     throw std::invalid_argument("G21/G22 duplicate output argument");
                 selected=argv[++i];
@@ -83,6 +85,7 @@ int main(int argc,char** argv) {
            (!diagi_similt_prefix.empty()&&inter2_output_file.empty())||
            (!station_flux_prefix.empty()&&inter2_output_file.empty())||
            (!mixht_original_prefix.empty()&&comp_original_prefix.empty())||
+           (!temp3d_original_prefix.empty()&&comp_original_prefix.empty())||
            ((!wind_tail_stage.empty()||!wind_tail_output.empty()||
              !wind_tail_boundaries.empty())&&
             (wind_tail_stage.empty()||wind_tail_output.empty()||
@@ -110,7 +113,9 @@ int main(int argc,char** argv) {
             comp_original_prefix.empty()?std::string{}:comp_original_prefix+".source.input",
             comp_original_prefix.empty()?std::string{}:comp_original_prefix+".native.csv",
             mixht_original_prefix.empty()?std::string{}:mixht_original_prefix+".source.input",
-            mixht_original_prefix.empty()?std::string{}:mixht_original_prefix+".native.csv"};
+            mixht_original_prefix.empty()?std::string{}:mixht_original_prefix+".native.csv",
+            temp3d_original_prefix.empty()?std::string{}:temp3d_original_prefix+".source.input",
+            temp3d_original_prefix.empty()?std::string{}:temp3d_original_prefix+".native.csv"};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -327,6 +332,76 @@ int main(int argc,char** argv) {
                     throw std::logic_error("G29A incorrectly committed G14");
                 std::cout<<"PASS_P6G_G29A_SOURCE_MIXHT_INPUT CELLS="
                          <<cells<<" G14_HOURS_COMMITTED=0"
+                         <<" ORIGINAL_VENDOR_PARITY=NOT_YET_CALCULATED\n";
+            }
+            if(!temp3d_original_prefix.empty()) {
+                // G29B: use EXACT native TEMP3D call inputs from same G14
+                // hour AFTER AVEMIX, never reverse-engineer reference from T.
+                const auto& temperature=g26b.source_temp3d_input_and_result(frame);
+                const auto& t=temperature.source_temp3d_input;
+                const auto nlevels=static_cast<std::size_t>(9);
+                if(t.nx!=nx||t.ny!=ny||t.nz!=nlevels||
+                   t.justa.size()!=2||t.irad<1||t.irad>2||
+                   t.face_z_m.size()!=nlevels+1||
+                   t.station_x_m.size()!=2||t.station_y_m.size()!=2||
+                   t.aa_face_temp_k.size()!=2*(nlevels+1)||
+                   t.bb_face_temp_k.size()!=2*(nlevels+1)||
+                   t.surface_temp_k.size()!=cells||
+                   t.convective_zi_m.size()!=cells||
+                   t.past_seconds.size()!=2||t.to_go_seconds.size()!=2||
+                   temperature.temperature_k.size()!=cells*nlevels||
+                   candidate.candidate_fields.temperature_k!=temperature.temperature_k)
+                    throw std::logic_error("G29B source TEMP3D dimensions not genuine");
+                // This unchanged-original Fortran test driver uses one
+                // same-day 00/12 UTC bracket. Reject a shifted/non-12h
+                // sounding rather than fabricating equivalent timestamps.
+                for(std::size_t st=0;st<2;++st)
+                    if(t.past_seconds[st]!=t.current_hour_utc*3600||
+                       t.to_go_seconds[st]!=(12-t.current_hour_utc)*3600)
+                        throw std::logic_error(
+                            "G29B source TEMP3D non-00/12 bracket not yet certified");
+                std::ofstream inp(temp3d_original_prefix+".source.input",
+                                  std::ios::trunc);
+                if(!inp)throw std::runtime_error("G29B TEMP3D original source unavailable");
+                inp<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                inp<<"1 "<<nx<<" "<<ny<<" "<<nlevels<<" 2\n";
+                inp<<t.irad<<" "<<t.current_hour_utc<<" "<<t.dgrid_m<<"\n";
+                for(float z:t.face_z_m)inp<<z<<"\n";
+                for(std::size_t st=0;st<2;++st)
+                    inp<<t.justa[st]<<" "<<t.station_x_m[st]<<" "
+                       <<t.station_y_m[st]<<"\n";
+                for(std::size_t st=0;st<2;++st)
+                    for(std::size_t k=0;k<=nlevels;++k) {
+                        const auto p=st*(nlevels+1)+k;
+                        inp<<t.aa_face_temp_k[p]<<" "<<t.bb_face_temp_k[p]<<"\n";
+                    }
+                for(std::size_t i=0;i<nx;++i)
+                    for(std::size_t j=0;j<ny;++j) {
+                        const auto p=j*nx+i;
+                        inp<<t.surface_temp_k[p]<<" "
+                           <<t.convective_zi_m[p]<<"\n";
+                    }
+                inp.flush();
+                if(!inp)throw std::runtime_error("G29B TEMP3D original source truncated");
+                std::ofstream native(temp3d_original_prefix+".native.csv",
+                                     std::ios::trunc);
+                if(!native)throw std::runtime_error("G29B TEMP3D C++ source unavailable");
+                native<<"i,j,k,temp_k\n";
+                native<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                for(std::size_t i=0;i<nx;++i)
+                    for(std::size_t j=0;j<ny;++j)
+                        for(std::size_t k=0;k<nlevels;++k) {
+                            const auto p=k*cells+j*nx+i;
+                            native<<i+1<<","<<j+1<<","<<k+1<<","
+                                  <<temperature.temperature_k[p]<<"\n";
+                        }
+                native.flush();
+                if(!native)throw std::runtime_error("G29B TEMP3D source truncated");
+                if(scheduler.completed_hours()!=0||clocks.has_published_hour())
+                    throw std::logic_error("G29B incorrectly committed G14");
+                std::cout<<"PASS_P6G_G29B_SOURCE_TEMP3D_INPUT "
+                         <<"CELLS="<<cells<<" LEVELS="<<nlevels
+                         <<" G14_HOURS_COMMITTED=0"
                          <<" ORIGINAL_VENDOR_PARITY=NOT_YET_CALCULATED\n";
             }
             std::cout<<"PASS_P6G_G28_SOURCE_ORIGINAL_AVEMIX_WSTARR_INPUT "
