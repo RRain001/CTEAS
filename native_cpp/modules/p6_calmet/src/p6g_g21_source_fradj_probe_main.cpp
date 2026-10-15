@@ -95,7 +95,9 @@ int main(int argc,char** argv) {
             station_flux_prefix.empty()?std::string{}:station_flux_prefix+".native.csv",
             station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.s1.input",
             station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.s2.input",
-            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.native.csv"};
+            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.native.csv",
+            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.day.s1.input",
+            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".mixht.day.s2.input"};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -436,6 +438,54 @@ int main(int argc,char** argv) {
                                   <<st.station_mixing.zii_to_similt_m<<","
                                   <<st.station_mixing.ziconv_after_m<<","
                                   <<st.station_mixing.dptt_for_comp_k<<"\n";
+                    }
+                    // Source 00/12 UTC UP buffer owned by G14 G19, not
+                    // an invented vertical sounding.  Export the actual
+                    // older sounding used by original selected MIXHTST.
+                    for(std::size_t ss=0;ss<station.station_diagi.size();++ss) {
+                        const auto& st=station.station_diagi[ss];
+                        const auto cell=st.cell;
+                        const auto upid=source.stheor_upper_ordinal_for_surface[ss];
+                        if(upid>=frame.upper.size())
+                            throw std::logic_error("G25C source selected upper site missing");
+                        const cteas::calmet::p6::UpperSounding* older=nullptr;
+                        for(const auto& sounding:frame.upper[upid].soundings) {
+                            if(sounding.end<=frame.surface.start)older=&sounding;
+                            else break;
+                        }
+                        if(!older||older->data.size()<3||older->data.size()>100)
+                            throw std::logic_error("G25C physical older UP thermal sounding incomplete");
+                        std::ofstream day(station_flux_prefix+".mixht.day.s"+
+                                          std::to_string(ss+1)+".input",
+                                          std::ios::trunc);
+                        if(!day)
+                            throw std::runtime_error("G25C original UP/surface stage file unavailable");
+                        day<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                        const auto mc=cteas::calmet::p6g::g23_stheor_original_readcf_controls(
+                            source,true);
+                        day<<st.station_flux.sensible_wm2<<" "
+                           <<st.station_flux.friction_velocity_mps<<" "
+                           <<st.station_flux.monin_obukhov_m<<" "
+                           <<0.3484321f*frame.surface.by_station[ss].pressure_mb/
+                              joined.heat.temperature_k[cell]<<" "
+                           <<frame.previous.zi_m[cell]<<" "
+                           <<frame.previous.ziconv_m[cell]<<" "
+                           <<frame.previous.dptt_k[cell]<<" "
+                           <<mc.fcori_s<<" "<<mc.cmech<<" "<<mc.zimin_m<<" "
+                           <<mc.zimax_m<<" "<<mc.constn<<" "
+                           <<source.grid.landuse[cell]<<" "
+                           <<source.grid.iwat1<<" "<<source.grid.iwat2<<" "
+                           <<mc.imixh<<" "<<mc.dptmin_kperm<<" "<<mc.dzzi_m<<" "
+                           <<mc.threshl<<" "<<mc.onedte_s<<" "<<mc.twodte_s<<" "
+                           <<mc.tzicrlx_s<<" "<<mc.izicrlx<<"\n";
+                        day<<older->data.size()<<"\n";
+                        for(const auto& level:older->data)
+                            day<<level.height_lgl_m<<" "
+                               <<(level.temperature_valid?level.temperature_k:9999.f)
+                               <<"\n";
+                        day.flush();
+                        if(!day)
+                            throw std::runtime_error("G25C original UP station source data incomplete");
                     }
                     mix_values.flush();
                     if(!mix_values)
