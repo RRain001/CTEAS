@@ -52,6 +52,14 @@ Observed true 143h original-vs-reconstructed CALMET parity remained **6,435 hour
 
 **C2 next mandatory boundary:** rerun the same frozen original and PR63 METs with native P7 (B and D), compare A↔B and C↔D bitwise and B↔D meteorology sensitivity, audit both native full `puff.con` outputs and verify no oracle injection. The C2 opt-in driver changes grid/time/source-configuration admission only; original C1 and P7 frozen 2022 strict gates must remain intact.
 
+### C2 first native six-hour admission failures and source-backed repairs
+
+The first C2 native P7 attempt [#38744334873](https://github.com/RRain001/CTEAS/actions/runs/38744334873) failed *before plume physics*, because `OriginalMetHourlyReader` had been called with `frozen_hefei_2022=true`; `Calmet21Reader` correctly rejected the 2024 12×12 10km grid. The C2 opt-in now passes `false` to the independently validated generic two-pass CALMET21 decoder while leaving 2022 C1/P7 strict frozen reader untouched.
+
+The next C2 native six-hour attempt [#38744864139](https://github.com/RRain001/CTEAS/actions/runs/38744864139) reached native physical source release but hit a **source-inconsistent PRFIN validity guard**, not a concentration mismatch. Native `original_point_prfin_metfm1` had rejected `HEFF<=HTSTAK`. Original CALPUFF POINTS1 L15603 explicitly evaluates `HEFF_B=HTSTAK(I)-TIPDW+RISE_B` **without a requirement to be above the stack tip**; legitimate downwash can lower effective height below the physical stack. The C2 source-backed correction admits any *finite positive* effective release height, preserves the original arithmetic and leaves the stack-height input unchanged. It continues to reject zero/negative or nonfinite outputs and includes the operands in the error if triggered.
+
+Neither failed run may be represented as native P7 C2 physical parity evidence. Rerun [#38745638332](https://github.com/RRain001/CTEAS/actions/runs/38745638332) includes both admission corrections, mandatory six-hour actual-source smoke, full 143h B/D runs subject to the smoke gate, and separate A↔B/C↔D/B↔D independent REAL4 comparisons. Until the run succeeds with real 20,592/20,592 same-MET H-3 bits on each arm, **C2 P7 acceptance remains OPEN**.
+
 ## C2 planned sequence (not yet accepted)
 
 G35 original and native weather must be rebuilt or staged **within the same accepted 2024 12×12×9/10km scientific scope**, preserving their exact source manifest, first/last UTC timestamps, all 143×45 records, 2SS/2US upper-air bracket and G36 READY seal.
