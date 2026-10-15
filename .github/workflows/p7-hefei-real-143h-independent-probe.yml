@@ -143,7 +143,14 @@ jobs:
             "$root/hour143-probe.log" && grep -Fq \
             'P7_NATIVE_PUFF_CON_FULL=PASS HOURS=143 RECORDS=3655 BYTES=1896056 BINARY_EXACT=YES' \
             "$root/hour143-probe.log"; then
-            echo "P7_REAL_FULL_143H_SCIENTIFIC_PROBE=PASS HOURS=143 H3_REAL4=357500/357500 DGM=254687/254687 WROUT1=OPEN"
+            # Independent shell-level binary equality and pinned SHA256,
+            # separate from native C++ in-process comparison/REAL4 ledger.
+            original="project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con"
+            cmp --silent "$root/native-full143-puff.con" "$original"
+            echo "0d51bdb68ff1a5798048bc41067107d3ffe10dc6222f25336df856bcbf48ba10  $root/native-full143-puff.con" | sha256sum -c -
+            test "$(wc -c < "$root/native-full143-puff.con")" -eq 1896056
+            echo "P7_REAL_FULL_143H_WROUT1_SHA256_GATE=PASS RECORDS=3655 BYTES=1896056 SHA256=0d51bdb68ff1a5798048bc41067107d3ffe10dc6222f25336df856bcbf48ba10"
+            echo "P7_REAL_FULL_143H_SCIENTIFIC_PROBE=PASS HOURS=143 H3_REAL4=357500/357500 DGM=254687/254687 WROUT1=BINARY_EXACT"
           else
             echo "P7_REAL_FULL_143H_SCIENTIFIC_PROBE=BLOCKED STRICT_SCIENCE_AND_FILE_GATE=YES EXIT_CODE=$code"
             tail -n 60 "$root/hour143-probe.log"
