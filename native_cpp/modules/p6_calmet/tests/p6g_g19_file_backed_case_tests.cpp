@@ -387,7 +387,8 @@ int main(int argc,char** argv){
         },"G20 source selected WIND1 could be promoted without test boundary");
         auto missing_wind=source_case;
         missing_wind.surface.hourly.front().by_station[0].wind_valid=false;
-        auto negative_frame=missing_wind.make_scheduler().preview_next_hour();
+        auto negative_scheduler=missing_wind.make_scheduler();
+        auto negative_frame=negative_scheduler.preview_next_hour();
         rejects([&]{
             (void)p6g::g20_file_backed_source_wind1_profiles(
                 negative_frame,true);
