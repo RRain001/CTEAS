@@ -42,7 +42,7 @@ def layout(path:Path,origin:str):
     if len(records[1])!=4:
         raise ValueError(f"{origin}: corrupt original comments count")
     (ncomments,)=struct.unpack("<i",records[1])
-    if not 0<=ncomments<=100 or len(records)<3+ncomments:
+    if not 0<=ncomments<=10000 or len(records)<3+ncomments+10:
         raise ValueError(f"{origin}: corrupt original comment inventory")
     control=records[2+ncomments]
     if len(control)!=176:
