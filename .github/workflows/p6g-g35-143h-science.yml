@@ -172,9 +172,8 @@ jobs:
       # frozen CGammaState's private representation. Replay must exactly
       # recover the persisted COMP memory / two-station clocks and full
       # 71-hour P6F prefix before continuing to 143.
-      - name: G36C experimental native 71h hard-stop checkpoint and source-bound READY seal
+      - name: G36C REQUIRED native 71h checkpoint and distinct-process bit-exact 143h source replay recovery
         id: g36c_restart
-        continue-on-error: true
         run: |
           set -euo pipefail
           "$RUNNER_TEMP/g35-build/cteas_p6g_g34b_six_hour_selected_gate" \
@@ -221,12 +220,10 @@ jobs:
             ${{ runner.temp }}/g36c-replay-trace.txt
           if-no-files-found: warn
           retention-days: 14
-      # Exploratory until the genuine unmodified CALPUFF 7.2.1 has been
-      # observed to read all 143 native hours and produce original outputs.
-      # This is NOT a P7 native CALPUFF scientific-parity assertion.
-      - name: G36A experimental true original CALPUFF 7.2.1 consumes 143h P6G native MET.DAT
+      # Strict G36A original CALPUFF 7.2.1 input-consumption gate.
+      # It verifies actual full 143h meteorology read, not P7 native physics parity.
+      - name: G36A REQUIRED true original CALPUFF 7.2.1 consumes ALL 143h durable P6G native MET.DAT
         id: g36a_calpuff
-        continue-on-error: true
         run: |
           set -euo pipefail
           python3 native_cpp/modules/p6_calmet/reference/g36a_run_original_calpuff_multisite.py \
