@@ -190,6 +190,13 @@ endif()
 add_executable(cteas_p6g_g21_source_fradj_probe
                src/p6g_g21_source_fradj_probe_main.cpp)
 target_link_libraries(cteas_p6g_g21_source_fradj_probe PRIVATE cteas_p6a_contracts)
+# G30A: bind existing frozen P6F writer as a translation unit ONLY for
+# selected first-hour 45-field candidate bytes. No new serializer,
+# no replacement of accepted single-site physics.
+target_sources(cteas_p6g_g21_source_fradj_probe PRIVATE
+               p6f/src/calmet_dat21_writer.cpp)
+target_include_directories(cteas_p6g_g21_source_fradj_probe PRIVATE
+                           ${CMAKE_CURRENT_SOURCE_DIR}/p6f/include)
 if(MSVC)
   target_compile_options(cteas_p6g_g21_source_fradj_probe PRIVATE /W4 /WX)
 else()
