@@ -160,6 +160,18 @@ add_test(NAME p6g_g19_source_file_backed_2ss_2us_g14_input_contract
          COMMAND cteas_p6g_g19_file_backed_case_tests
            "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
 
+# G19: native CLI to preflight ACTUAL 2SS/2US+ source files.
+# Explicitly not a multistation CALMET physical solver.
+add_executable(cteas_p6g_g19_source_case_preflight
+               src/p6g_g19_source_case_preflight_main.cpp)
+target_link_libraries(cteas_p6g_g19_source_case_preflight PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g19_source_case_preflight PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g19_source_case_preflight PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 # G15A: no independently hardcoded G8 wind radii or BIAS; verify against
 # the actual pinned 2022 met.inp with original READCF effective BIAS(1).
 add_executable(cteas_p6g_g15_original_controls_tests
