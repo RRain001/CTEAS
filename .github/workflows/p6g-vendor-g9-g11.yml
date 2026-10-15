@@ -22,6 +22,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/test_g30_source_p6f_fail_closed.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_extract_original_science_hour.py'
+      - 'native_cpp/modules/p6_calmet/reference/g31_diagnose_multistation_45field_residuals.py'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
@@ -51,6 +52,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/test_g30_source_p6f_fail_closed.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_extract_original_science_hour.py'
+      - 'native_cpp/modules/p6_calmet/reference/g31_diagnose_multistation_45field_residuals.py'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
@@ -548,6 +550,20 @@ jobs:
             --frozen-comparator "$RUNNER_TEMP/g31-p6e-comparator/p6e_calmet_dat21" \
             --forensic-reference "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-first-hour.dat" \
             --out "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/g31b-evidence.json"
+      - name: G31C forensic first-difference classification on true original 45-field failure
+        if: always()
+        run: |
+          if test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/g31-frozen-45field-verdict.json" \
+             && test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
+             && test -s "$RUNNER_TEMP/g30-daylight-candidate.calmet.dat"; then
+            python3 native_cpp/modules/p6_calmet/reference/g31_diagnose_multistation_45field_residuals.py \
+              --original "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
+              --candidate "$RUNNER_TEMP/g30-daylight-candidate.calmet.dat" \
+              --frozen-verdict "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/g31-frozen-45field-verdict.json" \
+              --out "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/g31c-residual-diagnosis.json"
+          else
+            echo "G31C BLOCKED: no complete original/native/comparator evidence"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -557,6 +573,11 @@ jobs:
             ${{ runner.temp }}/g31-daylight-${{ matrix.mode }}/g31-frozen-45field-verdict.json
             ${{ runner.temp }}/g31-daylight-${{ matrix.mode }}/original-met.dat
             ${{ runner.temp }}/g31-daylight-${{ matrix.mode }}/original-first-hour.dat
+            ${{ runner.temp }}/g31-daylight-${{ matrix.mode }}/g31c-residual-diagnosis.json
+            ${{ runner.temp }}/g30-daylight-candidate.calmet.dat
+            ${{ runner.temp }}/g24-daylight-native.csv
+            ${{ runner.temp }}/g28-daylight-comp.native.csv
+            ${{ runner.temp }}/g29-daylight-temp3d.native.csv
       - name: Original Fortran DIAGNO tail G10 10km
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
