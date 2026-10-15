@@ -40,7 +40,7 @@ def create_trace_source(source_path:Path,out:Path):
         "         call surfvar(u(1,1,1),v(1,1,1),"
         "tprog,temp2d,irh2d,ipcode2d,1)"
     )
-    if len(lines)<4569 or lines[4566].rstrip().lower()!=original_line.lower():
+    if len(lines)<4569 or lines[4566].strip().lower()!=original_line.strip().lower():
         raise RuntimeError("G33B original COMP SURFVAR IALL=1 L4567 anchor changed")
     if lines[4565].strip().lower()!="if(isfcmet.eq.0) then":
         raise RuntimeError("G33B original COMP surface flag guard missing")
