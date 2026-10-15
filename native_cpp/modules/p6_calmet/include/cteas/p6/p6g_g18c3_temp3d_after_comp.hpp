@@ -35,6 +35,8 @@ struct G18C3SelectedTemperature {
     std::chrono::sys_seconds end{};
     std::vector<int> station_ids;
     std::vector<float> temperature_k; // original k-major, J-major/I-fastest
+    // G29B forensic input snapshot before frozen TEMP3D calculation.
+    p6e::Temp3dObservedInput source_temp3d_input;
 };
 inline G18C3SelectedTemperature g18c3_selected_native_temp3d(
     const MultiHourFrame& frame,
@@ -108,6 +110,6 @@ inline G18C3SelectedTemperature g18c3_selected_native_temp3d(
         in.station_y_m.push_back(st.local_y_m);
     }
     auto values=p6e::temp3d_observed_land(in);
-    return {frame.input.end,original_faces.station_ids,std::move(values)};
+    return {frame.input.end,original_faces.station_ids,std::move(values),in};
 }
 } // namespace cteas::calmet::p6g
