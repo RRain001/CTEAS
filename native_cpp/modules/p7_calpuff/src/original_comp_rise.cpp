@@ -718,6 +718,19 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         const float receptor_sz0=lcalm?
             r4(sigma.adjust.minimum_sigma_z_m,"LCALM current SZ0") :
             state.minimum_sigma_z_m;
+        float receptor_vdpvd=1.0F;
+        int receptor_icode=mass.puff_code;
+        if(receptor_icode>=11 && receptor_icode<=16)
+            receptor_icode-=10;
+        if(dry_input_resistance &&
+           (receptor_icode==2 || receptor_icode==6)) {
+            const auto& ratio=dry_input_resistance->boundary_ratio;
+            require(ratio.size()==mass.mass_mixed.size() && !ratio.empty(),
+                    "uniform ICODE CALCPF requires native H-3 DRY VDPVD");
+            receptor_vdpvd=r4(ratio.front(),"native DRY VDPVD H-3");
+            require(receptor_vdpvd>=0.0F && receptor_vdpvd<=1.0F,
+                    "CALCPF uniform VDPVD must be a native physical ratio");
+        }
         const RiseCompSamplingState at_receptor{
             id,before,moved.state,v.state(id),sigma,mass,
             r4(substep.step_s,"native sample step seconds"),
@@ -726,7 +739,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             state.initial_sigma_y_squared_m2,
             receptor_sy0,receptor_sz0,
             ctadj2_step,current_receptor_bvf,ws,original_qold_mixed,
-            native_receptor_calm
+            native_receptor_calm,receptor_vdpvd
         };
         receptor_increments=sampling_kernel(at_receptor);
         for(float increment:receptor_increments){
