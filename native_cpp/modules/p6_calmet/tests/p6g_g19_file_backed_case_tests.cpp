@@ -2,11 +2,13 @@
 // physical fields. 2SS+2US source input binding and fail-closed tests.
 // This is an INPUT CONTRACT ONLY, never native multistation physics parity.
 #include "cteas/p6/p6g_g19_file_backed_case.hpp"
+#include "cteas/p6/p6g_g18e4_prepdi_stage_adapter.hpp"
 #include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <regex>
 #include <stdexcept>
 #include <string>
@@ -196,6 +198,58 @@ int main(int argc,char** argv){
         check(scheduler.completed_hours()==0&&
               scheduler.committed_memory().ziconv_m[0]==0.f,
               "G19 failed admission mutated committed prior-hour memory");
+        // G19C: native original-file UP data now reaches REAL G14 stage
+        // index zero, not a caller-built preview or independent time loop.
+        // The G18E4 source PREPDI/CGAMMA remains selected-only and returns
+        // Unknown,false; this must NOT commit an incomplete model hour.
+        p6g::G18D2StationClockAuthority source_clocks;
+        std::size_t observed_stage_zero=0;
+        struct SourceBackedPrepdiProbe final : p6g::MultiHourPhysics {
+            p6g::G18E4SelectedPrepdiStageAdapter prepdi;
+            const p6g::MultiHourFrame* live;
+            std::size_t& observed;
+            SourceBackedPrepdiProbe(
+                const p6g::UnifiedMultistationHourlyScheduler& owner,
+                p6g::G18D2StationClockAuthority& clocks,
+                const std::string& metinp,
+                const p6g::MultiHourFrame& frame,std::size_t& counter)
+                :prepdi(owner,clocks,metinp),live(&frame),observed(counter) {}
+            cteas::calmet::p6::NativeHourStageResult run(
+                cteas::calmet::p6::NativeHourStage stage,
+                p6g::MultiHourFrame& frame) override {
+                check(&frame==live,
+                      "G19C source-backed PREPDI used detached G14 frame");
+                if(stage==cteas::calmet::p6::NativeHourStage::PrepdiPreviousZiconv) {
+                    prepdi.run_selected(stage,frame,true);
+                    const auto& up=prepdi.selected_upper_for(frame);
+                    const auto& gamma=prepdi.selected_gamma_for(frame);
+                    check(up.station_ids==std::vector<int>({58424,58425})&&
+                          gamma.station_ids==up.station_ids&&
+                          up.end==frame.input.end&&
+                          up.physical_sounding[0].size()==2&&
+                          up.physical_sounding[0][0].temp_k[0]==280.f&&
+                          up.physical_sounding[0][1].temp_k[0]==280.f&&
+                          !prepdi.try_publish_after_completed_g14_hour_noexcept(),
+                          "G19C REAL UP.DAT PREPDI AA/BB or CGAMMA source mismatch");
+                    ++observed;
+                }
+                return {cteas::calmet::p6::NativeHourSource::Unknown,false};
+            }
+        };
+        rejects([&]{
+            scheduler.advance_with_fresh_physics(
+                [&](const p6g::MultiHourFrame& frame)
+                    ->std::unique_ptr<p6g::MultiHourPhysics> {
+                    return std::make_unique<SourceBackedPrepdiProbe>(
+                        scheduler,source_clocks,source_case.original_metinp,
+                        frame,observed_stage_zero);
+                });
+        },"G19C partial source-file PREPDI was promoted into full native G14");
+        check(observed_stage_zero==1&&scheduler.completed_hours()==0&&
+              !source_clocks.has_published_hour()&&
+              scheduler.committed_memory().ziconv_m[0]==0.f,
+              "G19C actual GEO/SURF/UP candidate changed physical/UP clocks");
+
         // Wrong case-file mapping must be rejected before a single step.
         paths.ordered_up_dat={cleanup[4],cleanup[3]};
         rejects([&]{(void)p6g::g19_load_original_source_case(paths);},
