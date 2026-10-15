@@ -652,9 +652,13 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         e.leaf_area_index=statics.leaf_area_index[index];
         e.shortwave_w_m2=met.qsw[index];
         e.vegetation_state=setup.vegetation_state;
+        // Original COMP L10686 refreshes DPBL at the post-ADVECT
+        // midpoint and original DRY L26237 uses that SAME DPBL in
+        // DIFFK and DZ for uniform ICODE2/6 VDPVD. Never substitute
+        // the earlier sampled start-cell mixing height here.
         const auto resistance=dry_deposition_step(
             setup,e,mass.reflecting_lid_m,substep.step_s,
-            sampled.mixing_height_m,met.wstar[index]);
+            vmass_dpbl,met.wstar[index]);
         // Expose exact native VDCOMP values to the read-only mass oracle.
         // Never use these preserved copies as a new solver authority.
         dry_input_resistance=resistance;
