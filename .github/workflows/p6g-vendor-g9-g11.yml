@@ -6,6 +6,8 @@ on:
       - '.github/workflows/p6g-vendor-g9-g11.yml'
       - 'native_cpp/modules/p6_calmet/reference/compare_g9_original_wind1_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g20_file_backed_original_wind1.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py'
+      - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/tests/p6g_g19_file_backed_case_tests.cpp'
       - 'native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py'
@@ -17,6 +19,8 @@ on:
       - '.github/workflows/p6g-vendor-g9-g11.yml'
       - 'native_cpp/modules/p6_calmet/reference/compare_g9_original_wind1_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g20_file_backed_original_wind1.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py'
+      - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/tests/p6g_g19_file_backed_case_tests.cpp'
       - 'native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py'
@@ -48,7 +52,8 @@ jobs:
             cteas_p6g_g10_diagno_reference cteas_p6g_g9_multi_wind1_tests \
             cteas_p6g_g11_terrain_tests \
             cteas_p6g_g19_file_backed_case_tests \
-            cteas_p6g_g20_source_wind1_probe --parallel 2
+            cteas_p6g_g20_source_wind1_probe \
+            cteas_p6g_g21_source_fradj_probe --parallel 2
       - name: Original Fortran WIND1 G9 10km multi-station
         run: python3 native_cpp/modules/p6_calmet/reference/compare_g9_original_wind1_multisite.py --mode ${{ matrix.mode }}
       - name: Original literal CALMET WIND1 with G20 disk-backed SURF/UP station profiles
@@ -73,6 +78,24 @@ jobs:
         with:
           name: g20-vendor-source-parity-${{ matrix.mode }}
           path: ${{ runner.temp }}/g20-vendor-${{ matrix.mode }}.json
+      - name: Literal vendor TERSET FRADJ on actual G21 file-backed CGAMMA and TEMP2D
+        run: |
+          "$RUNNER_TEMP/p6g-vendor/cteas_p6g_g21_source_fradj_probe" \
+            "$RUNNER_TEMP/g20-source/met.inp" "$RUNNER_TEMP/g20-source/GEO.DAT" \
+            "$RUNNER_TEMP/g20-source/SURF.DAT" \
+            "$RUNNER_TEMP/g20-source/UP1.DAT" "$RUNNER_TEMP/g20-source/UP2.DAT" \
+            --output "$RUNNER_TEMP/g21-native-fradj.csv" \
+            --source-stage "$RUNNER_TEMP/g21-original-input.dat"
+          python3 native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py \
+            --mode ${{ matrix.mode }} \
+            --source-stage "$RUNNER_TEMP/g21-original-input.dat" \
+            --candidate "$RUNNER_TEMP/g21-native-fradj.csv" \
+            --out "$RUNNER_TEMP/g21-vendor-${{ matrix.mode }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g21-vendor-fradj-${{ matrix.mode }}
+          path: ${{ runner.temp }}/g21-vendor-${{ matrix.mode }}.json
       - name: Original Fortran DIAGNO tail G10 10km
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
