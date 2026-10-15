@@ -1,4 +1,4 @@
-name: P7 real Hefei first 24h accepted and next 48h divergence
+name: P7 real Hefei first 48h accepted and next 72h divergence
 on:
   # Branch-scoped hosted validation does not depend on PR synchronization
   # catching up after a burst of GitHub App contents-API commits.
@@ -21,7 +21,7 @@ concurrency:
 jobs:
   real-hour7-probe:
     runs-on: ubuntu-22.04
-    timeout-minutes: 75
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
         with:
@@ -124,7 +124,7 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/audit_original_h9_calm.py \
             --original-dgm "$root/vendor/case/run/puff/dgm_puffstep.bin" \
             --out "$root/original-h9-calm.json"
-      - name: Preserve strict original 24h parity and diagnose first mismatch through 48h
+      - name: Preserve strict original 48h parity and diagnose first mismatch through 72h
         shell: bash
         run: |
           set -euo pipefail
@@ -133,8 +133,8 @@ jobs:
           cmake --build "$root/build" --parallel 2 --target cteas_p7_hefei_sixhour_native_h3_receptors_tests cteas_p7_original_native_terrain_tests
           "$root/build/cteas_p7_original_native_terrain_tests"
           echo "P7_H9_REAL4_DGRIDI_RECEPTOR_REGRESSION=PASS"
-          # The same production COMP executor must close ALL 8 real hours
-          # before continuing to the non-gating H9/H24 divergence probe.
+          # Keep previously accepted H1-H8 and H1-H24 independent strict
+          # regression gates before the newly promoted 48h source parity.
           # No fitted tolerance and no historical state supplied to native.
           CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
             CTEAS_P7_PROBE_HOURS=8 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
@@ -155,7 +155,9 @@ jobs:
             "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/twentyfourhour-strict.log" 2>&1
           grep -F 'P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS HOURS=24' "$root/twentyfourhour-strict.log"
           echo "P7_REAL_FIRST_24H_SCIENTIFIC_GATE=PASS H3_WORDS=60000/60000 DGM=BITWISE 143H=OPEN"
-          set +e
+          # After hosted original/native H1-H48 verification on
+          # Actions #38674251404, promote the full 48h real case to a
+          # fail-closed gate (120,000 H-3 REAL4 words; all DGM rows).
           CTEAS_P7_H9_PUFF598_MASS_TRACE="$root/native-h9-puff598-mass.tsv" \
           CTEAS_P7_H9_RECEIVER_CELL0=541 \
           CTEAS_P7_H9_RECEIVER_TRACE="$root/native-h9-42-11.tsv" \
@@ -164,14 +166,14 @@ jobs:
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
             project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
             project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
-            "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/hour48-probe.log" 2>&1
-          code=$?
-          set -e
-          grep -E 'P7_NATIVE_H9_PUFF598_VCBAR|P7_REAL_EXTENDED_PROBE|P7_REAL_EXTENDED_PRFIN_INPUT|P7_REAL_EXTENDED_CALM_SOURCE_DECK|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE|P7_REAL_H9_CALM_SIGTZ_FIRST_DIVERGENCE|P7_REAL_H9_CALM_SIGTZ_MET_AUTHORITIES|P7_REAL_H9_NATIVE_CALCPF_CELL12|P7_NATIVE_H9_RECEPTOR_SIGTZ_INPUT' "$root/hour48-probe.log" || true
+            "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/hour48-strict.log" 2>&1
+          grep -F 'P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS HOURS=48' "$root/hour48-strict.log"
+          echo "P7_REAL_FIRST_48H_SCIENTIFIC_GATE=PASS H3_WORDS=120000/120000 DGM=BITWISE 143H=OPEN"
+          grep -E 'P7_NATIVE_H9_PUFF598_VCBAR|P7_REAL_EXTENDED_PROBE|P7_REAL_EXTENDED_PRFIN_INPUT|P7_REAL_EXTENDED_CALM_SOURCE_DECK|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE|P7_REAL_H9_CALM_SIGTZ_FIRST_DIVERGENCE|P7_REAL_H9_CALM_SIGTZ_MET_AUTHORITIES|P7_REAL_H9_NATIVE_CALCPF_CELL12|P7_NATIVE_H9_RECEPTOR_SIGTZ_INPUT' "$root/hour48-strict.log" || true
           # Source-pinned same-step terrain operands for the three H9
           # ZRPOLE residuals. Diagnostic only: original state is not injected.
           grep -E 'P7_NATIVE_H9_MCTADJ2_TERRAIN PUFF=(596|597|598)' \
-            "$root/hour48-probe.log" | head -n 24 || true
+            "$root/hour48-strict.log" | head -n 24 || true
           # Compare the actual first remaining H9 receptor same-step stages.
           # This is read-only and diagnostic: a mismatch cannot turn into PASS.
           original_h9="$root/vendor/case/run/puff/dgm_calcpf_h3_42_11_hour9.bin"
@@ -199,23 +201,36 @@ jobs:
               { cat "$root/h9-puff598-mass-compare.log"; exit 1; }
           grep -F "P7_H9_PUFF598_MASS_BITWISE=PASS" "$root/h9-puff598-mass-compare.log"
           echo "P7_REAL_H9_PUFF598_MASS_GATE=PASS QOLD_QNEW_FRACDRY_VD_TSAMP_ALL_8_REAL4 H9_CONCENTRATION=OPEN"
-          if [ "$code" -eq 0 ]; then
-            echo "P7_EXTENDED_PROBE_STATUS=FORTY_EIGHT_HOURS_BITWISE_ACCEPTED 143H=OPEN WROUT1=OPEN"
+          # H1-H48 source/REAL4 parity and H9 puff598 mass are now strict.
+          # H49-H72 is deliberately exploratory, never an automatic 143h claim.
+          set +e
+          CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
+            CTEAS_P7_PROBE_HOURS=72 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
+            project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
+            "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/hour72-probe.log" 2>&1
+          code72=$?
+          set -e
+          grep -E 'P7_REAL_EXTENDED_PROBE_ENTER_HOUR|P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY HOUR=(4[89]|5[0-9]|6[0-9]|7[0-2])' "$root/hour72-probe.log" || true
+          if [ "$code72" -eq 0 ] && grep -Fq 'P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS HOURS=72' "$root/hour72-probe.log"; then
+            echo "P7_EXTENDED_PROBE_STATUS=SEVENTY_TWO_HOURS_BITWISE_ACCEPTED 143H=OPEN WROUT1=OPEN"
           else
-            echo "P7_EXTENDED_PROBE_STATUS=BLOCKED DIAGNOSTIC_ONLY=YES EXIT_CODE=$code"
-            tail -n 24 "$root/hour48-probe.log"
+            echo "P7_EXTENDED_PROBE_STATUS=BLOCKED HOURS=72 DIAGNOSTIC_ONLY=YES EXIT_CODE=$code72"
+            tail -n 30 "$root/hour72-probe.log"
           fi
-          # H1-H24 concentrations now strict; H25-H48 remain exploratory.
-          # Strict separate gates: H1-H8, H1-H24 REAL4, and H9 puff598 mass 8x5.
+          # Strict gates: H1-H8, H1-H24, H1-H48 REAL4/DGM, H9 mass 8x5.
+          # The 72h scientific probe is not a workflow-failing acceptance gate.
           exit 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p7-real-first-24h-divergence-log
+          name: p7-real-first-48h-hour72-divergence-log
           path: |
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/eighthour-strict.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/twentyfourhour-strict.log
-            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour48-probe.log
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour48-strict.log
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour72-probe.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-compare.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-same-step-audit.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-puff598-mass-audit.json
