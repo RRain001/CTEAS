@@ -497,11 +497,11 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     float current_receptor_bvf=0.0F;
     OriginalTerrainSigmaInputs terrain_inputs;
     const OriginalTerrainSigmaInputs* selected_terrain=nullptr;
-    // Vendor COMP computes current meteorological BVF for PUFRECS
-    // regardless of vertical ICODE. Only the SETPUF SIGTZ terrain-strain
-    // branch is limited to odd Gaussian codes (L48613-48632).
-    // PUFFCT2 at L5321 still uses source-COMMON FRACZ1/LUP1 for even codes.
-    auto carried_ctadj2_current=last_ctadj2_current_;
+    // Vendor COMP computes BVF for PUFRECS regardless of vertical ICODE.
+    // SETPUF L48362-L48365 initializes FRACZ1=0 and LUP1=.FALSE.
+    // for EVERY step. Odd Gaussian code's CTADJ2 may then overwrite these
+    // initial values at L48613-L48632; even code preserves the initialized
+    // pair for PUFRECS PUFFCT2 L5321.
     if(control.mctadj2){
         // SETPUF L48616-48631 owns the authoritative CTADJ2 state.
         // This must use the same *native* x/y/height and RISEWIND WS
@@ -566,20 +566,15 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             .terrain_fraction=sigma.terrain->fracz_end,
             .upslope=sigma.terrain->upslope_end
         };
-        carried_ctadj2_current=LastOriginalCurrentTerrain{
-            sigma.terrain->fracz_end,sigma.terrain->upslope_end};
         m.commit_setpuf_terrain_height(
             id,moved.state.z_m,terrain_height);
         moved.state=m.state(id);
     } else if(control.mctadj2) {
-        // Original SETPUF never updates /CURRENT/ FRACZ1/LUP1 for
-        // even ICODE, but PUFRECS MCTADJ=2 nevertheless calls PUFFCT2.
-        // Keep these last authentic native CTADJ2 COMMON flags while
-        // using THIS puff's independently advanced x/y and z geometry.
-        // Do not invent zeros, inherit a frozen DGM, or call SIGTZ here.
-        require((mass.puff_code % 2)==0 &&
-                carried_ctadj2_current.has_value(),
-                "native even ICODE PUFFCT2 requires preceding actual CTADJ2 COMMON");
+        // Original SETPUF L48363-48365 explicitly resets both COMMON
+        // flags before every SIGTZ branch, and even ICODE skips CTADJ2.
+        // This is a source-initialized (not fitted) PUFFCT2 input.
+        require((mass.puff_code % 2)==0,
+                "native even ICODE PUFFCT2 requires non-Gaussian SETPUF");
         ctadj2_step=OriginalPuffct2Step{
             .x_begin_m=before.x_cells*control.met_spacing_m,
             .y_begin_m=before.y_cells*control.met_spacing_m,
@@ -587,8 +582,8 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             .x_end_m=moved.state.x_cells*control.met_spacing_m,
             .y_end_m=moved.state.y_cells*control.met_spacing_m,
             .z_end_m=moved.state.z_m,
-            .terrain_fraction=carried_ctadj2_current->fracz1,
-            .upslope=carried_ctadj2_current->lup1
+            .terrain_fraction=0.0F,  // SETPUF L48364
+            .upslope=false           // SETPUF L48365
         };
     }
     order.completed(VendorSubstepPhase::CommitSetpuf);
@@ -765,7 +760,6 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     motion_=std::move(m);
     vertical_=std::move(v);
     found->second=std::move(state);
-    last_ctadj2_current_=carried_ctadj2_current;
     return outcome;
 }
 NativeVerticalWind OriginalCompRisePointDriver::pre_cadence_wind(
