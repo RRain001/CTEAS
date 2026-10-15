@@ -382,10 +382,19 @@ struct FreshOwnedPrepdiPhysics final : p6g::MultiHourPhysics {
         check(&frame==live,
               "G18F1 PREPDI observed detached factory frame inside G14");
         const auto result=mock.run(stage,frame);
-        if(stage==p6::NativeHourStage::PrepdiPreviousZiconv)
+        if(stage==p6::NativeHourStage::PrepdiPreviousZiconv) {
             check(selected.staged()&&!selected.published()&&
                   !selected.try_publish_after_completed_g14_hour_noexcept(),
                   "G18F1 PREPDI clocks could publish ahead of G14");
+            // A valid PREPDI candidate is ALREADY safe to publish only
+            // after the imminent G14 physical/P6F commit. This check
+            // neither publishes clocks nor advances the model hour.
+            selected.require_publishable_before_g14_commit(frame);
+            auto counterfeit=frame;
+            must_reject([&]{
+                selected.require_publishable_before_g14_commit(counterfeit);
+            },"G18F2 station-clock preflight accepted a detached G14 frame");
+        }
         return result;
     }
     [[nodiscard]] bool publish_noexcept() noexcept {
@@ -423,7 +432,17 @@ static void case_fresh_selected_prepdi_clock(sys_seconds begin) {
     };
     must_reject([&]{
         sched.advance_with_fresh_physics(
-            maker,[](const p6g::MultiHourFrame&) {
+            maker,[&](const p6g::MultiHourFrame& live) {
+                // Explicit source-clock preflight is performed after
+                // all 17 staged callbacks but before G14 memory commit.
+                check(!clocks.has_published_hour()&&
+                      sched.completed_hours()==0,
+                      "G18F2 prematurely committed PREPDI clocks");
+                // The callback has no access to a detached owner: its
+                // source result can be obtained only on the same G14
+                // frame inside the physics object.
+                check(live.hour_index==0,
+                      "G18F2 source P6F preflight wrong failed hour");
                 throw std::runtime_error("G18F1 selected PREPDI P6F failure");
             },publisher);
     },"G18F1 selected PREPDI source clocks published after rejected P6F");
@@ -435,8 +454,11 @@ static void case_fresh_selected_prepdi_clock(sys_seconds begin) {
             maker,[&](const p6g::MultiHourFrame& frame){
                 check(frame.hour_index==h&&
                       frame.previous.ziconv_m[0]==static_cast<float>(h)&&
-                      frame.next.ziconv_m[0]==static_cast<float>(h+1),
-                      "G18F1 selected PREPDI missed previous G14 ZICONV");
+                      frame.next.ziconv_m[0]==static_cast<float>(h+1)&&
+                      sched.completed_hours()==h,
+                      "G18F2 selected PREPDI preflight saw wrong prior-hour state");
+                // The full G14 physical-hour validation runs next,
+                // followed by noexcept source AA/BB + CGAMMA publish.
             },publisher);
         check(made==h+2&&destroyed==static_cast<int>(h+2)&&
               published==h+1&&publication_valid&&
