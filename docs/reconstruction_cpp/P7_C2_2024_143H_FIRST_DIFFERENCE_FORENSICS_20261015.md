@@ -44,3 +44,20 @@ Real unmodified CALPUFF Fortran line audit [#38748386141](https://github.com/RRa
 4. Keep PR [#69](https://github.com/RRain001/CTEAS/pull/69) **Draft, no merge**. Never equate complete execution with scientific equivalence.
 
 **Real science status:** C1 accepted; C2 P6 weather accepted; C2 original A/C weather sensitivity measured; C2 native B/D runs fully executed but **47/20,592 source-stage concentration differences remain OPEN**.
+
+
+## Source-instrumented H1 forensic decision: uniform-puff DRY VDPVD (2026-10-16)
+
+[Run #38767482536](https://github.com/RRain001/CTEAS/actions/runs/38767482536) compiled an instrumented copy of original vendor CALPUFF and wrote **23 source read-only CALCPF** H1 receptor (4,6) events. Its **entire original puff.con SHA256 remained identical** to the pristine vendor A result (`89932cc55c9abdf4f4845a9bc0d44c320f4809d1b60c89e706a075033ba75443`). The native C++ hook emitted 23 events. The event-ordinal alignment is *diagnostic*, pending corresponding source puff-ID/KSAM instrumentation.
+
+Events 2,4,…,22 (uniform `ICODE=2`) had **all previously compared upstream physical operands bit-identical** (SIGY/SIGZ, ZPR/ZRPOLE, F1, XI1/XI2, T1/T2, QOLD/QNEW, XTEMP), yet CALCPF contribution in each event was original `0.000110435518` vs native `0.000112265960 Bq/m³`. The ratio `0.98369549` exposed that `original_flat_calcpf.cpp` incorrectly forced `.deposition_ratio=1.0` even though real vendor CALCPF L4304 multiplies `VDPVD(IPOL)*XTEMP*(QOLD*T1+QNEW*T2)`. Native `dry_deposition_step` already computes true per-species VDPVD for uniform codes 2/6, and `original_uniform_dry_mass` already consumes it for QM, but that VDPVD was not passed to receptor sampling.
+
+The isolated native fix carries the actual H-3 `boundary_ratio[0]` from VDCOMP/DRY into the receptor sampler for uniform codes 2/6 and forms the original REAL4 `VDPVD * XTEMP * (QOLD*T1+QNEW*T2)` expression with the source's grouping. Gaussian codes retain `VDPVD=1`; no MET, emission, transport/dispersion, chemistry, deposition velocity or mass formulas were altered.
+
+**Post-fix** [real 143h run #38768796276](https://github.com/RRain001/CTEAS/actions/runs/38768796276):
+- A/B 20,555/20,592 exact REAL4; C/D 20,555/20,592 exact REAL4; 37 residual words in the same selected receptor. Same-input max absolute dropped from `2.5265035219490528e-05` to `1.7462298274040222e-09 Bq/m³` (about **14,500-fold**).
+- Original/new C++ H1 trace rows 1–22 **fully matched in all recorded operands and final contribution** after the VDPVD correction. Only row 23 (native puff #12, ICODE=2) differs in `F1, QNEW, VDPVD, XTEMP, CONC` while SY/SZ, positions, QOLD and sampling integrals agree. This pattern points farther upstream to the final/reentry sampling step's mixing-layer lid (`HLID`), VMASS/DRY state or substep chronology rather than a general receptor geometry error.
+- New 2022 frozen original-MET first **six-hour P7 strict science protection PASSED** after changing shared CALCPF source; original PR #68 historical 143h and 72h strict regressions remain accepted but PR #69's full 143h 2022 re-audit is not yet independently rerun.
+- Because **37** bitwise mismatches remain, final `P7_C2_143H_FOUR_ARM_SCIENTIFIC_GATE=OPEN_OR_FAIL`; PR #69 remains Draft, no merge.
+
+**Next read-only trace:** true original CALCPF `HLID`, in addition to already captured `VDPVD,F1,QM`, and native `VMASS.reflecting_lid_m,ZIOLD,ZIMAX`, keyed at the unique final H1 event. Only after establishing the earliest state discrepancy may a further source-backed C++ physics correction be considered.
