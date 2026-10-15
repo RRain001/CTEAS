@@ -3,12 +3,14 @@
 // This is an INPUT CONTRACT ONLY, never native multistation physics parity.
 #include "cteas/p6/p6g_g19_file_backed_case.hpp"
 #include "cteas/p6/p6g_g18e4_prepdi_stage_adapter.hpp"
+#include "cteas/p6/p6g_g20_file_backed_wind1_profiles.hpp"
 #include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <regex>
 #include <stdexcept>
 #include <string>
@@ -297,6 +299,99 @@ int main(int argc,char** argv){
               !source_clocks.has_published_hour()&&
               scheduler.committed_memory().ziconv_m[0]==0.f,
               "G19C actual GEO/SURF/UP candidate changed physical/UP clocks");
+
+        // G20: source-backed file inputs now reach the existing native
+        // WIND1 C++ kernel on the SAME fresh G14 transaction frame.
+        // Unlike the earlier G18F6 hand-made station columns, G20 reads
+        // actual met.inp ZFACE, GEO landuse/z0, SURF and UP VERTAV/PREPDI.
+        // PREPDI stage admission is an explicit test-only proxy; FRADJ
+        // is deliberately not accepted here, so zero G14 hours commit.
+        struct SourceBackedWind1Probe final:p6g::MultiHourPhysics {
+            p6g::G18E4SelectedPrepdiStageAdapter prepdi;
+            std::optional<p6g::G16SelectedWindPhysics> native_wind;
+            const p6g::MultiHourFrame* live;
+            std::size_t& stages;
+            std::vector<float>& u;
+            std::vector<float>& v;
+            SourceBackedWind1Probe(
+                const p6g::UnifiedMultistationHourlyScheduler& owner,
+                p6g::G18D2StationClockAuthority& clocks,
+                const std::string& metinp,
+                const p6g::MultiHourFrame& frame,std::size_t& count,
+                std::vector<float>& out_u,std::vector<float>& out_v)
+                :prepdi(owner,clocks,metinp),
+                 live(&frame),stages(count),u(out_u),v(out_v){}
+            cteas::calmet::p6::NativeHourStageResult run(
+                cteas::calmet::p6::NativeHourStage stage,
+                p6g::MultiHourFrame& hour) override {
+                check(&hour==live,
+                      "G20 native WIND1 source did not retain live G14 frame");
+                if(stage==cteas::calmet::p6::NativeHourStage::PrepdiPreviousZiconv) {
+                    prepdi.run_selected(stage,hour,true);
+                    ++stages;
+                    // TEST-ONLY PREPDI proxy for the next real C++ WIND1.
+                    return {cteas::calmet::p6::NativeHourSource::NativeCpp,true};
+                }
+                if(stage==cteas::calmet::p6::NativeHourStage::DiagnoWind1) {
+                    native_wind.emplace(
+                        p6g::g20_file_backed_source_wind1_profiles(hour,true));
+                    const auto result=native_wind->run(stage,hour);
+                    check(result.completed&&
+                          result.source==cteas::calmet::p6::NativeHourSource::NativeCpp,
+                          "G20 source-file native WIND1 kernel not executed");
+                    u=native_wind->selected_result().first_guess.u_mps;
+                    v=native_wind->selected_result().first_guess.v_mps;
+                    ++stages;
+                    return result;
+                }
+                return {cteas::calmet::p6::NativeHourSource::Unknown,false};
+            }
+        };
+        std::size_t live_stages=0;
+        std::vector<float> actual_u,actual_v;
+        rejects([&]{
+            scheduler.advance_with_fresh_physics(
+                [&](const p6g::MultiHourFrame& frame)
+                    ->std::unique_ptr<p6g::MultiHourPhysics>{
+                    return std::make_unique<SourceBackedWind1Probe>(
+                        scheduler,source_clocks,source_case.original_metinp,
+                        frame,live_stages,actual_u,actual_v);
+                });
+        },"G20 partial file-backed WIND1 was accepted as a full G14 CALMET hour");
+        check(live_stages==2&&actual_u.size()==12u*12u*9u&&
+              actual_v.size()==actual_u.size()&&
+              scheduler.completed_hours()==0&&
+              !source_clocks.has_published_hour(),
+              "G20 original source SURF+UP native WIND1 missing or wrongly committed");
+
+        // For the exact same on-disk original input, independently form
+        // and execute G16 WIND1 on a preview frame, with no G14 mutation.
+        auto standalone=scheduler.preview_next_hour();
+        const auto selected_profiles=
+            p6g::g20_file_backed_source_wind1_profiles(standalone,true);
+        check(selected_profiles.station_ids==
+                  std::vector<int>({583210,583220,58424,58425})&&
+              selected_profiles.wind1_u_mps.size()==36u,
+              "G20 source W1 station/vertical ordinal layout invalid");
+        p6g::G16SelectedWindPhysics independent(selected_profiles);
+        const auto direct=independent.run(
+            cteas::calmet::p6::NativeHourStage::DiagnoWind1,standalone);
+        check(direct.completed&&
+              direct.source==cteas::calmet::p6::NativeHourSource::NativeCpp&&
+              actual_u==independent.selected_result().first_guess.u_mps&&
+              actual_v==independent.selected_result().first_guess.v_mps,
+              "G20 native live W1 differs from direct source-file G16 kernel");
+        rejects([&]{
+            (void)p6g::g20_file_backed_source_wind1_profiles(
+                standalone,false);
+        },"G20 source selected WIND1 could be promoted without test boundary");
+        auto missing_wind=source_case;
+        missing_wind.surface.hourly.front().by_station[0].wind_valid=false;
+        auto negative_frame=missing_wind.make_scheduler().preview_next_hour();
+        rejects([&]{
+            (void)p6g::g20_file_backed_source_wind1_profiles(
+                negative_frame,true);
+        },"G20 invented surface wind absent in real source SURF");
 
         // Wrong case-file mapping must be rejected before a single step.
         paths.ordered_up_dat={cleanup[4],cleanup[3]};
