@@ -309,14 +309,17 @@ jobs:
           python3 native_cpp/modules/p6_calmet/reference/compare_g25_source_original_station_elustr2.py \
             --mode ${{ matrix.mode }} \
             --source-prefix "$RUNNER_TEMP/g25-original-flux" \
+            --require-branch night \
             --out "$RUNNER_TEMP/g25-original-vendor-${{ matrix.mode }}.json"
           python3 native_cpp/modules/p6_calmet/reference/compare_g25_source_original_station_elustr2.py \
             --mode ${{ matrix.mode }} \
             --source-prefix "$RUNNER_TEMP/g25-steep-flux" \
+            --require-branch night \
             --out "$RUNNER_TEMP/g25-steep-vendor-${{ matrix.mode }}.json"
           python3 native_cpp/modules/p6_calmet/reference/compare_g25_source_original_station_elustr2.py \
             --mode ${{ matrix.mode }} \
             --source-prefix "$RUNNER_TEMP/g25-daylight-flux" \
+            --require-branch day \
             --out "$RUNNER_TEMP/g25-daylight-vendor-${{ matrix.mode }}.json"
       - uses: actions/upload-artifact@v4
         if: always()
