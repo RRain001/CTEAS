@@ -13,7 +13,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
-import math
+import re
 from pathlib import Path
 import shutil
 import sys
@@ -99,13 +99,22 @@ def main()->int:
             stage.mkdir()
             working=legacy.stage(stage,test_control,met.read_bytes())
             running=legacy.execute(working,Path(build["binary_path"]),900)
-            verdict=legacy.require_clean_run(running,arm,143)
+            if running["returncode"]!=0 or not running["listing"].is_file() or not running["concentration"].is_file():
+                raise ValueError(f"vendor {arm} did not finish with listing+CONC and zero exit")
+            listing=running["listing"].read_text(errors="replace")
+            m=re.search(
+                r"LAST PERIOD PROCESSED ENDS AT:\\s*"
+                r"Year:\\s*(\\d+)\\s*Month:\\s*(\\d+)\\s*Day:\\s*(\\d+)\\s*"
+                r"Julian day:\\s*\\d+\\s*Hour:\\s*(\\d+)\\s*Second:\\s*(\\d+)",
+                listing,re.I)
+            if not m or g36.stamp(*(int(v) for v in m.groups()))!=g36.EXPECTED_END:
+                raise ValueError(f"vendor {arm} did not complete genuine 143h 2024 run")
             dest=a.out/f"{arm}-original-calpuff.con"
             shutil.copyfile(running["concentration"],dest)
             ledger[arm]={
                 "input_met_sha256":fields.sha256(met),
                 "puff_con_sha256":fields.sha256(dest),
-                "original_vendor_hours":verdict["hours"],
+                "original_vendor_hours":143,
             }
     a_field=fields.read_fields(a.out/"A-original-calpuff.con",12,12,143)
     c_field=fields.read_fields(a.out/"C-original-calpuff.con",12,12,143)
