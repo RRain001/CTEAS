@@ -5,6 +5,7 @@ concurrency:
 on:
   pull_request:
     paths:
+      - '.github/workflows/p6d-slope-original-parity.yml'
       - '.github/scripts/p6d_verified_checkout.py'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/*slope*'
       - 'native_cpp/modules/p6_calmet/src/slope_flow_main.cpp'
