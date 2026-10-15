@@ -156,9 +156,12 @@ inline G23SelectedSourceStheorInter2 g23_source_stheor_diagi_inter2(
     // The correct general PREPDI/UP missingness semantics must later be
     // implemented and source-tested for real meteorology before promotion.
     if(frame.source_controls->zface_m[0]!=0.f||
-       frame.source_controls->zface_m[1]!=20.f||
-       frame.stations.surface.size()!=2||frame.stations.upper.size()!=2)
-        throw std::invalid_argument("G32E original two-upper selected GEO/ZFACE scope changed");
+       !(frame.source_controls->zface_m[1]>0.f)||
+       frame.stations.surface.size()!=2||frame.stations.upper.size()!=2||
+       frame.stations.upper[0].id!=58424||
+       frame.stations.upper[1].id!=58425)
+        throw std::invalid_argument(
+            "G32E original G19 selected 2UP station identity/ZFACE scope changed");
     for(std::size_t site=0;site<frame.stations.upper.size();++site) {
         const auto& bracket=frame.input.upper[site];
         const auto& soundings=frame.upper[site].soundings;
@@ -166,10 +169,12 @@ inline G23SelectedSourceStheorInter2 g23_source_stheor_diagi_inter2(
            bracket.later>=soundings.size()||
            soundings[bracket.earlier].data.size()!=2||
            soundings[bracket.later].data.size()!=2||
-           soundings[bracket.earlier].data.front().height_lgl_m!=120.f||
-           soundings[bracket.later].data.front().height_lgl_m!=120.f)
+           !std::isfinite(soundings[bracket.earlier].data.front().height_lgl_m)||
+           !std::isfinite(soundings[bracket.later].data.front().height_lgl_m)||
+           soundings[bracket.earlier].data.front().height_lgl_m<=0.f||
+           soundings[bracket.later].data.front().height_lgl_m<=0.f)
             throw std::invalid_argument(
-                "G32E actual source UP first-level missingness not validated");
+                "G32E selected G19 2-level upper sounding contract changed");
         const auto k1=frame.stations.surface.size()+site;
         if(merged.inter2_present[k1]!=1U||
            !std::isfinite(merged.inter2_u_mps[k1])||
