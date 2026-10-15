@@ -1065,13 +1065,13 @@ int main(int argc,char** argv) {
                  <<" FULL_PUFF_CON_ACCEPTED="
                  <<(probe_hours==143U && native_con_writer?"YES":"NO")
                  <<"\n";
-    if(probe_hours==6U)std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
+    if(probe_hours==6U && !coupling_candidate)std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
              <<" ORIGINAL_DGM_ROWS=11458/11458"
              <<" HOURLY_ROWS=1275,2242,1906,2132,1742,2161"
              <<" FIRST_AND_LAST_EPISODE_IDS=SOURCE_EQUIVALENT"
              <<" DGM_EXPORTED_XY_SIGY_SIGZ=BITWISE_11458_OF_11458"
              <<" OTHER_INTERNAL_STAGES=NOT_YET_ALL_BITWISE"<<"\n";
-    if(probe_hours==6U)std::cout<<"P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=PASS"
+    if(probe_hours==6U && !coupling_candidate)std::cout<<"P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=PASS"
              <<" HOURS=6 METFM1=ORIGINAL"
              <<" COMP_AUTHORITY=SINGLE_STATEFUL_DRIVER"
              <<" REAL4_WORDS_MATCHED="<<matching_words<<"/15000"
