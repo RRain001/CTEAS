@@ -116,7 +116,8 @@ inline G23SelectedSourceStheorInter2 g23_source_stheor_diagi_inter2(
 
     G17B4TwoPassSurfvar surfvar(
         grid,frame.stations,source.surface,frame.surface,source.surface_controls);
-    G16SelectedWindPhysics original_wind(std::move(original_g20_profiles));
+    // Keep the original station profile immutable for subsequent DIAGI merge.
+    G16SelectedWindPhysics original_wind(original_g20_profiles);
     const auto first=original_wind.run(
         p6::NativeHourStage::DiagnoWind1,frame);
     if(!first.completed||first.source!=p6::NativeHourSource::NativeCpp)
