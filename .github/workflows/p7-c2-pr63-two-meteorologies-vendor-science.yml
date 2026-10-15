@@ -8,6 +8,7 @@ on:
       - 'native_cpp/modules/p7_calpuff/reference/run_c2_vendor_inside_grid_pair.py'
       - 'native_cpp/modules/p7_calpuff/tests/original_hefei_sixhour_native_receptors_tests.cpp'
       - 'native_cpp/modules/p7_calpuff/include/cteas/puff/original_wrout1_hefei.hpp'
+      - 'native_cpp/modules/p7_calpuff/src/original_point_prfin.cpp'
   workflow_dispatch:
 permissions:
   contents: read
