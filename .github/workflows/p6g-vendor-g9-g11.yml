@@ -20,6 +20,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/compare_g29_source_original_temp3d.py'
       - 'native_cpp/modules/p6_calmet/reference/verify_g30_source_p6f_candidate.py'
       - 'native_cpp/modules/p6_calmet/reference/test_g30_source_p6f_fail_closed.py'
+      - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
@@ -47,6 +48,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/compare_g29_source_original_temp3d.py'
       - 'native_cpp/modules/p6_calmet/reference/verify_g30_source_p6f_candidate.py'
       - 'native_cpp/modules/p6_calmet/reference/test_g30_source_p6f_fail_closed.py'
+      - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
@@ -516,6 +518,22 @@ jobs:
             --wind-tail "$RUNNER_TEMP/g24-original-native.csv" \
             --comp-prefix "$RUNNER_TEMP/g28-original-comp" \
             --temp3d-prefix "$RUNNER_TEMP/g29-original-temp3d"
+      - name: G31A untouched full original CALMET 6.5.0 on genuine G19 two-station daylight input
+        run: |
+          python3 native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py \
+            --mode ${{ matrix.mode }} \
+            --source "$RUNNER_TEMP/g22-daylight-source" \
+            --source-clock "$RUNNER_TEMP/g22-daylight-fradj.csv" \
+            --out "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g31a-full-untouched-original-calmet-${{ matrix.mode }}
+          path: |
+            ${{ runner.temp }}/g31-daylight-${{ matrix.mode }}/g31a-evidence.json
+            ${{ runner.temp }}/g31-daylight-${{ matrix.mode }}/original-stdout.log
+            ${{ runner.temp }}/g31-daylight-${{ matrix.mode }}/original-stderr.log
+            ${{ runner.temp }}/g31-daylight-${{ matrix.mode }}/original-met.lst
       - name: Original Fortran DIAGNO tail G10 10km
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
