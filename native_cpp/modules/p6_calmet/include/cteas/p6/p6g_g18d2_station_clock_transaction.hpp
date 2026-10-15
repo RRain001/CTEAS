@@ -54,9 +54,14 @@ public:
         return prepared;
     }
 
-    void publish_only_after_completed_g14(
+    // G18F1: G14's fresh-owned per-hour executor must publish both
+    // PREPDI/CGAMMA clocks AFTER accepted P6F and native physical memory,
+    // but BEFORE the owning hourly executor is destroyed. This operation
+    // must not throw after the physical commit; it returns false without
+    // mutating either clock for any invalid/stale/duplicate candidate.
+    [[nodiscard]] bool try_publish_only_after_completed_g14_noexcept(
         const UnifiedMultistationHourlyScheduler& scheduler,
-        G18D2StagedStationClocks& prepared) {
+        G18D2StagedStationClocks& prepared) noexcept {
         if(prepared.published||prepared.owner!=&scheduler||
            !prepared.new_upper.has_hour()||
            !prepared.new_gamma.has_committed_hour()||
@@ -65,9 +70,10 @@ public:
            scheduler.completed_hours()!=prepared.hour_index+1||
            (has_published_&&prepared.hour_index!=last_hour_+1)||
            (!has_published_&&prepared.hour_index!=0))
-            throw std::invalid_argument("G18D2 G14 hour not accepted; refuse PREPDI/CGAMMA publish");
-        // Both detached clock moves are noexcept. The original frozen
-        // state kernels are unchanged, and the scheduler is sole hour owner.
+            return false;
+        // The source clock candidates were independently committed and
+        // validated on detached copies by prepare_selected BEFORE G14.
+        // Both moves are compile-time noexcept; never partially update.
         static_assert(std::is_nothrow_move_assignable_v<G18BUpperBufferClock>);
         static_assert(std::is_nothrow_move_assignable_v<G18B4CGammaClock>);
         upper_=std::move(prepared.new_upper);
@@ -75,6 +81,15 @@ public:
         last_hour_=prepared.hour_index;
         has_published_=true;
         prepared.published=true;
+        return true;
+    }
+
+    void publish_only_after_completed_g14(
+        const UnifiedMultistationHourlyScheduler& scheduler,
+        G18D2StagedStationClocks& prepared) {
+        if(!try_publish_only_after_completed_g14_noexcept(scheduler,prepared))
+            throw std::invalid_argument(
+                "G18D2 G14 hour not accepted; refuse PREPDI/CGAMMA publish");
     }
 
     [[nodiscard]] bool has_published_hour() const noexcept {return has_published_;}
