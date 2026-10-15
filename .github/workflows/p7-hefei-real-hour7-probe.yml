@@ -70,7 +70,9 @@ jobs:
           raw=path.read_bytes()
           assert hashlib.sha256(raw).hexdigest()=="da40372cab1c181158d0ee5faac16f678e876fc14415073c38c8e3bdabfbc568"
           lines=raw.decode("latin-1").splitlines()
-          for lo,hi in ((15365,15505),(15550,15617),(18180,18575),(47075,47245)):
+          for lo,hi in ((15365,15505),(15550,15617),(18180,18575),
+                        (47075,47245),(10450,10530),(10820,10930),
+                        (48445,48720)):
               print(f"P7_H10_VENDOR_SOURCE_BEGIN={lo}-{hi}")
               for index in range(lo-1,hi):
                   print(f"P7_H10_VENDOR_L{index+1}: {lines[index]}")
