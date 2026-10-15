@@ -288,8 +288,35 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             bookkeeping.dispersion_y_option==(lcalm?1:3) &&
             bookkeeping.dispersion_z_option==(lcalm?1:3),
             "SETPUF LCALM and IDOPT classification drift");
+    // Vendor COMP L10683-10691 and L10820-10883 selects the
+    // POST-ADVECT midpoint meteorological class for SETCSIG, then
+    // substitutes JSUP when an A-D puff lies above the bounded DPBL.
+    // This applies to normal MDISP=3 PG SIGTY/SIGTZ too, not only to
+    // the special calm IDOPT=1 turbulence path. H24 old puff 1603
+    // enters the above-inversion class from a prior stable hour.
+    int sigma_stability=sampled.stability_class;
+    if(control.calm_mdisp3 && control.calm_mdisp3->jsup>0) {
+        const auto mid=original_met_cell_clamped(
+            0.5F*(before.x_cells+moved.state.x_cells),
+            0.5F*(before.y_cells+moved.state.y_cells),met.nx,met.ny);
+        const auto& config=*control.calm_mdisp3;
+        require(mid.offset_0based<met.ipgt.size() &&
+                mid.offset_0based<met.zi.size() &&
+                config.minimum_mixing_height_m>0.0F &&
+                config.maximum_mixing_height_m>=
+                    config.minimum_mixing_height_m,
+                "SETPUF JSUP requires original midpoint PGT and bounded PBL");
+        const int midpoint_class=std::min(
+            met.ipgt[mid.offset_0based],6);
+        const float midpoint_dpbl=std::clamp(
+            met.zi[mid.offset_0based],
+            config.minimum_mixing_height_m,
+            config.maximum_mixing_height_m);
+        sigma_stability=original_comp_turbset_jdstab(
+            midpoint_class,config.jsup,before.z_m,midpoint_dpbl);
+    }
     const SigmaCurves curves(dispersion_environment(
-        pg,sampled.stability_class,urban,ws));
+        pg,sigma_stability,urban,ws));
     SigmaYCurve sigma_y=[&curves](double first,double delta,double time) {
         const auto s=curves.sigma_y(first,{delta,time});
         return SigmaCurvePoint{s.sigma_y_m,s.virtual_time_y_s,
