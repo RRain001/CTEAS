@@ -41,7 +41,6 @@ DRIVER = """      program g27_source_setcom_nearu
       nssta=0
       npsta=0
       irtype=0
-      io6=6
       read(10,*)(zface(k),k=1,nz+1)
       do k=1,nusta
         read(10,*)ordinal,xusta(k),yusta(k)
