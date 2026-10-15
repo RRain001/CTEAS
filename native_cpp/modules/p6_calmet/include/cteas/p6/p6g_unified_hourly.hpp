@@ -144,9 +144,21 @@ public:
     // The factory must return a unique_ptr convertible to
     // unique_ptr<MultiHourPhysics>; no physical executor is reused between
     // successful hours, exceptions, or retry attempts.
-    template<class HourPhysicsFactory,class PrecommitGate>
-    void advance_with_fresh_physics(HourPhysicsFactory&& make_physics,
-                                    PrecommitGate&& verify_output) {
+    template<class HourPhysicsFactory,class PrecommitGate,
+             class PublishCommittedClocks>
+    void advance_with_fresh_physics(
+        HourPhysicsFactory&& make_physics,
+        PrecommitGate&& verify_output,
+        PublishCommittedClocks&& publish_after_commit) {
+        // Publishing source AA/BB/CGAMMA clocks must be a PREVALIDATED,
+        // no-throw operation: exceptions after G14's memory commit would
+        // otherwise leave physical ZICONV and station-clock histories split.
+        // G18D2 supplies detached copies/preflight before G14 starts.
+        static_assert(noexcept(
+            std::declval<PublishCommittedClocks&>()(
+                std::declval<MultiHourPhysics&>(),
+                std::declval<const UnifiedMultistationHourlyScheduler&>())),
+            "P6G postcommit clock publication must be noexcept");
         MultiHourFrame frame=preview_next_hour();
         std::unique_ptr<MultiHourPhysics> physics=
             std::forward<HourPhysicsFactory>(make_physics)(
@@ -156,8 +168,21 @@ public:
                 "P6G hourly physics factory returned no native executor");
         execute_and_commit_hour(
             *physics,frame,std::forward<PrecommitGate>(verify_output));
-        // The executor is destroyed after G14 commits. Its temporary
-        // previous-hour references/station buffers cannot be reused.
+        // This runs strictly AFTER G14 accepted P6F and moved next into
+        // committed memory, but BEFORE any source-stage executor is
+        // destroyed. Never run publication for aborted/invalid hours.
+        std::forward<PublishCommittedClocks>(publish_after_commit)(
+            *physics,static_cast<const UnifiedMultistationHourlyScheduler&>(*this));
+    }
+
+    template<class HourPhysicsFactory,class PrecommitGate>
+    void advance_with_fresh_physics(HourPhysicsFactory&& make_physics,
+                                    PrecommitGate&& verify_output) {
+        advance_with_fresh_physics(
+            std::forward<HourPhysicsFactory>(make_physics),
+            std::forward<PrecommitGate>(verify_output),
+            [](MultiHourPhysics&,
+               const UnifiedMultistationHourlyScheduler&) noexcept {});
     }
 
     template<class HourPhysicsFactory>
