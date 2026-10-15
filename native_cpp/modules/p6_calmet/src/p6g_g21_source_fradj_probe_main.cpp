@@ -10,6 +10,7 @@
 #include "cteas/p6/p6g_g18d2_station_clock_transaction.hpp"
 #include "cteas/p6/p6g_g18b3_upper_choice.hpp"
 #include "cteas/p6/p6g_g26b_file_backed_comp_bridge.hpp"
+#include "cteas/p6/p6g_g18d1_p6f_precommit.hpp"
 #include <cmath>
 #include <exception>
 #include <fstream>
@@ -43,6 +44,7 @@ int main(int argc,char** argv) {
         std::string diagi_similt_prefix,wind_tail_stage,wind_tail_output,wind_tail_boundaries;
         std::string station_flux_prefix,original_nearu_prefix,comp_original_prefix;
         std::string mixht_original_prefix,temp3d_original_prefix;
+        std::string p6f_candidate_file;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--output"||arg=="--source-stage"||
@@ -52,7 +54,7 @@ int main(int argc,char** argv) {
                arg=="--wind-tail-output"||arg=="--wind-tail-boundaries"||
                arg=="--station-flux-prefix"||arg=="--nearu-prefix"||
                arg=="--comp-original-prefix"||arg=="--mixht-original-prefix"||
-               arg=="--temp3d-original-prefix") {
+               arg=="--temp3d-original-prefix"||arg=="--p6f-candidate-file") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
                     throw std::invalid_argument("G21/G22 source output missing path");
                 auto& selected=arg=="--output"?output_file:
@@ -68,7 +70,8 @@ int main(int argc,char** argv) {
                                arg=="--station-flux-prefix"?station_flux_prefix:
                                arg=="--nearu-prefix"?original_nearu_prefix:arg=="--comp-original-prefix"?comp_original_prefix:
                                arg=="--mixht-original-prefix"?mixht_original_prefix:
-                               temp3d_original_prefix;
+                               arg=="--temp3d-original-prefix"?temp3d_original_prefix:
+                               p6f_candidate_file;
                 if(!selected.empty())
                     throw std::invalid_argument("G21/G22 duplicate output argument");
                 selected=argv[++i];
@@ -86,6 +89,7 @@ int main(int argc,char** argv) {
            (!station_flux_prefix.empty()&&inter2_output_file.empty())||
            (!mixht_original_prefix.empty()&&comp_original_prefix.empty())||
            (!temp3d_original_prefix.empty()&&comp_original_prefix.empty())||
+           (!p6f_candidate_file.empty()&&comp_original_prefix.empty())||
            ((!wind_tail_stage.empty()||!wind_tail_output.empty()||
              !wind_tail_boundaries.empty())&&
             (wind_tail_stage.empty()||wind_tail_output.empty()||
@@ -115,7 +119,8 @@ int main(int argc,char** argv) {
             mixht_original_prefix.empty()?std::string{}:mixht_original_prefix+".source.input",
             mixht_original_prefix.empty()?std::string{}:mixht_original_prefix+".native.csv",
             temp3d_original_prefix.empty()?std::string{}:temp3d_original_prefix+".source.input",
-            temp3d_original_prefix.empty()?std::string{}:temp3d_original_prefix+".native.csv"};
+            temp3d_original_prefix.empty()?std::string{}:temp3d_original_prefix+".native.csv",
+            p6f_candidate_file};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -403,6 +408,43 @@ int main(int argc,char** argv) {
                          <<"CELLS="<<cells<<" LEVELS="<<nlevels
                          <<" G14_HOURS_COMMITTED=0"
                          <<" ORIGINAL_VENDOR_PARITY=NOT_YET_CALCULATED\n";
+            }
+            if(!p6f_candidate_file.empty()) {
+                // G30A: candidate bytes ONLY after the actual same-frame
+                // source G26A/G26B 16 selected physics slots have completed.
+                // The original G14 CommitOutput [16] is NOT advanced and
+                // no prior COMP/upper-station clock may be published here.
+                const auto& c=g26b.selected_p6f_candidate(frame);
+                const auto& source_heat=g26.selected_thermal_for_comp(frame).heat;
+                const auto nears=cteas::calmet::p6g::source_setcom_nears(
+                    frame.grid,frame.stations);
+                const auto records=cteas::calmet::p6g::g18c5_selected_p6f_fields(
+                    frame,source_heat,c,source.original_metinp,true);
+                const auto dataset=cteas::calmet::p6g::g18c6_selected_one_hour_dataset(
+                    frame,records,nears,source.original_metinp,true);
+                const auto bytes=cteas::calmet::p6g::g18d1_validate_p6f_precommit(
+                    frame,dataset);
+                if(bytes.empty()||dataset.hourly.size()!=45||
+                   dataset.header.nx!=frame.grid.nx||
+                   dataset.header.ny!=frame.grid.ny||
+                   dataset.header.nz!=9||
+                   scheduler.completed_hours()!=0||clocks.has_published_hour())
+                    throw std::logic_error("G30A native P6F candidate/clock gate failed");
+                std::ofstream binary(p6f_candidate_file,
+                                     std::ios::binary|std::ios::trunc);
+                if(!binary)throw std::runtime_error("G30A P6F audit output cannot open");
+                binary.write(reinterpret_cast<const char*>(bytes.data()),
+                             static_cast<std::streamsize>(bytes.size()));
+                binary.flush();
+                if(!binary)throw std::runtime_error("G30A P6F candidate bytes truncated");
+                if(scheduler.completed_hours()!=0||clocks.has_published_hour()||
+                   frame.previous.zi_m!=scheduler.committed_memory().zi_m||
+                   frame.previous.ziconv_m!=scheduler.committed_memory().ziconv_m||
+                   frame.previous.dptt_k!=scheduler.committed_memory().dptt_k)
+                    throw std::logic_error("G30A P6F audit altered authoritative G14");
+                std::cout<<"PASS_P6G_G30A_P6F_PREPARED_ONLY FIELDS=45 BYTES="
+                         <<bytes.size()<<" G14_HOURS_COMMITTED=0"
+                         <<" ORIGINAL_VENDOR_45FIELD_PARITY=NOT_YET_CALCULATED\n";
             }
             std::cout<<"PASS_P6G_G28_SOURCE_ORIGINAL_AVEMIX_WSTARR_INPUT "
                      <<"CELLS="<<cells<<" CANDIDATE_COLUMNS=3 "
