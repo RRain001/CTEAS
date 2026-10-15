@@ -195,6 +195,17 @@ public:
             throw std::logic_error("G29B foreign or unfinished native TEMP3D");
         return comp_->source_temp3d_before_assembly(frame);
     }
+    [[nodiscard]] const G17CSelectedHeatResult& source_comp_heat_for_p6f(
+        const MultiHourFrame& frame) const {
+        if(phase_!=4||!comp_||&frame!=live_||
+           frame.hour_index!=hour_index_||frame.input.end!=end_||
+           frame.previous.zi_m!=previous_.zi_m||
+           frame.previous.ziconv_m!=previous_.ziconv_m||
+           frame.previous.dptt_k!=previous_.dptt_k)
+            throw std::logic_error(
+                "G33D cannot publish DIAGNO or cross-hour density as P6F COMP");
+        return comp_->source_comp_heat_for_p6f(frame);
+    }
     [[nodiscard]] bool source_comp_ready() const noexcept {
         return phase_==4&&comp_.has_value()&&comp_->selected_complete();
     }
