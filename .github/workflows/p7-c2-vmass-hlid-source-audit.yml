@@ -24,7 +24,7 @@ jobs:
           buf=p.read_bytes()
           print('ORIGINAL_VENDOR_SHA256='+hashlib.sha256(buf).hexdigest())
           rows=buf.decode('latin-1').splitlines()
-          for a,b in ((10665,10715),(10840,10870),(11660,11720),(26185,26280),(4290,4310)):
+          for a,b in ((10480,10695),(10850,10865),(11680,11710)):
               print(f'==== VENDOR {a} TO {b} ====')
               for i in range(a-1,min(b,len(rows))):
                   print(f'ORIGINAL_L{i+1}: {rows[i]}')
