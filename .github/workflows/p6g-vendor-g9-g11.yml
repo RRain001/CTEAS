@@ -29,6 +29,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/g32d_compare_original_multisite_inter2_station_profiles.py'
       - 'native_cpp/modules/p6_calmet/reference/g32f_first_comp_input_original_state_trace.py'
       - 'native_cpp/modules/p6_calmet/reference/g33a_trace_original_multisite_two_pass_surfvar.py'
+      - 'native_cpp/modules/p6_calmet/reference/g33b_trace_original_multisite_comp_third_surfvar.py'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
@@ -65,6 +66,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/g32d_compare_original_multisite_inter2_station_profiles.py'
       - 'native_cpp/modules/p6_calmet/reference/g32f_first_comp_input_original_state_trace.py'
       - 'native_cpp/modules/p6_calmet/reference/g33a_trace_original_multisite_two_pass_surfvar.py'
+      - 'native_cpp/modules/p6_calmet/reference/g33b_trace_original_multisite_comp_third_surfvar.py'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
@@ -229,6 +231,7 @@ jobs:
             "$RUNNER_TEMP/g22-daylight-source/UP2.DAT" \
             --output "$RUNNER_TEMP/g22-daylight-fradj.csv" \
             --surfvar-two-pass-output "$RUNNER_TEMP/g33-daylight-two-pass-native.csv" \
+            --comp-third-surfvar-output "$RUNNER_TEMP/g33-daylight-third-pass-native.csv" \
             --source-stage "$RUNNER_TEMP/g22-daylight-fradj-input.dat" \
             --slope-output "$RUNNER_TEMP/g22-daylight-slope.csv" \
             --slope-stage "$RUNNER_TEMP/g22-daylight-slope-input.dat" \
@@ -750,6 +753,35 @@ jobs:
             ${{ runner.temp }}/g33a-daylight-${{ matrix.mode }}/g33a-two-pass-diagnosis.json
             ${{ runner.temp }}/g33a-daylight-${{ matrix.mode }}/instrumented-original/g33a_surfvar_two_pass.bin
             ${{ runner.temp }}/g33-daylight-two-pass-native.csv
+      - name: G33B original full-hour COMP third SURFVAR IALL1 versus G24-final-wind native and existing COMP input
+        if: always()
+        run: |
+          if test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/run/met.dat" \
+             && test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
+             && test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/g31-frozen-45field-verdict.json" \
+             && test -s "$RUNNER_TEMP/g33-daylight-two-pass-native.csv" \
+             && test -s "$RUNNER_TEMP/g33-daylight-third-pass-native.csv" \
+             && test -s "$RUNNER_TEMP/g29-daylight-temp3d.source.input"; then
+            python3 native_cpp/modules/p6_calmet/reference/g33b_trace_original_multisite_comp_third_surfvar.py \
+              --source-run-dir "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/run" \
+              --untouched-met "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
+              --frozen-verdict "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/g31-frozen-45field-verdict.json" \
+              --native-two-pass "$RUNNER_TEMP/g33-daylight-two-pass-native.csv" \
+              --native-third-pass "$RUNNER_TEMP/g33-daylight-third-pass-native.csv" \
+              --existing-comp-temp3d-source "$RUNNER_TEMP/g29-daylight-temp3d.source.input" \
+              --out "$RUNNER_TEMP/g33b-daylight-${{ matrix.mode }}"
+          else
+            echo 'G33B BLOCKED: original 45-field and G17B4/G24 source provenance missing'
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g33b-original-comp-third-surfvar-vs-native-${{ matrix.mode }}
+          path: |
+            ${{ runner.temp }}/g33b-daylight-${{ matrix.mode }}/g33b-third-surfvar-diagnosis.json
+            ${{ runner.temp }}/g33b-daylight-${{ matrix.mode }}/instrumented-original/g33a_surfvar_two_pass.bin
+            ${{ runner.temp }}/g33-daylight-third-pass-native.csv
       - name: Original Fortran DIAGNO tail G10 10km
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
