@@ -173,6 +173,24 @@ public:
         verify_frame(frame);
         return *g24_;
     }
+    // G33C: expose the exact same-hour native source WIND1 and FRADJ
+    // already executed by G26A, solely to reconstruct the original
+    // THIRD COMP SURFVAR. No oracle fields, new stage shortcuts,
+    // duplicate source clocks or production admission are introduced.
+    [[nodiscard]] const Wind1MultiField& selected_wind1_for_comp(
+        const MultiHourFrame& frame) const {
+        if(!source_diagno_ready()||!wind_)
+            throw std::logic_error("G33C WIND1 required before original COMP");
+        verify_frame(frame);
+        return wind_->selected_result().first_guess;
+    }
+    [[nodiscard]] const G21SelectedFradjFields& selected_fradj_for_comp(
+        const MultiHourFrame& frame) const {
+        if(!source_diagno_ready()||!g21_)
+            throw std::logic_error("G33C post-FRADJ wind missing before COMP");
+        verify_frame(frame);
+        return *g21_;
+    }
     [[nodiscard]] const G22SelectedThermalSlope& selected_thermal_for_comp(
         const MultiHourFrame& frame) const {
         if(!source_diagno_ready())throw std::logic_error(
