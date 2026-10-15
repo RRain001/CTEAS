@@ -358,10 +358,100 @@ static void case_fresh_owned_physics(sys_seconds begin) {
     check(allocated==9&&destroyed==9,
           "G18F1 created a physics executor after final model hour");
 }
+// G18F1 selected PREPDI clock integration on a NEW owned G14 executor:
+// real G18E4 AA/BB/CGAMMA runs at stage zero; all other fields in this
+// case remain SYNTHETIC and may not assert multistation scientific parity.
+struct FreshOwnedPrepdiPhysics final : p6g::MultiHourPhysics {
+    p6g::G18E4SelectedPrepdiStageAdapter selected;
+    SyntheticNativePhysics mock;
+    const p6g::MultiHourFrame* live;
+    int* destroyed;
+    FreshOwnedPrepdiPhysics(
+        const p6g::UnifiedMultistationHourlyScheduler& scheduler,
+        p6g::G18D2StationClockAuthority& clocks,
+        const std::string& deck,const p6g::MultiHourFrame& frame,
+        int& destroyed_count)
+        :selected(scheduler,clocks,deck),live(&frame),
+         destroyed(&destroyed_count) {
+        mock.expect_source_controls=true;
+        mock.selected_prepdi=&selected;
+    }
+    ~FreshOwnedPrepdiPhysics() override {++*destroyed;}
+    p6::NativeHourStageResult run(
+        p6::NativeHourStage stage,p6g::MultiHourFrame& frame) override {
+        check(&frame==live,
+              "G18F1 PREPDI observed detached factory frame inside G14");
+        const auto result=mock.run(stage,frame);
+        if(stage==p6::NativeHourStage::PrepdiPreviousZiconv)
+            check(selected.staged()&&!selected.published()&&
+                  !selected.try_publish_after_completed_g14_hour_noexcept(),
+                  "G18F1 PREPDI clocks could publish ahead of G14");
+        return result;
+    }
+    [[nodiscard]] bool publish_noexcept() noexcept {
+        return selected.try_publish_after_completed_g14_hour_noexcept();
+    }
+};
+static void case_fresh_selected_prepdi_clock(sys_seconds begin) {
+    p6g::OriginalWindControls controls;
+    controls.bias[0]=-1.f;controls.rmax1_km=100.f;
+    p6g::UnifiedMultistationHourlyScheduler sched(
+        geo(),stations(),surface(begin,6),upper(begin,6),controls);
+    p6g::G18D2StationClockAuthority clocks;
+    const std::string deck=
+        "! IUPT = -1 !\\n! IDIOPT2 = 0 !\\n! ZUPT = 200. !\\n";
+    std::size_t made=0,published=0;
+    int destroyed=0;
+    bool publication_valid=true;
+    auto maker=[&](const p6g::MultiHourFrame& frame)
+        ->std::unique_ptr<p6g::MultiHourPhysics> {
+        check(frame.hour_index==sched.completed_hours(),
+              "G18F1 PREPDI factory constructed for a foreign source hour");
+        ++made;
+        return std::make_unique<FreshOwnedPrepdiPhysics>(
+            sched,clocks,deck,frame,destroyed);
+    };
+    auto publisher=[&](p6g::MultiHourPhysics& base,
+                       const p6g::UnifiedMultistationHourlyScheduler& committed) noexcept {
+        auto& owned=static_cast<FreshOwnedPrepdiPhysics&>(base);
+        publication_valid=publication_valid&&
+            owned.selected.staged()&&!owned.selected.published()&&
+            committed.completed_hours()==published+1 &&
+            owned.publish_noexcept()&&owned.selected.published()&&
+            destroyed==static_cast<int>(made-1);
+        ++published;
+    };
+    must_reject([&]{
+        sched.advance_with_fresh_physics(
+            maker,[](const p6g::MultiHourFrame&) {
+                throw std::runtime_error("G18F1 selected PREPDI P6F failure");
+            },publisher);
+    },"G18F1 selected PREPDI source clocks published after rejected P6F");
+    check(made==1&&destroyed==1&&published==0&&
+          !clocks.has_published_hour()&&sched.completed_hours()==0,
+          "G18F1 prepared AA/BB or CGAMMA leaked across P6F failure");
+    for(std::size_t h=0;h<6;++h) {
+        sched.advance_with_fresh_physics(
+            maker,[&](const p6g::MultiHourFrame& frame){
+                check(frame.hour_index==h&&
+                      frame.previous.ziconv_m[0]==static_cast<float>(h)&&
+                      frame.next.ziconv_m[0]==static_cast<float>(h+1),
+                      "G18F1 selected PREPDI missed previous G14 ZICONV");
+            },publisher);
+        check(made==h+2&&destroyed==static_cast<int>(h+2)&&
+              published==h+1&&publication_valid&&
+              clocks.has_published_hour()&&
+              clocks.latest_upper_hour()==begin+hours{static_cast<int>(h+1)}&&
+              clocks.latest_gamma_hour()==begin+hours{static_cast<int>(h+1)},
+              "G18F1 real selected AA/BB and per-US CGAMMA not atomically committed");
+    }
+    sched.require_complete();
+}
 int main(){
     try{
         original_station_cell_real4_boundary();
         case_fresh_owned_physics(sys_days{year{2024}/January/1});
+        case_fresh_selected_prepdi_clock(sys_days{year{2024}/January/1});
         const auto jan1=sys_days{year{2024}/January/1};
         case_hours(jan1,1);
         case_hours(jan1,6);
