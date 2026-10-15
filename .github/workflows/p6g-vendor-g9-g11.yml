@@ -559,6 +559,7 @@ jobs:
           cmake -S native_cpp/modules/p6_calmet/p6e -B "$RUNNER_TEMP/g31-p6e-comparator" -DCMAKE_BUILD_TYPE=${{ matrix.mode }}
           cmake --build "$RUNNER_TEMP/g31-p6e-comparator" --target p6e_calmet_dat21 --parallel 2
       - name: G31B strict scientific 45/45 compare against independent original whole CALMET
+        id: g31_science
         run: |
           python3 native_cpp/modules/p6_calmet/reference/g31_extract_original_science_hour.py \
             --original "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
@@ -567,7 +568,10 @@ jobs:
             --forensic-reference "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-first-hour.dat" \
             --out "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/g31b-evidence.json"
       - name: G31C forensic first-difference classification on true original 45-field failure
-        if: always()
+        # Science PASS has no failing original residual to diagnose.
+        # Science FAIL still runs the original forensic, preserving its
+        # diagnostics and never relaxing the frozen P6E comparator.
+        if: ${{ always() && steps.g31_science.outcome == 'failure' }}
         run: |
           if test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/g31-frozen-45field-verdict.json" \
              && test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
@@ -617,7 +621,10 @@ jobs:
             ${{ runner.temp }}/g32-daylight-${{ matrix.mode }}/instrumented-original-case/dgm_fields.bin
             ${{ runner.temp }}/g32-daylight-${{ matrix.mode }}/instrumented-original-case/dgm_cell.bin
       - name: G32B single-site-pattern DIAGNO kpt7-8-9 first-divergence trace against native FRADJ SLOPE
-        if: always()
+        # Science PASS has no failing original residual to diagnose.
+        # Science FAIL still runs the original forensic, preserving its
+        # diagnostics and never relaxing the frozen P6E comparator.
+        if: ${{ always() && steps.g31_science.outcome == 'failure' }}
         run: |
           if test -s "$RUNNER_TEMP/g32-daylight-${{ matrix.mode }}/instrumented-original-case/dgm_fields.bin" \
              && test -s "$RUNNER_TEMP/g32-daylight-${{ matrix.mode }}/instrumented-original-case/met.dat" \
@@ -643,7 +650,10 @@ jobs:
           name: g32b-original-source-kpt789-first-divergence-${{ matrix.mode }}
           path: ${{ runner.temp }}/g32-daylight-${{ matrix.mode }}/g32b-first-divergence.json
       - name: G32C write-only original full-grid post-INTER2 versus native G23 in strict source hour
-        if: always()
+        # Science PASS has no failing original residual to diagnose.
+        # Science FAIL still runs the original forensic, preserving its
+        # diagnostics and never relaxing the frozen P6E comparator.
+        if: ${{ always() && steps.g31_science.outcome == 'failure' }}
         run: |
           if test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
              && test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/run/met.dat" \
@@ -667,7 +677,10 @@ jobs:
             ${{ runner.temp }}/g32c-daylight-${{ matrix.mode }}/g32c-diagnosis.json
             ${{ runner.temp }}/g32c-daylight-${{ matrix.mode }}/instrumented-run/g32c_post_inter2.bin
       - name: G32D literal original source station US VS before INTER2 versus native G23 SS/US
-        if: always()
+        # Science PASS has no failing original residual to diagnose.
+        # Science FAIL still runs the original forensic, preserving its
+        # diagnostics and never relaxing the frozen P6E comparator.
+        if: ${{ always() && steps.g31_science.outcome == 'failure' }}
         run: |
           if test -s "$RUNNER_TEMP/g32c-daylight-${{ matrix.mode }}/instrumented-run/g32d_inter2_sites.bin" \
              && test -s "$RUNNER_TEMP/g32c-daylight-${{ matrix.mode }}/instrumented-run/met.dat" \
@@ -697,7 +710,10 @@ jobs:
             ${{ runner.temp }}/g32c-daylight-${{ matrix.mode }}/g32d-profile-diagnosis.json
             ${{ runner.temp }}/g32c-daylight-${{ matrix.mode }}/instrumented-run/g32d_inter2_sites.bin
       - name: G32F original write-only first COMP kpt1-5 versus native stage input and mixed-state ownership
-        if: always()
+        # Science PASS has no failing original residual to diagnose.
+        # Science FAIL still runs the original forensic, preserving its
+        # diagnostics and never relaxing the frozen P6E comparator.
+        if: ${{ always() && steps.g31_science.outcome == 'failure' }}
         run: |
           if test -s "$RUNNER_TEMP/g32-daylight-${{ matrix.mode }}/instrumented-original-case/dgm_state.bin" \
              && test -s "$RUNNER_TEMP/g32-daylight-${{ matrix.mode }}/instrumented-original-case/met.dat" \
@@ -729,7 +745,10 @@ jobs:
             ${{ runner.temp }}/g32-daylight-${{ matrix.mode }}/g32f-comp-first-difference.json
             ${{ runner.temp }}/g32-daylight-${{ matrix.mode }}/instrumented-original-case/dgm_state.bin
       - name: G33A independently verify full original pre and post FRADJ SURFVAR TEMP2D against native two-pass G17B4
-        if: always()
+        # Science PASS has no failing original residual to diagnose.
+        # Science FAIL still runs the original forensic, preserving its
+        # diagnostics and never relaxing the frozen P6E comparator.
+        if: ${{ always() && steps.g31_science.outcome == 'failure' }}
         run: |
           if test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/run/met.dat" \
              && test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
@@ -754,7 +773,10 @@ jobs:
             ${{ runner.temp }}/g33a-daylight-${{ matrix.mode }}/instrumented-original/g33a_surfvar_two_pass.bin
             ${{ runner.temp }}/g33-daylight-two-pass-native.csv
       - name: G33B original full-hour COMP third SURFVAR IALL1 versus G24-final-wind native and existing COMP input
-        if: always()
+        # Science PASS has no failing original residual to diagnose.
+        # Science FAIL still runs the original forensic, preserving its
+        # diagnostics and never relaxing the frozen P6E comparator.
+        if: ${{ always() && steps.g31_science.outcome == 'failure' }}
         run: |
           if test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/run/met.dat" \
              && test -s "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
