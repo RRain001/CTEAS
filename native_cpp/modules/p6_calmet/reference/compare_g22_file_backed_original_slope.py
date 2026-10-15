@@ -131,6 +131,7 @@ def main()->None:
     parser.add_argument("--source-stage",type=Path,required=True)
     parser.add_argument("--candidate",type=Path,required=True)
     parser.add_argument("--out",type=Path,required=True)
+    parser.add_argument("--require-nontrivial",action="store_true")
     args=parser.parse_args()
     metadata,fradj_wind=stage_input(args.source_stage)
     with tempfile.TemporaryDirectory(prefix="g22-original-vendor-slope-") as tmp:
@@ -164,12 +165,16 @@ def main()->None:
                 failures.append((key,part,reference,actual,error))
             if abs(actual-first)>1e-5:
                 changed+=1
-    # Do not claim a genuine SLOPE physics branch if no correction occurs.
+    if args.require_nontrivial and changed==0:
+        raise AssertionError(
+            "G22 steep-source SLOPE returned identity U/V; "
+            "literal Fortran parity must exercise nonzero correction")
     evidence={"scope":"source 2SS+2US G22 after-ELUSTR QH and SLOPE first hour",
               "source":"synthetic weather in original-format files",
               "fortran_sha256":sha,"mode":args.mode,
               "compared_u_v":len(original)*2,
               "slope_modified_u_v":changed,
+              "nontrivial_correction_required":args.require_nontrivial,
               "max_abs_error_mps":maximum,
               "unchanged_g11_tolerance_mps":2e-4,
               "qh_min_max_wm2":[metadata["min_qh_wm2"],metadata["max_qh_wm2"]],
