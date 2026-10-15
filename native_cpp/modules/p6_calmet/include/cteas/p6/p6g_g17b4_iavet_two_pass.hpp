@@ -214,6 +214,22 @@ public:
                          corrected_fradj_v3d.begin()+static_cast<std::ptrdiff_t>(n));
         final_=std::move(corrected);
     }
+    // G33B: selected TEST-ONLY third SURFVAR(IALL=1) at original COMP
+    // calmet.for L4567, AFTER actual DIAGNO final 3D U/V is available.
+    // Original SURFVAR IAVET=1 uses the same selected AVETMP kernel;
+    // IALL=1 additionally requests surface RH/precipitation code but
+    // cannot substitute the previously computed DIAGNO second pass.
+    // Return a fresh grid without mutating source DIAGNO surface state.
+    [[nodiscard]] std::vector<float> diagnostic_comp_final_wind_temperature(
+        std::chrono::sys_seconds end,
+        const std::vector<float>& final_u,
+        const std::vector<float>& final_v,
+        bool explicitly_test_only) const {
+        if(!explicitly_test_only||!first_||!final_)
+            throw std::invalid_argument(
+                "G33B third original SURFVAR needs both preceding DIAGNO passes");
+        return make_temperature(end,final_u,final_v);
+    }
     [[nodiscard]] G17B4TwoPassResult result() const {
         if(!first_||!final_)
             throw std::logic_error("G17B4 missing original two SURFVAR stages");
