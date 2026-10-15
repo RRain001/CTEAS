@@ -5,6 +5,7 @@
 #include "cteas/p6/p6g_g18e4_prepdi_stage_adapter.hpp"
 #include "cteas/p6/p6g_g20_file_backed_wind1_profiles.hpp"
 #include "cteas/p6/p6g_g21_file_backed_fradj.hpp"
+#include "cteas/p6/p6g_g22_file_backed_thermal_slope.hpp"
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -535,6 +536,68 @@ int main(int argc,char** argv){
                   independent_fradj.temperature_after_k&&
               actual_fradj->gamma_k_per_m==independent_fradj.gamma_k_per_m,
               "G21 live source FRADJ differs from independently selected stage");
+        // G22 consumes G21's file-backed FRADJ on this SAME uncommitted
+        // G14 source hour, then runs the real #53 HEATFX -> SETCOM
+        // AIRDEN -> ELUSTR -> original post-ELUSTR QH SLOPE kernels.
+        // Scope is deliberately candidate-only, not a complete G14 hour.
+        const auto selected_g22=p6g::g22_selected_source_thermal_slope(
+            standalone,source_case,
+            {independent.selected_result().first_guess.u_mps,
+             independent.selected_result().first_guess.v_mps},
+            independent_fradj,true);
+        check(selected_g22.end==standalone.input.end&&
+              selected_g22.heat.end==selected_g22.end&&
+              selected_g22.elustr.end==selected_g22.end&&
+              selected_g22.heat.temperature_k==
+                  independent_fradj.temperature_after_k&&
+              selected_g22.heat.sensible_heat_wm2.size()==144u&&
+              selected_g22.heat.density_kg_m3.size()==144u&&
+              selected_g22.elustr.qh_wm2.size()==144u&&
+              selected_g22.elustr.ustar_mps.size()==144u&&
+              selected_g22.elustr.el_m.size()==144u&&
+              selected_g22.elustr.stable_cells+
+                  selected_g22.elustr.daytime_cells==144u&&
+              selected_g22.post_slope_wind.u.size()==1296u&&
+              selected_g22.post_slope_wind.v.size()==1296u&&
+              scheduler.completed_hours()==0&&
+              !source_clocks.has_published_hour(),
+              "G22 source HEATFX AIRDEN ELUSTR post-QH SLOPE incomplete or committed");
+        const auto selected_g22_repeat=p6g::g22_selected_source_thermal_slope(
+            standalone,source_case,
+            {independent.selected_result().first_guess.u_mps,
+             independent.selected_result().first_guess.v_mps},
+            independent_fradj,true);
+        check(selected_g22.post_slope_wind.u==
+                  selected_g22_repeat.post_slope_wind.u&&
+              selected_g22.post_slope_wind.v==
+                  selected_g22_repeat.post_slope_wind.v&&
+              selected_g22.elustr.qh_wm2==selected_g22_repeat.elustr.qh_wm2,
+              "G22 deterministic original source candidate differs without any G14 commit");
+        rejects([&]{
+            (void)p6g::g22_selected_source_thermal_slope(
+                standalone,source_case,
+                {independent.selected_result().first_guess.u_mps,
+                 independent.selected_result().first_guess.v_mps},
+                independent_fradj,false);
+        },"G22 source thermal physics crossed test-only boundary");
+        auto corrupted_g21=independent_fradj;
+        corrupted_g21.temperature_after_k[0]+=1.f;
+        rejects([&]{
+            (void)p6g::g22_selected_source_thermal_slope(
+                standalone,source_case,
+                {independent.selected_result().first_guess.u_mps,
+                 independent.selected_result().first_guess.v_mps},
+                corrupted_g21,true);
+        },"G22 promoted forged second SURFVAR TEMP2D into HEATFX");
+        corrupted_g21=independent_fradj;
+        corrupted_g21.end+=hours{1};
+        rejects([&]{
+            (void)p6g::g22_selected_source_thermal_slope(
+                standalone,source_case,
+                {independent.selected_result().first_guess.u_mps,
+                 independent.selected_result().first_guess.v_mps},
+                corrupted_g21,true);
+        },"G22 accepted thermal fields from another original source hour");
         rejects([&]{
             (void)p6g::g21_selected_original_file_fradj(
                 standalone,source_case,candidate.cgamma,
