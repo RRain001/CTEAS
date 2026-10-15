@@ -109,9 +109,11 @@ jobs:
         run: |
           cmake -S native_cpp/modules/p6_calmet/p6e -B "$RUNNER_TEMP/g35-frozen-comparator" -DCMAKE_BUILD_TYPE=${{ matrix.mode }}
           cmake --build "$RUNNER_TEMP/g35-frozen-comparator" --target p6e_calmet_dat21 --parallel 2
-      - name: G35B experiment real native 143h G14 transactions vs original 6435-field scientific oracle
+      # G35B is a strict required scientific gate after successful 143h
+      # independent original and native 6435-field hosted Debug/Release checks.
+      # Any native state, station-clock, or frozen numeric mismatch now fails CI.
+      - name: G35B REQUIRED real native 143h G14 transactions vs original 6435-field scientific oracle
         id: g35b_science
-        continue-on-error: true
         run: |
           set -euo pipefail
           "$RUNNER_TEMP/g35-build/cteas_p6g_g34b_six_hour_selected_gate" \
