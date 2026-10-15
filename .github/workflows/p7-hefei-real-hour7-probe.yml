@@ -1,4 +1,4 @@
-name: P7 real Hefei first 24h divergence probe
+name: P7 real Hefei first 24h accepted and next 48h divergence
 on:
   # Branch-scoped hosted validation does not depend on PR synchronization
   # catching up after a burst of GitHub App contents-API commits.
@@ -21,7 +21,7 @@ concurrency:
 jobs:
   real-hour7-probe:
     runs-on: ubuntu-22.04
-    timeout-minutes: 55
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
         with:
@@ -124,7 +124,7 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/audit_original_h9_calm.py \
             --original-dgm "$root/vendor/case/run/puff/dgm_puffstep.bin" \
             --out "$root/original-h9-calm.json"
-      - name: Diagnose first native COMP mismatch through hour24 without weakening six-hour gate
+      - name: Preserve strict original 24h parity and diagnose first mismatch through 48h
         shell: bash
         run: |
           set -euo pipefail
@@ -144,23 +144,34 @@ jobs:
             "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/eighthour-strict.log" 2>&1
           grep -F 'P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS HOURS=8' "$root/eighthour-strict.log"
           echo "P7_REAL_FIRST_8H_SCIENTIFIC_GATE=PASS H3_WORDS=20000/20000 DGM=BITWISE 143H=OPEN"
+          # The original/native H1-H24 equality is now confirmed on hosted
+          # Ubuntu. Promote it to a fail-closed regression gate, independently
+          # of the exploratory next-day extension. Preserve hourly puff state.
+          CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
+            CTEAS_P7_PROBE_HOURS=24 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
+            project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
+            project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
+            "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/twentyfourhour-strict.log" 2>&1
+          grep -F 'P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS HOURS=24' "$root/twentyfourhour-strict.log"
+          echo "P7_REAL_FIRST_24H_SCIENTIFIC_GATE=PASS H3_WORDS=60000/60000 DGM=BITWISE 143H=OPEN"
           set +e
           CTEAS_P7_H9_PUFF598_MASS_TRACE="$root/native-h9-puff598-mass.tsv" \
           CTEAS_P7_H9_RECEIVER_CELL0=541 \
           CTEAS_P7_H9_RECEIVER_TRACE="$root/native-h9-42-11.tsv" \
             CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
-            CTEAS_P7_PROBE_HOURS=24 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
+            CTEAS_P7_PROBE_HOURS=48 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
             project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.inp \
             project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
-            "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/hour7-probe.log" 2>&1
+            "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/hour48-probe.log" 2>&1
           code=$?
           set -e
-          grep -E 'P7_NATIVE_H9_PUFF598_VCBAR|P7_REAL_EXTENDED_PROBE|P7_REAL_EXTENDED_PRFIN_INPUT|P7_REAL_EXTENDED_CALM_SOURCE_DECK|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE|P7_REAL_H9_CALM_SIGTZ_FIRST_DIVERGENCE|P7_REAL_H9_CALM_SIGTZ_MET_AUTHORITIES|P7_REAL_H9_NATIVE_CALCPF_CELL12|P7_NATIVE_H9_RECEPTOR_SIGTZ_INPUT' "$root/hour7-probe.log" || true
+          grep -E 'P7_NATIVE_H9_PUFF598_VCBAR|P7_REAL_EXTENDED_PROBE|P7_REAL_EXTENDED_PRFIN_INPUT|P7_REAL_EXTENDED_CALM_SOURCE_DECK|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE|P7_REAL_H9_CALM_SIGTZ_FIRST_DIVERGENCE|P7_REAL_H9_CALM_SIGTZ_MET_AUTHORITIES|P7_REAL_H9_NATIVE_CALCPF_CELL12|P7_NATIVE_H9_RECEPTOR_SIGTZ_INPUT' "$root/hour48-probe.log" || true
           # Source-pinned same-step terrain operands for the three H9
           # ZRPOLE residuals. Diagnostic only: original state is not injected.
           grep -E 'P7_NATIVE_H9_MCTADJ2_TERRAIN PUFF=(596|597|598)' \
-            "$root/hour7-probe.log" | head -n 24 || true
+            "$root/hour48-probe.log" | head -n 24 || true
           # Compare the actual first remaining H9 receptor same-step stages.
           # This is read-only and diagnostic: a mismatch cannot turn into PASS.
           original_h9="$root/vendor/case/run/puff/dgm_calcpf_h3_42_11_hour9.bin"
@@ -189,13 +200,13 @@ jobs:
           grep -F "P7_H9_PUFF598_MASS_BITWISE=PASS" "$root/h9-puff598-mass-compare.log"
           echo "P7_REAL_H9_PUFF598_MASS_GATE=PASS QOLD_QNEW_FRACDRY_VD_TSAMP_ALL_8_REAL4 H9_CONCENTRATION=OPEN"
           if [ "$code" -eq 0 ]; then
-            echo "P7_EXTENDED_PROBE_STATUS=TWENTY_FOUR_HOURS_BITWISE_ACCEPTED 143H=OPEN WROUT1=OPEN"
+            echo "P7_EXTENDED_PROBE_STATUS=FORTY_EIGHT_HOURS_BITWISE_ACCEPTED 143H=OPEN WROUT1=OPEN"
           else
             echo "P7_EXTENDED_PROBE_STATUS=BLOCKED DIAGNOSTIC_ONLY=YES EXIT_CODE=$code"
-            tail -n 24 "$root/hour7-probe.log"
+            tail -n 24 "$root/hour48-probe.log"
           fi
-          # Full H9-H24 concentrations remain exploratory/non-gating.
-          # Strict separate gates: H1-H8 REAL4 and H9 puff598 mass 8x5.
+          # H1-H24 concentrations now strict; H25-H48 remain exploratory.
+          # Strict separate gates: H1-H8, H1-H24 REAL4, and H9 puff598 mass 8x5.
           exit 0
       - uses: actions/upload-artifact@v4
         if: always()
@@ -203,7 +214,8 @@ jobs:
           name: p7-real-first-24h-divergence-log
           path: |
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/eighthour-strict.log
-            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour7-probe.log
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/twentyfourhour-strict.log
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour48-probe.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-compare.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-same-step-audit.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-puff598-mass-audit.json
