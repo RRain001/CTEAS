@@ -922,7 +922,7 @@ int main(int argc,char** argv) {
             original_sum+=expected;
             nonzero+=native>0.0F ? 1U:0U;
             if(equal_real4(native,expected))++matches;
-            else if(first_cell==2500U)first_cell=cell;
+            else if(first_cell==field_count)first_cell=cell;
             const double delta=std::abs(
                 static_cast<double>(native)-static_cast<double>(expected));
             sum_abs+=delta;
@@ -972,7 +972,7 @@ int main(int argc,char** argv) {
             require(first_dgm_mismatch_record==0U,
                     "original/native first two hours of puff history diverged");
         ++completed;
-       },true);
+       },!coupling_c2);
     require(summary.intervals==143U&&completed==probe_hours&&
             driver.completed_hours()==probe_hours&&
             (coupling_candidate || physical_steps>=11458U)&&
