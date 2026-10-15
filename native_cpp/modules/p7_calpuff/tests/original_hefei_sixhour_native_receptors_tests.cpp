@@ -450,10 +450,23 @@ int main(int argc,char** argv) {
                     *native_con_writer,
                     original_total_source_descriptor(
                         header.origin_x_m,header.origin_y_m),50,50);
+            // CALMET.DAT encodes the end of a one-hour interval with
+            // boundary-style hour/seconds fields that need not satisfy the
+            // WROUT1 convention of canonical YYYYJJJ HH:00 endpoints.
+            // Original WROUT1 advances the begin timestamp by one whole
+            // hour. Reconstruct that clock from independent MET begin,
+            // not from frozen puff.con values or an output oracle.
+            require(met.begin.seconds==0 &&
+                    met.begin.year==2022 &&
+                    met.begin.julian_day>=1 &&
+                    met.begin.julian_day<=6,
+                    "native WROUT1 requires frozen hourly MET begin clock");
+            const int next_hour=(met.begin.hour+1)%24;
+            const int next_day=met.begin.julian_day+
+                (met.begin.hour==23?1:0);
             const ConcPeriod period{
-                met.begin.year,met.begin.julian_day,met.begin.hour,
-                met.begin.seconds,met.end.year,met.end.julian_day,
-                met.end.hour,met.end.seconds};
+                met.begin.year,met.begin.julian_day,met.begin.hour,0,
+                met.begin.year,next_day,next_hour,0};
             // Prevalidated contiguous 1h records: no oracle field supplied.
             native_con_hours->write_hour(period,hour.receptor_concentrations);
         }
