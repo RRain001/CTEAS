@@ -15,6 +15,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/compare_g25_source_original_stable_mixhtst.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g25_source_original_daytime_mixhtst.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g27_source_original_setcom_nearu.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g28_source_original_avemix_wstarr.py'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/tests/p6g_g19_file_backed_case_tests.cpp'
@@ -36,6 +37,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/compare_g25_source_original_stable_mixhtst.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g25_source_original_daytime_mixhtst.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g27_source_original_setcom_nearu.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g28_source_original_avemix_wstarr.py'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/tests/p6g_g19_file_backed_case_tests.cpp'
@@ -108,6 +110,7 @@ jobs:
             --inter2-original-stage-prefix "$RUNNER_TEMP/g23-original-stage" \
             --diagi-similt-prefix "$RUNNER_TEMP/g23-original-diagi" \
             --nearu-prefix "$RUNNER_TEMP/g27-original-nearu" \
+            --comp-original-prefix "$RUNNER_TEMP/g28-original-comp" \
             --station-flux-prefix "$RUNNER_TEMP/g25-original-flux" \
             --wind-tail-stage "$RUNNER_TEMP/g24-original-stage.dat" \
             --wind-tail-output "$RUNNER_TEMP/g24-original-native.csv" \
@@ -142,6 +145,7 @@ jobs:
             --inter2-original-stage-prefix "$RUNNER_TEMP/g23-steep-stage" \
             --diagi-similt-prefix "$RUNNER_TEMP/g23-steep-diagi" \
             --nearu-prefix "$RUNNER_TEMP/g27-steep-nearu" \
+            --comp-original-prefix "$RUNNER_TEMP/g28-steep-comp" \
             --station-flux-prefix "$RUNNER_TEMP/g25-steep-flux" \
             --wind-tail-stage "$RUNNER_TEMP/g24-steep-stage.dat" \
             --wind-tail-output "$RUNNER_TEMP/g24-steep-native.csv" \
@@ -197,6 +201,7 @@ jobs:
             --inter2-original-stage-prefix "$RUNNER_TEMP/g23-daylight-stage" \
             --diagi-similt-prefix "$RUNNER_TEMP/g23-daylight-diagi" \
             --nearu-prefix "$RUNNER_TEMP/g27-daylight-nearu" \
+            --comp-original-prefix "$RUNNER_TEMP/g28-daylight-comp" \
             --station-flux-prefix "$RUNNER_TEMP/g25-daylight-flux" \
             --wind-tail-stage "$RUNNER_TEMP/g24-daylight-stage.dat" \
             --wind-tail-output "$RUNNER_TEMP/g24-daylight-native.csv" \
@@ -384,6 +389,29 @@ jobs:
             ${{ runner.temp }}/g27-source-${{ matrix.mode }}.json
             ${{ runner.temp }}/g27-steep-${{ matrix.mode }}.json
             ${{ runner.temp }}/g27-daylight-${{ matrix.mode }}.json
+      - name: Literal original CALMET AVEMIX and WSTARR on G26B post-MIXHT source
+        run: |
+          python3 native_cpp/modules/p6_calmet/reference/compare_g28_source_original_avemix_wstarr.py \
+            --mode ${{ matrix.mode }} \
+            --source-prefix "$RUNNER_TEMP/g28-original-comp" \
+            --out "$RUNNER_TEMP/g28-source-${{ matrix.mode }}.json"
+          python3 native_cpp/modules/p6_calmet/reference/compare_g28_source_original_avemix_wstarr.py \
+            --mode ${{ matrix.mode }} \
+            --source-prefix "$RUNNER_TEMP/g28-steep-comp" \
+            --out "$RUNNER_TEMP/g28-steep-${{ matrix.mode }}.json"
+          python3 native_cpp/modules/p6_calmet/reference/compare_g28_source_original_avemix_wstarr.py \
+            --mode ${{ matrix.mode }} \
+            --source-prefix "$RUNNER_TEMP/g28-daylight-comp" \
+            --require-convection \
+            --out "$RUNNER_TEMP/g28-daylight-${{ matrix.mode }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g28-literal-original-avemix-wstarr-${{ matrix.mode }}
+          path: |
+            ${{ runner.temp }}/g28-source-${{ matrix.mode }}.json
+            ${{ runner.temp }}/g28-steep-${{ matrix.mode }}.json
+            ${{ runner.temp }}/g28-daylight-${{ matrix.mode }}.json
       - name: Original Fortran DIAGNO tail G10 10km
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
