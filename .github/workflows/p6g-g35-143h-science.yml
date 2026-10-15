@@ -8,6 +8,7 @@ on:
       - 'native_cpp/modules/p6_calmet/src/p6g_g34b_six_hour_selected_gate_main.cpp'
       - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/g35_verify_original_143h.py'
+      - 'native_cpp/modules/p6_calmet/reference/g36a_run_original_calpuff_multisite.py'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/p6g_*.hpp'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
   pull_request:
@@ -17,6 +18,7 @@ on:
       - 'native_cpp/modules/p6_calmet/src/p6g_g34b_six_hour_selected_gate_main.cpp'
       - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/g35_verify_original_143h.py'
+      - 'native_cpp/modules/p6_calmet/reference/g36a_run_original_calpuff_multisite.py'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/p6g_*.hpp'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
   workflow_dispatch:
@@ -137,6 +139,37 @@ jobs:
           else
             echo "::warning::G35B BLOCKED: native 143h history/physics or frozen original comparator failed. No production or 143h parity claims."
           fi
+      # Exploratory until the genuine unmodified CALPUFF 7.2.1 has been
+      # observed to read all 143 native hours and produce original outputs.
+      # This is NOT a P7 native CALPUFF scientific-parity assertion.
+      - name: G36A experimental true original CALPUFF 7.2.1 consumes 143h P6G native MET.DAT
+        id: g36a_calpuff
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/g36a_run_original_calpuff_multisite.py \
+            --native-met "$RUNNER_TEMP/g35-native-143h.calmet.dat" \
+            --out "$RUNNER_TEMP/g36a-original-calpuff" --max-seconds 900
+      - name: G36A original CALPUFF read-compatibility disposition
+        if: always()
+        run: |
+          if [ "${{ steps.g36a_calpuff.outcome }}" = "success" ]; then
+            echo "G36A original CALPUFF binary read and ran full 143h C++ multi-station CALMET.DAT: PASS"
+          else
+            echo "::warning::G36A original CALPUFF still BLOCKED, inspect original listing/logs. G35 physical parity remains separately accepted."
+          fi
+      - name: Upload G36A genuine original CALPUFF integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g36a-original-calpuff-full-143h-${{ matrix.mode }}
+          path: |
+            ${{ runner.temp }}/g36a-original-calpuff/g36a-manifest.json
+            ${{ runner.temp }}/g36a-original-calpuff/original-compile.log
+            ${{ runner.temp }}/g36a-original-calpuff/original-calpuff-runtime.log
+            ${{ runner.temp }}/g36a-original-calpuff/case/run/puff/puff.lst
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload G35B native 143h diagnostics
         if: always()
         uses: actions/upload-artifact@v4
