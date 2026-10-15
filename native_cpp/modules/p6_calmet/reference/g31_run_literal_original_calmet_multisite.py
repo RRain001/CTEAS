@@ -212,7 +212,7 @@ def original_compiler(source:Path,exe:Path,mode:str,compiler:str):
                 alias.symlink_to(f)
     flags=["-std=legacy","-ffixed-line-length-none","-fno-automatic",
            "-fno-align-commons","-fallow-argument-mismatch",
-           "-O0" if mode=="Debug" else "-O2"]
+           "-O0"]
     cmd=[compiler,*flags,"-I"+str(include),str(source),"-o",str(exe)]
     p=subprocess.run(cmd,capture_output=True,text=True,timeout=240)
     if p.returncode or not exe.is_file():
@@ -273,6 +273,7 @@ def main():
         evidence["original_G19_metinp_sha256"]=sha256(met)
         evidence["staged_vendor_metinp_sha256"]=sha256(staged/"met.inp")
         binary=args.out/"original-calmet.x"
+        evidence["frozen_original_compiler_optimization"]="-O0"
         evidence["compiler_command"]=original_compiler(
             VENDOR/"calmet.for",binary,args.mode,args.compiler)
         proc=subprocess.run([str(binary),"met.inp"],cwd=staged,
