@@ -55,6 +55,10 @@ struct RiseCompSamplingState {
     // receptor-specific PUFRECS. Do not silently fall back to PG IDOPT=3.
     // Derived from live SETCSIG/TURBSET meteorology, never from DGM.
     std::optional<OriginalCalmSigmaInput> receptor_calm_sigma;
+    // Vendor CALCPF L4304 reads VDPVD(IPOL): DRY L26227-26261
+    // sets a non-unity boundary ratio for uniform ICODE 2/6.
+    // Gaussian codes retain 1.0. Native VDCOMP/DRY owns this state.
+    float receptor_deposition_ratio=1.0F;
 };
 using RiseCompSamplingKernel=std::function<std::vector<float>(
     const RiseCompSamplingState&)>;
