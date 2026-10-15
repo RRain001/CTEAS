@@ -9,6 +9,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g22_file_backed_original_slope.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g23_source_original_inter2.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g23_source_original_diagi_similt.py'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/tests/p6g_g19_file_backed_case_tests.cpp'
@@ -24,6 +25,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g22_file_backed_original_slope.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g23_source_original_inter2.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g23_source_original_diagi_similt.py'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/tests/p6g_g19_file_backed_case_tests.cpp'
@@ -93,7 +95,8 @@ jobs:
             --slope-output "$RUNNER_TEMP/g22-native-slope.csv" \
             --slope-stage "$RUNNER_TEMP/g22-original-input.dat" \
             --inter2-output "$RUNNER_TEMP/g23-original-inter2.csv" \
-            --inter2-original-stage-prefix "$RUNNER_TEMP/g23-original-stage"
+            --inter2-original-stage-prefix "$RUNNER_TEMP/g23-original-stage" \
+            --diagi-similt-prefix "$RUNNER_TEMP/g23-original-diagi"
           python3 native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py \
             --mode ${{ matrix.mode }} \
             --source-stage "$RUNNER_TEMP/g21-original-input.dat" \
@@ -121,7 +124,8 @@ jobs:
             --slope-output "$RUNNER_TEMP/g22-steep-native-slope.csv" \
             --slope-stage "$RUNNER_TEMP/g22-steep-original-input.dat" \
             --inter2-output "$RUNNER_TEMP/g23-steep-inter2.csv" \
-            --inter2-original-stage-prefix "$RUNNER_TEMP/g23-steep-stage"
+            --inter2-original-stage-prefix "$RUNNER_TEMP/g23-steep-stage" \
+            --diagi-similt-prefix "$RUNNER_TEMP/g23-steep-diagi"
           python3 native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py \
             --mode ${{ matrix.mode }} \
             --source-stage "$RUNNER_TEMP/g21-steep-original-input.dat" \
@@ -171,6 +175,7 @@ jobs:
             --slope-stage "$RUNNER_TEMP/g22-daylight-slope-input.dat" \
             --inter2-output "$RUNNER_TEMP/g23-daylight-inter2.csv" \
             --inter2-original-stage-prefix "$RUNNER_TEMP/g23-daylight-stage" \
+            --diagi-similt-prefix "$RUNNER_TEMP/g23-daylight-diagi" \
             | tee "$RUNNER_TEMP/g22-daylight-native-log.txt"
           grep -Eq 'DAYTIME_CELLS=[1-9][0-9]*' "$RUNNER_TEMP/g22-daylight-native-log.txt"
           python3 native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py \
@@ -227,6 +232,28 @@ jobs:
             ${{ runner.temp }}/g23-vendor-${{ matrix.mode }}.json
             ${{ runner.temp }}/g23-steep-vendor-${{ matrix.mode }}.json
             ${{ runner.temp }}/g23-daylight-vendor-${{ matrix.mode }}.json
+      - name: Literal original SIMILT on G23 actual STHEOR MIXHTST DIAGI station columns
+        run: |
+          python3 native_cpp/modules/p6_calmet/reference/compare_g23_source_original_diagi_similt.py \
+            --mode ${{ matrix.mode }} \
+            --source-prefix "$RUNNER_TEMP/g23-original-diagi" \
+            --out "$RUNNER_TEMP/g23-source-diagi-${{ matrix.mode }}.json"
+          python3 native_cpp/modules/p6_calmet/reference/compare_g23_source_original_diagi_similt.py \
+            --mode ${{ matrix.mode }} \
+            --source-prefix "$RUNNER_TEMP/g23-steep-diagi" \
+            --out "$RUNNER_TEMP/g23-steep-diagi-${{ matrix.mode }}.json"
+          python3 native_cpp/modules/p6_calmet/reference/compare_g23_source_original_diagi_similt.py \
+            --mode ${{ matrix.mode }} \
+            --source-prefix "$RUNNER_TEMP/g23-daylight-diagi" \
+            --out "$RUNNER_TEMP/g23-daylight-diagi-${{ matrix.mode }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g23-literal-diagi-similt-${{ matrix.mode }}
+          path: |
+            ${{ runner.temp }}/g23-source-diagi-${{ matrix.mode }}.json
+            ${{ runner.temp }}/g23-steep-diagi-${{ matrix.mode }}.json
+            ${{ runner.temp }}/g23-daylight-diagi-${{ matrix.mode }}.json
       - name: Original Fortran DIAGNO tail G10 10km
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
