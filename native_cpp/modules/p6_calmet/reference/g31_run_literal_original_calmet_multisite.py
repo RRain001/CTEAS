@@ -121,6 +121,37 @@ def stage_deck(src:str,start:dt.datetime,end:dt.datetime)->str:
             raise ValueError("G31A changed protected physical source control "+key)
     return result
 
+def stage_vendor_geodat_header(data:str)->str:
+    """Format only G19 GEO.DAT header as untouched READGE fixed-column input.
+
+    Input G19 grid/terrain/landuse and all six physical gridded matrices
+    remain exactly the same numerical payload. Original READGE uses
+    (I4,A4) for UTM and (2I8,4F12.3) for geometry, whereas the G19
+    synthetic C++ reader accepts compact, space-separated header forms.
+    """
+    lines=data.splitlines(keepends=True)
+    if len(lines)<36 or not lines[0].startswith("GEO.DAT") or (
+            lines[3].strip()!="UTM" or lines[4].strip()!="50N" or
+            not lines[5].startswith("WGS-84") or
+            not lines[7].startswith("KM")):
+        raise ValueError("G31A original G19 GEO expected header layout changed")
+    tokens=lines[6].split()
+    if len(tokens)!=6:
+        raise ValueError("G31A G19 GEO geometry columns changed")
+    nx,ny=int(tokens[0]),int(tokens[1])
+    x,y,dx,dy=(float(t) for t in tokens[2:])
+    if (nx,ny,x,y,dx,dy)!=(12,12,510.885,3531.269,10.0,10.0):
+        raise ValueError("G31A original GEO numeric geometry out of source scope")
+    # Only lines 5 and 7 (1-based) are rewritten; the 12x12 LANDUSE,
+    # terrain and six source surface matrices stay byte-identical.
+    lines[4]=f"{50:4d}{'N':<4}\n"
+    lines[6]=f"{nx:8d}{ny:8d}{x:12.3f}{y:12.3f}{dx:12.3f}{dy:12.3f}\n"
+    result="".join(lines)
+    if result.splitlines()[8:]!=data.splitlines()[8:]:
+        raise ValueError("G31A physical GEO data rows altered in staging")
+    return result
+
+
 def original_compiler(source:Path,exe:Path,mode:str,compiler:str):
     include=exe.parent/"include-alias"
     include.mkdir(parents=True,exist_ok=True)
@@ -171,6 +202,12 @@ def main():
             if sha256(p)!=sha256(staged/target):
                 raise RuntimeError("G31A original input bytes changed "+original)
             evidence["unchanged_source_files"][original]=sha256(p)
+        # Original G19 grid matrices remain fixed; normalize only
+        # vendor GEO header column formatting on a separate staged copy.
+        geo=staged/"geo.dat"
+        transformed=stage_vendor_geodat_header(geo.read_text())
+        geo.write_text(transformed)
+        evidence["staged_vendor_geodat_sha256"]=sha256(geo)
         met=(args.source/"met.inp")
         if not met.is_file():
             raise RuntimeError("G31A missing G19 original source controls")
