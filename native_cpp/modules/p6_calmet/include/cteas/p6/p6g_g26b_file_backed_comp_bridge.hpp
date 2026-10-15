@@ -138,6 +138,16 @@ public:
             throw std::logic_error("G28 requires original source AVEMIX after MIXHT");
         return comp_->source_avemix_after_mixht(frame);
     }
+    [[nodiscard]] const G18C3SelectedTemperature& source_temp3d_input_and_result(
+        const MultiHourFrame& frame) const {
+        if(phase_!=4||!comp_||&frame!=live_||
+           frame.hour_index!=hour_index_||frame.input.end!=end_||
+           frame.previous.zi_m!=previous_.zi_m||
+           frame.previous.ziconv_m!=previous_.ziconv_m||
+           frame.previous.dptt_k!=previous_.dptt_k)
+            throw std::logic_error("G29B foreign or unfinished native TEMP3D");
+        return comp_->source_temp3d_before_assembly(frame);
+    }
     [[nodiscard]] bool source_comp_ready() const noexcept {
         return phase_==4&&comp_.has_value()&&comp_->selected_complete();
     }
