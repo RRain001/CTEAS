@@ -168,14 +168,10 @@ inline G23SelectedSourceStheorInter2 g23_source_stheor_diagi_inter2(
         const auto& soundings=frame.upper[site].soundings;
         if(bracket.earlier>=soundings.size()||
            bracket.later>=soundings.size()||
-           soundings[bracket.earlier].data.size()!=2||
-           soundings[bracket.later].data.size()!=2||
-           !std::isfinite(soundings[bracket.earlier].data.front().height_lgl_m)||
-           !std::isfinite(soundings[bracket.later].data.front().height_lgl_m)||
-           soundings[bracket.earlier].data.front().height_lgl_m<=0.f||
-           soundings[bracket.later].data.front().height_lgl_m<=0.f)
+           soundings[bracket.earlier].data.size()<2||
+           soundings[bracket.later].data.size()<2)
             throw std::invalid_argument(
-                "G32E selected G19 2-level upper sounding contract changed");
+                "G32E selected G19 upper soundings or source PREPDI hour missing");
         const auto k1=frame.stations.surface.size()+site;
         if(merged.inter2_present[k1]!=1U||
            !std::isfinite(merged.inter2_u_mps[k1])||
