@@ -18,7 +18,10 @@ from g36b_atomic_calmet_publish import (
 def rejects(action,what:str)->None:
     try:
         action()
-    except (ValueError,RuntimeError,OSError):
+    except (ValueError,RuntimeError,OSError,AssertionError):
+        # The independent Fortran framing oracle intentionally raises
+        # AssertionError on truncated record bodies/trailers. It is a
+        # rejection, not an accepted damaged byte stream.
         return
     raise AssertionError("G36B accepted unsafe operation "+what)
 
