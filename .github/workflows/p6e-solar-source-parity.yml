@@ -19,132 +19,13 @@ jobs:
     # Dedicated P6E host: do not share generic self-hosted queue with P6D.
     # lhy-desktop-2 must be registered with custom GitHub runner LABEL
     # lhy-desktop-2 (a runner's display name alone is NOT a scheduling label).
-    runs-on: [self-hosted, lhy-desktop-2]
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
-      - name: Identify runner and probe source transports
-        id: source_network
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          echo "Runner: $RUNNER_NAME; OS: $RUNNER_OS; arch: $RUNNER_ARCH"
-          if [[ "$RUNNER_NAME" != "lhy-desktop-2" || "$RUNNER_OS" != "Linux" ]]; then
-            echo "::error::Expected Linux self-hosted lhy-desktop-2, got $RUNNER_NAME/$RUNNER_OS"
-            exit 1
-          fi
-          if curl -fIsS --connect-timeout 5 --max-time 8 "https://github.com/" >/dev/null 2>&1; then
-            echo "github=yes" >> "$GITHUB_OUTPUT"
-            echo "github.com source transport: CONNECTED"
-          else
-            echo "github=no" >> "$GITHUB_OUTPUT"
-            echo "::warning::github.com:443 transport unavailable from lhy-desktop-2"
-          fi
-          if curl -fIsS --connect-timeout 5 --max-time 8 \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "api=yes" >> "$GITHUB_OUTPUT"
-            echo "api.github.com private repository REST transport: CONNECTED"
-          else
-            echo "api=no" >> "$GITHUB_OUTPUT"
-            echo "::warning::api.github.com:443 REST transport unavailable from lhy-desktop-2"
-          fi
-          if ! grep -Eq '^github=yes|^api=yes' "$GITHUB_OUTPUT"; then
-            echo "::error::Neither github.com nor api.github.com is available on lhy-desktop-2: fix outbound HTTPS/proxy first"
-            exit 1
-          fi
-      - name: Checkout required source when github.com is reachable
-        id: checkout
-        if: steps.source_network.outputs.github == 'yes'
-        continue-on-error: true
+      # Official GitHub-hosted runners are ephemeral and already have
+      # authenticated source checkout. No retired workstation is required.
+      - name: Checkout immutable PR commit
         uses: actions/checkout@v4
-        with:
-          filter: blob:none
-          sparse-checkout: |
-            native_cpp/modules/p6_calmet/p6e
-            native_cpp/modules/p6_calmet/include/cteas/p6
-            engine/vendor/src/CALMET_v6.5.0_L150223
-      - name: Bootstrap exact commit sources via GitHub REST when git transport is blocked
-        if: (steps.source_network.outputs.github != 'yes' || steps.checkout.outcome == 'failure') && steps.source_network.outputs.api == 'yes'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 - <<'PY'
-          import base64
-          import hashlib
-          import json
-          import os
-          from pathlib import Path
-          from urllib.request import Request, urlopen
-          api = "https://api.github.com/repos/" + os.environ["GITHUB_REPOSITORY"]
-          token = os.environ["GH_TOKEN"]
-          sha = os.environ["GITHUB_SHA"]
-          def github(relative):
-              url = api + relative
-              req = Request(url, headers={
-                  "Authorization": "Bearer " + token,
-                  "Accept": "application/vnd.github+json",
-                  "User-Agent": "CTEAS-P6E-runner-exact-source",
-                  "X-GitHub-Api-Version": "2022-11-28"})
-              with urlopen(req, timeout=25) as response:
-                  return json.load(response)
-          commit = github("/git/commits/" + sha)
-          tree = github("/git/trees/" + commit["tree"]["sha"] + "?recursive=1")
-          if tree.get("truncated"):
-              raise RuntimeError("GitHub REST tree truncated: refusing incomplete bootstrap")
-          prefix = "native_cpp/modules/p6_calmet/p6e/"
-          p6c_prefix = "native_cpp/modules/p6_calmet/include/cteas/p6/"
-          p6c_contract_headers = {
-              "comp_buffered_timeline.hpp", "temperature_faces.hpp",
-              "upper_hourly_wind.hpp", "vertical_wind_average.hpp",
-              "read_upper.hpp", "read_surface.hpp",
-              "surface_hourly_state.hpp"
-          }
-          vendor_prefix = "engine/vendor/src/CALMET_v6.5.0_L150223/"
-          allow_vendor = {"calmet.for", "hflux.met", "ziparm.met", "upmet.met", "gen.met"}
-          files = [
-              item for item in tree["tree"]
-              if item["type"] == "blob" and (
-                  item["path"].startswith(prefix)
-                  or (item["path"].startswith(p6c_prefix)
-                      and item["path"][len(p6c_prefix):] in p6c_contract_headers)
-                  or (item["path"].startswith(vendor_prefix)
-                      and item["path"][len(vendor_prefix):] in allow_vendor))
-          ]
-          if len(files) < 21:
-              raise RuntimeError("Too few files in immutable P6E Git tree")
-          def blob_hash(data):
-              return hashlib.sha1(b"blob " + str(len(data)).encode()
-                                  + b"\x00" + data).hexdigest()
-          reused = 0
-          fetched = 0
-          for item in files:
-              p = Path(item["path"])
-              if p.is_absolute() or ".." in p.parts or p.is_symlink():
-                  raise RuntimeError("Unsafe Git path/symlink")
-              # Dedicated self-hosted workspace persists between jobs.
-              # Reuse ONLY exact Git-content-addressed blobs, never a
-              # stale or uncontrolled previous checkout. This prevents
-              # re-downloading ~80 unchanged files on every P6E commit.
-              if p.is_file() and blob_hash(p.read_bytes()) == item["sha"]:
-                  reused += 1
-                  continue
-              blob = github("/git/blobs/" + item["sha"])
-              if blob.get("encoding") != "base64":
-                  raise RuntimeError("Expected canonical base64 Git blob")
-              data = base64.b64decode(blob["content"])
-              if blob_hash(data) != item["sha"]:
-                  raise RuntimeError("Immutable Git blob hash mismatch: " + item["path"])
-              p.parent.mkdir(parents=True, exist_ok=True)
-              p.write_bytes(data)
-              fetched += 1
-          print("REST source bootstrap PASS: SHA=", sha,
-                "verified blobs=", len(files),
-                "reused verified local blobs=", reused,
-                "fetched missing/changed blobs=", fetched)
-          PY
       - name: Require complete immutable source set
         shell: bash
         run: |
@@ -160,46 +41,20 @@ jobs:
           test -f engine/vendor/src/CALMET_v6.5.0_L150223/gen.met || {
             echo "::error::MIXHMC original GEN.MET common block not retrieved"; exit 1;
           }
-      - name: Identify lhy-desktop-2 and verify toolchain
+      - name: Provision GitHub-hosted GCC12 and original Fortran compiler
         shell: bash
         run: |
-          echo "Runner: ${RUNNER_NAME}; OS: ${RUNNER_OS}; arch: ${RUNNER_ARCH}"
-          if [[ "${RUNNER_NAME}" != "lhy-desktop-2" ]]; then
-            echo "::error::Expected lhy-desktop-2 but received ${RUNNER_NAME}"
-            exit 1
-          fi
-          if [[ "${RUNNER_OS}" != "Linux" ]]; then
-            echo "::error::The selected CALMET GNU source-parity harness requires a Linux runner"
-            exit 1
-          fi
-          for tool in cmake gfortran python3 git; do
-            if ! command -v "${tool}" >/dev/null 2>&1; then
-              echo "::error::Missing tool ${tool} on lhy-desktop-2; install it on the runner host"
-              exit 1
-            fi
-            command -v "${tool}"
-          done
-          # P6C C++20 chrono sys_seconds/year_month_day needs modern libstdc++.
-          # Default /usr/bin/c++ on this host was GNU 9.5.0, which compiled
-          # E1-E14 but cannot compile E15's existing typed P6C interfaces.
-          selected=""
-          for candidate in g++-14 g++-13 g++-12 g++-11 g++; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              candidate_path="$(command -v "$candidate")"
-              major="$("$candidate_path" -dumpfullversion -dumpversion | cut -d. -f1)"
-              if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 11 )); then
-                selected="$candidate_path"
-                echo "Selected C++20 date/calendar compiler: $selected"
-                "$selected" --version | head -n 1
-                break
-              fi
-            fi
-          done
-          if [[ -z "$selected" ]]; then
-            echo "::error::P6E E15 requires GCC >=11 (C++20 chrono calendar). The runner default GCC 9.5.0 is too old. Install g++-11 or newer on lhy-desktop-2."
-            exit 1
-          fi
-          echo "P6E_CXX=$selected" >> "$GITHUB_ENV"
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-12 gfortran-12
+      - name: Verify isolated Linux C++20 and Fortran toolchain
+        uses: ./.github/actions/cteas-linux-toolchain
+      - name: Propagate selected C++20 compiler for original P6E CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${CXX:?GitHub-hosted GCC selection is required}"
+          echo "P6E_CXX=$CXX" >> "$GITHUB_ENV"
       - name: C++20 Werror and software CTest
         run: |
           # CMake may cache the old GNU 9.5 compiler in this persistent runner.
