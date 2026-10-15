@@ -150,13 +150,17 @@ static std::string make_two_station_crossyear_deck(const std::string& original) 
     return two;
 }
 int main(int argc,char** argv){
-    if((argc==4||argc==5)&&std::string(argv[1])=="--export-case") {
+    if(argc>=4&&argc<=6&&std::string(argv[1])=="--export-case") {
         try {
             const auto original=read(argv[2]);
-            const bool steep=(argc==5&&
-                               std::string(argv[4])=="--fradj-stress");
-            if(argc==5&&!steep)
-                throw std::invalid_argument("G21 unknown export-case option");
+            bool steep=false,daylight=false;
+            for(int i=4;i<argc;++i) {
+                const std::string arg=argv[i];
+                if(arg=="--fradj-stress"&&!steep)steep=true;
+                else if(arg=="--daylight-first-hour"&&!daylight)daylight=true;
+                else throw std::invalid_argument(
+                    "G22 repeated or unknown original-format case variant");
+            }
             auto two=make_two_station_crossyear_deck(original);
             if(steep) {
                 // Stress case is a genuine LEGAL original READCF parameter
@@ -172,7 +176,11 @@ int main(int argc,char** argv){
                 {(root/"UP1.DAT").string(),(root/"UP2.DAT").string()}};
             save(paths.met_inp,two);
             geo_file(paths.geo_dat,false,steep);
-            const auto begin=sys_days{year{2023}/December/31}+hours{22};
+            // Observed original-format synthetic source hour at 02:00
+            // UTC is local ~10:00 in Hefei and exercises daytime ELUSTR.
+            // UP 00/12 UTC bracket remains source-valid at the new hour.
+            const auto begin=sys_days{year{2023}/December/31}+
+                hours{daylight?26:22};
             surface_file(paths.surf_dat,begin,6);
             const auto day=sys_days{year{2023}/December/31};
             upper_file(paths.ordered_up_dat[0],58424,day);
@@ -182,6 +190,7 @@ int main(int argc,char** argv){
                   "G20 export source case does not match tested 6-hour input");
             std::cout<<"PASS_G20_EXPORTED_ORIGINAL_FORMAT_SYNTHETIC_2SS_2US "
                      <<"FRADJ_STEEP_TERRAIN="<<steep<<" "
+                     <<"DAYLIGHT_SOURCE_HOUR="<<daylight<<" "
                         "FULL_ORIGINAL_VENDOR_PARITY=NOT_ACCEPTED\n";
             return 0;
         } catch(const std::exception& error) {
