@@ -689,9 +689,17 @@ int main(int argc,char** argv) {
                         <<" READ_ONLY=YES"
                         <<" REAL_H9_PARITY=TO_BE_AUDITED\\n";
                 }
-                const bool keys=stage.puff_id==ref.integers[3] &&
-                    stage.ksam==ref.integers[16] &&
-                    ref.integers[1]==202200100+static_cast<int>(hour_index);
+                // Vendor DGM integer[1] records the active YYYYJJJHH
+                // time stamp (202200123 -> 202200200 at Jan 1 midnight).
+                // Linear addition of hour_index would incorrectly produce
+                // 202200124 at H25 although the original puff/KSAM/XY/sigma
+                // values are all bitwise equal.
+                const int expected_dgm_clock=met.begin.year*100000+
+                    met.begin.julian_day*100+met.begin.hour;
+                const bool clock=ref.integers[1]==expected_dgm_clock;
+                const bool puff_key=stage.puff_id==ref.integers[3] &&
+                    stage.ksam==ref.integers[16];
+                const bool keys=puff_key && clock;
                 const bool xy=equal_real4(stage.step.after.x_cells,ref.reals[38]) &&
                     equal_real4(stage.step.after.y_cells,ref.reals[39]);
                 const bool sy=equal_real4(stage.step.vertical_after.sigma_y_m,
@@ -705,7 +713,8 @@ int main(int argc,char** argv) {
                 if(first_dgm_mismatch_record==0U &&
                    (!keys||!xy||!sy||!sz)) {
                     first_dgm_mismatch_record=global+1U;
-                    first_dgm_mismatch_field=!keys?"PUFF_ID_KSAM":
+                    first_dgm_mismatch_field=!clock?"DGM_HOUR_CLOCK":
+                        !puff_key?"PUFF_ID_KSAM":
                         !xy?"ADVECT_XY":!sy?"STORED_SIGY":"STORED_SIGZ";
                     std::cout<<std::setprecision(9)
                         <<"P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE"
@@ -716,6 +725,8 @@ int main(int argc,char** argv) {
                         <<" PUFF_VENDOR="<<ref.integers[3]
                         <<" KSAM_NATIVE="<<stage.ksam
                         <<" KSAM_VENDOR="<<ref.integers[16]
+                        <<" DGM_CLOCK_EXPECTED="<<expected_dgm_clock
+                        <<" DGM_CLOCK_VENDOR="<<ref.integers[1]
                         <<" XY_NATIVE="<<stage.step.after.x_cells<<","
                                          <<stage.step.after.y_cells
                         <<" XY_VENDOR="<<ref.reals[38]<<","<<ref.reals[39]
