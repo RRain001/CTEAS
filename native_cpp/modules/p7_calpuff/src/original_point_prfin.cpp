@@ -87,27 +87,57 @@ OriginalPointPrfinResult original_point_prfin_metfm1(
     float final_rise=static_cast<float>(final.z_final_m);
     float fmix=1.0F;
     float hmax=pbl;
-    if(pg<=4) {
-        // Preserve the previously source-accepted A-D no-penetration
-        // subset; do not silently fabricate an inversion gradient.
-        if(!(flux.buoyancy_m4s3>0.0) || !(pbl>in.stack_height_m) ||
-           !(final.z_final_m<=0.67F*(pbl-in.stack_height_m)))
-            throw std::invalid_argument(
-                "POINTS1 PRFPP depends on unported PTLAPS/penetration branch");
+    FinalRise adjusted=final;
+    if(pg<=4 && flux.buoyancy_m4s3>0.0) {
+        // POINTS1 L15562-15588: PRFPP is unconditional for A-D with
+        // positive FB, including stack above the diagnosed mixed layer.
+        // PTLAPS is sourced at HTINV=max(DPBL,HTSTAK), thickness 30m.
+        // A-D cases needing the inversion gradient fail closed unless the
+        // selected live METFM1/LCALGRD temperature profile is provided.
+        const float zi=pbl-in.stack_height_m;
+        const float transition=0.67F*zi;
+        float ptginv=0.0F;
+        float dptinv=0.0F;
+        if(zi<=0.0F || final_rise>transition) {
+            if(!in.use_calmet_profile_lapse)
+                throw std::invalid_argument(
+                    "POINTS1 PRFPP penetration requires original LCALGRD PTLAPS");
+            const std::size_t nz=static_cast<std::size_t>(met.nz);
+            if(nz<2U || statics.cell_face_m.size()!=nz+1U ||
+               met.t.size()!=n*nz)
+                throw std::invalid_argument(
+                    "POINTS1 PRFPP requires genuine CALMET TMET/ZFACE");
+            std::vector<float> zgpt,tprofile;
+            zgpt.reserve(nz);
+            tprofile.reserve(nz);
+            for(std::size_t k=0;k<nz;++k) {
+                zgpt.push_back(0.5F*(statics.cell_face_m[k]+
+                                     statics.cell_face_m[k+1U]));
+                tprofile.push_back(met.t[k*n+cell]);
+            }
+            const auto inversion=original_ptlaps_metfm1(
+                zgpt,tprofile,std::max(pbl,in.stack_height_m),0.005F,30.0F);
+            ptginv=inversion.gradient_k_per_m;
+            // Original POINTS1 L15581-15585: no observed DPTINVO in the
+            // selected METFM1 CALMET.DAT request; compute PTGINV*DZINV.
+            // Independent original H24 hourly parity remains the authority.
+            dptinv=ptginv*30.0F;
+        }
         const auto partial=partial_penetration_rise({
             final.z_final_m,flux.buoyancy_m4s3,stack.wind_speed_ms,
-            in.stack_height_m,pbl,temp,0.0,0.0});
-        if(partial.final_rise_m!=final.z_final_m ||
-           partial.mass_fraction_mixed!=1.0||partial.max_height_m!=pbl)
-            throw std::logic_error(
-                "POINTS1 no-penetration PRFPP source-order drift");
+            in.stack_height_m,pbl,temp,ptginv,dptinv});
         final_rise=static_cast<float>(partial.final_rise_m);
         fmix=static_cast<float>(partial.mass_fraction_mixed);
         hmax=static_cast<float>(partial.max_height_m);
+        // POINTS1 L15589-15590: both final component heights cannot
+        // exceed the revised PRFPP rise used by GRISE/RISEWIND.
+        if(adjusted.z_final_buoyancy_m>final_rise)
+            adjusted.z_final_buoyancy_m=final_rise;
+        if(adjusted.z_final_momentum_m>final_rise)
+            adjusted.z_final_momentum_m=final_rise;
     }
-    const float heff=pg<=4 ?
-        static_cast<float>(in.stack_height_m+final_rise-tip) :
-        static_cast<float>(in.stack_height_m-tip+final_rise);
+    // POINTS1 L15603 evaluates HTSTAK-TIPDW+RISE_B in this order.
+    const float heff=in.stack_height_m-tip+final_rise;
     if(!finite(heff)||heff<=in.stack_height_m)
         throw std::invalid_argument("POINTS1 PRFIN effective stack height invalid");
     const auto elevated=original_release_wind_metfm1(
@@ -137,7 +167,7 @@ OriginalPointPrfinResult original_point_prfin_metfm1(
     result.effective_height_m=heff;
     result.mixed_fraction=fmix;
     result.max_layer_height_m=hmax;
-    result.brigg=final;
+    result.brigg=adjusted;
     result.release=cadence;
     return result;
 }
