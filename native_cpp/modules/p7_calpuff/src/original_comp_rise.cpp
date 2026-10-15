@@ -25,7 +25,10 @@ void OriginalCompRisePointDriver::admit(
     require(id>0 && !rise_.contains(id),"duplicate/invalid rising puff");
     require(source.source_type==1 && source.downwash_code==0 &&
             source.stack_height_m>0.0 &&
-            source.effective_height_m>source.stack_height_m &&
+            // Original POINTS1 HEFF=HTSTAK-TIPDW+RISE_B can be
+            // below stack-top under downwash; positive finite required.
+            std::isfinite(source.effective_height_m) &&
+            source.effective_height_m>0.0 &&
             // Vendor PRFIN WSSTK<1 gives XFINAL=0 and completed
             // vertical rise. Native GRISE/RISEWIND already implements
             // the source condition XTOTB<XFINAL, which is false here.
