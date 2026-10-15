@@ -37,7 +37,11 @@ OriginalPointHourSource original_point_hour_from_prfin(
        src.emission_rates.empty()||
        !std::all_of(src.emission_rates.begin(),src.emission_rates.end(),
             [](double q){return std::isfinite(q)&&q>=0.0;})||
-       !(rise.stability_class>=1 && rise.stability_class<=4)||
+       !(rise.stability_class>=1 && rise.stability_class<=6)||
+       (rise.stability_class>=5 &&
+        (!in.use_calmet_profile_lapse ||
+         !std::isfinite(rise.sqrt_stability_s) ||
+         rise.sqrt_stability_s<=0.0F))||
        !(rise.effective_height_m>in.stack_height_m)||
        // Original CALPUFF PRFIN explicitly sets XFINAL=0 at
        // WSSTK < WSSTK0=1.0 m/s while still producing a nonzero
@@ -80,7 +84,7 @@ OriginalPointHourSource original_point_hour_from_prfin(
     point.diameter_m=in.diameter_m;
     point.stack_wind_speed_ms=rise.stack_wind_ms;
     point.stability_class=rise.stability_class;
-    point.sqrt_stability_s=0.0; // A-D PRFIN does not read SQRTS
+    point.sqrt_stability_s=rise.sqrt_stability_s; // RLSMET real source SQRTS
     point.downwash_code=0; // this source factory accepts no building
     // The receiver terrain and deposition controls remain separately
     // mandatory for a real full-case comparison.
