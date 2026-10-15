@@ -92,10 +92,10 @@ public:
             // for this same source hour and POST-AVEMIX ZICONV.
             const auto faces=g18b5_selected_native_temperature_faces(
                 frame,upper_);
-            const auto temp=g18c3_selected_native_temp3d(
-                frame,upper_,faces,heat_,*conv_,temp3d_,true);
+            temperature_.emplace(g18c3_selected_native_temp3d(
+                frame,upper_,faces,heat_,*conv_,temp3d_,true));
             result_.emplace(g18c4_assemble_selected_hour(
-                frame,heat_,elustr_,*conv_,temp,true));
+                frame,heat_,elustr_,*conv_,*temperature_,true));
             // A G14 candidate, NOT a committed earlier-hour history.
             frame.next=result_->candidate_memory;
             frame.fields=result_->candidate_fields;
@@ -122,6 +122,13 @@ public:
             throw std::logic_error("G28 source AVEMIX not executed");
         return *averaged_;
     }
+    [[nodiscard]] const G18C3SelectedTemperature& source_temp3d_before_assembly(
+        const MultiHourFrame& frame) const {
+        (void)source_mixht_before_avemix(frame);
+        if(stage_index_!=4||!temperature_||!result_)
+            throw std::logic_error("G29B requested unexecuted source TEMP3D");
+        return *temperature_;
+    }
     [[nodiscard]] bool selected_complete() const noexcept {
         return stage_index_==4&&result_.has_value();
     }
@@ -141,6 +148,7 @@ private:
     std::optional<G18ASelectedCompResult> mixed_;
     std::optional<G18C1AvemixOutput> averaged_;
     std::optional<G18C2SourceCompAfterAverage> conv_;
+    std::optional<G18C3SelectedTemperature> temperature_;
     std::optional<G18C4SelectedCandidate> result_;
     std::size_t stage_index_=0,hour_index_=0;
     std::chrono::sys_seconds source_end_{};
