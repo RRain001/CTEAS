@@ -102,6 +102,26 @@ public:
         }
         ++stage_index_;
     }
+    // G28 literal vendor AVEMIX audit: expose only the genuine source
+    // MIXHT BEFORE averaging and source AVEMIX result AFTER execution.
+    // Neither snapshot is an accepted/committed multi-hour G14 state.
+    [[nodiscard]] const G18ASelectedCompResult& source_mixht_before_avemix(
+        const MultiHourFrame& frame) const {
+        if(stage_index_<1||!mixed_||!bound_||&frame!=bound_frame_||
+           frame.hour_index!=hour_index_||frame.input.end!=source_end_||
+           frame.previous.zi_m!=previous_snapshot_.zi_m||
+           frame.previous.ziconv_m!=previous_snapshot_.ziconv_m||
+           frame.previous.dptt_k!=previous_snapshot_.dptt_k)
+            throw std::logic_error("G28 original MIXHT input not from live G14 COMP");
+        return *mixed_;
+    }
+    [[nodiscard]] const G18C1AvemixOutput& source_avemix_after_mixht(
+        const MultiHourFrame& frame) const {
+        (void)source_mixht_before_avemix(frame);
+        if(stage_index_<2||!averaged_)
+            throw std::logic_error("G28 source AVEMIX not executed");
+        return *averaged_;
+    }
     [[nodiscard]] bool selected_complete() const noexcept {
         return stage_index_==4&&result_.has_value();
     }
