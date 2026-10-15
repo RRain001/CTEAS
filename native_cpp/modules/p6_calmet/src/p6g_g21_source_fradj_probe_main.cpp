@@ -44,7 +44,7 @@ int main(int argc,char** argv) {
         std::string diagi_similt_prefix,wind_tail_stage,wind_tail_output,wind_tail_boundaries;
         std::string station_flux_prefix,original_nearu_prefix,comp_original_prefix;
         std::string mixht_original_prefix,temp3d_original_prefix;
-        std::string p6f_candidate_file;
+        std::string p6f_candidate_file,surfvar_two_pass_output;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--output"||arg=="--source-stage"||
@@ -54,7 +54,8 @@ int main(int argc,char** argv) {
                arg=="--wind-tail-output"||arg=="--wind-tail-boundaries"||
                arg=="--station-flux-prefix"||arg=="--nearu-prefix"||
                arg=="--comp-original-prefix"||arg=="--mixht-original-prefix"||
-               arg=="--temp3d-original-prefix"||arg=="--p6f-candidate-file") {
+               arg=="--temp3d-original-prefix"||arg=="--p6f-candidate-file"||
+               arg=="--surfvar-two-pass-output") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
                     throw std::invalid_argument("G21/G22 source output missing path");
                 auto& selected=arg=="--output"?output_file:
@@ -71,6 +72,7 @@ int main(int argc,char** argv) {
                                arg=="--nearu-prefix"?original_nearu_prefix:arg=="--comp-original-prefix"?comp_original_prefix:
                                arg=="--mixht-original-prefix"?mixht_original_prefix:
                                arg=="--temp3d-original-prefix"?temp3d_original_prefix:
+                               arg=="--surfvar-two-pass-output"?surfvar_two_pass_output:
                                p6f_candidate_file;
                 if(!selected.empty())
                     throw std::invalid_argument("G21/G22 duplicate output argument");
@@ -120,7 +122,7 @@ int main(int argc,char** argv) {
             mixht_original_prefix.empty()?std::string{}:mixht_original_prefix+".native.csv",
             temp3d_original_prefix.empty()?std::string{}:temp3d_original_prefix+".source.input",
             temp3d_original_prefix.empty()?std::string{}:temp3d_original_prefix+".native.csv",
-            p6f_candidate_file};
+            p6f_candidate_file,surfvar_two_pass_output};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -155,6 +157,34 @@ int main(int argc,char** argv) {
            selected.temperature_before_k.size()!=cells)
             throw std::logic_error("G21 stage source geometry mismatch");
 
+        if(!surfvar_two_pass_output.empty()) {
+            // G33A forensic-only PRE/POST FRADJ source temperatures.  These
+            // are native G17B4 calculations, never original-vendor oracle
+            // inputs, and may not commit a G14 hour or populate P6F output.
+            if(selected.temperature_after_k.size()!=cells||
+               selected.temperature_before_k.size()!=cells||
+               scheduler.completed_hours()!=0||clocks.has_published_hour())
+                throw std::logic_error(
+                    "G33A two-pass SURFVAR not in one uncommitted G14 hour");
+            std::ofstream native(surfvar_two_pass_output,std::ios::trunc);
+            if(!native)
+                throw std::runtime_error("G33A cannot export native two-pass SURFVAR");
+            native<<"hour_end_utc_seconds,i,j,pre_fradj_temp_k,post_fradj_temp_k\n";
+            native<<std::setprecision(std::numeric_limits<float>::max_digits10);
+            for(std::size_t j=0;j<ny;++j)
+                for(std::size_t i=0;i<nx;++i) {
+                    const auto p=j*nx+i;
+                    const auto before=selected.temperature_before_k[p];
+                    const auto after=selected.temperature_after_k[p];
+                    if(!std::isfinite(before)||!std::isfinite(after))
+                        throw std::logic_error("G33A nonfinite native two-pass temperature");
+                    native<<frame.input.end.time_since_epoch().count()<<","
+                          <<i+1<<","<<j+1<<","<<before<<","<<after<<"\n";
+                }
+            native.flush();
+            if(!native)throw std::runtime_error(
+                "G33A native two-pass SURFVAR export incomplete");
+        }
         if(!original_nearu_prefix.empty()) {
             // G27 independently invokes literal original SETCOM.
             // Feed genuine G19 UTM-local REAL*4 grid and upper stations,
