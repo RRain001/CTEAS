@@ -12,6 +12,7 @@ the candidate with a full original CALMET multi-station weather run.
 from __future__ import annotations
 import argparse
 import csv
+import datetime as dt
 import hashlib
 import json
 import math
@@ -54,7 +55,31 @@ def load_csv(path:Path,columns:tuple[str,...],dimensions:tuple[str,...]):
         raise ValueError(f"missing {n_expected-len(result)} source-stage grid cells in {path}")
     return result
 
-def parse_bin(path:Path):
+def source_hour_clock(path:Path):
+    with path.open(newline="") as stream:
+        reader=csv.DictReader(stream)
+        if set(reader.fieldnames or ()) != {
+                "hour_end_utc_seconds","k_1based","j_1based","i_1based",
+                "u_mps_real4","v_mps_real4"}:
+            raise ValueError("G30A source WIND1 clock columns missing")
+        stamps=set()
+        count=0
+        for row in reader:
+            stamps.add(int(row["hour_end_utc_seconds"]))
+            count+=1
+    if len(stamps)!=1 or count!=N*NZ:
+        raise ValueError("G30A source original G21 first-hour time not unique")
+    end=dt.datetime.fromtimestamp(stamps.pop(),dt.timezone.utc)
+    start=end-dt.timedelta(hours=1)
+    if any(x.minute or x.second or x.microsecond for x in (start,end)):
+        raise ValueError("G30A source time not exactly hourly")
+    def header(x):
+        return (x.year,x.month,x.day,x.hour,0)
+    packed=(start.year*100000+start.timetuple().tm_yday*100+start.hour)
+    return header(start),header(end),packed
+
+
+def parse_bin(path:Path,expected_clock):
     records=fortran_records(path.read_bytes())
     if records[0][:16].decode("ascii").strip()!="CALMET.DAT" or (
             records[0][16:32].decode("ascii").strip()!="2.1"):
@@ -82,9 +107,9 @@ def parse_bin(path:Path):
         or timezone!="UTC+0000" or grid!=10000.0
         or not all(math.isfinite(x) for x in (xorig,yorig))):
         raise ValueError("G30A unexpected source P6F grid and station controls")
-    if not (start[:4]==(2024,1,1,2) and end[:4]==(2024,1,1,3)
-            and start[4]==end[4]==0):
-        raise ValueError("G30A wrong source first-hour UTC clock")
+    expected_start,expected_end,source_packed_hour=expected_clock
+    if start!=expected_start or end!=expected_end:
+        raise ValueError(f"G30A wrong source first-hour UTC clock: {(start,end)} expected {(expected_start,expected_end)}")
     static={}
     hourly=[]
     for payload in records[3+comment_count:]:
@@ -118,7 +143,7 @@ def parse_bin(path:Path):
     floats={}
     ints={}
     for k,(label,bpack,bsec,epack,esec,payload) in enumerate(hourly):
-        if label!=LABELS[k] or (bpack,bsec,epack,esec)!=(202400102,0,202400102,3600):
+        if label!=LABELS[k] or (bpack,bsec,epack,esec)!=(source_packed_hour,0,source_packed_hour,3600):
             raise ValueError(f"G30A wrong source record label/clock at {k}: {label!r}")
         if len(payload)!=N*4:
             raise ValueError(f"G30A record {k} payload size wrong")
@@ -143,6 +168,7 @@ def main():
     p=argparse.ArgumentParser()
     p.add_argument("--candidate",type=Path,required=True)
     p.add_argument("--wind-tail",type=Path,required=True)
+    p.add_argument("--source-clock",type=Path,required=True)
     p.add_argument("--comp-prefix",type=Path,required=True)
     p.add_argument("--temp3d-prefix",type=Path,required=True)
     p.add_argument("--out",type=Path,required=True)
@@ -151,7 +177,7 @@ def main():
     comp=load_csv(Path(str(a.comp_prefix)+".native.csv"),
                   ("i","j","zi_after_avemix_m","ziconv_after_avemix_m","wstar_mps"),("i","j"))
     temp=load_csv(Path(str(a.temp3d_prefix)+".native.csv"),("i","j","k","temp_k"),("i","j","k"))
-    floats,ints,metadata=parse_bin(a.candidate)
+    floats,ints,metadata=parse_bin(a.candidate,source_hour_clock(a.source_clock))
     expected={}
     for k in range(1,NZ+1):
         expected[f"U-LEV{k:3d}"]={(i,j):winds[i,j,k]["u"] for j in range(1,NY+1) for i in range(1,NX+1)}
