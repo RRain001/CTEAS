@@ -225,12 +225,15 @@ def main():
     ap.add_argument("--source",type=Path,required=True,
                     help="G19 exported source folder with GEO.DAT, SURF.DAT, UP1/UP2.DAT, met.inp")
     ap.add_argument("--source-clock",type=Path,required=True)
+    ap.add_argument("--hours",type=int,choices=(1,6),default=1,
+                    help="original CALMET whole-run hours: G31B 1h or G34A 6h oracle")
     ap.add_argument("--out",type=Path,required=True)
     ap.add_argument("--compiler",default="gfortran")
     args=ap.parse_args()
     args.out.mkdir(parents=True,exist_ok=True)
     evidence={"status":"NOT_EXECUTED","mode":args.mode,
-              "scope":"G31A independent literal vendor first hour only; no 45-field parity"}
+              "scope":f"Independent literal vendor {args.hours}h original output; "
+                       "native multi-hour 45-field parity NOT tested"}
     report=args.out/"g31a-evidence.json"
     try:
         raw=(VENDOR/"calmet.for").read_bytes()
@@ -239,6 +242,9 @@ def main():
             raise RuntimeError("G31A original CALMET 6.5.0 source blob drift")
         clock_start,clock_end=source_clock(args.source_clock)
         evidence["source_hour_utc"]=[clock_start.isoformat(),clock_end.isoformat()]
+        run_end=clock_start+dt.timedelta(hours=args.hours)
+        evidence["requested_original_hours"]=args.hours
+        evidence["original_run_end_utc"]=run_end.isoformat()
         staged=args.out/"run"
         staged.mkdir(parents=True,exist_ok=True)
         copies={"GEO.DAT":"geo.dat","SURF.DAT":"surf.dat",
@@ -268,7 +274,7 @@ def main():
         if not met.is_file():
             raise RuntimeError("G31A missing G19 original source controls")
         original_deck=met.read_text()
-        result=stage_deck(original_deck,clock_start,clock_end)
+        result=stage_deck(original_deck,clock_start,run_end)
         (staged/"met.inp").write_text(result)
         evidence["original_G19_metinp_sha256"]=sha256(met)
         evidence["staged_vendor_metinp_sha256"]=sha256(staged/"met.inp")
@@ -303,6 +309,19 @@ def main():
                                str(proc.returncode)+"; inspect original-met.lst and original logs")
         if not output.is_file() or output.stat().st_size<=1024:
             raise RuntimeError("G31A original CALMET made no substantial MET.DAT")
+        # Fail closed on partial vendor output, wrong 45-record group count,
+        # timestamps, station inventory, or malformed Fortran record framing.
+        # Reuse the existing G31B original-layout reader, not any native data.
+        from g31_extract_original_science_hour import layout
+        vendor_output=layout(output,"literal_original")
+        if len(vendor_output["groups"])!=args.hours:
+            raise RuntimeError(
+                f"G34 original produced {len(vendor_output['groups'])} 45-field "
+                f"hours instead of required {args.hours}")
+        evidence["original_hour_clocks"]=[
+            list(group[0][1:5]) for group in vendor_output["groups"]]
+        evidence["original_45_fields_per_hour"]=45
+        evidence["original_static_field_records"]=len(vendor_output["static"])
         evidence["original_met_dat_sha256"]=sha256(output)
         evidence["original_met_dat_bytes"]=output.stat().st_size
         shutil.copy2(output,args.out/"original-met.dat")
