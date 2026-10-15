@@ -9,6 +9,8 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/g35_verify_original_143h.py'
       - 'native_cpp/modules/p6_calmet/reference/g36a_run_original_calpuff_multisite.py'
+      - 'native_cpp/modules/p6_calmet/reference/g36b_atomic_calmet_publish.py'
+      - 'native_cpp/modules/p6_calmet/reference/test_g36b_atomic_publication.py'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/p6g_*.hpp'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
   pull_request:
@@ -19,6 +21,8 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/g35_verify_original_143h.py'
       - 'native_cpp/modules/p6_calmet/reference/g36a_run_original_calpuff_multisite.py'
+      - 'native_cpp/modules/p6_calmet/reference/g36b_atomic_calmet_publish.py'
+      - 'native_cpp/modules/p6_calmet/reference/test_g36b_atomic_publication.py'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/p6g_*.hpp'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
   workflow_dispatch:
@@ -139,6 +143,29 @@ jobs:
           else
             echo "::warning::G35B BLOCKED: native 143h history/physics or frozen original comparator failed. No production or 143h parity claims."
           fi
+      - name: G36B required durable and atomic 143h publication with READY commit marker
+        run: |
+          set -euo pipefail
+          python3 native_cpp/modules/p6_calmet/reference/g36b_atomic_calmet_publish.py \
+            --candidate "$RUNNER_TEMP/g35-native-143h.calmet.dat" \
+            --publish-dir "$RUNNER_TEMP/g36b-published"
+          python3 native_cpp/modules/p6_calmet/reference/g36b_atomic_calmet_publish.py \
+            --verify-only --publish-dir "$RUNNER_TEMP/g36b-published"
+      - name: G36B required post-crash negative matrix for all atomic publication boundaries
+        run: |
+          python3 native_cpp/modules/p6_calmet/reference/test_g36b_atomic_publication.py \
+            --native-met "$RUNNER_TEMP/g35-native-143h.calmet.dat" \
+            --out "$RUNNER_TEMP/g36b-adversarial-verdict.json"
+      - name: Upload G36B durable 143h publication evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g36b-atomic-p6f-143h-${{ matrix.mode }}
+          path: |
+            ${{ runner.temp }}/g36b-published/READY.json
+            ${{ runner.temp }}/g36b-adversarial-verdict.json
+          if-no-files-found: warn
+          retention-days: 14
       # Exploratory until the genuine unmodified CALPUFF 7.2.1 has been
       # observed to read all 143 native hours and produce original outputs.
       # This is NOT a P7 native CALPUFF scientific-parity assertion.
@@ -148,7 +175,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 native_cpp/modules/p6_calmet/reference/g36a_run_original_calpuff_multisite.py \
-            --native-met "$RUNNER_TEMP/g35-native-143h.calmet.dat" \
+            --native-met "$RUNNER_TEMP/g36b-published/met.dat" \
             --out "$RUNNER_TEMP/g36a-original-calpuff" --max-seconds 900
       - name: G36A original CALPUFF read-compatibility disposition
         if: always()
