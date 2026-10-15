@@ -12,7 +12,7 @@ from pathlib import Path
 import struct
 
 STAGES=[("frac","frec"),("sy","sy"),("sz","sz"),("zpr","zpr"),
-        ("zrpole","zrpole"),("f1","f1"),("xi1","xi1"),("xi2","xi2"),
+        ("zrpole","zrpole"),("lid","lid"),("f1","f1"),("xi1","xi1"),("xi2","xi2"),
         ("t1","t1"),("t2","t2"),("qold","qold"),("qnew","qnew"),
         ("vdpvd","vdpvd"),("xtemp","xtemp"),("conc","conc")]
 
