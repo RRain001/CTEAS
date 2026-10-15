@@ -206,6 +206,9 @@ int main(int argc,char** argv) {
         request.calm_threshold_ms=0.5F;
         request.max_sample_distance_cells=static_cast<float>(lengths[0]);
         request.max_new_puffs=deck.required_int("MXNEW");
+        // Selected frozen CALMET METFM1 case: use actual 3D TMET/ZFACE
+        // for original RLSMET LCALGRD=true stable source, never DGM values.
+        request.use_calmet_profile_lapse=true;
         const auto prfin=original_point_prfin_metfm1(
             met,static_met,header,request);
         // Read-only first unsupported POINTS1 source admission at real H9.
@@ -219,6 +222,8 @@ int main(int argc,char** argv) {
                      <<" HOUR="<<hour_index+1U
                      <<" SRC_CELL0="<<src_cell.offset_0based
                      <<" PGT="<<met.ipgt.at(src_cell.offset_0based)
+                     <<" SQRTS="<<prfin.sqrt_stability_s
+                     <<" LCALGRD_MET_PROFILE="<<request.use_calmet_profile_lapse
                      <<" TEMP="<<prfin.ambient_temperature_k
                      <<" PBL="<<prfin.mixing_height_m
                      <<" STACK_WIND="<<prfin.stack_wind_ms
