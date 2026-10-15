@@ -69,6 +69,7 @@ jobs:
             cteas_p6g_g19_file_backed_case_tests \
             cteas_p6g_g19_source_case_preflight \
             cteas_p6g_g20_source_wind1_probe \
+            cteas_p6g_g21_source_fradj_probe \
             cteas_p6g_g15_original_controls_tests \
             cteas_p6g_g16_staged_wind_tests \
             cteas_p6g_g17_staged_terrain_tests \
@@ -102,6 +103,19 @@ jobs:
             exit 1
           fi
           test ! -e "$RUNNER_TEMP/g20-must-not-exist.csv"
+      - name: G21 source-file FRADJ selected CLI rejects unsupported original Hefei 1SS
+        run: |
+          "$RUNNER_TEMP/p6g/cteas_p6g_g21_source_fradj_probe" --help
+          if "$RUNNER_TEMP/p6g/cteas_p6g_g21_source_fradj_probe" \
+              project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp \
+              invalid-GEO.DAT invalid-SURF.DAT invalid-US1.DAT invalid-US2.DAT \
+              --output "$RUNNER_TEMP/g21-must-not-exist.csv" \
+              --source-stage "$RUNNER_TEMP/g21-must-not-exist.dat"; then
+            echo "::error::G21 accepted unsupported one-station Hefei deck as multi-station FRADJ"
+            exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/g21-must-not-exist.csv"
+          test ! -e "$RUNNER_TEMP/g21-must-not-exist.dat"
       - name: Run 2SS+2US cross-year and 8784h CTest
         run: ctest --test-dir "$RUNNER_TEMP/p6g" --output-on-failure -R '^p6g_'
       - name: Original CALMET Fortran 2SS 10km SURFVAR 72-case strict parity
