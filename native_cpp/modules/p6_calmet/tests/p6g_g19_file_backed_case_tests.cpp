@@ -988,16 +988,29 @@ int main(int argc,char** argv){
                   !g26b_authoritative_clocks.has_published_hour(),
                   "G26B G14 fresh source executor failed retry/state isolation or genuine COMP");
         }
+        // G32E: the original source full-hour G32D station-state dump
+        // has EDIT=999 at US1/US2 k=1 for this 120m-first-sounding G19
+        // fixture, whereas G20 WIND1's neutral input remains unchanged.
+        // All upper k>=2 must retain their independently sourced PREPDI
+        // profile and both original SS1/SS2 k=1 stay source valid.
         for(std::size_t k=0;k<9;++k)
             for(std::size_t i=2;i<4;++i) {
                 const auto p=k*4+i;
-                check(g23.observed_after_diagi.inter2_u_mps[p]==
-                          g23_profiles.inter2_u_mps[p]&&
-                      g23.observed_after_diagi.inter2_v_mps[p]==
-                          g23_profiles.inter2_v_mps[p]&&
-                      g23.observed_after_diagi.inter2_present[p]==
-                          g23_profiles.inter2_present[p],
-                      "G23 DIAGI rewrote source upper-air PREPDI column");
+                if(k==0) {
+                    check(g23.observed_after_diagi.inter2_u_mps[p]==999.f&&
+                          g23.observed_after_diagi.inter2_v_mps[p]==999.f&&
+                          g23.observed_after_diagi.inter2_present[p]==0U&&
+                          g23_profiles.inter2_present[p]==1U,
+                          "G32E original full-hour source upper k1 missingness not respected");
+                }else{
+                    check(g23.observed_after_diagi.inter2_u_mps[p]==
+                              g23_profiles.inter2_u_mps[p]&&
+                          g23.observed_after_diagi.inter2_v_mps[p]==
+                              g23_profiles.inter2_v_mps[p]&&
+                          g23.observed_after_diagi.inter2_present[p]==
+                              g23_profiles.inter2_present[p],
+                          "G32E altered valid source PREPDI upper k>=2");
+                }
             }
         const auto g23_repeat=p6g::g23_source_stheor_diagi_inter2(
             standalone,source_case,g23_profiles,
