@@ -1,5 +1,22 @@
 # P7 remaining original CALPUFF functions and strict acceptance gates — 2026-10-12
 
+> **HISTORICAL SNAPSHOT — 2026-10-12; NOT THE CURRENT P7 TO-DO LIST.**
+> The frozen Hefei 2022 **single-source MWET=0 143h** case later passed exact native-vendor science (`357,500/357,500` H-3 REAL4; `254,687/254,687` DGM) and all **3,655** native-generated `puff.con` records byte-for-byte. [Strict verified CI #38684187769](https://github.com/RRain001/CTEAS/actions/runs/38684187769); [bounded acceptance record](P7_HEFEI_143H_REAL4_PUFFCON_ACCEPTANCE_20261015.md). [PR #41](https://github.com/RRain001/CTEAS/pull/41) **MERGED 2026-10-15** into `codex/cteas-p7-calpuff-20261011`, not main. The OPEN/Draft statements below are preserved for provenance and are superseded **only for this one accepted deck**, not for arbitrary modes or multi-source operation.
+
+## Current disposition of the original checklist (2026-10-15)
+
+| Historical gate | Frozen Hefei dry 143h disposition | Deliberately unaccepted beyond the frozen deck |
+|---|---|---|
+| P7-I / P7-II / P7-III | CLOSED on this 143h continuous source-native trajectory, vertical history and original MET/transport chain | General source/case scheduling, extreme slot-pressure behavior |
+| P7-IV | CLOSED for this deck's `MCTADJ=2`, sigma/terrain and `MDRY=1` coupled dry physics | Other deposition/dispersion codes and `MWET>0` |
+| P7-V | CLOSED: all 143×2500 H-3 REAL4 receptor concentration words bit-identical | Different source/grid combinations and other species output paths |
+| P7-VI | CLOSED: native-generated 3,655-record `puff.con` identical, SHA256 pinned | Non-frozen output format/control variants |
+| P7-FINAL | **ACCEPTED/CLOSED for frozen Hefei dry 143h only**, not general CALPUFF | Multi-source/general decks, pressure branches, wet scavenging, wider platform support |
+
+The current post-merge CI trigger and the bounded follow-up work are tracked in the [canonical acceptance record](P7_HEFEI_143H_REAL4_PUFFCON_ACCEPTANCE_20261015.md). Do not use the historical table's older "Remaining acceptance" column to re-open an already accepted frozen-case physics gate.
+
+---
+
 Scope: public `RRain001/CTEAS`, PR #41, frozen `hefei5km_2022_reference_case_20261011`, 2022 143 hourly intervals, 50×50×9 METFM=1, 100 m, one continuous point source, original `MWET=0`. P6 and original CALMET/CALPUFF source must remain unchanged. Wet removal/deposition is intentionally handled AFTER dry-case P6/P7 completion.
 
 **Fixed acceptance checklist:** P7-I through P7-VI plus P7-FINAL. These are audit categories, not seven newly-created implementation milestones. A closed header gate must not reappear as an open task.
@@ -53,4 +70,6 @@ Accepted *restricted* native integration: [#38401004640](https://github.com/RRai
 
 One original **calculation-authority** driver with deterministic puff ordering. Use **GitHub-hosted ubuntu-22.04 Actions only** (no removed self-hosted runner labels). Keep independently pinned comparisons, isolate outputs, and never launch duplicate full vendor 143h runs merely to populate CI capacity.
 
-Next, focus on **original-receptor physics and source-ordered 1h→6h→143h native execution**, then feed its independent 2,500-cell hourly concentration fields to the now-accepted WROUT1 header/record writer. Do not create more isolated WROUT1 sub-gates. Native E2E may use the frozen DGM only for post-run comparison, never as an input or hourly reset. P7-FINAL and PR #41 remain DRAFT until real native concentrations and complete 3,655-record `puff.con` numeric parity pass.
+**Historical 2026-10-12 next-step statement (superseded for the frozen case):** Next, focus on **original-receptor physics and source-ordered 1h→6h→143h native execution**, then feed its independent 2,500-cell hourly concentration fields to the now-accepted WROUT1 header/record writer. Do not create more isolated WROUT1 sub-gates. Native E2E may use the frozen DGM only for post-run comparison, never as an input or hourly reset. P7-FINAL and PR #41 remain DRAFT until real native concentrations and complete 3,655-record `puff.con` numeric parity pass.
+
+**2026-10-15 correction:** These frozen-case tasks were completed and independently accepted in the linked 143h acceptance record; PR #41 was merged. The still-open scope is limited to separately unaccepted configurations and deployment/integration work.
