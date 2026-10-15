@@ -4,6 +4,7 @@
 #include "cteas/p6/p6g_g19_file_backed_case.hpp"
 #include "cteas/p6/p6g_g20_file_backed_wind1_profiles.hpp"
 #include "cteas/p6/p6g_g21_file_backed_fradj.hpp"
+#include "cteas/p6/p6g_g22_file_backed_thermal_slope.hpp"
 #include "cteas/p6/p6g_g18d2_station_clock_transaction.hpp"
 #include <cmath>
 #include <exception>
@@ -32,14 +33,18 @@ int main(int argc,char** argv) {
         paths.met_inp=argv[1];
         paths.geo_dat=argv[2];
         paths.surf_dat=argv[3];
-        std::string output_file,stage_file;
+        std::string output_file,stage_file,slope_output_file,slope_stage_file;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
-            if(arg=="--output"||arg=="--source-stage") {
+            if(arg=="--output"||arg=="--source-stage"||
+               arg=="--slope-output"||arg=="--slope-stage") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
-                    throw std::invalid_argument("G21 source output missing path");
-                auto& selected=arg=="--output"?output_file:stage_file;
-                if(!selected.empty())throw std::invalid_argument("G21 duplicate output argument");
+                    throw std::invalid_argument("G21/G22 source output missing path");
+                auto& selected=arg=="--output"?output_file:
+                               arg=="--source-stage"?stage_file:
+                               arg=="--slope-output"?slope_output_file:slope_stage_file;
+                if(!selected.empty())
+                    throw std::invalid_argument("G21/G22 duplicate output argument");
                 selected=argv[++i];
             } else {
                 if(arg.starts_with("--"))throw std::invalid_argument("G21 unknown source option");
@@ -47,8 +52,16 @@ int main(int argc,char** argv) {
             }
         }
         if(output_file.empty()||stage_file.empty()||
-           stage_file==output_file||paths.ordered_up_dat.size()<2)
-            throw std::invalid_argument("G21 requires independent output and source-stage files");
+           stage_file==output_file||paths.ordered_up_dat.size()<2||
+           slope_output_file.empty()!=slope_stage_file.empty())
+            throw std::invalid_argument("G21/G22 requires independent stage/output file pairs");
+        const std::vector<std::string> outputs={
+            output_file,stage_file,slope_output_file,slope_stage_file};
+        for(std::size_t i=0;i<outputs.size();++i)
+            if(!outputs[i].empty())
+                for(std::size_t j=0;j<i;++j)
+                    if(outputs[i]==outputs[j])
+                        throw std::invalid_argument("G21/G22 output filename collision");
         const auto source=cteas::calmet::p6g::g19_load_original_source_case(paths);
         auto scheduler=source.make_scheduler();
         auto frame=scheduler.preview_next_hour();
@@ -120,6 +133,60 @@ int main(int argc,char** argv) {
                 }
         csv.flush();
         if(!csv)throw std::runtime_error("G21 native FRADJ output write failed");
+        if(!slope_output_file.empty()) {
+            const auto joined=cteas::calmet::p6g::g22_selected_source_thermal_slope(
+                frame,source,{first.u_mps,first.v_mps},selected,true);
+            if(scheduler.completed_hours()!=0||clocks.has_published_hour())
+                throw std::logic_error("G22 incomplete source hour was committed");
+            std::ofstream stage22(slope_stage_file,std::ios::trunc);
+            if(!stage22)throw std::runtime_error("G22 cannot export original SLOPE input");
+            stage22<<std::setprecision(std::numeric_limits<float>::max_digits10);
+            stage22<<nx<<" "<<ny<<" 9 "<<source.grid.grid_km*1000.f<<" "
+                   <<source.grid.grid_km*1000.f<<" "
+                   <<selected.source_terrad_km<<" "<<joined.heat.temperature_k[0]
+                   <<" "<<source.grid.iwat1<<" "<<source.grid.iwat2<<" -1\n";
+            for(const auto z:source.controls.zface_m)stage22<<z<<" ";
+            stage22<<"\n";
+            for(std::size_t j=0;j<ny;++j)
+                for(std::size_t i=0;i<nx;++i) {
+                    const auto p=j*nx+i;
+                    stage22<<source.grid.terrain_m[p]<<" "
+                           <<joined.heat.temperature_k[p]<<" "
+                           <<joined.elustr.qh_wm2[p]<<" "
+                           <<source.grid.landuse[p]<<"\n";
+                }
+            for(std::size_t k=0;k<9;++k)
+                for(std::size_t j=0;j<ny;++j)
+                    for(std::size_t i=0;i<nx;++i) {
+                        const auto p=k*cells+j*nx+i;
+                        stage22<<selected.corrected_wind.u[p]<<" "
+                               <<selected.corrected_wind.v[p]<<"\n";
+                    }
+            stage22.flush();
+            if(!stage22)throw std::runtime_error("G22 SLOPE input export failed");
+            std::ofstream csv22(slope_output_file,std::ios::trunc);
+            if(!csv22)throw std::runtime_error("G22 cannot export native slope winds");
+            csv22<<"hour_end_utc_seconds,k_1based,j_1based,i_1based,"
+                    "u_mps_real4,v_mps_real4\n";
+            csv22<<std::setprecision(std::numeric_limits<float>::max_digits10);
+            for(std::size_t k=0;k<9;++k)
+                for(std::size_t j=0;j<ny;++j)
+                    for(std::size_t i=0;i<nx;++i) {
+                        const auto p=k*cells+j*nx+i;
+                        csv22<<frame.input.end.time_since_epoch().count()<<","
+                             <<(k+1)<<","<<(j+1)<<","<<(i+1)<<","
+                             <<joined.post_slope_wind.u[p]<<","
+                             <<joined.post_slope_wind.v[p]<<"\n";
+                    }
+            csv22.flush();
+            if(!csv22)throw std::runtime_error("G22 native SLOPE CSV failed");
+            std::cout<<"PASS_P6G_G22_SOURCE_HEATFX_AIRDEN_ELUSTR_SLOPE "
+                     <<"CELLS="<<cells<<" WIND_UV_VALUES="<<cells*9*2
+                     <<" CHANGED_SLOPE_COMPONENTS="<<joined.changed_slope_components
+                     <<" STABLE_CELLS="<<joined.elustr.stable_cells
+                     <<" DAYTIME_CELLS="<<joined.elustr.daytime_cells
+                     <<" G14_HOURS_COMMITTED=0 FULL_45_FIELD=NOT_ACCEPTED\n";
+        }
         std::cout<<"PASS_P6G_G21_FILE_SOURCE_SELECTED_FRADJ "
                  <<"GRID_CELLS="<<cells<<" UV_VALUES="<<cells*9*2
                  <<" FRADJ_CHANGED_COMPONENTS="<<selected.corrected_uv_values
