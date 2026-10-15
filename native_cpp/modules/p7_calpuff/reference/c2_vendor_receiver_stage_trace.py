@@ -21,17 +21,17 @@ import tempfile
 ANCHOR = "                  conc=vdpvd(ipol)*xtemp*(qold(ipol)*t1+qnew(ipol)*t2)"
 CALL = """                  call c2rec(isamp,jsamp,ipol,syrec,szrec,zpr,
      &                 zrpole,f1,xi1,xi2,t1,t2,qold(ipol),
-     &                 qnew(ipol),xtemp,conc,frec)
+     &                 qnew(ipol),xtemp,conc,frec,vdpvd(ipol))
 """
 HELPER = """
 c --- C2 read-only CALCPF receiver-stage trace from identical input
       subroutine c2rec(isamp,jsamp,ipol,syrec,szrec,zpr,
      &                 zrpole,f1,xi1,xi2,t1,t2,qold,
-     &                 qnew,xtemp,conc,frec)
+     &                 qnew,xtemp,conc,frec,vdpvd)
       include 'datehr.puf'
       integer isamp,jsamp,ipol,seq
       real syrec,szrec,zpr,zrpole,f1,xi1,xi2,t1,t2
-      real qold,qnew,xtemp,conc,frec
+      real qold,qnew,xtemp,conc,frec,vdpvd
       logical first
       save seq,first
       data seq/0/,first/.true./
@@ -46,12 +46,12 @@ c --- H1 starts at 2024 Jan 1 02:00 in accepted PR63 G35 inputs
         first=.false.
       endif
       write(1937,*) seq,syrec,szrec,zpr,zrpole,f1,xi1,
-     &             xi2,t1,t2,qold,qnew,xtemp,conc,frec
+     &             xi2,t1,t2,qold,qnew,xtemp,conc,frec,vdpvd
       return
       end
 """
 FIELDS=("seq","sy","sz","zpr","zrpole","f1","xi1","xi2","t1",
-        "t2","qold","qnew","xtemp","conc","frec")
+        "t2","qold","qnew","xtemp","conc","frec","vdpvd")
 
 def sha256(p:Path)->str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
