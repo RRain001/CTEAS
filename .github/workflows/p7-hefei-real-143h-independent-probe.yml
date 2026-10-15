@@ -1,4 +1,4 @@
-name: P7 real Hefei full 143h independent REAL4 scientific probe
+name: P7 real Hefei 143h source REAL4 and puff.con strict parity
 on:
   # Branch-scoped hosted validation does not depend on PR synchronization
   # catching up after a burst of GitHub App contents-API commits.
@@ -6,9 +6,7 @@ on:
     branches:
       - codex/p7a-original-input-semantics-20261012
     paths:
-      - '.github/workflows/p7-hefei-real-143h-independent-probe.yml'
-  pull_request:
-    paths:
+      - 'native_cpp/modules/p7_calpuff/**'
       - '.github/workflows/p7-hefei-real-143h-independent-probe.yml'
   workflow_dispatch:
 permissions:
@@ -114,7 +112,7 @@ jobs:
           PY
           echo "P7_H9_ORIGINAL_SETPUF_7_PHASE_SOURCE_ONLY=PASS"
           echo "P7_EXTENDED_ORIGINAL_DGM=PINNED_VENDOR_FULL_143H_ORACLE"
-      # An independent exploratory single 143-hour replay. The original
+      # An independently validated, fail-closed single 143-hour replay. The original
       # 8/24/48/72-hour gates run in a separate workflow/concurrency group.
       # One uninterrupted native COMP state machine retains all puff history.
       - name: Probe all 143 real hours in one stateful COMP replay
@@ -127,6 +125,7 @@ jobs:
           "$root/build/cteas_p7_original_native_terrain_tests"
           test -s "$root/vendor/case/run/puff/dgm_puffstep.bin"
           set +e
+          CTEAS_P7_NATIVE_PUFF_CON="$root/native-full143-puff.con" \
           CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
             CTEAS_P7_PROBE_HOURS=143 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
@@ -141,20 +140,23 @@ jobs:
           # never interpreted as numerical acceptance without this line.
           if [ "$code" -eq 0 ] && grep -Fq \
             'P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS HOURS=143 ORIGINAL_DGM_ROWS=254687 H3_REAL4_WORDS=357500/357500 FIRST_DIFFERENCE=NONE' \
+            "$root/hour143-probe.log" && grep -Fq \
+            'P7_NATIVE_PUFF_CON_FULL=PASS HOURS=143 RECORDS=3655 BYTES=1896056 BINARY_EXACT=YES' \
             "$root/hour143-probe.log"; then
             echo "P7_REAL_FULL_143H_SCIENTIFIC_PROBE=PASS HOURS=143 H3_REAL4=357500/357500 DGM=254687/254687 WROUT1=OPEN"
           else
-            echo "P7_REAL_FULL_143H_SCIENTIFIC_PROBE=BLOCKED DIAGNOSTIC_ONLY=YES EXIT_CODE=$code"
+            echo "P7_REAL_FULL_143H_SCIENTIFIC_PROBE=BLOCKED STRICT_SCIENCE_AND_FILE_GATE=YES EXIT_CODE=$code"
             tail -n 60 "$root/hour143-probe.log"
+            exit 1
           fi
-          # This independent experiment does not silently promote itself
-          # into a strict production acceptance gate.
-          exit 0
+          # Both independently source-verified 143h physics and complete
+          # original Fortran sequential puff.con are fail-closed CI gates.
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p7-real-full143-source-parity-log
+          name: p7-real-full143-source-and-puffcon-parity
           path: |
             ${{ runner.temp }}/p7-full143-${{ github.run_id }}-${{ github.run_attempt }}/hour143-probe.log
+            ${{ runner.temp }}/p7-full143-${{ github.run_id }}-${{ github.run_attempt }}/native-full143-puff.con
           retention-days: 7
           if-no-files-found: warn

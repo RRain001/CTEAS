@@ -1,4 +1,5 @@
 #include "cteas/puff/hourly_conc.hpp"
+#include "cteas/puff/original_wrout1_hefei.hpp"
 #include "cteas/puff/fortran_records.hpp"
 
 #include <bit>
@@ -135,97 +136,13 @@ void frozen_wrout1_identifiers(const fs::path& original,
     using namespace cteas::puff;
     std::ifstream deck(control);
     require(bool(deck),"frozen puff.inp unavailable for source-derived titles");
-    OriginalWrout1Identity typed;
-    for(auto& line:typed.run_titles)
-        require(static_cast<bool>(std::getline(deck,line)),
-                "frozen input lacks three run-title lines");
-    // Selected case NPT1=1; no other source categories are active.
-    // This source-type vector comes from the active control, NOT from
-    // the frozen binary. Non-selected decks need separate type audits.
-    deck.clear();
-    deck.seekg(0);
     const std::string control_text{
         std::istreambuf_iterator<char>(deck),std::istreambuf_iterator<char>()};
-    require(std::regex_search(control_text,
-                             std::regex(R"(!\s*NPT1\s*=\s*1\s*!)")),
-            "source-type count fixture requires active NPT1=1");
-    std::array<std::int32_t,13> source_counts{};
-    source_counts[0]=1;
-    // Original case-specific 300-byte header constructed from active
-    // puff.inp controls and original MET-grid metre-precision frame.
-    // NSSTA=1 and the fixed 2003 WGS-84 datum epoch are selected-case
-    // provenance; the general public writer takes them as typed inputs.
-    auto opt=[&](const std::string& key)->std::string {
-        const std::regex pattern("!\\s*"+key+"\\s*=\\s*([^!]*)!");
-        std::smatch match;
-        require(std::regex_search(control_text,match,pattern),
-                "missing original WROUT1 control option");
-        std::string value=match[1].str();
-        const auto begin=value.find_first_not_of(" \t\r\n");
-        require(begin!=std::string::npos,
-                "empty original WROUT1 control option");
-        const auto end=value.find_last_not_of(" \t\r\n");
-        return value.substr(begin,end-begin+1);
-    };
-    auto oi=[&](const std::string& k){return std::stoi(opt(k));};
-    auto of=[&](const std::string& k){return std::stof(opt(k));};
-    auto angle=[&](const std::string& k){
-        const auto v=opt(k);
-        const char hemi=v.back();
-        require(hemi=='N'||hemi=='S'||hemi=='E'||hemi=='W',
-                "expected vendor N/S/E/W angle");
-        float angle=std::stof(v.substr(0,v.size()-1));
-        if(hemi=='S'||hemi=='W')angle=-angle;
-        return angle;
-    };
-    require(oi("IBYR")==2022 && oi("IBMO")==1 && oi("IBDY")==1 &&
-            oi("IEMO")==1 && oi("IEDY")==6 &&
-            oi("NPT2")==0 && oi("METFM")==1,
-            "WROUT1 authoring test requires frozen Hefei 2022 case");
-    OriginalWrout1GeneralHeader h;
-    h.start={oi("IBYR"),1,oi("IBHR"),oi("IBSEC")};
-    h.timezone=opt("ABTZ");
-    const int run_length=(oi("IEDY")-oi("IBDY"))*24 +
-                         oi("IEHR")-oi("IBHR");
-    h.timing_grid={run_length,oi("AVET")/60,oi("NSECDT"),
-                   oi("NX"),oi("NY")};
-    const float spacing=of("DGRIDKM");
-    h.spacing_km={spacing,spacing};
-    // MET origin has exact integral metres in the frozen 2022 grid.
-    const float x_met_m=static_cast<float>(
-        std::lround(of("XORIGKM")*1000.0F));
-    const float y_met_m=static_cast<float>(
-        std::lround(of("YORIGKM")*1000.0F));
-    const auto origin=original_met_grid_descriptor(x_met_m,y_met_m);
-    h.met_origins_km={static_cast<float>(origin.x_origin_km),
-                      static_cast<float>(origin.y_origin_km)};
-    h.options={
-       1,oi("IBCOMP"),oi("IECOMP"),oi("JBCOMP"),oi("JECOMP"),
-       oi("IBSAMP"),oi("JBSAMP"),oi("IESAMP"),oi("JESAMP"),
-       oi("MESHDN"),13,oi("MSOURCE"),oi("NREC"),0,oi("NCTREC"),
-       opt("LSAMP")=="T"?1:0,1,opt("LCOMPRS")=="T"?1:0,
-       1,oi("IUTMZN")
-    };
-    h.projection={of("FEAST"),of("FNORTH"),angle("RLAT0"),
-                  angle("RLON0"),angle("XLAT1"),angle("XLAT2")};
-    h.pmap=opt("PMAP");h.utmhem=opt("UTMHEM");
-    h.datum=opt("DATUM");h.datum_epoch="02-21-2003";
-    h.latlon_labels={opt("RLAT0"),opt("RLON0"),
-                     opt("XLAT1"),opt("XLAT2")};
-    {
-        const auto echo=original_wrout1_embedded_comments(control_text,
-                                                          met.string());
-        require(echo.size()==3218U,
-                "source-driven original WROUT1 echo must have 3218 lines");
-        ConcFileWriter out(native.string(),"7.0",
-                           "File structure with embedded control file",echo);
-        out.write_original_wrout1_general_header(h);
-        out.write_original_wrout1_source_type_counts(source_counts);
-        out.write_original_wrout1_identity(typed);
-        require(out.records_written()==6,
-                "native WROUT1 did not emit six typed records");
-        out.close();
-    }
+    auto native_output=create_original_hefei_2022_wrout1_writer(
+        native.string(),control_text,met.string());
+    require(native_output->records_written()==6U,
+            "frozen WROUT1 typed header writer count changed");
+    native_output->close();
     FortranRecordReader orig(original.string(),4,RecordByteOrder::LittleEndian);
     FortranRecordReader generated(native.string(),4,RecordByteOrder::LittleEndian);
     std::vector<std::uint8_t> a,b;

@@ -8,10 +8,6 @@ on:
     paths:
       - 'native_cpp/modules/p7_calpuff/**'
       - '.github/workflows/p7-hefei-real-hour7-probe.yml'
-  pull_request:
-    paths:
-      - 'native_cpp/modules/p7_calpuff/**'
-      - '.github/workflows/p7-hefei-real-hour7-probe.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -158,6 +154,7 @@ jobs:
           # After hosted original/native H1-H48 verification on
           # Actions #38674251404, promote the full 48h real case to a
           # fail-closed gate (120,000 H-3 REAL4 words; all DGM rows).
+          CTEAS_P7_NATIVE_PUFF_CON="$root/native-48h-puff.con" \
           CTEAS_P7_H9_PUFF598_MASS_TRACE="$root/native-h9-puff598-mass.tsv" \
           CTEAS_P7_H9_RECEIVER_CELL0=541 \
           CTEAS_P7_H9_RECEIVER_TRACE="$root/native-h9-42-11.tsv" \
@@ -168,6 +165,7 @@ jobs:
             project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con \
             "$root/vendor/case/run/puff/dgm_puffstep.bin" >"$root/hour48-strict.log" 2>&1
           grep -F 'P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS HOURS=48' "$root/hour48-strict.log"
+          grep -F 'P7_NATIVE_PUFF_CON_PREFIX=PASS HOURS=48 RECORDS=3370' "$root/hour48-strict.log"
           echo "P7_REAL_FIRST_48H_SCIENTIFIC_GATE=PASS H3_WORDS=120000/120000 DGM=BITWISE 143H=OPEN"
           grep -E 'P7_NATIVE_H9_PUFF598_VCBAR|P7_REAL_EXTENDED_PROBE|P7_REAL_EXTENDED_PRFIN_INPUT|P7_REAL_EXTENDED_CALM_SOURCE_DECK|P7_HEFEI_REAL_EXTENDED|P7_HEFEI_REAL_6H_COMPUTATION|P7_HEFEI_6H_NATIVE_ORIGINAL_HOURLY|P7_HEFEI_6H_FIRST_ORIGINAL_DGM_DIFFERENCE|P7_REAL_H9_CALM_SIGTZ_FIRST_DIVERGENCE|P7_REAL_H9_CALM_SIGTZ_MET_AUTHORITIES|P7_REAL_H9_NATIVE_CALCPF_CELL12|P7_NATIVE_H9_RECEPTOR_SIGTZ_INPUT' "$root/hour48-strict.log" || true
           # Source-pinned same-step terrain operands for the three H9
@@ -204,6 +202,7 @@ jobs:
           # H1-H48 source/REAL4 parity and H9 puff598 mass are now strict.
           # H49-H72 is deliberately exploratory, never an automatic 143h claim.
           set +e
+          CTEAS_P7_NATIVE_PUFF_CON="$root/native-72h-puff.con" \
           CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
             CTEAS_P7_PROBE_HOURS=72 "$root/build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
             project/cases/hefei5km_2022_reference_case_20261011/run/met/met.dat \
@@ -231,6 +230,8 @@ jobs:
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/twentyfourhour-strict.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour48-strict.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/hour72-probe.log
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/native-48h-puff.con
+            ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/native-72h-puff.con
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-compare.log
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-same-step-audit.json
             ${{ runner.temp }}/p7-hour7-${{ github.run_id }}-${{ github.run_attempt }}/h9-puff598-mass-audit.json

@@ -3,6 +3,8 @@
 // is seeded from vendor output or original DGM. Original puff.con is read
 // exclusively AFTER each native hour has been independently advanced.
 #include "cteas/puff/conc_file.hpp"
+#include "cteas/puff/hourly_conc.hpp"
+#include "cteas/puff/original_wrout1_hefei.hpp"
 #include "cteas/puff/control.hpp"
 #include "cteas/puff/dry_deposition.hpp"
 #include "cteas/puff/original_comp_rise_hourly.hpp"
@@ -25,6 +27,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -104,6 +107,15 @@ int main(int argc,char** argv) {
     require(strict_rejects,
             "original COMP start cell unexpectedly accepts out-of-grid puffs");
     const auto control=bytes(argv[2]);
+    // Optional complete source-derived WROUT1 output. The output writer
+    // consumes the live native COMP receptor field; it never consumes the
+    // frozen puff.con field or original DGM as a state input.
+    const char* original_con_output=std::getenv("CTEAS_P7_NATIVE_PUFF_CON");
+    std::unique_ptr<ConcFileWriter> native_con_writer;
+    std::unique_ptr<HourlyConcSeriesWriter> native_con_hours;
+    if(original_con_output && *original_con_output)
+        native_con_writer=create_original_hefei_2022_wrout1_writer(
+            original_con_output,control,argv[1]);
     const auto deck=ControlFile::read_file(argv[2]);
     std::optional<NativeCalmMdisp3Controls> genuine_calm;
     if(probe_hours>6U){
@@ -432,6 +444,19 @@ int main(int argc,char** argv) {
                 hour.receptor_concentrations.size()==2500U &&
                 hour.steps.size()>0U,
                 "real sixhour COMP hour transaction/cadence invalid");
+        if(native_con_writer) {
+            if(!native_con_hours)
+                native_con_hours=std::make_unique<HourlyConcSeriesWriter>(
+                    *native_con_writer,
+                    original_total_source_descriptor(
+                        header.origin_x_m,header.origin_y_m),50,50);
+            const ConcPeriod period{
+                met.begin.year,met.begin.julian_day,met.begin.hour,
+                met.begin.seconds,met.end.year,met.end.julian_day,
+                met.end.hour,met.end.seconds};
+            // Prevalidated contiguous 1h records: no oracle field supplied.
+            native_con_hours->write_hour(period,hour.receptor_concentrations);
+        }
         // Keep an original-source H9 puff598 history independent of any
         // gridded CALCPF receiver: QOLD after VMASS and QNEW after DRY.
         // The original stage trace records these at COMP L10965/L11108.
@@ -948,12 +973,52 @@ int main(int argc,char** argv) {
     require(every_hour_real4 && matching_words==2500U*probe_hours &&
             first_mismatched_hour==0U && first_mismatched_cell==0U,
             "real original/native H-3 must match every requested hour in REAL4 bits");
+    if(native_con_writer) {
+        require(native_con_hours &&
+                native_con_hours->hours_written()==probe_hours,
+                "native puff.con hours not equal to continuous COMP hours");
+        require(native_con_writer->records_written()==6U+3U*probe_hours,
+                "native original WROUT1 header/data record count drift");
+        native_con_writer->close();
+        const std::string actual=bytes(original_con_output);
+        const std::string frozen=bytes(argv[3]);
+        std::size_t first=0U;
+        const auto shorter=std::min(actual.size(),frozen.size());
+        while(first<shorter && actual[first]==frozen[first])++first;
+        if(first!=actual.size() || actual.size()>frozen.size()) {
+            std::cout<<"P7_NATIVE_PUFF_CON_FIRST_DIFFERENCE"
+                     <<" BYTE0="<<first
+                     <<" NATIVE_BYTES="<<actual.size()
+                     <<" ORIGINAL_BYTES="<<frozen.size()
+                     <<" HOURS="<<probe_hours<<"\n";
+            require(false,"native WROUT1 prefix/data differs from frozen puff.con bytes");
+        }
+        std::cout<<"P7_NATIVE_PUFF_CON_PREFIX=PASS"
+                 <<" HOURS="<<probe_hours
+                 <<" RECORDS="<<(3226U+3U*probe_hours)
+                 <<" BYTES="<<actual.size()
+                 <<" BINARY_EXACT=YES NO_ORACLE_INJECTION=YES\n";
+        if(probe_hours==143U) {
+            require(actual.size()==frozen.size() &&
+                    actual.size()==1896056U &&
+                    native_con_writer->records_written()==435U,
+                    "full 143h original puff.con byte size/record count drift");
+            std::cout<<"P7_NATIVE_PUFF_CON_FULL=PASS"
+                     <<" HOURS=143 RECORDS=3655 BYTES=1896056"
+                     <<" BINARY_EXACT=YES\n";
+        }
+    }
     if(probe_hours>6U)
         std::cout<<"P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS"
                  <<" HOURS="<<probe_hours
                  <<" ORIGINAL_DGM_ROWS="<<physical_steps
                  <<" H3_REAL4_WORDS="<<matching_words<<"/"<<2500U*probe_hours
-                 <<" FIRST_DIFFERENCE=NONE 143H_ACCEPTED=NO\n";
+                 <<" FIRST_DIFFERENCE=NONE"
+                 <<" 143H_SCIENTIFIC_ACCEPTED="
+                 <<(probe_hours==143U?"YES":"NO")
+                 <<" FULL_PUFF_CON_ACCEPTED="
+                 <<(probe_hours==143U && native_con_writer?"YES":"NO")
+                 <<"\n";
     if(probe_hours==6U)std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
              <<" ORIGINAL_DGM_ROWS=11458/11458"
              <<" HOURLY_ROWS=1275,2242,1906,2132,1742,2161"
