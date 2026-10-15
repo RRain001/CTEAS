@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cteas/puff/original_precision.hpp"
 #include <cstddef>
 #include <vector>
 
@@ -17,7 +18,7 @@ namespace cteas::puff {
 // refused because those routines are not reconstructed. Everything is REAL*4
 // internally, like the vendor.
 
-using AdvectionReal = float;
+using AdvectionReal = VendorPuffCommonReal;
 
 // ZFIND equivalent: the 1-based layer containing `height_m` in a face-height
 // array. `height` below the first face gives 1; above the last face gives

@@ -1,6 +1,7 @@
 #pragma once
 #include "cteas/puff/control.hpp"
 #include "cteas/puff/calmet21.hpp"
+#include "cteas/puff/original_grid_coords.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -9,7 +10,7 @@ namespace cteas::puff {
 // plume rise, dispersion, deposition or concentration claim.
 struct PointRelease {
     double x_m=0, y_m=0, z_m=0;
-    std::vector<double> rate_per_s; // Original input mass units, not Bq.
+    std::vector<double> rate_per_s; // Selected IPTU=8, Bq/s; still a P7C-only transport prototype.
 };
 struct PuffPacket {
     std::uint64_t id=0;
@@ -45,6 +46,11 @@ private:
     std::vector<PuffPacket> packets_;
 };
 [[nodiscard]] PointRelease point_source_from_control(const ControlFile&);
+// Original-CALMET-frame-aware source coordinates for selected Hefei 2022.
+// The old one-argument overload is retained for the standalone absolute-UTM
+// P7C prototype, and must NOT be used to claim original QA coordinate parity.
+[[nodiscard]] PointRelease point_source_from_original_met_grid(
+    const ControlFile&, const OriginalMetGridFrame&);
 [[nodiscard]] std::vector<double> level_centers_from_zface(const std::vector<double>&);
 // Deterministic P7C dry replay of ORIGINAL CALMET meteorology.
 // One hour of U/V/W arrays is retained at once; original meteorology is

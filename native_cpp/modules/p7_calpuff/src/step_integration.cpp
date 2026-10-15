@@ -122,8 +122,14 @@ Advance advance_puff(const AdvanceInputs& inputs) {
     const R dxoldm = uadv * tsamp;
     const R dyoldm = vadv * tsamp;
     const R distance = ws * tsamp;
-    const R dxmold = dxoldm / spacing;
-    const R dymold = dyoldm / spacing;
+    // COMP (original XGRIDMI): compute the inverse grid spacing ONCE in
+    // original REAL*4, then multiply each metre displacement by XGRIDMI.
+    // A mathematically equivalent 'dxoldm / spacing' changes the rounding
+    // sequence and diverges from unmodified Fortran by one ULP at locked
+    // Hefei 2022 DGM record 1685 (hour 2, puff 55, YNEW).
+    const R xgridmi = kOne / spacing;
+    const R dxmold = dxoldm * xgridmi;
+    const R dymold = dyoldm * xgridmi;
     Advance advance;
     advance.dx_cells = static_cast<double>(dxmold);
     advance.dy_cells = static_cast<double>(dymold);

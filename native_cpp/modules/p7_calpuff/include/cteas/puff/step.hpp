@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cteas/puff/ctsg.hpp"
+#include "cteas/puff/original_precision.hpp"
 
 namespace cteas::puff {
 
@@ -20,7 +21,7 @@ namespace cteas::puff {
 // them. The vendor keeps its state in REAL*4, so everything here is REAL*4
 // internally and converts to double only in the reported results.
 
-using StepReal = float;
+using StepReal = VendorPuffCommonReal;
 
 // The step bookkeeping block (SETPUF L48373-48399).
 struct StepBookkeepingInputs {
