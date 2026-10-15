@@ -230,6 +230,44 @@ public:
                 "G33B third original SURFVAR needs both preceding DIAGNO passes");
         return make_temperature(end,final_u,final_v);
     }
+    // G33C: source-authentic final COMP pass. Only after native G24
+    // DIAGNO final wind U/V, never at the G22 intermediate FRADJ stage.
+    // Separate state preserves the independently verified two DIAGNO
+    // surface passes and single-station P6E AVETMP/HEATFX authority.
+    void after_final_diagno_before_comp(
+        std::chrono::sys_seconds end,
+        const std::vector<float>& u3d,
+        const std::vector<float>& v3d,
+        bool explicitly_test_only) {
+        if(!explicitly_test_only||!first_||!final_||comp_)
+            throw std::invalid_argument(
+                "G33C COMP final IALL=1 SURFVAR must follow two DIAGNO passes once");
+        auto value=make_temperature(end,u3d,v3d);
+        const auto n=nx_*ny_;
+        comp_u_.assign(u3d.begin(),u3d.begin()+
+                       static_cast<std::ptrdiff_t>(n));
+        comp_v_.assign(v3d.begin(),v3d.begin()+
+                       static_cast<std::ptrdiff_t>(n));
+        comp_=std::move(value);
+    }
+    [[nodiscard]] bool comp_ready() const noexcept {
+        return comp_.has_value();
+    }
+    [[nodiscard]] const std::vector<float>& comp_temperature() const {
+        if(!comp_)
+            throw std::logic_error("G33C original third COMP SURFVAR not computed");
+        return *comp_;
+    }
+    [[nodiscard]] bool comp_stage_wind_matches(
+        const std::vector<float>& u3d,
+        const std::vector<float>& v3d) const {
+        const auto n=nx_*ny_;
+        if(!comp_||u3d.size()!=n*9||v3d.size()!=n*9||
+           comp_u_.size()!=n||comp_v_.size()!=n)return false;
+        for(std::size_t i=0;i<n;++i)
+            if(comp_u_[i]!=u3d[i]||comp_v_[i]!=v3d[i])return false;
+        return true;
+    }
     [[nodiscard]] G17B4TwoPassResult result() const {
         if(!first_||!final_)
             throw std::logic_error("G17B4 missing original two SURFVAR stages");
@@ -264,7 +302,7 @@ private:
     std::vector<int> original_landuse_,source_station_ids_;
     std::vector<float> source_station_x_,source_station_y_;
     std::vector<float> raw_observed_temperature_;
-    std::optional<std::vector<float>> first_,final_;
-    std::vector<float> first_u_,first_v_,second_u_,second_v_;
+    std::optional<std::vector<float>> first_,final_,comp_;
+    std::vector<float> first_u_,first_v_,second_u_,second_v_,comp_u_,comp_v_;
 };
 } // namespace cteas::calmet::p6g
