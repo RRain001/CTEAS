@@ -306,6 +306,15 @@ int main(int argc,char** argv) {
                 receptors.sampling_ny==ny_expected&&receptors.mesh_down==1&&
                 receptors.discrete.empty(),"sixhour native receptor frame drift");
 
+        const char* c2_receiver_path=std::getenv("CTEAS_P7_C2_H1_RECEIVER_TRACE");
+        const bool trace_c2_h1=coupling_c2 && hour_index==0U &&
+            c2_receiver_path && *c2_receiver_path;
+        std::ofstream c2_receiver_file;
+        if(trace_c2_h1) {
+            c2_receiver_file.open(c2_receiver_path,std::ios::trunc);
+            require(bool(c2_receiver_file),"C2 native receiver trace could not open");
+            c2_receiver_file<<std::setprecision(17);
+        }
         const bool trace_this_hour=
             (argc>=6 && hour_index==1U) ||
             (argc>=7 && hour_index==3U);
@@ -332,15 +341,47 @@ int main(int argc,char** argv) {
                 h9_trace_index=static_cast<std::size_t>(index);
             }
         }
-        const std::size_t trace_cell=trace_h9_cell24 ? h9_trace_index :
-            (hour_index==1U?1374U:646U);
+        const std::size_t trace_cell=trace_c2_h1 ? 63U :
+            (trace_h9_cell24 ? h9_trace_index :
+             (hour_index==1U?1374U:646U));
         std::vector<NativeH3ReceptorRow> trace_rows;
         OriginalCalcpfIntermediateHook stage_hook;
-        if(trace_this_hour || trace_h9_cell24) {
-            stage_hook=[&trace_rows,trace_cell,trace_h9_cell24](
+        if(trace_this_hour || trace_h9_cell24 || trace_c2_h1) {
+            stage_hook=[&trace_rows,trace_cell,trace_h9_cell24,
+                        trace_c2_h1,&c2_receiver_file](
                 const RiseCompSamplingState& state,
                 const OriginalCalcpfReceiverIntermediate& row){
                 if(row.receptor_index!=trace_cell)return;
+                if(trace_c2_h1) {
+                    // Diagnostic only: real native CALCPF receptor source
+                    // terms, written AFTER source-faithful computation.
+                    // Never read this file to advance COMP/P7 state.
+                    const auto& r=row;
+                    c2_receiver_file<<"P7_C2_NATIVE_RECEIVER"
+                        <<" puff="<<state.puff_id
+                        <<" code="<<state.vmass.puff_code
+                        <<" x_begin="<<state.before.x_cells
+                        <<" y_begin="<<state.before.y_cells
+                        <<" x_end="<<state.after.x_cells
+                        <<" y_end="<<state.after.y_cells
+                        <<" z_begin="<<state.before.z_m
+                        <<" z_end="<<state.after.z_m
+                        <<" frac="<<r.receptor_fraction
+                        <<" sy="<<r.sigma_y_m
+                        <<" sz="<<r.sigma_z_m
+                        <<" zpr="<<r.puff_height_m
+                        <<" zrpole="<<r.receptor_pole_m
+                        <<" f1="<<r.vertical_factor
+                        <<" xi1="<<r.xi1<<" xi2="<<r.xi2
+                        <<" t1="<<r.t1<<" t2="<<r.t2
+                        <<" qold="<<r.qold<<" qnew="<<r.qnew
+                        <<" xtemp="<<r.xtemp<<" conc="<<r.concentration
+                        <<" travel_begin="<<state.before.travel_time_s
+                        <<" travel_end="<<state.after.travel_time_s
+                        <<"\n";
+                    if(!c2_receiver_file)
+                        throw std::runtime_error("C2 native receiver trace write failed");
+                }
                 if(trace_h9_cell24 && trace_cell==24U && state.puff_id==594) {
                     require(state.receptor_calm_sigma.has_value(),
                             "H9 source residual requires native LCALM CSIGMA");
