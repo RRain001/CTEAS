@@ -6,6 +6,7 @@
 #include "cteas/p6/p6g_g21_file_backed_fradj.hpp"
 #include "cteas/p6/p6g_g22_file_backed_thermal_slope.hpp"
 #include "cteas/p6/p6g_g23_file_backed_stheor_inter2.hpp"
+#include "cteas/p6/p6g_g24_file_backed_wind_tail.hpp"
 #include "cteas/p6/p6g_g18d2_station_clock_transaction.hpp"
 #include <cmath>
 #include <exception>
@@ -37,13 +38,14 @@ int main(int argc,char** argv) {
         paths.surf_dat=argv[3];
         std::string output_file,stage_file,slope_output_file,slope_stage_file;
         std::string inter2_output_file,inter2_original_stage_prefix;
-        std::string diagi_similt_prefix;
+        std::string diagi_similt_prefix,wind_tail_stage,wind_tail_output,wind_tail_boundaries;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--output"||arg=="--source-stage"||
                arg=="--slope-output"||arg=="--slope-stage"||
                arg=="--inter2-output"||arg=="--inter2-original-stage-prefix"||
-               arg=="--diagi-similt-prefix") {
+               arg=="--diagi-similt-prefix"||arg=="--wind-tail-stage"||
+               arg=="--wind-tail-output"||arg=="--wind-tail-boundaries") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
                     throw std::invalid_argument("G21/G22 source output missing path");
                 auto& selected=arg=="--output"?output_file:
@@ -52,7 +54,10 @@ int main(int argc,char** argv) {
                                arg=="--slope-stage"?slope_stage_file:
                                arg=="--inter2-output"?inter2_output_file:
                                arg=="--inter2-original-stage-prefix"?inter2_original_stage_prefix:
-                               diagi_similt_prefix;
+                               arg=="--diagi-similt-prefix"?diagi_similt_prefix:
+                               arg=="--wind-tail-stage"?wind_tail_stage:
+                               arg=="--wind-tail-output"?wind_tail_output:
+                               wind_tail_boundaries;
                 if(!selected.empty())
                     throw std::invalid_argument("G21/G22 duplicate output argument");
                 selected=argv[++i];
@@ -66,7 +71,11 @@ int main(int argc,char** argv) {
            slope_output_file.empty()!=slope_stage_file.empty()||
            (!inter2_output_file.empty()&&slope_output_file.empty())||
            (!inter2_original_stage_prefix.empty()&&inter2_output_file.empty())||
-           (!diagi_similt_prefix.empty()&&inter2_output_file.empty()))
+           (!diagi_similt_prefix.empty()&&inter2_output_file.empty())||
+           ((!wind_tail_stage.empty()||!wind_tail_output.empty()||
+             !wind_tail_boundaries.empty())&&
+            (wind_tail_stage.empty()||wind_tail_output.empty()||
+             wind_tail_boundaries.empty()||inter2_output_file.empty())))
             throw std::invalid_argument("G21/G22 requires independent stage/output file pairs");
         const std::vector<std::string> outputs={
             output_file,stage_file,slope_output_file,slope_stage_file,
@@ -75,7 +84,8 @@ int main(int argc,char** argv) {
             inter2_original_stage_prefix.empty()?std::string{}:inter2_original_stage_prefix+".v.input",
             diagi_similt_prefix.empty()?std::string{}:diagi_similt_prefix+".s1.input",
             diagi_similt_prefix.empty()?std::string{}:diagi_similt_prefix+".s2.input",
-            diagi_similt_prefix.empty()?std::string{}:diagi_similt_prefix+".native.csv"};
+            diagi_similt_prefix.empty()?std::string{}:diagi_similt_prefix+".native.csv",
+            wind_tail_stage,wind_tail_output,wind_tail_boundaries};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -372,6 +382,94 @@ int main(int argc,char** argv) {
                     std::cout<<"PASS_P6G_G23_LITERAL_SIMILT_STATION_INPUT "
                              <<"STATIONS="<<station.station_diagi.size()
                              <<" ORIGINAL_SOURCE_REFERENCE=NOT_YET_EXECUTED\n";
+                }
+                if(!wind_tail_stage.empty()) {
+                    const auto g24=cteas::calmet::p6g::g24_selected_original_wind_tail(
+                        frame,source,station,true);
+                    if(scheduler.completed_hours()!=0||clocks.has_published_hour())
+                        throw std::logic_error("G24 selected source wind leaked into G14");
+                    std::ofstream stage24(wind_tail_stage,std::ios::trunc);
+                    if(!stage24)
+                        throw std::runtime_error("G24 original DIAGNO stage not writable");
+                    stage24<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                    for(std::size_t k=0;k<9;++k)
+                        stage24<<(source.controls.zface_m[k+1]-
+                                  source.controls.zface_m[k])<<" ";
+                    stage24<<"\n";
+                    for(const int passes:source.controls.nsmth)
+                        stage24<<passes<<" ";
+                    stage24<<"\n";
+                    for(const auto* field:{
+                        &station.inter2_u.component_mps,&station.inter2_v.component_mps}) {
+                        for(std::size_t k=0;k<9;++k)
+                            for(std::size_t j=0;j<ny;++j) {
+                                for(std::size_t i=0;i<nx;++i)
+                                    stage24<<(*field)[k*cells+j*nx+i]<<" ";
+                                stage24<<"\n";
+                            }
+                    }
+                    for(std::size_t k=0;k<9;++k)
+                        for(std::size_t side=0;side<2;++side) {
+                            for(std::size_t j=0;j<ny;++j)
+                                stage24<<g24.second_ub_west_east_mps[
+                                    k*2*ny+side*ny+j]<<" ";
+                            stage24<<"\n";
+                        }
+                    for(std::size_t k=0;k<9;++k)
+                        for(std::size_t side=0;side<2;++side) {
+                            for(std::size_t i=0;i<nx;++i)
+                                stage24<<g24.second_vb_south_north_mps[
+                                    k*2*nx+side*nx+i]<<" ";
+                            stage24<<"\n";
+                        }
+                    stage24.flush();
+                    if(!stage24)
+                        throw std::runtime_error("G24 original DIAGNO stage file incomplete");
+                    std::ofstream output24(wind_tail_output,std::ios::trunc);
+                    if(!output24)
+                        throw std::runtime_error("G24 native full U/V/DIV/W not writable");
+                    output24<<"i,j,k,u,v,div,w_below,w_above\n";
+                    output24<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                    for(std::size_t k=0;k<9;++k)
+                        for(std::size_t j=0;j<ny;++j)
+                            for(std::size_t i=0;i<nx;++i) {
+                                const auto p=k*cells+j*nx+i;
+                                output24<<(i+1)<<","<<(j+1)<<","<<(k+1)<<","
+                                        <<g24.wind.u_mps[p]<<","
+                                        <<g24.wind.v_mps[p]<<","
+                                        <<g24.wind.divergence_per_s[p]<<","
+                                        <<g24.wind.w_face_mps[p]<<","
+                                        <<g24.wind.w_face_mps[p+cells]<<"\n";
+                            }
+                    output24.flush();
+                    if(!output24)
+                        throw std::runtime_error("G24 native wind tail output incomplete");
+                    std::ofstream boundary24(wind_tail_boundaries,std::ios::trunc);
+                    if(!boundary24)
+                        throw std::runtime_error("G24 native boundary file not writable");
+                    boundary24<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                    for(std::size_t k=0;k<9;++k)
+                        for(std::size_t side=0;side<2;++side) {
+                            for(std::size_t j=0;j<ny;++j)
+                                boundary24<<"U "<<(k+1)<<" "<<(side+1)<<" "
+                                          <<(j+1)<<" "<<g24.wind.ub_west_east_mps[
+                                            k*2*ny+side*ny+j]<<"\n";
+                            for(std::size_t i=0;i<nx;++i)
+                                boundary24<<"V "<<(k+1)<<" "<<(side+1)<<" "
+                                          <<(i+1)<<" "<<g24.wind.vb_south_north_mps[
+                                            k*2*nx+side*nx+i]<<"\n";
+                        }
+                    boundary24.flush();
+                    if(!boundary24)
+                        throw std::runtime_error("G24 native wind boundary file incomplete");
+                    std::size_t nonzero_w=0;
+                    for(const float w:g24.wind.w_face_mps)
+                        nonzero_w+=std::abs(w)>1.e-6f;
+                    std::cout<<"PASS_P6G_G24_FILE_SOURCE_POST_INTER2_SMOOOTH_DIVCEL_W "
+                             <<"UV_DIV_W_SCALARS="<<1296*5
+                             <<" NONZERO_W_FACE="<<nonzero_w
+                             <<" ORIGINAL_REFERENCE=NOT_YET_RUN "
+                               "G14_HOURS_COMMITTED=0\n";
                 }
                 std::cout<<"PASS_P6G_G23_SOURCE_STHEOR_DIAGI_INTER2 "
                          <<"STATIONS="<<station.station_diagi.size()
