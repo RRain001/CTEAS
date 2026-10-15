@@ -22,7 +22,8 @@ from compare_original_similt_profile import original_sources, VENDOR_BLOB
 
 ROOT = Path(__file__).resolve().parents[4]
 VENDOR = ROOT / "engine/vendor/src/CALMET_v6.5.0_L150223"
-# Frozen source-scoped P6E science tolerances, not any 45-field acceptance.
+# Explicit conservative G25A stage-only gates. These are NOT a frozen
+# original multi-site 45-field acceptance threshold.
 TOL_USTAR_MPS = 2e-4
 TOL_QH_WM2 = 0.01
 TOL_EL_M = 0.05
@@ -159,6 +160,7 @@ def main():
     parser.add_argument("--source-prefix",type=Path,required=True)
     parser.add_argument("--mode",choices=("Debug","Release"),required=True)
     parser.add_argument("--out",type=Path,required=True)
+    parser.add_argument("--require-branch",choices=("night","day"),required=True)
     args=parser.parse_args()
     original_inputs=[
         one_input(Path(str(args.source_prefix)+f".s{i}.input")) for i in (1,2)]
@@ -209,11 +211,15 @@ def main():
                 max_abs[key]=max(max_abs[key],diff)
                 if diff>tolerance:
                     errors.append([i,key,reference,actual,diff,tolerance])
+    if any(v!=args.require_branch for v in branches):
+        raise AssertionError("G25A source branch differs from required original "+
+                             args.require_branch+": "+str(branches))
     evidence={
         "scope":"literal source ELUSTR2 station QH USTAR EL only",
         "input":"G19 2SS+2US file-driven G23 observed synthetic first-hour station",
         "upstream_readcf_and_source_stage":original_inputs,
         "mode":args.mode,"stations":2,"comparisons":6,
+        "predeclared_required_heat_branch":args.require_branch,
         "source_provenance":provenance,"heat_flux_sign":branches,
         "max_abs":max_abs,
         "tolerance":{"sensible_wm2":TOL_QH_WM2,
