@@ -131,7 +131,10 @@ int main(int argc,char** argv) {
             original_con_output,control,argv[1],coupling_candidate,coupling_c2);
     const auto deck=ControlFile::read_file(argv[2]);
     std::optional<NativeCalmMdisp3Controls> genuine_calm;
-    if(probe_hours>6U){
+    if(probe_hours>6U || coupling_c2){
+        // C2 must use the same source-derived XMINZI/XMAXZI and
+        // midpoint COMP meteorology even in the first six-hour probe.
+        // The old frozen 2022 six-hour science path remains unchanged.
         const char* makegeo=std::getenv("CTEAS_P7_MAKEGEO_INP");
         require(makegeo!=nullptr && *makegeo!='\0',
                 "real extended calm trace requires original MAKEGEO control");
