@@ -111,11 +111,14 @@ def read_stage(path: Path) -> dict:
             raise ValueError("G21 GEO/GAMMA/TEMP2D invalid")
         if vals[2] < 180 or vals[2] > 350:
             raise ValueError("G21 actual SURFVAR TEMP2D outside source bounds")
+    wind1 = []
     for row in rows[2 + 144 :]:
         vals = [float(x) for x in row.split()]
         if len(vals) != 2 or not all(map(math.isfinite, vals)):
             raise ValueError("G21 source WIND1 U/V invalid")
-    return {"cells": 1296, "source_terrad": terrad, "source_critfn": critfn}
+        wind1.append(tuple(vals))
+    return {"cells": 1296, "source_terrad": terrad,
+            "source_critfn": critfn, "wind1_uv": wind1}
 
 
 def candidate_rows(path: Path) -> dict[tuple[int, int, int], tuple[float, float]]:
@@ -149,6 +152,7 @@ def main() -> None:
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--mode", choices=("Debug", "Release"), required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--require-nontrivial", action="store_true")
     args = parser.parse_args()
     stage = read_stage(args.source_stage)
     with tempfile.TemporaryDirectory(prefix="g21-literal-source-") as temp:
@@ -176,6 +180,18 @@ def main() -> None:
         raise ValueError("G21 original FRADJ and native source grid indexing differ")
     failures = []
     maximum = 0.0
+    modified_components = 0
+    # Check a real corrected branch, not merely Fortran/C++ identity when
+    # the selected source terrain has insufficient obstacle height.
+    for (i,j,k), uv in native.items():
+        p=(k-1)*144+(j-1)*12+(i-1)
+        for corrected, first in zip(uv,stage["wind1_uv"][p]):
+            if abs(corrected-first)>1e-5:
+                modified_components+=1
+    if args.require_nontrivial and modified_components==0:
+        raise AssertionError(
+            "G21 selected source produced identity FRADJ U/V; "
+            "steep terrain stress case must exercise actual correction")
     # The ORIGINAL G11 vendor TERSET+FRADJ test uses exactly 2e-4 m/s.
     # Do not enlarge scientific tolerance for source-selected file inputs.
     for key in sorted(reference):
@@ -194,6 +210,8 @@ def main() -> None:
         "original_terrad_km": stage["source_terrad"],
         "original_critfn": stage["source_critfn"],
         "max_abs_uv_delta_mps": maximum,
+        "nontrivially_modified_uv_components": modified_components,
+        "nontrivial_correction_required": args.require_nontrivial,
         "unchanged_original_g11_tolerance_mps": 2e-4,
         "failures": failures[:10],
         "independent_original_fortran_preprocessing": False,
@@ -209,7 +227,8 @@ def main() -> None:
     print(
         "PASS_P6G_G21_ORIGINAL_FORTRAN_SELECTED_SOURCE_FRADJ "
         f"mode={args.mode} compared={2*len(reference)} "
-        f"max_abs_delta={maximum:.9g} vendor_sha256={sha256} "
+        f"max_abs_delta={maximum:.9g} corrected_components={modified_components} "
+        f"vendor_sha256={sha256} "
         "full_calmet_45_field=NOT_ACCEPTED"
     )
 
