@@ -11,6 +11,8 @@ on:
       - 'native_cpp/modules/p7_calpuff/src/original_point_prfin.cpp'
       - 'native_cpp/modules/p7_calpuff/src/original_comp_rise_hourly.cpp'
       - 'native_cpp/modules/p7_calpuff/src/original_comp_rise.cpp'
+      - 'native_cpp/modules/p7_calpuff/reference/c2_vendor_receiver_stage_trace.py'
+      - 'native_cpp/modules/p7_calpuff/reference/c2_compare_readonly_receiver_stages.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -105,6 +107,21 @@ jobs:
           echo 'P7_C2_VENDOR_ORIGINAL_AND_PR63_MET_H3_TRANSPORT=MEASURED_NONZERO'
           echo 'P7_C2_NATIVE_P7_MULTISTATION=A_B_C_D_STILL_OPEN'
 
+      - name: Capture original Fortran H1 receptor 4-6 intermediates without changing puff.con
+        id: vendor_stage
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p7-c2"
+          python3 native_cpp/modules/p7_calpuff/reference/c2_vendor_receiver_stage_trace.py \
+            --pr63-root p6pr63 \
+            --weather "$root/original/original-met.dat" \
+            --control "$root/internal-source-science/C2-source-inside-multistation-domain.inp" \
+            --baseline-con "$root/internal-source-science/A-original-calpuff.con" \
+            --out "$root/H1-readonly-stage" \
+            | tee "$root/C2-vendor-H1-readonly-stage.log"
+
       - name: Build full original-source P7 C++ COMP for the actual 2024 12x12 G35 case
         shell: bash
         run: |
@@ -122,6 +139,7 @@ jobs:
           set -euo pipefail
           root="$RUNNER_TEMP/p7-c2"
           CTEAS_P7_INTEGRATION_C2=1 \
+          CTEAS_P7_C2_H1_RECEIVER_TRACE="$root/H1-readonly-stage/C2-native-H1-receptor-4-6-stage.txt" \
           CTEAS_P7_MAKEGEO_INP=project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/makegeo.inp \
             "$root/p7-build/cteas_p7_hefei_sixhour_native_h3_receptors_tests" \
             "$root/original/original-met.dat" \
@@ -132,6 +150,19 @@ jobs:
               exit 1
             }
           grep -F 'P7_C2_NATIVE_ON_PR63_MET HOURS=6' "$root/C2-original-P7-first6h.log"
+
+      - name: Compare read-only H1 vendor/native CALCPF stage operands
+        if: always()
+        id: h1_stage_compare
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/p7-c2/H1-readonly-stage"
+          python3 native_cpp/modules/p7_calpuff/reference/c2_compare_readonly_receiver_stages.py \
+            --vendor-json "$root/C2-vendor-H1-receptor-4-6-stage.json" \
+            --native-trace "$root/C2-native-H1-receptor-4-6-stage.txt" \
+            --out "$root/C2-vendor-native-H1-first-stage-comparison.json"
 
       - name: C2 same original MET true 143h B native P7 — strict 20,592 REAL4 words
         id: p7_B
@@ -262,3 +293,8 @@ jobs:
             ${{ runner.temp }}/p7-c2/C2-original-P7-first6h.log
             ${{ runner.temp }}/p7-c2/C2-original-MET-P7-B-143h.log
             ${{ runner.temp }}/p7-c2/C2-native-MET-P7-D-143h.log
+            ${{ runner.temp }}/p7-c2/C2-vendor-H1-readonly-stage.log
+            ${{ runner.temp }}/p7-c2/H1-readonly-stage/C2-vendor-H1-receptor-4-6-stage.txt
+            ${{ runner.temp }}/p7-c2/H1-readonly-stage/C2-vendor-H1-receptor-4-6-stage.json
+            ${{ runner.temp }}/p7-c2/H1-readonly-stage/C2-native-H1-receptor-4-6-stage.txt
+            ${{ runner.temp }}/p7-c2/H1-readonly-stage/C2-vendor-native-H1-first-stage-comparison.json
