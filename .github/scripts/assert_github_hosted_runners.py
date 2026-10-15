@@ -35,6 +35,42 @@ for path in paths:
             )
 if len(paths) < 70:
     failures.append(f"Expected >=70 tracked workflows, found {len(paths)}")
+# P7 long-running numerical gates must remain wired to the merged target branch.
+# PyYAML SafeLoader follows YAML 1.1 and can decode the literal "on" key as True.
+p7_base = "codex/cteas-p7-calpuff-20261011"
+for filename in (
+    "p7-hefei-real-hour7-probe.yml",
+    "p7-hefei-real-143h-independent-probe.yml",
+):
+    path = root / filename
+    if not path.is_file():
+        failures.append(f"{path}: required P7 scientific workflow is missing")
+        continue
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(workflow, dict):
+        failures.append(f"{path}: invalid workflow mapping")
+        continue
+    events = workflow.get("on", workflow.get(True))
+    if not isinstance(events, dict):
+        failures.append(f"{path}: invalid/missing GitHub event triggers")
+        continue
+    for event in ("pull_request", "push"):
+        settings = events.get(event)
+        if not isinstance(settings, dict):
+            failures.append(f"{path}: missing {event} trigger")
+            continue
+        branches = settings.get("branches", [])
+        paths_filter = settings.get("paths", [])
+        if not isinstance(branches, list) or p7_base not in branches:
+            failures.append(f"{path}: {event} must include P7 target branch {p7_base}")
+        if not isinstance(paths_filter, list) or not {
+            "native_cpp/modules/p7_calpuff/**", ".github/workflows/" + filename
+        }.issubset(set(paths_filter)):
+            failures.append(f"{path}: {event} must include P7 code and gate YAML in paths")
+        if isinstance(paths_filter, list) and "docs/reconstruction_cpp/**" in paths_filter:
+            failures.append(f"{path}: {event} must not rerun expensive science for docs-only edits")
+    if "workflow_dispatch" not in events:
+        failures.append(f"{path}: missing manual workflow_dispatch trigger")
 if failures:
     for failure in failures:
         print("HOSTED_RUNNER_POLICY_BLOCKED " + failure, file=sys.stderr)
