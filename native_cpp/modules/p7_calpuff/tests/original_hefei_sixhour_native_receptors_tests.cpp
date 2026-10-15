@@ -172,7 +172,7 @@ int main(int argc,char** argv) {
            const OriginalMetHour& met) {
         if(completed>=probe_hours)return;
         const std::size_t hour_index=completed;
-        require(met.begin.year==2022 && met.begin.julian_day==1 &&
+        require(met.begin.year==2022 &&
                 met.begin.hour==static_cast<int>(hour_index%24U) &&
                 met.begin.julian_day==1+static_cast<int>(hour_index/24U) &&
                 header.nx==50&&header.ny==50&&header.nz==9&&
