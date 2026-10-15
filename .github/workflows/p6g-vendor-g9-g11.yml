@@ -89,7 +89,8 @@ jobs:
             --output "$RUNNER_TEMP/g21-native-fradj.csv" \
             --source-stage "$RUNNER_TEMP/g21-original-input.dat" \
             --slope-output "$RUNNER_TEMP/g22-native-slope.csv" \
-            --slope-stage "$RUNNER_TEMP/g22-original-input.dat"
+            --slope-stage "$RUNNER_TEMP/g22-original-input.dat" \
+            --inter2-output "$RUNNER_TEMP/g23-original-inter2.csv"
           python3 native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py \
             --mode ${{ matrix.mode }} \
             --source-stage "$RUNNER_TEMP/g21-original-input.dat" \
@@ -115,7 +116,8 @@ jobs:
             --output "$RUNNER_TEMP/g21-steep-native-fradj.csv" \
             --source-stage "$RUNNER_TEMP/g21-steep-original-input.dat" \
             --slope-output "$RUNNER_TEMP/g22-steep-native-slope.csv" \
-            --slope-stage "$RUNNER_TEMP/g22-steep-original-input.dat"
+            --slope-stage "$RUNNER_TEMP/g22-steep-original-input.dat" \
+            --inter2-output "$RUNNER_TEMP/g23-steep-inter2.csv"
           python3 native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py \
             --mode ${{ matrix.mode }} \
             --source-stage "$RUNNER_TEMP/g21-steep-original-input.dat" \
@@ -163,6 +165,7 @@ jobs:
             --source-stage "$RUNNER_TEMP/g22-daylight-fradj-input.dat" \
             --slope-output "$RUNNER_TEMP/g22-daylight-slope.csv" \
             --slope-stage "$RUNNER_TEMP/g22-daylight-slope-input.dat" \
+            --inter2-output "$RUNNER_TEMP/g23-daylight-inter2.csv" \
             | tee "$RUNNER_TEMP/g22-daylight-native-log.txt"
           grep -Eq 'DAYTIME_CELLS=[1-9][0-9]*' "$RUNNER_TEMP/g22-daylight-native-log.txt"
           python3 native_cpp/modules/p6_calmet/reference/compare_g21_file_backed_original_fradj.py \
@@ -185,6 +188,15 @@ jobs:
             ${{ runner.temp }}/g22-daylight-fradj-${{ matrix.mode }}.json
             ${{ runner.temp }}/g22-daylight-slope-${{ matrix.mode }}.json
             ${{ runner.temp }}/g22-daylight-native-log.txt
+      - name: Source G23 STHEOR DIAGI INTER2 generates complete 1296-cell candidate
+        run: |
+          for file in "$RUNNER_TEMP/g23-original-inter2.csv" \
+                      "$RUNNER_TEMP/g23-steep-inter2.csv" \
+                      "$RUNNER_TEMP/g23-daylight-inter2.csv"; do
+            test -s "$file"
+            test "$(wc -l < "$file")" -eq 1297
+          done
+          echo "PASS_G23_SOURCE_ORIGINAL_FORMAT_2SS2US_INTER2_OUTPUT_SHAPES"
       - name: Original Fortran DIAGNO tail G10 10km
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
