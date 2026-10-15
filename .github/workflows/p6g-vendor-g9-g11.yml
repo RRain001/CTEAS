@@ -21,6 +21,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/verify_g30_source_p6f_candidate.py'
       - 'native_cpp/modules/p6_calmet/reference/test_g30_source_p6f_fail_closed.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
+      - 'native_cpp/modules/p6_calmet/reference/g34_verify_original_six_hour_oracle.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_extract_original_science_hour.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_diagnose_multistation_45field_residuals.py'
       - 'native_cpp/modules/p6_calmet/reference/g32_probe_original_multistation_diagno.py'
@@ -58,6 +59,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/verify_g30_source_p6f_candidate.py'
       - 'native_cpp/modules/p6_calmet/reference/test_g30_source_p6f_fail_closed.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py'
+      - 'native_cpp/modules/p6_calmet/reference/g34_verify_original_six_hour_oracle.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_extract_original_science_hour.py'
       - 'native_cpp/modules/p6_calmet/reference/g31_diagnose_multistation_45field_residuals.py'
       - 'native_cpp/modules/p6_calmet/reference/g32_probe_original_multistation_diagno.py'
@@ -567,6 +569,32 @@ jobs:
             --frozen-comparator "$RUNNER_TEMP/g31-p6e-comparator/p6e_calmet_dat21" \
             --forensic-reference "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-first-hour.dat" \
             --out "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/g31b-evidence.json"
+      - name: G34A run six consecutive hours of unchanged original CALMET
+        run: |
+          # This is a genuinely independent six-hour original-vendor oracle.
+          # It is NOT proof that the native candidate can complete six hours.
+          python3 native_cpp/modules/p6_calmet/reference/g31_run_literal_original_calmet_multisite.py \
+            --mode ${{ matrix.mode }} --hours 6 \
+            --source "$RUNNER_TEMP/g22-daylight-source" \
+            --source-clock "$RUNNER_TEMP/g22-daylight-fradj.csv" \
+            --out "$RUNNER_TEMP/g34-original-six-hours-${{ matrix.mode }}"
+      - name: G34A prove six original 45-field intervals and first-hour causal invariance
+        run: |
+          python3 native_cpp/modules/p6_calmet/reference/g34_verify_original_six_hour_oracle.py \
+            --one-hour "$RUNNER_TEMP/g31-daylight-${{ matrix.mode }}/original-met.dat" \
+            --six-hour "$RUNNER_TEMP/g34-original-six-hours-${{ matrix.mode }}/original-met.dat" \
+            --out "$RUNNER_TEMP/g34-original-six-hours-${{ matrix.mode }}/g34a-evidence.json"
+      - name: Upload G34A original-only six-hour evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g34a-original-vendor-six-hour-${{ matrix.mode }}
+          path: |
+            ${{ runner.temp }}/g34-original-six-hours-${{ matrix.mode }}/g34a-evidence.json
+            ${{ runner.temp }}/g34-original-six-hours-${{ matrix.mode }}/g31a-evidence.json
+            ${{ runner.temp }}/g34-original-six-hours-${{ matrix.mode }}/original-met.lst
+          if-no-files-found: warn
+          retention-days: 14
       - name: G31C forensic first-difference classification on true original 45-field failure
         # Science PASS has no failing original residual to diagnose.
         # Science FAIL still runs the original forensic, preserving its
