@@ -10,6 +10,7 @@
 // No source G14 COMP [12..15], P6F [16], memory or clock commit.
 // Native production run() deliberately reports Unknown,false.
 #include "cteas/p6/p6g_g18e4_prepdi_stage_adapter.hpp"
+#include "cteas/p6/p6g_g20_file_backed_wind1_profiles.hpp"
 #include "cteas/p6/p6g_g24_file_backed_wind_tail.hpp"
 #include <array>
 #include <chrono>
