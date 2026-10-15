@@ -13,6 +13,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/compare_g24_source_original_diagno.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g25_source_original_station_elustr2.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g25_source_original_stable_mixhtst.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g25_source_original_daytime_mixhtst.py'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/tests/p6g_g19_file_backed_case_tests.cpp'
@@ -32,6 +33,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/compare_g24_source_original_diagno.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g25_source_original_station_elustr2.py'
       - 'native_cpp/modules/p6_calmet/reference/compare_g25_source_original_stable_mixhtst.py'
+      - 'native_cpp/modules/p6_calmet/reference/compare_g25_source_original_daytime_mixhtst.py'
       - 'native_cpp/modules/p6_calmet/src/p6g_g21_source_fradj_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/src/p6g_g20_source_wind1_probe_main.cpp'
       - 'native_cpp/modules/p6_calmet/tests/p6g_g19_file_backed_case_tests.cpp'
@@ -341,6 +343,17 @@ jobs:
           path: |
             ${{ runner.temp }}/g25-original-mixhtst-${{ matrix.mode }}.json
             ${{ runner.temp }}/g25-steep-mixhtst-${{ matrix.mode }}.json
+      - name: G25C literal original daytime MIXHTST MIXDT MIXHMC selected UP and COMP
+        run: |
+          python3 native_cpp/modules/p6_calmet/reference/compare_g25_source_original_daytime_mixhtst.py \
+            --mode ${{ matrix.mode }} \
+            --source-prefix "$RUNNER_TEMP/g25-daylight-flux" \
+            --out "$RUNNER_TEMP/g25-day-mixhtst-${{ matrix.mode }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g25-literal-daytime-mixhtst-${{ matrix.mode }}
+          path: ${{ runner.temp }}/g25-day-mixhtst-${{ matrix.mode }}.json
       - name: Original Fortran DIAGNO tail G10 10km
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_g10_original_diagno_10km.py \
