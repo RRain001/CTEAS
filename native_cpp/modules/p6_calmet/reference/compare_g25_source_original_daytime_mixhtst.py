@@ -105,7 +105,7 @@ def vendor_sources(out:Path):
 
 def source_input(p:Path)->dict:
     lines=p.read_text().splitlines()
-    if len(lines)<5:
+    if len(lines)<4:
         raise ValueError("G25C original UP sounding missing")
     scalars=lines[0].split()
     if len(scalars)!=23:
