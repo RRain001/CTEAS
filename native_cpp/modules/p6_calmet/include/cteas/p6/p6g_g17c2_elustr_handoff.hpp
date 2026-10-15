@@ -39,16 +39,22 @@ inline G17C2SelectedElustrResult selected_iavet1_elustr_after_heatfx(
     const G17B4TwoPassSurfvar& source,
     const G17CSelectedHeatResult& heat,
     const p6::WindUV& genuine_post_fradj_wind,
-    const G17C2SelectedElustrControls& controls) {
+    const G17C2SelectedElustrControls& controls,
+    bool original_comp_third_pass=false) {
     if(!controls.explicitly_test_only||
        controls.ipsifcn<0||controls.ipsifcn>1||
        !std::isfinite(controls.zm_m)||controls.zm_m<=0.f||
        source.end()!=hour.end||heat.end!=hour.end||
        !source.first_ready()||!source.second_ready()||
+       (original_comp_third_pass&&!source.comp_ready())||
        !source.matches_source_geometry(grid,stations)||
-       !source.second_stage_wind_matches(genuine_post_fradj_wind.u,
-                                         genuine_post_fradj_wind.v)||
-       heat.temperature_k!=source.final_temperature())
+       !(original_comp_third_pass?
+           source.comp_stage_wind_matches(
+               genuine_post_fradj_wind.u,genuine_post_fradj_wind.v):
+           source.second_stage_wind_matches(
+               genuine_post_fradj_wind.u,genuine_post_fradj_wind.v))||
+       heat.temperature_k!=(original_comp_third_pass?
+           source.comp_temperature():source.final_temperature()))
         throw std::invalid_argument("G17C2 selected ELUSTR source stages not joined");
     const auto nx=static_cast<std::size_t>(grid.nx);
     const auto ny=static_cast<std::size_t>(grid.ny);
