@@ -145,6 +145,21 @@ endif()
 add_test(NAME p6g_g14_unified_2ss_2us_hourly_clock_state_1h_6h_143h_8784h
          COMMAND cteas_p6g_g14_unified_hourly_tests)
 
+# G19: original file-backed 2SS/2US input provenance and G14 authority.
+# This is NOT a successful 17-stage physical model or Fortran 45-field gate.
+add_executable(cteas_p6g_g19_file_backed_case_tests
+               tests/p6g_g19_file_backed_case_tests.cpp)
+target_link_libraries(cteas_p6g_g19_file_backed_case_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g19_file_backed_case_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g19_file_backed_case_tests PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6g_g19_source_file_backed_2ss_2us_g14_input_contract
+         COMMAND cteas_p6g_g19_file_backed_case_tests
+           "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp")
+
 # G15A: no independently hardcoded G8 wind radii or BIAS; verify against
 # the actual pinned 2022 met.inp with original READCF effective BIAS(1).
 add_executable(cteas_p6g_g15_original_controls_tests
