@@ -20,12 +20,17 @@ struct OriginalPointPrfinRequest {
     float max_sample_distance_cells=1.0F; // XSAMLEN
     int max_new_puffs=99;            // MXNEW
     float hour_seconds=3600.0F;      // DHR
+    // Explicit original RLSMET LCALGRD=true branch. Requires real
+    // METFM1 three-dimensional TMET/ZGPT; false retains fail-closed
+    // stable behavior until the PTG(1:2) fallback is independently sourced.
+    bool use_calmet_profile_lapse=false;
 };
 
 struct OriginalPointPrfinResult {
     float ambient_temperature_k=0.0F;
     float mixing_height_m=0.0F;
     int stability_class=0;
+    float sqrt_stability_s=0.0F;     // original RLSMET SQRTS for stable PRFIN
     float stack_wind_ms=0.0F, effective_wind_ms=0.0F;
     float release_wind_ms=0.0F;      // WSNEW
     float buoyancy_flux=0.0F, momentum_flux=0.0F;
@@ -40,8 +45,8 @@ struct OriginalPointPrfinResult {
     ReleaseCadence release;
 };
 
-// No interpolation/guess of unavailable RLSMET PTLAPS, building or stable
-// SQUARTS; explicit error instead of silently modifying selected physics.
+// The LCALGRD=true stable METFM1 path consumes native REAL4 TMET/ZGPT.
+// Unsupported default PTG(1:2), building, and other source branches fail closed.
 [[nodiscard]] OriginalPointPrfinResult original_point_prfin_metfm1(
     const OriginalMetHour& met,const Calmet21Static& statics,
     const Calmet21Header& grid,const OriginalPointPrfinRequest& source);
