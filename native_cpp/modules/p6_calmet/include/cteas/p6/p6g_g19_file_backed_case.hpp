@@ -78,7 +78,8 @@ inline GeoGridSpec g19_source_grid_spec(const std::string& original_deck) {
     const auto origin_x=g19_read_real_control(original_deck,"XORIGKM");
     const auto origin_y=g19_read_real_control(original_deck,"YORIGKM");
     if(nx<2||ny<2||nx>400||ny>400||dx<=0.||
-       zone<1||zone>60)
+       zone<1||zone>60||
+       g18c1_source_integer(original_deck,"NZ")!=9)
         throw std::invalid_argument(
             "G19 original grid outside validated G14 9-layer scope");
     return {nx,ny,zone,hemisphere.front(),origin_x,origin_y,dx};
@@ -135,6 +136,9 @@ inline G19FileBackedCase g19_load_original_source_case(
     result.stheor_upper_ordinal_for_surface=
         g18d6_station_uppers_from_source_setcom(
             result.grid,result.stations,result.original_metinp,true);
+    if(g18c1_source_integer(result.original_metinp,"ISURFT")!=-1)
+        throw std::invalid_argument(
+            "G19B source SURFVAR requires accepted ISURFT=-1 observed path");
     result.surface_controls=
         parse_g17b4_surface_controls(result.original_metinp);
     result.heat_inputs=g18d3_source_hflux_inputs(
