@@ -62,7 +62,7 @@ def replace_control(deck:str,key:str,value:str)->str:
     m=matches[0]
     return deck[:m.start()]+m.group(1)+value+" "+m.group(3)+deck[m.end():]
 
-def stage_deck(src:str,start:dt.datetime)->str:
+def stage_deck(src:str,start:dt.datetime,end:dt.datetime)->str:
     # All numerical READCF choices, station coordinates/identities,
     # model domain and physical scalar coefficients remain from G19.
     updates={
@@ -70,10 +70,10 @@ def stage_deck(src:str,start:dt.datetime)->str:
         "METLST":"met.lst","METDAT":"met.dat","LCFILES":"T",
         "IBYR":str(start.year),"IBMO":str(start.month),
         "IBDY":str(start.day),"IBHR":str(start.hour),"IBSEC":"0",
-        # CALMET IE* is the timestamp of the *last* start of an
-        # included hourly interval. IB*=IE* => exactly one hour.
-        "IEYR":str(start.year),"IEMO":str(start.month),
-        "IEDY":str(start.day),"IEHR":str(start.hour),"IESEC":"0"
+        # Original CALMET insists IE* strictly follows IB*; the one-hour
+        # G21 frame gives BOTH temporal boundaries with no invented clock.
+        "IEYR":str(end.year),"IEMO":str(end.month),
+        "IEDY":str(end.day),"IEHR":str(end.hour),"IESEC":"0"
     }
     result=src
     for key,val in updates.items():
@@ -175,7 +175,7 @@ def main():
         if not met.is_file():
             raise RuntimeError("G31A missing G19 original source controls")
         original_deck=met.read_text()
-        result=stage_deck(original_deck,clock_start)
+        result=stage_deck(original_deck,clock_start,clock_end)
         (staged/"met.inp").write_text(result)
         evidence["original_G19_metinp_sha256"]=sha256(met)
         evidence["staged_vendor_metinp_sha256"]=sha256(staged/"met.inp")
@@ -202,6 +202,8 @@ def main():
                 line[:300] for line in lines if
                 re.search(r"error|fatal|stop|invalid|missing|warning",line,re.I)
             ][-30:]
+        if "STOP " in proc.stderr or "Fortran runtime error" in proc.stderr:
+            raise RuntimeError("G31A original CALMET STOP: "+proc.stderr[-400:])
         if proc.returncode:
             raise RuntimeError("G31A untouched original CALMET exited "+
                                str(proc.returncode)+"; inspect original-met.lst and original logs")
