@@ -39,13 +39,15 @@ int main(int argc,char** argv) {
         std::string output_file,stage_file,slope_output_file,slope_stage_file;
         std::string inter2_output_file,inter2_original_stage_prefix;
         std::string diagi_similt_prefix,wind_tail_stage,wind_tail_output,wind_tail_boundaries;
+        std::string station_flux_prefix;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--output"||arg=="--source-stage"||
                arg=="--slope-output"||arg=="--slope-stage"||
                arg=="--inter2-output"||arg=="--inter2-original-stage-prefix"||
                arg=="--diagi-similt-prefix"||arg=="--wind-tail-stage"||
-               arg=="--wind-tail-output"||arg=="--wind-tail-boundaries") {
+               arg=="--wind-tail-output"||arg=="--wind-tail-boundaries"||
+               arg=="--station-flux-prefix") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
                     throw std::invalid_argument("G21/G22 source output missing path");
                 auto& selected=arg=="--output"?output_file:
@@ -57,7 +59,8 @@ int main(int argc,char** argv) {
                                arg=="--diagi-similt-prefix"?diagi_similt_prefix:
                                arg=="--wind-tail-stage"?wind_tail_stage:
                                arg=="--wind-tail-output"?wind_tail_output:
-                               wind_tail_boundaries;
+                               arg=="--wind-tail-boundaries"?wind_tail_boundaries:
+                               station_flux_prefix;
                 if(!selected.empty())
                     throw std::invalid_argument("G21/G22 duplicate output argument");
                 selected=argv[++i];
@@ -72,6 +75,7 @@ int main(int argc,char** argv) {
            (!inter2_output_file.empty()&&slope_output_file.empty())||
            (!inter2_original_stage_prefix.empty()&&inter2_output_file.empty())||
            (!diagi_similt_prefix.empty()&&inter2_output_file.empty())||
+           (!station_flux_prefix.empty()&&inter2_output_file.empty())||
            ((!wind_tail_stage.empty()||!wind_tail_output.empty()||
              !wind_tail_boundaries.empty())&&
             (wind_tail_stage.empty()||wind_tail_output.empty()||
@@ -85,7 +89,10 @@ int main(int argc,char** argv) {
             diagi_similt_prefix.empty()?std::string{}:diagi_similt_prefix+".s1.input",
             diagi_similt_prefix.empty()?std::string{}:diagi_similt_prefix+".s2.input",
             diagi_similt_prefix.empty()?std::string{}:diagi_similt_prefix+".native.csv",
-            wind_tail_stage,wind_tail_output,wind_tail_boundaries};
+            wind_tail_stage,wind_tail_output,wind_tail_boundaries,
+            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".s1.input",
+            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".s2.input",
+            station_flux_prefix.empty()?std::string{}:station_flux_prefix+".native.csv"};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -315,6 +322,74 @@ int main(int argc,char** argv) {
                              <<"STATIONS="<<nst<<" LAYERS=9 "
                              <<"WIND_UV_VALUES="<<cells*9*2
                              <<" REFERENCE_CALCULATION=NOT_YET_PERFORMED\n";
+                }
+                if(!station_flux_prefix.empty()) {
+                    if(cteas::calmet::p6g::g18d5_source_integer(
+                           source.original_metinp,"ICLOUD")>1||
+                       cteas::calmet::p6g::g18d5_source_integer(
+                           source.original_metinp,"IUPT")!=-1)
+                        throw std::invalid_argument(
+                            "G25 original ELUSTR2 NWS-cloud/IUPT source scope missing");
+                    const auto& h=source.heat_inputs.coefficients;
+                    std::ofstream values(station_flux_prefix+".native.csv",
+                                         std::ios::trunc);
+                    if(!values)
+                        throw std::runtime_error("G25 original-source ELUSTR2 CSV inaccessible");
+                    values<<"surface_ordinal,surface_id,upper_id,shortwave_wm2,"
+                              "sensible_wm2,friction_velocity_mps,monin_obukhov_m\n";
+                    values<<std::setprecision(
+                        std::numeric_limits<float>::max_digits10);
+                    for(std::size_t ss=0;ss<station.station_diagi.size();++ss) {
+                        const auto& st=station.station_diagi[ss];
+                        const auto& site=source.stations.surface[ss];
+                        const auto& obs=frame.surface.by_station[ss];
+                        if(st.surface_id!=site.id||st.end!=frame.input.end||
+                           !st.station_flux.extrapolate)
+                            throw std::logic_error("G25 station source ELUSTR2 identity invalid");
+                        const float rad=0.0174533f*obs.wind_direction_deg;
+                        const float uu=-obs.wind_speed_mps*std::sin(rad);
+                        const float vv=-obs.wind_speed_mps*std::cos(rad);
+                        const auto cell=st.cell;
+                        if(cell>=cells)
+                            throw std::logic_error("G25 station GEO index invalid");
+                        const float t=joined.heat.temperature_k[cell];
+                        const float rho=0.3484321f*obs.pressure_mb/t;
+                        std::ofstream input(station_flux_prefix+".s"+
+                                            std::to_string(ss+1)+".input",
+                                            std::ios::trunc);
+                        if(!input)
+                            throw std::runtime_error("G25 original station flux file inaccessible");
+                        input<<std::setprecision(
+                            std::numeric_limits<float>::max_digits10);
+                        input<<uu<<" "<<vv<<" "
+                             <<0.5f*(source.controls.zface_m[0]+
+                                      source.controls.zface_m[1])<<" "
+                             <<site.anemometer_height_m<<" "
+                             <<source.grid.z0_m[cell]<<" "
+                             <<joined.heat.sun_sine[cell]<<" "
+                             <<t<<" "<<rho<<" "
+                             <<obs.opaque_cloud_tenths<<" "
+                             <<h.ha1<<" "<<h.ha2<<" "<<h.hb1<<" "<<h.hb2<<" "
+                             <<h.hc1<<" "<<h.hc2<<" "<<h.hc3p1<<" "
+                             <<source.grid.albedo[cell]<<" "
+                             <<source.grid.bowen[cell]<<" "
+                             <<source.grid.hcg[cell]<<" "
+                             <<source.grid.qf[cell]<<"\n";
+                        input.flush();
+                        if(!input)throw std::runtime_error("G25 original ELUSTR2 input incomplete");
+                        values<<(ss+1)<<","<<st.surface_id<<","<<st.upper_id<<","
+                              <<st.station_flux.shortwave_wm2<<","
+                              <<st.station_flux.sensible_wm2<<","
+                              <<st.station_flux.friction_velocity_mps<<","
+                              <<st.station_flux.monin_obukhov_m<<"\n";
+                    }
+                    values.flush();
+                    if(!values)
+                        throw std::runtime_error("G25 original ELUSTR2 candidate output incomplete");
+                    std::cout<<"PASS_P6G_G25_STATION_ELUSTR2_ORIGINAL_SOURCE_INPUT "
+                             <<"STATIONS="<<station.station_diagi.size()
+                             <<" ORIGINAL_VENDOR_PARITY=NOT_YET_CALCULATED "
+                               "G14_HOURS_COMMITTED=0\n";
                 }
                 if(!diagi_similt_prefix.empty()) {
                     // Same actual STHEOR/MIXHTST physical station controls
