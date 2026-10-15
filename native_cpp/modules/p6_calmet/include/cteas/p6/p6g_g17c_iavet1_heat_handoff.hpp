@@ -37,11 +37,13 @@ struct G17CSelectedHeatResult {
 inline G17CSelectedHeatResult selected_iavet1_heat_after_fradj(
     const GeoGrid& grid,const StationSet& stations,const SurfaceHour& hour,
     const G17B4TwoPassSurfvar& source,
-    const G17CSelectedHeatInputs& fixture) {
+    const G17CSelectedHeatInputs& fixture,
+    bool original_comp_third_pass=false) {
     using namespace std::chrono;
     if(!fixture.explicitly_test_only||
        !source.first_ready()||!source.second_ready()||
        source.end()!=hour.end||
+       (original_comp_third_pass&&!source.comp_ready())||
        !source.matches_source_geometry(grid,stations)||
        hour.end-hour.start!=hours{1}||
        grid.nx<2||grid.ny<2||grid.nx>400||grid.ny>400||
@@ -54,7 +56,8 @@ inline G17CSelectedHeatResult selected_iavet1_heat_after_fradj(
     const auto nx=static_cast<std::size_t>(grid.nx);
     const auto ny=static_cast<std::size_t>(grid.ny);
     const auto n=nx*ny;
-    const auto& final_temperature=source.final_temperature();
+    const auto& final_temperature=original_comp_third_pass?
+        source.comp_temperature():source.final_temperature();
     if(final_temperature.size()!=n||
        grid.landuse.size()!=n||grid.albedo.size()!=n||
        grid.bowen.size()!=n||grid.hcg.size()!=n||
