@@ -172,6 +172,19 @@ else()
                          -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+# G20: independent source-file native first-hour WIND1 U/V diagnostic only.
+# Generates an original-grid REAL4 text trace for future original-vendor
+# comparisons. DOES NOT publish a G14 hour or claim full CALMET parity.
+add_executable(cteas_p6g_g20_source_wind1_probe
+               src/p6g_g20_source_wind1_probe_main.cpp)
+target_link_libraries(cteas_p6g_g20_source_wind1_probe PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6g_g20_source_wind1_probe PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6g_g20_source_wind1_probe PRIVATE
+                         -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 # G15A: no independently hardcoded G8 wind radii or BIAS; verify against
 # the actual pinned 2022 met.inp with original READCF effective BIAS(1).
 add_executable(cteas_p6g_g15_original_controls_tests
