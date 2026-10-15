@@ -11,6 +11,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/g36a_run_original_calpuff_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/g36b_atomic_calmet_publish.py'
       - 'native_cpp/modules/p6_calmet/reference/test_g36b_atomic_publication.py'
+      - 'native_cpp/modules/p6_calmet/reference/g36c_checkpoint_seal.py'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/p6g_*.hpp'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
   pull_request:
@@ -23,6 +24,7 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/g36a_run_original_calpuff_multisite.py'
       - 'native_cpp/modules/p6_calmet/reference/g36b_atomic_calmet_publish.py'
       - 'native_cpp/modules/p6_calmet/reference/test_g36b_atomic_publication.py'
+      - 'native_cpp/modules/p6_calmet/reference/g36c_checkpoint_seal.py'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/p6g_*.hpp'
       - 'native_cpp/modules/p6_calmet/CMakeLists.txt'
   workflow_dispatch:
@@ -164,6 +166,59 @@ jobs:
           path: |
             ${{ runner.temp }}/g36b-published/READY.json
             ${{ runner.temp }}/g36b-adversarial-verdict.json
+          if-no-files-found: warn
+          retention-days: 14
+      # This is SOURCE REPLAY restart, not direct binary restoration of
+      # frozen CGammaState's private representation. Replay must exactly
+      # recover the persisted COMP memory / two-station clocks and full
+      # 71-hour P6F prefix before continuing to 143.
+      - name: G36C experimental native 71h hard-stop checkpoint and source-bound READY seal
+        id: g36c_restart
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/g35-build/cteas_p6g_g34b_six_hour_selected_gate" \
+            "$RUNNER_TEMP/g35-source/met.inp" "$RUNNER_TEMP/g35-source/GEO.DAT" \
+            "$RUNNER_TEMP/g35-source/SURF.DAT" "$RUNNER_TEMP/g35-source/UP1.DAT" \
+            "$RUNNER_TEMP/g35-source/UP2.DAT" "$RUNNER_TEMP/g36c-should-not-be-written.dat" \
+            --hours 143 --checkpoint-hour 71 \
+            --checkpoint-dir "$RUNNER_TEMP/g36c-checkpoint-71"
+          test ! -e "$RUNNER_TEMP/g36c-should-not-be-written.dat"
+          python3 native_cpp/modules/p6_calmet/reference/g36c_checkpoint_seal.py \
+            --checkpoint-dir "$RUNNER_TEMP/g36c-checkpoint-71" \
+            --source-dir "$RUNNER_TEMP/g35-source"
+          python3 native_cpp/modules/p6_calmet/reference/g36c_checkpoint_seal.py \
+            --verify-only --checkpoint-dir "$RUNNER_TEMP/g36c-checkpoint-71" \
+            --source-dir "$RUNNER_TEMP/g35-source"
+          # A distinct NEW C++ process rebuilds G14/CGAMMA internal history,
+          # verifies persisted REAL4 arrays, AA/BB station clocks and P6F
+          # prefix bitwise at boundary N, then computes hours 72..143.
+          "$RUNNER_TEMP/g35-build/cteas_p6g_g34b_six_hour_selected_gate" \
+            "$RUNNER_TEMP/g35-source/met.inp" "$RUNNER_TEMP/g35-source/GEO.DAT" \
+            "$RUNNER_TEMP/g35-source/SURF.DAT" "$RUNNER_TEMP/g35-source/UP1.DAT" \
+            "$RUNNER_TEMP/g35-source/UP2.DAT" "$RUNNER_TEMP/g36c-replayed-143h.dat" \
+            --hours 143 --resume-hour 71 --resume-dir "$RUNNER_TEMP/g36c-checkpoint-71" \
+            | tee "$RUNNER_TEMP/g36c-replay-trace.txt"
+          grep -q 'G36C_REPLAY_STATE_BIT_EXACT_AND_PREFIX_MATCH_HOUR=71' \
+            "$RUNNER_TEMP/g36c-replay-trace.txt"
+          cmp "$RUNNER_TEMP/g35-native-143h.calmet.dat" "$RUNNER_TEMP/g36c-replayed-143h.dat"
+          echo "PASS_G36C_REPLAY_RECOVERY_143H_NATIVE_BYTES_IDENTICAL"
+      - name: G36C replay-recovery scientific classification
+        if: always()
+        run: |
+          if [ "${{ steps.g36c_restart.outcome }}" = "success" ]; then
+            echo "G36C PASS: restarted new process after hour 71; saved G14 physical memory, CGAMMA clocks, source and prefix validated; final native 143h bytes identical"
+          else
+            echo "::warning::G36C replay-based interrupted restart not yet accepted; no direct state restore or production promotion"
+          fi
+      - name: Upload G36C crash/replay 143h evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g36c-source-replay-restart-${{ matrix.mode }}
+          path: |
+            ${{ runner.temp }}/g36c-checkpoint-71/READY.json
+            ${{ runner.temp }}/g36c-replay-trace.txt
           if-no-files-found: warn
           retention-days: 14
       # Exploratory until the genuine unmodified CALPUFF 7.2.1 has been
