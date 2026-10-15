@@ -6,6 +6,7 @@
 #include "cteas/p6/p6g_g20_file_backed_wind1_profiles.hpp"
 #include "cteas/p6/p6g_g21_file_backed_fradj.hpp"
 #include "cteas/p6/p6g_g22_file_backed_thermal_slope.hpp"
+#include "cteas/p6/p6g_g23_file_backed_stheor_inter2.hpp"
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -598,6 +599,83 @@ int main(int argc,char** argv){
                  independent.selected_result().first_guess.v_mps},
                 corrupted_g21,true);
         },"G22 promoted forged second SURFVAR TEMP2D into HEATFX");
+        // G23: source-file G22 HEATFX/ELUSTR and immutable previous
+        // G14 COMP state into original station STHEOR, MIXHTST, capped
+        // DIAGI columns and original INTER2 U/V.  This is a selected
+        // candidate, not a completed/committed 17-stage physical hour.
+        const auto g23_profiles=
+            p6g::g20_file_backed_source_wind1_profiles(standalone,true);
+        const auto g23=p6g::g23_source_stheor_diagi_inter2(
+            standalone,source_case,g23_profiles,
+            independent_fradj,selected_g22,true);
+        check(g23.end==standalone.input.end&&
+              g23.hour_index==standalone.hour_index&&
+              g23.station_diagi.size()==2u&&
+              g23.station_diagi[0].surface_id==583210&&
+              g23.station_diagi[1].surface_id==583220&&
+              g23.station_diagi[0].end==standalone.input.end&&
+              g23.station_diagi[1].end==standalone.input.end&&
+              g23.source_fcori_s==1.0e-4f&&
+              g23.source_cmech>140.f&&
+              g23.source_cmech<142.f&&
+              g23.inter2_u.component_mps.size()==1296u&&
+              g23.inter2_v.component_mps.size()==1296u&&
+              g23.original_ub_west_east_mps.size()==216u&&
+              g23.original_vb_south_north_mps.size()==216u&&
+              g23.observed_after_diagi.station_ids==
+                  std::vector<int>({583210,583220,58424,58425})&&
+              scheduler.completed_hours()==0&&
+              !source_clocks.has_published_hour(),
+              "G23 original source-file STHEOR/DIAGI/INTER2 missing or wrongly committed");
+        for(std::size_t k=0;k<9;++k)
+            for(std::size_t i=2;i<4;++i) {
+                const auto p=k*4+i;
+                check(g23.observed_after_diagi.inter2_u_mps[p]==
+                          g23_profiles.inter2_u_mps[p]&&
+                      g23.observed_after_diagi.inter2_v_mps[p]==
+                          g23_profiles.inter2_v_mps[p]&&
+                      g23.observed_after_diagi.inter2_present[p]==
+                          g23_profiles.inter2_present[p],
+                      "G23 DIAGI rewrote source upper-air PREPDI column");
+            }
+        const auto g23_repeat=p6g::g23_source_stheor_diagi_inter2(
+            standalone,source_case,g23_profiles,
+            independent_fradj,selected_g22,true);
+        check(g23_repeat.inter2_u.component_mps==
+                  g23.inter2_u.component_mps&&
+              g23_repeat.inter2_v.component_mps==
+                  g23.inter2_v.component_mps&&
+              g23_repeat.source_cmech==g23.source_cmech,
+              "G23 selected source station physics changed without G14 commit");
+        rejects([&]{
+            (void)p6g::g23_source_stheor_diagi_inter2(
+                standalone,source_case,g23_profiles,
+                independent_fradj,selected_g22,false);
+        },"G23 selected STHEOR/INTER2 promoted into production");
+        auto wrong_g23_hour=selected_g22;
+        wrong_g23_hour.end+=hours{1};
+        rejects([&]{
+            (void)p6g::g23_source_stheor_diagi_inter2(
+                standalone,source_case,g23_profiles,
+                independent_fradj,wrong_g23_hour,true);
+        },"G23 accepted G22 heat from another G14 hour");
+        auto wrong_g23_source=source_case;
+        wrong_g23_source.original_metinp=
+            replace_one(two,"FCORIOL","999");
+        rejects([&]{
+            (void)p6g::g23_source_stheor_diagi_inter2(
+                standalone,wrong_g23_source,g23_profiles,
+                independent_fradj,selected_g22,true);
+        },"G23 silently used scalar CMECH for source latitude-varying FCORIOL");
+        wrong_g23_source=source_case;
+        wrong_g23_source.original_metinp=
+            replace_one(two,"CONSTB","-1");
+        rejects([&]{
+            (void)p6g::g23_source_stheor_diagi_inter2(
+                standalone,wrong_g23_source,g23_profiles,
+                independent_fradj,selected_g22,true);
+        },"G23 accepted negative original CONSTB mechanical mixing");
+
         // Original READCF derives IPSIFCN/ISFCMET from ICOARE, not from
         // a nonexistent standalone source key. The otherwise valid
         // ICOARE=0 branch switches ISFCMET=1 and is NOT the accepted
