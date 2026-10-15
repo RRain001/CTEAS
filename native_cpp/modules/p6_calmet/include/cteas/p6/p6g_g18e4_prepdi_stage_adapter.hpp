@@ -87,11 +87,26 @@ public:
 
     // Only the accepted G14 scheduler counter may publish both clocks.
     // No PREPDI state is committed during stages 0-16 or P6F precommit.
+    // This is the strict throwing API retained for validation callers.
     void publish_after_completed_g14_hour() {
         if(!staged_||published_||!prepared_)
             throw std::logic_error("G18E4 cannot publish incomplete PREPDI");
         clocks_.publish_only_after_completed_g14(scheduler_,*prepared_);
         published_=true;
+    }
+
+    // G18F1: safe postcommit observer for owned G14 executors. Exactly
+    // the source-preflighted AA/BB and per-US CGAMMA clocks are published
+    // as one noexcept operation. Returns false (without partial mutation)
+    // if called before G14 commits, twice, or with a stale source hour.
+    [[nodiscard]] bool try_publish_after_completed_g14_hour_noexcept() noexcept {
+        if(!staged_||published_||!prepared_)
+            return false;
+        if(!clocks_.try_publish_only_after_completed_g14_noexcept(
+               scheduler_,*prepared_))
+            return false;
+        published_=true;
+        return true;
     }
     [[nodiscard]] bool staged() const noexcept {return staged_;}
     [[nodiscard]] bool published() const noexcept {return published_;}
