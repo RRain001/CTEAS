@@ -42,6 +42,7 @@ int main(int argc,char** argv) {
         std::string inter2_output_file,inter2_original_stage_prefix;
         std::string diagi_similt_prefix,wind_tail_stage,wind_tail_output,wind_tail_boundaries;
         std::string station_flux_prefix,original_nearu_prefix,comp_original_prefix;
+        std::string mixht_original_prefix;
         for(int i=4;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--output"||arg=="--source-stage"||
@@ -50,7 +51,7 @@ int main(int argc,char** argv) {
                arg=="--diagi-similt-prefix"||arg=="--wind-tail-stage"||
                arg=="--wind-tail-output"||arg=="--wind-tail-boundaries"||
                arg=="--station-flux-prefix"||arg=="--nearu-prefix"||
-               arg=="--comp-original-prefix") {
+               arg=="--comp-original-prefix"||arg=="--mixht-original-prefix") {
                 if(i+1>=argc||std::string(argv[i+1]).empty())
                     throw std::invalid_argument("G21/G22 source output missing path");
                 auto& selected=arg=="--output"?output_file:
@@ -64,8 +65,8 @@ int main(int argc,char** argv) {
                                arg=="--wind-tail-output"?wind_tail_output:
                                arg=="--wind-tail-boundaries"?wind_tail_boundaries:
                                arg=="--station-flux-prefix"?station_flux_prefix:
-                               arg=="--nearu-prefix"?original_nearu_prefix:
-                               comp_original_prefix;
+                               arg=="--nearu-prefix"?original_nearu_prefix:arg=="--comp-original-prefix"?comp_original_prefix:
+                               mixht_original_prefix;
                 if(!selected.empty())
                     throw std::invalid_argument("G21/G22 duplicate output argument");
                 selected=argv[++i];
@@ -81,6 +82,7 @@ int main(int argc,char** argv) {
            (!inter2_original_stage_prefix.empty()&&inter2_output_file.empty())||
            (!diagi_similt_prefix.empty()&&inter2_output_file.empty())||
            (!station_flux_prefix.empty()&&inter2_output_file.empty())||
+           (!mixht_original_prefix.empty()&&comp_original_prefix.empty())||
            ((!wind_tail_stage.empty()||!wind_tail_output.empty()||
              !wind_tail_boundaries.empty())&&
             (wind_tail_stage.empty()||wind_tail_output.empty()||
@@ -106,7 +108,9 @@ int main(int argc,char** argv) {
             original_nearu_prefix.empty()?std::string{}:original_nearu_prefix+".source.input",
             original_nearu_prefix.empty()?std::string{}:original_nearu_prefix+".native.csv",
             comp_original_prefix.empty()?std::string{}:comp_original_prefix+".source.input",
-            comp_original_prefix.empty()?std::string{}:comp_original_prefix+".native.csv"};
+            comp_original_prefix.empty()?std::string{}:comp_original_prefix+".native.csv",
+            mixht_original_prefix.empty()?std::string{}:mixht_original_prefix+".source.input",
+            mixht_original_prefix.empty()?std::string{}:mixht_original_prefix+".native.csv"};
         for(std::size_t i=0;i<outputs.size();++i)
             if(!outputs[i].empty())
                 for(std::size_t j=0;j<i;++j)
@@ -257,6 +261,74 @@ int main(int argc,char** argv) {
             native.flush();
             if(!native)
                 throw std::runtime_error("G28 native original COMP candidates truncated");
+            if(!mixht_original_prefix.empty()) {
+                // G29A: capture the TRUE call input, not an inverse from
+                // post-MIXHT output. No Fortran result enters native physics.
+                const auto& m=mixed.source_mixht_input;
+                const auto& z=mixed.candidate_next;
+                const auto nlev=m.sounding.at(0).at(0).height_m.size();
+                if(nlev<2||nlev>10||m.nx!=nx||m.ny!=ny||
+                   m.sounding[0].size()!=2||m.sounding[1].size()!=2||
+                   m.justa.size()!=2||m.nearu.size()!=cells||
+                   m.initial_zi.size()!=cells||m.initial_ziconv.size()!=cells||
+                   m.initial_dptt.size()!=cells||m.qh.size()!=cells||
+                   m.ustar.size()!=cells||m.el.size()!=cells||
+                   m.rho.size()!=cells||m.cmech.size()!=cells||
+                   m.fcori.size()!=cells||m.landuse.size()!=cells||
+                   z.zi_m.size()!=cells||z.ziconv_m.size()!=cells||
+                   z.dptt_k.size()!=cells||m.iupt!=-1||
+                   m.timestep_s!=3600)
+                    throw std::logic_error("G29A MIXHT source input mismatch");
+                for(const auto& buff:m.sounding)
+                    for(const auto& station:buff)
+                        if(station.height_m.size()!=nlev||
+                           station.temp_k.size()!=nlev)
+                            throw std::logic_error("G29A MIXHT varying sounding shape");
+                std::ofstream out(mixht_original_prefix+".source.input",
+                                  std::ios::trunc);
+                if(!out)throw std::runtime_error("G29A original MIXHT source cannot open");
+                out<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                out<<"1 "<<nx<<" "<<ny<<" 2 "<<nlev<<"\\n";
+                out<<m.iupt<<" "<<m.constn<<" "<<m.zimin<<" "<<m.zimax
+                   <<" "<<m.threshl<<" "<<m.dptmin<<" "<<m.dzzi
+                   <<" "<<m.onedte<<" "<<m.twodte<<" "<<m.izicrlx
+                   <<" "<<m.tzicrlx<<" "<<m.timestep_s<<" "<<m.imixh<<"\\n";
+                for(int k:m.justa)out<<k<<"\\n";
+                for(const auto& buff:m.sounding)
+                    for(const auto& site:buff)
+                        for(std::size_t k=0;k<nlev;++k)
+                            out<<site.height_m[k]<<" "<<site.temp_k[k]<<"\\n";
+                // Original Fortran driver loops I outside J.
+                for(std::size_t i=0;i<nx;++i)
+                    for(std::size_t j=0;j<ny;++j) {
+                        const auto p=j*nx+i;
+                        out<<m.qh[p]<<" "<<m.ustar[p]<<" "<<m.el[p]<<" "
+                           <<m.rho[p]<<" "<<m.cmech[p]<<" "<<m.fcori[p]<<" "
+                           <<m.landuse[p]<<" "<<m.nearu[p]<<" "
+                           <<m.initial_zi[p]<<" "<<m.initial_ziconv[p]<<" "
+                           <<m.initial_dptt[p]<<"\\n";
+                    }
+                out.flush();
+                if(!out)throw std::runtime_error("G29A MIXHT input write failed");
+                std::ofstream native(mixht_original_prefix+".native.csv",
+                                     std::ios::trunc);
+                if(!native)throw std::runtime_error("G29A MIXHT candidate cannot open");
+                native<<"i,j,zi_m,ziconv_m,dptt_k\\n";
+                native<<std::setprecision(std::numeric_limits<float>::max_digits10);
+                for(std::size_t i=0;i<nx;++i)
+                    for(std::size_t j=0;j<ny;++j) {
+                        const auto p=j*nx+i;
+                        native<<i+1<<","<<j+1<<","<<z.zi_m[p]<<","
+                              <<z.ziconv_m[p]<<","<<z.dptt_k[p]<<"\\n";
+                    }
+                native.flush();
+                if(!native)throw std::runtime_error("G29A MIXHT output write failed");
+                if(scheduler.completed_hours()!=0||clocks.has_published_hour())
+                    throw std::logic_error("G29A incorrectly committed G14");
+                std::cout<<"PASS_P6G_G29A_SOURCE_MIXHT_INPUT CELLS="
+                         <<cells<<" G14_HOURS_COMMITTED=0"
+                         <<" ORIGINAL_VENDOR_PARITY=NOT_YET_CALCULATED\\n";
+            }
             std::cout<<"PASS_P6G_G28_SOURCE_ORIGINAL_AVEMIX_WSTARR_INPUT "
                      <<"CELLS="<<cells<<" CANDIDATE_COLUMNS=3 "
                      <<"G14_HOURS_COMMITTED=0 ORIGINAL_VENDOR_PARITY=NOT_YET_CALCULATED\n";
