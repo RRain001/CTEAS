@@ -6,6 +6,8 @@ on:
       - '.github/workflows/p7-c2-pr63-two-meteorologies-vendor-science.yml'
       - 'native_cpp/modules/p7_calpuff/reference/compare_p7_hourly_concentrations.py'
       - 'native_cpp/modules/p7_calpuff/reference/run_c2_vendor_inside_grid_pair.py'
+      - 'native_cpp/modules/p7_calpuff/tests/original_hefei_sixhour_native_receptors_tests.cpp'
+      - 'native_cpp/modules/p7_calpuff/include/cteas/puff/original_wrout1_hefei.hpp'
   workflow_dispatch:
 permissions:
   contents: read
