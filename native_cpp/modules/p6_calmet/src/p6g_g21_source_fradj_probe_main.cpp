@@ -453,7 +453,7 @@ int main(int argc,char** argv) {
                             if(sounding.end<=frame.surface.start)older=&sounding;
                             else break;
                         }
-                        if(!older||older->data.size()<3||older->data.size()>100)
+                        if(!older||older->data.size()<2||older->data.size()>100)
                             throw std::logic_error("G25C physical older UP thermal sounding incomplete");
                         std::ofstream day(station_flux_prefix+".mixht.day.s"+
                                           std::to_string(ss+1)+".input",
