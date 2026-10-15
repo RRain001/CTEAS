@@ -763,6 +763,82 @@ int main(int argc,char** argv){
               g26_scheduler.committed_memory().dptt_k[0]==0.f&&
               !g26_clocks.has_published_hour(),
               "G26 source DIAGNO failure changed committed G14 COMP/AA-BB-CGAMMA state");
+        // Exercise G26 through G14's REAL 17-stage loop, not just a
+        // manually sequenced preview. Only the test proxy can report
+        // partial checkpoint advancement; stage [12] COMP MUST return
+        // Unknown,false. Fresh executor per retry and no memory/clock
+        // changes across two failed attempts.
+        struct G26G14TwelveStageTestProxy final : p6g::MultiHourPhysics {
+            p6g::G26SourceFileBackedG14DiagnoBridge selected;
+            const p6g::MultiHourFrame* authoritative;
+            std::size_t& completed_checkpoints;
+            std::vector<float>& observed_u;
+            std::vector<float>& observed_v;
+            std::vector<float>& observed_w;
+            G26G14TwelveStageTestProxy(
+                const p6g::UnifiedMultistationHourlyScheduler& owner,
+                p6g::G18D2StationClockAuthority& clock,
+                const p6g::G19FileBackedCase& source,
+                const p6g::MultiHourFrame& live,
+                std::size_t& count,
+                std::vector<float>& u,std::vector<float>& v,
+                std::vector<float>& w)
+                :selected(owner,clock,source),authoritative(&live),
+                 completed_checkpoints(count),observed_u(u),
+                 observed_v(v),observed_w(w) {}
+            cteas::calmet::p6::NativeHourStageResult run(
+                cteas::calmet::p6::NativeHourStage stage,
+                p6g::MultiHourFrame& live) override {
+                check(&live==authoritative,
+                      "G26 G14 stage executed on cloned hour input");
+                if(stage==cteas::calmet::p6::NativeHourStage::CompGridMixht) {
+                    check(selected.source_diagno_ready()&&
+                          completed_checkpoints%12==0,
+                          "G26 G14 reached COMP before genuine 12-stage DIAGNO");
+                    return {cteas::calmet::p6::NativeHourSource::Unknown,false};
+                }
+                // Only this TEST PROXY may advance the G14 loop across
+                // G26 selected compound-source checkpoints. Never use
+                // NativeCpp=true for a production G26 adapter.
+                selected.run_selected(stage,live,true);
+                ++completed_checkpoints;
+                if(stage==cteas::calmet::p6::NativeHourStage::DiagnoSmoothDivcelW) {
+                    selected.require_station_clock_preflight(live);
+                    observed_u=live.fields.u_mps;
+                    observed_v=live.fields.v_mps;
+                    observed_w=live.fields.w_face_mps;
+                }
+                return {cteas::calmet::p6::NativeHourSource::NativeCpp,true};
+            }
+        };
+        auto g26_authoritative=source_case.make_scheduler();
+        p6g::G18D2StationClockAuthority g26_source_clocks;
+        std::size_t g26_real_g14_stage_count=0;
+        std::vector<float> g26_real_g14_u,g26_real_g14_v,g26_real_g14_w;
+        for(int failed_attempt=0;failed_attempt<2;++failed_attempt) {
+            rejects([&]{
+                g26_authoritative.advance_with_fresh_physics(
+                    [&](const p6g::MultiHourFrame& live)
+                        ->std::unique_ptr<p6g::MultiHourPhysics> {
+                        return std::make_unique<G26G14TwelveStageTestProxy>(
+                            g26_authoritative,g26_source_clocks,
+                            source_case,live,g26_real_g14_stage_count,
+                            g26_real_g14_u,g26_real_g14_v,
+                            g26_real_g14_w);
+                    });
+            },"G26 partial 12-stage physical bridge committed unsupported COMP");
+            check(g26_real_g14_stage_count==
+                      12u*static_cast<std::size_t>(failed_attempt+1)&&
+                  g26_real_g14_u==g24.wind.u_mps&&
+                  g26_real_g14_v==g24.wind.v_mps&&
+                  g26_real_g14_w==g24.wind.w_face_mps&&
+                  g26_authoritative.completed_hours()==0&&
+                  g26_authoritative.committed_memory().zi_m[0]==0.f&&
+                  g26_authoritative.committed_memory().ziconv_m[0]==0.f&&
+                  g26_authoritative.committed_memory().dptt_k[0]==0.f&&
+                  !g26_source_clocks.has_published_hour(),
+                  "G26 G14 failed retry mutated source hour/memory or changed native wind");
+        }
         for(std::size_t k=0;k<9;++k)
             for(std::size_t i=2;i<4;++i) {
                 const auto p=k*4+i;
