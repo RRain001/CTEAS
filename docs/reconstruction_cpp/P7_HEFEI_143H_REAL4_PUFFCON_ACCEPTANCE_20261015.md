@@ -1,9 +1,12 @@
 # P7 Hefei 2022: 143-hour REAL*4 and complete `puff.con` acceptance
 
-**Status: ACCEPTED for the single pinned 2022 Hefei control deck and its immutable original inputs only.**
-**PR:** [#41](https://github.com/RRain001/CTEAS/pull/41) (Draft; no merge authorization implied).
-**Accepted run:** [hosted Ubuntu Actions #38681259722](https://github.com/RRain001/CTEAS/actions/runs/38681259722), on commit [`ff4e33389842a0b3677c461efd4aaadb5f3786f8`](https://github.com/RRain001/CTEAS/commit/ff4e33389842a0b3677c461efd4aaadb5f3786f8).
-The later branch commit `c7a6a974766c557738d1d1d32c49ac7b100a304c` adds an independent 8-hour file-prefix gate; evaluate its own CI separately before asserting that the latest commit passed.
+**Phase status (2026-10-15): FROZEN_HEFEI_DRY_143H_ACCEPTED / P7_SELECTED_CASE_CLOSED.** Acceptance applies **only** to the unchanged, single-source, dry-deposition 2022 Hefei control deck. This is not a claim of general CALPUFF feature completeness.
+
+**Merge status:** [PR #41](https://github.com/RRain001/CTEAS/pull/41) was **merged on 2026-10-15** into `codex/cteas-p7-calpuff-20261011` (not `main`). Hosted-runner migrations [#64](https://github.com/RRain001/CTEAS/pull/64) and [#66](https://github.com/RRain001/CTEAS/pull/66) were subsequently merged into that same branch without changing original P7 physics.
+
+**Independent science + complete output evidence:** [strict 143h SHA256 gate #38684187769](https://github.com/RRain001/CTEAS/actions/runs/38684187769) PASS: `DGM=254687/254687`, `H3_REAL4=357500/357500`, `WROUT1=BINARY_EXACT`; `P7_REAL_FULL_143H_WROUT1_SHA256_GATE=PASS`. Earlier [artifact-verifiable binary acceptance #38681259722](https://github.com/RRain001/CTEAS/actions/runs/38681259722), commit [`ff4e333`](https://github.com/RRain001/CTEAS/commit/ff4e33389842a0b3677c461efd4aaadb5f3786f8), also remains independently auditable.
+
+**Post-merge CI contract:** `.github/workflows/p7-hefei-real-143h-independent-probe.yml` and `p7-hefei-real-hour7-probe.yml` are configured for PRs targeting and pushes to `codex/cteas-p7-calpuff-20261011`, with manual dispatch; only changes to P7 source, original frozen scientific inputs, or the gate YAML trigger expensive tests (not documentation-only edits). The hosted runner policy enforces these trigger contracts. **The new trigger wiring must be verified on its own merged commit; prior science PASS is not evidence that a newly installed trigger has fired.**
 
 ## Explicit positive evidence (not inferred from an Actions green check)
 
@@ -37,7 +40,15 @@ The separately verified WROUT1 source-derived header is 3,226 records (96-byte v
 
 This is a fixed **50 x 50 CALPUFF receptor grid, 143 one-hour fields, 2022-01-01 through 2022-01-06**, locked `METFM=1`, one original point source (`NPT1=1`), original two-species H-3/HE-3 source with H-3 grid OUTPUT, `MCTADJ=2`, `MDISP=3`, `MDRY=1`, `MTRANS=1`, and `MWET=0`, in the selected source/case. The accepted target is **IEEE REAL*4 bitwise original-equivalence**, with no fitted tolerance, no vendor state injection and no source relaxation.
 
-**Not demonstrated:** arbitrary alternative CALPUFF input decks, multi-source or multi-grid generalization, other deposition/chemistry branches including `MWET>0`, real-case activation of `MXSAM=99`/slot-compaction pressure outside observed occupancy, independent plume physics beyond this source configuration, or production packaging and PR merge readiness. A full file SHA match is strong evidence for this *single* frozen end-to-end path; it is not an all-configurations certification.
+**Not demonstrated:** arbitrary alternative CALPUFF input decks, multi-source or multi-grid generalization, other deposition/chemistry branches including `MWET>0`, real-case activation of `MXSAM=99`/slot-compaction pressure outside observed occupancy, independent plume physics beyond this source configuration, or production packaging. A full file SHA match is strong evidence for this *single* frozen end-to-end path; it is not an all-configurations certification.
+
+
+## Phase-close and forward scope (2026-10-15)
+
+- **CLOSED — P7 selected real case:** Original-ordered, autonomous native 143h source-to-receptor H-3 transport, dry deposition, 254,687 DGM puff substeps and complete 3,655-record `puff.con` equivalence; original model, frozen inputs, and numerical acceptance thresholds are unchanged.
+- **P0 CI wiring:** Full 143h strict and early-hour regression workflows are target-branch PR/push/path-scoped and manually dispatchable. PR review must inspect checks on the **current SHA**, not only historical successes. On a P7 science-code PR, the long test must pass before scientific integration. Following merge, a target-branch push reruns the same frozen strict gate; docs-only PRs do not invoke the expensive replay.
+- **Not included in this completed case:** wet scavenging `MWET>0`, multi-source and other original decks, extreme active `MXSAM=99`/SWAP/ROLLDN pressure, broader CALMET→CALPUFF production integration, OS/compiler portability and packaging. Track and validate these separately; never silently broaden this acceptance.
+- **Historical records:** [P7_REMAINING_FUNCTIONAL_GATES_20261012.md](P7_REMAINING_FUNCTIONAL_GATES_20261012.md) and intermediate six-hour debugging notes preserve chronology; their old "OPEN", "Draft" and "not accepted" entries do not override this bounded full-143h acceptance.
 
 ## Follow-up / reproducibility controls
 
