@@ -41,6 +41,7 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <regex>
 #include <stdexcept>
 #include <string>
@@ -1621,16 +1622,19 @@ static void verify_source_staged_iavet(
           frame.previous.dptt_k==prior.dptt_k,
           "G18E8 stage validation wrote previous-hour CALMET memory");
 
-    // G18F4: extend the fresh-owned G14 frame with selected original
-    // HEATFX/AIRDEN/ELUSTR/SLOPE native kernels after WIND1/FRADJ.
-    // Test fixture execution is never full production CALMET parity.
+    // G18F5: the same fresh-owned G14 frame now runs selected original
+    // WIND1 through complete WINDBC/STHEOR/INTER2/SMOOTH/DIVCEL/W.
+    // Stage 12 COMP remains deliberately unaccepted in this test;
+    // source parity of these fixtures is not production acceptance.
     struct PhysicalTrace {
         bool prepdi=false,wind1=false,fradj=false;
         bool heatfx=false,airden=false,elustr=false,slope=false;
+        bool windbc1=false,stheor=false,inter2=false,windbc2=false,wind3d=false;
         p6::NativeHourStage first_missing=
             p6::NativeHourStage::PrepdiPreviousZiconv;
         std::vector<float> wind1_u,wind1_v,fradj_u,fradj_v,temp2d;
         std::vector<float> heat_qh,air_density,elustr_qh,slope_u,slope_v;
+        std::vector<float> final_u,final_v,final_w;
     } physical_trace;
     struct G18F3PartialSelectedExecutor final : p6g::MultiHourPhysics {
         p6g::G18E4SelectedPrepdiStageAdapter prepdi;
@@ -1639,6 +1643,10 @@ static void verify_source_staged_iavet(
         p6g::G18E2SelectedHeatfxStageAdapter heatfx;
         p6g::G18E3SelectedAirdenElustrStageAdapter thermal;
         p6g::G18E5SelectedSlopeStageAdapter slope_stage;
+        p6g::G18E6SelectedWindTailStageAdapter wind_tail;
+        std::optional<p6g::G18E1SelectedStheorStageAdapter> stheor_stage;
+        p6g::G16ObservedProfiles original_profiles;
+        p6g::G17C3StationControls station_controls;
         const p6g::MultiHourFrame* live;
         PhysicalTrace& trace;
         G18F3PartialSelectedExecutor(
@@ -1653,6 +1661,7 @@ static void verify_source_staged_iavet(
             const p6g::G17FradjSource& source_fradj,
             const p6g::G17CSelectedHeatInputs& heat_inputs,
             const p6g::G17C2SelectedElustrControls& elustr_controls,
+            const p6g::G17C3StationControls& original_station_controls,
             PhysicalTrace& captured)
             :prepdi(scheduler,clocks,deck),
              physics(native_profiles,static_terrain,source_fradj),
@@ -1661,6 +1670,9 @@ static void verify_source_staged_iavet(
              heatfx(physics,two_pass,heat_inputs),
              thermal(physics,heatfx,two_pass,elustr_controls),
              slope_stage(physics,heatfx,thermal),
+             wind_tail(physics,slope_stage),
+             original_profiles(native_profiles),
+             station_controls(original_station_controls),
              live(&source_frame),trace(captured) {
             physics.provide_selected_readge_htfac_fixture(1.f,true);
         }
@@ -1722,6 +1734,36 @@ static void verify_source_staged_iavet(
                 trace.slope=true;
                 return {p6::NativeHourSource::NativeCpp,true};
             }
+            if(stage==p6::NativeHourStage::DiagnoWindbcFirstGuess) {
+                wind_tail.run_selected(stage,hour,true);
+                trace.windbc1=true;
+                return {p6::NativeHourSource::NativeCpp,true};
+            }
+            if(stage==p6::NativeHourStage::DiagnoStheorElustr2Mixhtst) {
+                stheor_stage.emplace(
+                    physics,original_profiles,two_pass,
+                    heatfx.selected_heat_for(hour),station_controls);
+                stheor_stage->run_selected(stage,hour,true);
+                wind_tail.bind_stheor_stage(*stheor_stage,hour,true);
+                trace.stheor=true;
+                return {p6::NativeHourSource::NativeCpp,true};
+            }
+            if(stage==p6::NativeHourStage::DiagnoInter2 ||
+               stage==p6::NativeHourStage::DiagnoWindbcPostInter2Htfac1 ||
+               stage==p6::NativeHourStage::DiagnoSmoothDivcelW) {
+                wind_tail.run_selected(stage,hour,true);
+                if(stage==p6::NativeHourStage::DiagnoInter2)
+                    trace.inter2=true;
+                else if(stage==p6::NativeHourStage::DiagnoWindbcPostInter2Htfac1)
+                    trace.windbc2=true;
+                else {
+                    trace.wind3d=true;
+                    trace.final_u=hour.fields.u_mps;
+                    trace.final_v=hour.fields.v_mps;
+                    trace.final_w=hour.fields.w_face_mps;
+                }
+                return {p6::NativeHourSource::NativeCpp,true};
+            }
             trace.first_missing=stage;
             return {p6::NativeHourSource::Unknown,false};
         }
@@ -1738,15 +1780,18 @@ static void verify_source_staged_iavet(
                 return std::make_unique<G18F3PartialSelectedExecutor>(
                     fresh_owner,fresh_station_clocks,source_metinp,
                     live,f.series,controls,initial_profiles,terrain,
-                    fresh_g14_fradj_source,ancillary,ec,physical_trace);
+                    fresh_g14_fradj_source,ancillary,ec,sc,physical_trace);
             });
     },"G18F3 allowed partial selected physical CALMET as a full G14 hour");
     check(fresh_attempts==1 && physical_trace.prepdi &&
           physical_trace.wind1 && physical_trace.fradj &&
           physical_trace.heatfx && physical_trace.airden &&
           physical_trace.elustr && physical_trace.slope &&
+          physical_trace.windbc1 && physical_trace.stheor &&
+          physical_trace.inter2 && physical_trace.windbc2 &&
+          physical_trace.wind3d &&
           physical_trace.first_missing==
-              p6::NativeHourStage::DiagnoWindbcFirstGuess &&
+              p6::NativeHourStage::CompGridMixht &&
           physical_trace.wind1_u==stages.wind_stages().first_guess.u_mps &&
           physical_trace.wind1_v==stages.wind_stages().first_guess.v_mps &&
           physical_trace.fradj_u==stages.after_fradj().u &&
@@ -1757,10 +1802,13 @@ static void verify_source_staged_iavet(
           physical_trace.elustr_qh==elustr.qh_wm2 &&
           physical_trace.slope_u==stages.after_slope().u &&
           physical_trace.slope_v==stages.after_slope().v &&
+          physical_trace.final_u==frame.fields.u_mps &&
+          physical_trace.final_v==frame.fields.v_mps &&
+          physical_trace.final_w==frame.fields.w_face_mps &&
           fresh_owner.completed_hours()==0 &&
           !fresh_station_clocks.has_published_hour() &&
           fresh_owner.committed_memory().ziconv_m==prior.ziconv_m,
-          "G18F4 G14 selected HEATFX/AIRDEN/ELUSTR/SLOPE mismatch or partial commit");
+          "G18F5 fresh G14 DIAGNO 3D U/V/W differed from selected source or accepted partial hour");
 }
 static void verify_g18b_asynchronous_upper_turnover(
     const std::string& source_metinp) {
