@@ -66,6 +66,7 @@ jobs:
             cteas_p6g_g9_multi_wind1_tests cteas_p6g_g11_terrain_tests \
             cteas_p6g_g12_thermal_tests cteas_p6g_g13_surfvar_10km_reference \
             cteas_p6g_g14_unified_hourly_tests \
+            cteas_p6g_g19_file_backed_case_tests \
             cteas_p6g_g15_original_controls_tests \
             cteas_p6g_g16_staged_wind_tests \
             cteas_p6g_g17_staged_terrain_tests \
