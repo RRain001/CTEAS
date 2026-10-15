@@ -366,6 +366,9 @@ int main(int argc,char** argv) {
                         <<" y_end="<<state.after.y_cells
                         <<" z_begin="<<state.before.z_m
                         <<" z_end="<<state.after.z_m
+                        <<" lid="<<state.vmass.reflecting_lid_m
+                        <<" ziold="<<state.vmass.ziold_m
+                        <<" zimax="<<state.vmass.zimax_m
                         <<" frac="<<r.receptor_fraction
                         <<" sy="<<r.sigma_y_m
                         <<" sz="<<r.sigma_z_m
