@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/p7-c2-pr63-two-meteorologies-vendor-science.yml'
       - 'native_cpp/modules/p7_calpuff/reference/compare_p7_hourly_concentrations.py'
+      - 'native_cpp/modules/p7_calpuff/reference/run_c2_vendor_inside_grid_pair.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -85,36 +86,18 @@ jobs:
             | tee "$RUNNER_TEMP/p7-c2/dual-met-sha256.txt"
           echo 'P7_C2_DUAL_REAL_MET_READY=PASS HOURS=143 FIELDS=6435'
 
-      - name: Calculate vendor CALPUFF 7.2.1 A output from actual original G35 MET
+      - name: Run nonzero-controlled original CALPUFF A and C with SAME source inside true 12x12 grid
         shell: bash
         run: |
           set -euo pipefail
-          python3 p6pr63/native_cpp/modules/p6_calmet/reference/g36a_run_original_calpuff_multisite.py \
-            --native-met "$RUNNER_TEMP/p7-c2/original/original-met.dat" \
-            --out "$RUNNER_TEMP/p7-c2/vendor-A" --max-seconds 900 \
-            > "$RUNNER_TEMP/p7-c2/vendor-A-run.log"
-          test -s "$RUNNER_TEMP/p7-c2/vendor-A/case/run/puff/puff.con"
-
-      - name: Calculate vendor CALPUFF 7.2.1 C output from genuine PR63 native G35 MET
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 p6pr63/native_cpp/modules/p6_calmet/reference/g36a_run_original_calpuff_multisite.py \
+          python3 native_cpp/modules/p7_calpuff/reference/run_c2_vendor_inside_grid_pair.py \
+            --pr63-root p6pr63 \
+            --original-met "$RUNNER_TEMP/p7-c2/original/original-met.dat" \
             --native-met "$RUNNER_TEMP/p7-c2/native-met.dat" \
-            --out "$RUNNER_TEMP/p7-c2/vendor-C" --max-seconds 900 \
-            > "$RUNNER_TEMP/p7-c2/vendor-C-run.log"
-          test -s "$RUNNER_TEMP/p7-c2/vendor-C/case/run/puff/puff.con"
-
-      - name: Compare actual vendor H-3 143h 12x12 original vs native MET transport response
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 native_cpp/modules/p7_calpuff/reference/compare_p7_hourly_concentrations.py \
-            --a "$RUNNER_TEMP/p7-c2/vendor-A/case/run/puff/puff.con" \
-            --b "$RUNNER_TEMP/p7-c2/vendor-C/case/run/puff/puff.con" \
-            --nx 12 --ny 12 --hours 143 \
-            --report "$RUNNER_TEMP/p7-c2/vendor-A-vs-C-143h-H3-science.json"
-          echo 'P7_C2_VENDOR_ORIGINAL_AND_PR63_MET_H3_TRANSPORT=MEASURED'
+            --out "$RUNNER_TEMP/p7-c2/internal-source-science" \
+            | tee "$RUNNER_TEMP/p7-c2/C2-vendor-pair.log"
+          test -s "$RUNNER_TEMP/p7-c2/internal-source-science/C2-A-vs-C-science.json"
+          echo 'P7_C2_VENDOR_ORIGINAL_AND_PR63_MET_H3_TRANSPORT=MEASURED_NONZERO'
           echo 'P7_C2_NATIVE_P7_MULTISTATION=A_B_C_D_STILL_OPEN'
 
       - name: Publish independent C2 science verdicts even on an integration failure
@@ -127,8 +110,7 @@ jobs:
           path: |
             ${{ runner.temp }}/p7-c2/dual-met-sha256.txt
             ${{ runner.temp }}/p7-c2/original-vs-native-45field.json
-            ${{ runner.temp }}/p7-c2/vendor-A-vs-C-143h-H3-science.json
-            ${{ runner.temp }}/p7-c2/vendor-A/g36a-manifest.json
-            ${{ runner.temp }}/p7-c2/vendor-C/g36a-manifest.json
-            ${{ runner.temp }}/p7-c2/vendor-A-run.log
-            ${{ runner.temp }}/p7-c2/vendor-C-run.log
+            ${{ runner.temp }}/p7-c2/C2-vendor-pair.log
+            ${{ runner.temp }}/p7-c2/internal-source-science/C2-A-vs-C-science.json
+            ${{ runner.temp }}/p7-c2/internal-source-science/C2-vendor-source-provenance.json
+            ${{ runner.temp }}/p7-c2/internal-source-science/C2-source-inside-multistation-domain.inp
