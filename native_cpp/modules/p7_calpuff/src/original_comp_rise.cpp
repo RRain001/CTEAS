@@ -613,58 +613,52 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     std::optional<DryDepositionStep> dry_input_resistance;
     if(control.gaussian_dry){
         const auto& setup=control.gaussian_dry->setup;
-        // COMP L10695-10703 updates IXMET/IYMET at the post-ADVECT
-        // midpoint before DRY L11084; VDCOMP reads that meteorological
-        // cell, NOT the earlier PUFFDZ/ADVECT starting cell.
-        // Original Hefei DGM #5823 puff200: start cell 1678 has
-        // QSW=522.7593384, while midpoint cell 1628 has the source-exact
-        // QSW=522.7720337 and TEMPK=284.1499329. This accounts for
-        // the first demonstrated RF/VD/QM history divergence.
+        // Original COMP L11084 invokes
+        // DRY(ICODE,IXS,IYS,MDOMS,...,DPBL,HLID,TEMPK,QSW,...).
+        // DRY L26219-26222 and L26229-26230 read U/V, land use, Z0,
+        // USTAR, XMONIN, XLAI and WSTAR from the START cell (IXS/IYS).
+        // Only the explicitly passed DPBL, TEMPK and QSW are sourced
+        // from the refreshed post-ADVECT COMP state. Combining a
+        // midpoint WSTAR with start-cell USTAR caused the C2 H1
+        // uniform ICODE=2 VDPVD difference even with identical MET.
+        // Keep this original call-boundary rule independent of station count.
         const auto dry_cell=original_met_cell_clamped(
             0.5F*(before.x_cells+moved.state.x_cells),
             0.5F*(before.y_cells+moved.state.y_cells),met.nx,met.ny);
         const auto index=dry_cell.offset_0based;
-        // COMP retains the pre-ADVECT wind/stability/roughness authority
-        // for aerodynamic and deposition-layer resistance (RA/RD).
-        // Only TDEGK and QSW must follow post-ADVECT midpoint IXMET/IYMET
-        // for stomatal pore/foliage resistance (RS/RF).
-        // Actual 36-step original puff200 gate after switching *all* fields
-        // to midpoint: RF/QM bitwise 36/36, but RA/RD fell from 36/36 to
-        // 14/36. Preserve the independently accepted pre-step RA/RD inputs.
         const auto wind_index=sampled.cell.offset_0based;
-        const auto has_cell=[index](const auto& field){
+        const auto at_midpoint=[index](const auto& field){
             return index<field.size();
         };
+        const auto at_start=[wind_index](const auto& field){
+            return wind_index<field.size();
+        };
         require(setup.species.size()==mass.mass_mixed.size() &&
-                has_cell(met.u)&&has_cell(met.v)&&
-                has_cell(met.ustar)&&has_cell(met.el)&&
-                has_cell(met.tempk)&&has_cell(met.qsw)&&
-                has_cell(met.wstar)&&
-                has_cell(statics.land_use)&&
-                has_cell(statics.roughness_m)&&
-                has_cell(statics.leaf_area_index) &&
-                wind_index<met.ustar.size() &&
-                wind_index<met.el.size() &&
-                wind_index<statics.roughness_m.size(),
-                "native DRY requires exact METFM1 hourly and static cell inputs");
+                at_midpoint(met.tempk)&&at_midpoint(met.qsw)&&
+                at_start(met.u)&&at_start(met.v)&&
+                at_start(met.ustar)&&at_start(met.el)&&
+                at_start(met.wstar)&&
+                at_start(statics.land_use)&&
+                at_start(statics.roughness_m)&&
+                at_start(statics.leaf_area_index),
+                "native DRY requires original COMP start-cell VDCOMP fields and midpoint scalar inputs");
         DryDepositionEnvironment e;
-        e.u10_ms=met.u[index];
-        e.v10_ms=met.v[index];
-        e.land_use=statics.land_use[index];
+        e.u10_ms=met.u[wind_index];
+        e.v10_ms=met.v[wind_index];
+        e.land_use=statics.land_use[wind_index];
         e.roughness_m=statics.roughness_m[wind_index];
         e.temperature_k=met.tempk[index];
         e.friction_velocity_ms=met.ustar[wind_index];
         e.monin_obukhov_m=met.el[wind_index];
-        e.leaf_area_index=statics.leaf_area_index[index];
+        e.leaf_area_index=statics.leaf_area_index[wind_index];
         e.shortwave_w_m2=met.qsw[index];
         e.vegetation_state=setup.vegetation_state;
-        // Original COMP L10686 refreshes DPBL at the post-ADVECT
-        // midpoint and original DRY L26237 uses that SAME DPBL in
-        // DIFFK and DZ for uniform ICODE2/6 VDPVD. Never substitute
-        // the earlier sampled start-cell mixing height here.
+        // COMP L10686 supplies post-ADVECT midpoint DPBL explicitly
+        // to DRY; DRY L26237/26241 uses START-cell WSTAR/USTAR
+        // with that same midpoint DPBL for DIFFK and DZ.
         const auto resistance=dry_deposition_step(
             setup,e,mass.reflecting_lid_m,substep.step_s,
-            vmass_dpbl,met.wstar[index]);
+            vmass_dpbl,met.wstar[wind_index]);
         // Expose exact native VDCOMP values to the read-only mass oracle.
         // Never use these preserved copies as a new solver authority.
         dry_input_resistance=resistance;
