@@ -1,9 +1,21 @@
-name: Integration P1-P7 same-head 143h CALMET to CALPUFF scientific acceptance
+name: CTEAS P6 P7 same-HEAD C2 143h four-arm science
 on:
-  push:
-    branches: [integration/p1-p7]
+  pull_request:
+    branches: [main]
     paths:
       - '.github/workflows/integration-p1-p7-143h-science.yml'
+      - 'native_cpp/modules/p6_calmet/**'
+      - 'native_cpp/modules/p7_calpuff/**'
+      - 'engine/vendor/src/**'
+      - 'project/cases/hefei5km_2022_reference_case_20261011/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/integration-p1-p7-143h-science.yml'
+      - 'native_cpp/modules/p6_calmet/**'
+      - 'native_cpp/modules/p7_calpuff/**'
+      - 'engine/vendor/src/**'
+      - 'project/cases/hefei5km_2022_reference_case_20261011/**'
   workflow_dispatch:
 permissions:
   contents: read

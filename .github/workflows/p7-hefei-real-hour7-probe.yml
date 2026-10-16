@@ -4,6 +4,7 @@ on:
   # Docs-only updates never consume a full Fortran 143-hour replay.
   pull_request:
     branches:
+      - main
       - codex/cteas-p7-calpuff-20261011
     paths:
       - 'native_cpp/modules/p7_calpuff/**'
@@ -15,6 +16,7 @@ on:
       - '.github/workflows/p7-hefei-real-hour7-probe.yml'
   push:
     branches:
+      - main
       - codex/cteas-p7-calpuff-20261011
     paths:
       - 'native_cpp/modules/p7_calpuff/**'

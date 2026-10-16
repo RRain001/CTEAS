@@ -4,6 +4,7 @@ on:
   # Docs-only updates never consume a full Fortran 143-hour replay.
   pull_request:
     branches:
+      - main
       - codex/cteas-p7-calpuff-20261011
       # C2 PR #69 stacks on accepted C1 PR #68; protect the exact
       # 2022 143h scientific gate while modifying shared P7 physics.
@@ -18,6 +19,7 @@ on:
       - '.github/workflows/p7-hefei-real-143h-independent-probe.yml'
   push:
     branches:
+      - main
       - codex/cteas-p7-calpuff-20261011
     paths:
       - 'native_cpp/modules/p7_calpuff/**'

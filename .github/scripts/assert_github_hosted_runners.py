@@ -61,8 +61,8 @@ for filename in (
             continue
         branches = settings.get("branches", [])
         paths_filter = settings.get("paths", [])
-        if not isinstance(branches, list) or p7_base not in branches:
-            failures.append(f"{path}: {event} must include P7 target branch {p7_base}")
+        if not isinstance(branches, list) or not {"main", p7_base}.issubset(set(branches)):
+            failures.append(f"{path}: {event} must include main and P7 historical target {p7_base}")
         if not isinstance(paths_filter, list) or not {
             "native_cpp/modules/p7_calpuff/**", ".github/workflows/" + filename
         }.issubset(set(paths_filter)):
@@ -71,6 +71,28 @@ for filename in (
             failures.append(f"{path}: {event} must not rerun expensive science for docs-only edits")
     if "workflow_dispatch" not in events:
         failures.append(f"{path}: missing manual workflow_dispatch trigger")
+# The coupled C2 science job must run whenever integrated P6 or P7 changes on main.
+c2_name = "integration-p1-p7-143h-science.yml"
+c2_path = root / c2_name
+if not c2_path.is_file():
+    failures.append(f"{c2_path}: required unified P6/P7 C2 scientific gate is missing")
+else:
+    c2_yaml = yaml.safe_load(c2_path.read_text(encoding="utf-8"))
+    c2_events = c2_yaml.get("on", c2_yaml.get(True)) if isinstance(c2_yaml, dict) else None
+    for event in ("pull_request", "push"):
+        opts = c2_events.get(event) if isinstance(c2_events, dict) else None
+        branches = opts.get("branches", []) if isinstance(opts, dict) else []
+        paths = opts.get("paths", []) if isinstance(opts, dict) else []
+        required_paths = {
+            f".github/workflows/{c2_name}",
+            "native_cpp/modules/p6_calmet/**",
+            "native_cpp/modules/p7_calpuff/**",
+        }
+        if not isinstance(branches, list) or "main" not in branches:
+            failures.append(f"{c2_path}: {event} must include main")
+        if not isinstance(paths, list) or not required_paths.issubset(set(paths)):
+            failures.append(f"{c2_path}: {event} must cover both P6 and P7 and gate YAML")
+
 if failures:
     for failure in failures:
         print("HOSTED_RUNNER_POLICY_BLOCKED " + failure, file=sys.stderr)
