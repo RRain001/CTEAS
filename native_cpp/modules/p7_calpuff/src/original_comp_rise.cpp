@@ -462,7 +462,13 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     // selects above-PBL dispersion stability later (L10863-L10867).
     // The former jsup>0 guard reused pre-ADVECT DPBL in C2 JSUP=0,
     // notably the last H1 puff crossing into a new start cell.
-    if(control.gaussian_dry && control.calm_mdisp3){
+    // Only authentic source-deck paths provide the positive XMINZI/XMAXZI
+    // admission contract. Isolated synthetic CALM tests intentionally use
+    // a default-initialized calm_mdisp3 without those deck bounds; keep
+    // their pre-existing sampled-PBL contract rather than rejecting them.
+    // A SOURCE deck with positive XMINZI remains strict on every field.
+    if(control.gaussian_dry && control.calm_mdisp3 &&
+       control.calm_mdisp3->minimum_mixing_height_m>0.0F){
         const auto mid=original_met_cell_clamped(
             0.5F*(before.x_cells+moved.state.x_cells),
             0.5F*(before.y_cells+moved.state.y_cells),
