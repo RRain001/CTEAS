@@ -42,7 +42,9 @@ OriginalPointHourSource original_point_hour_from_prfin(
         (!in.use_calmet_profile_lapse ||
          !std::isfinite(rise.sqrt_stability_s) ||
          rise.sqrt_stability_s<=0.0F))||
-       !(rise.effective_height_m>in.stack_height_m)||
+       // Original POINTS1 L15603 permits HEFF below HTSTAK from
+       // tip downwash; the PRFIN result already rejects <=0 and NaN.
+       !(std::isfinite(rise.effective_height_m) && rise.effective_height_m>0.0F)||
        // Original CALPUFF PRFIN explicitly sets XFINAL=0 at
        // WSSTK < WSSTK0=1.0 m/s while still producing a nonzero
        // vertical rise and genuine POINTS1 releases. Accept ONLY that

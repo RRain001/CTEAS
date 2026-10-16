@@ -138,8 +138,15 @@ OriginalPointPrfinResult original_point_prfin_metfm1(
     }
     // POINTS1 L15603 evaluates HTSTAK-TIPDW+RISE_B in this order.
     const float heff=in.stack_height_m-tip+final_rise;
-    if(!finite(heff)||heff<=in.stack_height_m)
-        throw std::invalid_argument("POINTS1 PRFIN effective stack height invalid");
+    // Original CALPUFF POINTS1 L15603 assigns HTSTAK-TIPDW+RISE_B
+    // WITHOUT requiring HEFF>=HTSTAK: stack-tip downwash can lower
+    // the effective release height below physical stack height.
+    // Reject only a nonphysical nonpositive/nonfinite height here.
+    if(!finite(heff)||heff<=0.0F)
+        throw std::invalid_argument(
+            "POINTS1 PRFIN effective height nonpositive/nonfinite: HEFF="+
+            std::to_string(heff)+" TIPDW="+std::to_string(tip)+
+            " RISE_B="+std::to_string(final_rise));
     const auto elevated=original_release_wind_metfm1(
         met,statics,{in.x_cells,in.y_cells,heff,in.calm_threshold_ms});
     const float wsnew=std::max(

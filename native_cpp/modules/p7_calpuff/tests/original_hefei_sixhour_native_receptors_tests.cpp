@@ -77,6 +77,16 @@ int main(int argc,char** argv) {
     // Explicit integration opt-in, never used by the immutable original-MET gate.
     const char* integration_mode=std::getenv("CTEAS_P7_INTEGRATION_C1");
     const bool coupling_c1=integration_mode && std::string(integration_mode)=="1";
+    const char* c2_mode=std::getenv("CTEAS_P7_INTEGRATION_C2");
+    const bool coupling_c2=c2_mode && std::string(c2_mode)=="1";
+    require(!(coupling_c1 && coupling_c2),"only one coupling mode may be active");
+    const bool coupling_candidate=coupling_c1 || coupling_c2;
+    const int nx_expected=coupling_c2?12:50;
+    const int ny_expected=coupling_c2?12:50;
+    const float dx_expected=coupling_c2?10000.0F:100.0F;
+    const int met_year_expected=coupling_c2?2024:2022;
+    const int met_first_hour=coupling_c2?2:0;
+    const std::size_t field_count=static_cast<std::size_t>(nx_expected)*ny_expected;
     const char* extended=std::getenv("CTEAS_P7_PROBE_HOURS");
     std::size_t probe_hours=6U;
     if(extended){
@@ -89,11 +99,11 @@ int main(int argc,char** argv) {
     }
     // Optional native stage trace (argv[5]) must never disable the
     // independent original DGM step oracle carried in argv[4].
-    require(probe_hours==6U || argc>=5 || coupling_c1,
+    require(probe_hours==6U || argc>=5 || coupling_candidate,
             "extended source probe requires the FULL original 143h DGM file");
-    const auto dgm=(argc>=5 && !coupling_c1)?read_original_dgm(argv[4],probe_hours>6U):
+    const auto dgm=(argc>=5 && !coupling_candidate)?read_original_dgm(argv[4],probe_hours>6U):
                            std::vector<OriginalDgmStep>{};
-    require(coupling_c1 || argc!=6 || !dgm.empty(),
+    require(coupling_candidate || argc!=6 || !dgm.empty(),
             "hour2 source trace must retain pinned original sixhour DGM gate");
     // Source order: strict GETCELL for pre-step puff centre, original
     // GRIDIJ clamping for the mid/end meteorological cell after movement.
@@ -118,10 +128,13 @@ int main(int argc,char** argv) {
     std::unique_ptr<HourlyConcSeriesWriter> native_con_hours;
     if(original_con_output && *original_con_output)
         native_con_writer=create_original_hefei_2022_wrout1_writer(
-            original_con_output,control,argv[1],coupling_c1);
+            original_con_output,control,argv[1],coupling_candidate,coupling_c2);
     const auto deck=ControlFile::read_file(argv[2]);
     std::optional<NativeCalmMdisp3Controls> genuine_calm;
-    if(probe_hours>6U){
+    if(probe_hours>6U || coupling_c2){
+        // C2 must use the same source-derived XMINZI/XMAXZI and
+        // midpoint COMP meteorology even in the first six-hour probe.
+        // The old frozen 2022 six-hour science path remains unchanged.
         const char* makegeo=std::getenv("CTEAS_P7_MAKEGEO_INP");
         require(makegeo!=nullptr && *makegeo!='\0',
                 "real extended calm trace requires original MAKEGEO control");
@@ -139,7 +152,7 @@ int main(int argc,char** argv) {
             deck.required_int("MTRANS")==1 &&
             deck.required_int("MXSAM")==99,
             "unapproved frozen 2022 CALPUFF controls");
-    const auto original=read_conc_species_fields(argv[3],50,50);
+    const auto original=read_conc_species_fields(argv[3],nx_expected,ny_expected);
     // Original WROUT1 emits 143 H-3 concentration fields. Its 286
     // period/grid descriptors are NOT 286 species fields; HE-3 is a
     // modeled species in NSPEC=2 but has no concentration OUTPUT record.
@@ -187,14 +200,14 @@ int main(int argc,char** argv) {
            const OriginalMetHour& met) {
         if(completed>=probe_hours)return;
         const std::size_t hour_index=completed;
-        require(met.begin.year==2022 &&
-                met.begin.hour==static_cast<int>(hour_index%24U) &&
-                met.begin.julian_day==1+static_cast<int>(hour_index/24U) &&
-                header.nx==50&&header.ny==50&&header.nz==9&&
-                header.dx_m==100.0F,
+        require(met.begin.year==met_year_expected &&
+                met.begin.hour==static_cast<int>((hour_index+met_first_hour)%24U) &&
+                met.begin.julian_day==1+static_cast<int>((hour_index+met_first_hour)/24U) &&
+                header.nx==nx_expected&&header.ny==ny_expected&&header.nz==9&&
+                header.dx_m==dx_expected,
                 "Hefei consecutive original MET time/grid drift");
         if(hour_index>=6U) {
-            require(coupling_c1 || (matching_words==2500U*hour_index &&
+            require(coupling_candidate || (matching_words==field_count*hour_index &&
                     first_mismatched_hour==0U &&
                     matched_step_keys==physical_steps &&
                     matched_new_xy==physical_steps &&
@@ -292,10 +305,19 @@ int main(int argc,char** argv) {
         pg.roughness_adjustment=false;
         const auto receptors=receptors_from_original_met_grid(
             control,{header.origin_x_m,header.origin_y_m,header.dx_m});
-        require(receptors.grid.size()==2500U&&receptors.sampling_nx==50&&
-                receptors.sampling_ny==50&&receptors.mesh_down==1&&
+        require(receptors.grid.size()==field_count&&receptors.sampling_nx==nx_expected&&
+                receptors.sampling_ny==ny_expected&&receptors.mesh_down==1&&
                 receptors.discrete.empty(),"sixhour native receptor frame drift");
 
+        const char* c2_receiver_path=std::getenv("CTEAS_P7_C2_H1_RECEIVER_TRACE");
+        const bool trace_c2_h1=coupling_c2 && hour_index==0U &&
+            c2_receiver_path && *c2_receiver_path;
+        std::ofstream c2_receiver_file;
+        if(trace_c2_h1) {
+            c2_receiver_file.open(c2_receiver_path,std::ios::trunc);
+            require(bool(c2_receiver_file),"C2 native receiver trace could not open");
+            c2_receiver_file<<std::setprecision(17);
+        }
         const bool trace_this_hour=
             (argc>=6 && hour_index==1U) ||
             (argc>=7 && hour_index==3U);
@@ -322,15 +344,51 @@ int main(int argc,char** argv) {
                 h9_trace_index=static_cast<std::size_t>(index);
             }
         }
-        const std::size_t trace_cell=trace_h9_cell24 ? h9_trace_index :
-            (hour_index==1U?1374U:646U);
+        const std::size_t trace_cell=trace_c2_h1 ? 63U :
+            (trace_h9_cell24 ? h9_trace_index :
+             (hour_index==1U?1374U:646U));
         std::vector<NativeH3ReceptorRow> trace_rows;
         OriginalCalcpfIntermediateHook stage_hook;
-        if(trace_this_hour || trace_h9_cell24) {
-            stage_hook=[&trace_rows,trace_cell,trace_h9_cell24](
+        if(trace_this_hour || trace_h9_cell24 || trace_c2_h1) {
+            stage_hook=[&trace_rows,trace_cell,trace_h9_cell24,
+                        trace_c2_h1,&c2_receiver_file](
                 const RiseCompSamplingState& state,
                 const OriginalCalcpfReceiverIntermediate& row){
                 if(row.receptor_index!=trace_cell)return;
+                if(trace_c2_h1) {
+                    // Diagnostic only: real native CALCPF receptor source
+                    // terms, written AFTER source-faithful computation.
+                    // Never read this file to advance COMP/P7 state.
+                    const auto& r=row;
+                    c2_receiver_file<<"P7_C2_NATIVE_RECEIVER"
+                        <<" puff="<<state.puff_id
+                        <<" code="<<state.vmass.puff_code
+                        <<" x_begin="<<state.before.x_cells
+                        <<" y_begin="<<state.before.y_cells
+                        <<" x_end="<<state.after.x_cells
+                        <<" y_end="<<state.after.y_cells
+                        <<" z_begin="<<state.before.z_m
+                        <<" z_end="<<state.after.z_m
+                        <<" lid="<<state.vmass.reflecting_lid_m
+                        <<" ziold="<<state.vmass.ziold_m
+                        <<" zimax="<<state.vmass.zimax_m
+                        <<" frac="<<r.receptor_fraction
+                        <<" sy="<<r.sigma_y_m
+                        <<" sz="<<r.sigma_z_m
+                        <<" zpr="<<r.puff_height_m
+                        <<" zrpole="<<r.receptor_pole_m
+                        <<" f1="<<r.vertical_factor
+                        <<" xi1="<<r.xi1<<" xi2="<<r.xi2
+                        <<" t1="<<r.t1<<" t2="<<r.t2
+                        <<" qold="<<r.qold<<" qnew="<<r.qnew
+                        <<" vdpvd="<<state.receptor_deposition_ratio
+                        <<" xtemp="<<r.xtemp<<" conc="<<r.concentration
+                        <<" travel_begin="<<state.before.travel_time_s
+                        <<" travel_end="<<state.after.travel_time_s
+                        <<"\n";
+                    if(!c2_receiver_file)
+                        throw std::runtime_error("C2 native receiver trace write failed");
+                }
                 if(trace_h9_cell24 && trace_cell==24U && state.puff_id==594) {
                     require(state.receptor_calm_sigma.has_value(),
                             "H9 source residual requires native LCALM CSIGMA");
@@ -438,13 +496,14 @@ int main(int argc,char** argv) {
         // invalidate original COMP episode/slot authority comparisons.
         // Source-capacity pressure remains a separate small-MXPUFF test.
         constexpr std::size_t kOriginalVendorMxPuff=300000U;
-        const OriginalCompPuffBounds bounds{0.0F,50.0F,0.0F,50.0F};
+        const OriginalCompPuffBounds bounds{0.0F,static_cast<float>(nx_expected),
+            0.0F,static_cast<float>(ny_expected)};
         const auto hour=driver.advance_hour_point_mxsam99_adaptive_bounded_capacity_sampled(
             met,static_met,controls,pg,false,source,bounds,
-            kOriginalVendorMxPuff,2500U,sampling);
+            kOriginalVendorMxPuff,field_count,sampling);
         require(driver.completed_hours()==hour_index+1U &&
                 hour.hour_index==hour_index &&
-                hour.receptor_concentrations.size()==2500U &&
+                hour.receptor_concentrations.size()==field_count &&
                 hour.steps.size()>0U,
                 "real sixhour COMP hour transaction/cadence invalid");
         if(native_con_writer) {
@@ -452,7 +511,7 @@ int main(int argc,char** argv) {
                 native_con_hours=std::make_unique<HourlyConcSeriesWriter>(
                     *native_con_writer,
                     original_total_source_descriptor(
-                        header.origin_x_m,header.origin_y_m),50,50);
+                        header.origin_x_m,header.origin_y_m),nx_expected,ny_expected);
             // CALMET.DAT encodes the end of a one-hour interval with
             // boundary-style hour/seconds fields that need not satisfy the
             // WROUT1 convention of canonical YYYYJJJ HH:00 endpoints.
@@ -460,9 +519,9 @@ int main(int argc,char** argv) {
             // hour. Reconstruct that clock from independent MET begin,
             // not from frozen puff.con values or an output oracle.
             require(met.begin.seconds==0 &&
-                    met.begin.year==2022 &&
+                    met.begin.year==met_year_expected &&
                     met.begin.julian_day>=1 &&
-                    met.begin.julian_day<=6,
+                    met.begin.julian_day<=(coupling_c2?7:6),
                     "native WROUT1 requires frozen hourly MET begin clock");
             const int next_hour=(met.begin.hour+1)%24;
             const int next_day=met.begin.julian_day+
@@ -528,7 +587,7 @@ int main(int argc,char** argv) {
         }
         // Keep the previously accepted H9 source-regression mandatory,
         // even when no optional receptor trace has been requested.
-        if(hour_index==8U && !coupling_c1) {
+        if(hour_index==8U && !coupling_candidate) {
             require(equal_real4(hour.receptor_concentrations.at(12),
                                 original.at(hour_index).values.at(12)),
                     "H9 calm PUFRECS former cell12 source regression");
@@ -576,7 +635,7 @@ int main(int argc,char** argv) {
                      <<original.at(hour_index).values.at(trace_cell)
                      <<" ORIGINAL_STAGE_PARITY=NOT_YET_COMPARED\n";
         }
-        if(hour_index<6U && !coupling_c1)
+        if(hour_index<6U && !coupling_candidate)
             require(hour.steps.size()==original_hour_steps[hour_index] &&
                     hour.steps.front().puff_id==original_first_puff[hour_index] &&
                     hour.steps.back().puff_id==original_last_puff[hour_index],
@@ -886,7 +945,7 @@ int main(int argc,char** argv) {
             require(bool(mass_trace),"native original puff200 mass trace failed");
         }
         physical_steps+=hour.steps.size();
-        if(hour_index==0U && !coupling_c1)
+        if(hour_index==0U && !coupling_candidate)
             require(hour.steps.size()==1275U &&
                     hour.release.puff_count==54 &&
                     active_before.empty(),
@@ -897,11 +956,11 @@ int main(int argc,char** argv) {
         const auto& reference=original.at(hour_index);
         require(reference.species_index==1 &&
                 reference.label.find("H-3")!=std::string::npos &&
-                reference.values.size()==2500U,
+                reference.values.size()==field_count,
                 "original H3/HE3 hourly record order or field size changed");
-        std::size_t matches=0U,nonzero=0U,first_cell=2500U;
+        std::size_t matches=0U,nonzero=0U,first_cell=field_count;
         double max_abs=0.0,sum_abs=0.0,native_sum=0.0,original_sum=0.0;
-        for(std::size_t cell=0;cell<2500U;++cell) {
+        for(std::size_t cell=0;cell<field_count;++cell) {
             const float native=hour.receptor_concentrations[cell];
             const float expected=reference.values[cell];
             require(std::isfinite(native)&&std::isfinite(expected)&&
@@ -911,14 +970,14 @@ int main(int argc,char** argv) {
             original_sum+=expected;
             nonzero+=native>0.0F ? 1U:0U;
             if(equal_real4(native,expected))++matches;
-            else if(first_cell==2500U)first_cell=cell;
+            else if(first_cell==field_count)first_cell=cell;
             const double delta=std::abs(
                 static_cast<double>(native)-static_cast<double>(expected));
             sum_abs+=delta;
             max_abs=std::max(max_abs,delta);
         }
         matching_words+=matches;
-        if(matches!=2500U) {
+        if(matches!=field_count) {
             every_hour_real4=false;
             if(first_mismatched_hour==0U) {
                 first_mismatched_hour=hour_index+1U;
@@ -943,29 +1002,29 @@ int main(int argc,char** argv) {
                  <<" OCCUPIED_SLOTS="<<hour.occupied_slots_after
                  <<" FSTEP_SUBSTEPS="<<hour.steps.size()
                  <<" FSTEP_REENTRIES="<<hour.fstep_reentries
-                 <<" REAL4_WORDS="<<matches<<"/2500"
+                 <<" REAL4_WORDS="<<matches<<"/"<<field_count
                  <<" FIRST_DIFFERENT_CELL0="<<first_cell
                  <<" NONZERO_NATIVE="<<nonzero
                  <<" MAX_ABS_BQ_M3="<<max_abs
-                 <<" MAE_BQ_M3="<<sum_abs/2500.0
+                 <<" MAE_BQ_M3="<<sum_abs/static_cast<double>(field_count)
                  <<" NATIVE_SUM_BQ_M3="<<native_sum
                  <<" ORIGINAL_SUM_BQ_M3="<<original_sum
                  <<" SCIENTIFIC_6H_PARITY="
-                 <<(matches==2500U?"PASS_THIS_HOUR":"OPEN_THIS_HOUR")
+                 <<(matches==field_count?"PASS_THIS_HOUR":"OPEN_THIS_HOUR")
                  <<"\n";
         // Both first two source-real hours are now scientifically accepted.
         // This gate must not loosen when investigating the hour3 SIGZ.
-        require(coupling_c1 || hour_index>=3U || matches==2500U,
+        require(coupling_candidate || hour_index>=3U || matches==field_count,
                 "first three real H3 concentration fields lost REAL4 parity");
         if(hour_index==1U && !dgm.empty())
             require(first_dgm_mismatch_record==0U,
                     "original/native first two hours of puff history diverged");
         ++completed;
-       },true);
+       },!coupling_c2);
     require(summary.intervals==143U&&completed==probe_hours&&
             driver.completed_hours()==probe_hours&&
-            (coupling_c1 || physical_steps>=11458U)&&
-            (coupling_c1 || probe_hours>6U||physical_steps==11458U),
+            (coupling_candidate || physical_steps>=11458U)&&
+            (coupling_candidate || probe_hours>6U||physical_steps==11458U),
             "frozen MET and requested contiguous native COMP hours required");
     if(!dgm.empty()) {
         require(matched_step_keys==physical_steps &&
@@ -986,8 +1045,8 @@ int main(int argc,char** argv) {
     // The frozen native/original six-hour numerical equivalence is now
     // an acceptance gate, not a diagnostic trend. Do not silently reduce
     // it to first-three-hour parity or a floating-point tolerance.
-    if(!coupling_c1)
-        require(every_hour_real4 && matching_words==2500U*probe_hours &&
+    if(!coupling_candidate)
+        require(every_hour_real4 && matching_words==field_count*probe_hours &&
                 first_mismatched_hour==0U && first_mismatched_cell==0U,
                 "real original/native H-3 must match every requested hour in REAL4 bits");
     if(native_con_writer) {
@@ -1002,7 +1061,7 @@ int main(int argc,char** argv) {
         std::size_t first=0U;
         const auto shorter=std::min(actual.size(),frozen.size());
         while(first<shorter && actual[first]==frozen[first])++first;
-        if(!coupling_c1 && (first!=actual.size() || actual.size()>frozen.size())) {
+        if(!coupling_candidate && (first!=actual.size() || actual.size()>frozen.size())) {
             std::cout<<"P7_NATIVE_PUFF_CON_FIRST_DIFFERENCE"
                      <<" BYTE0="<<first
                      <<" NATIVE_BYTES="<<actual.size()
@@ -1010,19 +1069,19 @@ int main(int argc,char** argv) {
                      <<" HOURS="<<probe_hours<<"\n";
             require(false,"native WROUT1 prefix/data differs from frozen puff.con bytes");
         }
-        if(coupling_c1) {
-            std::cout<<"P7_C1_NATIVE_PUFF_CON_CREATED"
+        if(coupling_candidate) {
+            std::cout<<(coupling_c2?"P7_C2_NATIVE_PUFF_CON_CREATED":"P7_C1_NATIVE_PUFF_CON_CREATED")
                      <<" HOURS="<<probe_hours
                      <<" BYTES="<<actual.size()
                      <<" HEADER_DIFFERENCE_FROM_VENDOR_ALLOWED=YES"
                      <<" NO_ORACLE_INJECTION=YES\n";
         }
-        if(!coupling_c1)std::cout<<"P7_NATIVE_PUFF_CON_PREFIX=PASS"
+        if(!coupling_candidate)std::cout<<"P7_NATIVE_PUFF_CON_PREFIX=PASS"
                  <<" HOURS="<<probe_hours
                  <<" RECORDS="<<(3226U+3U*probe_hours)
                  <<" BYTES="<<actual.size()
                  <<" BINARY_EXACT=YES NO_ORACLE_INJECTION=YES\n";
-        if(probe_hours==143U && !coupling_c1) {
+        if(probe_hours==143U && !coupling_candidate) {
             require(actual.size()==frozen.size() &&
                     actual.size()==1896056U &&
                     native_con_writer->records_written()==435U,
@@ -1032,18 +1091,18 @@ int main(int argc,char** argv) {
                      <<" BINARY_EXACT=YES\n";
         }
     }
-    if(coupling_c1) {
-        std::cout<<"P7_C1_NATIVE_ON_PR53_MET"
+    if(coupling_candidate) {
+        std::cout<<(coupling_c2?"P7_C2_NATIVE_ON_PR63_MET":"P7_C1_NATIVE_ON_PR53_MET")
                  <<" HOURS="<<completed
-                 <<" REAL4_MATCHED="<<matching_words<<"/"<<2500U*completed
+                 <<" REAL4_MATCHED="<<matching_words<<"/"<<field_count*completed
                  <<" FIRST_MISMATCH_HOUR="<<first_mismatched_hour
                  <<" FIRST_MISMATCH_CELL0="<<first_mismatched_cell
                  <<" SAME_MET_VENDOR_PARITY="<<(every_hour_real4?"PASS":"MISMATCH")
                  <<" NO_ORIGINAL_DGM_AS_INPUT=YES\n";
-        require(every_hour_real4 && matching_words==2500U*probe_hours,
+        require(every_hour_real4 && matching_words==field_count*probe_hours,
             "C1 native P7 vs vendor CALPUFF on SAME PR53 MET has REAL4 differences");
     }
-    if(probe_hours>6U && !coupling_c1)
+    if(probe_hours>6U && !coupling_candidate)
         std::cout<<"P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS"
                  <<" HOURS="<<probe_hours
                  <<" ORIGINAL_DGM_ROWS="<<physical_steps
@@ -1054,13 +1113,13 @@ int main(int argc,char** argv) {
                  <<" FULL_PUFF_CON_ACCEPTED="
                  <<(probe_hours==143U && native_con_writer?"YES":"NO")
                  <<"\n";
-    if(probe_hours==6U)std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
+    if(probe_hours==6U && !coupling_candidate)std::cout<<"P7_HEFEI_6H_COMP_ORIGINAL_SUBSTEP_SCHEDULE=PASS"
              <<" ORIGINAL_DGM_ROWS=11458/11458"
              <<" HOURLY_ROWS=1275,2242,1906,2132,1742,2161"
              <<" FIRST_AND_LAST_EPISODE_IDS=SOURCE_EQUIVALENT"
              <<" DGM_EXPORTED_XY_SIGY_SIGZ=BITWISE_11458_OF_11458"
              <<" OTHER_INTERNAL_STAGES=NOT_YET_ALL_BITWISE"<<"\n";
-    if(probe_hours==6U)std::cout<<"P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=PASS"
+    if(probe_hours==6U && !coupling_candidate)std::cout<<"P7_HEFEI_REAL_6H_COMPUTATION_AND_PRECISION_DIAGNOSTIC=PASS"
              <<" HOURS=6 METFM1=ORIGINAL"
              <<" COMP_AUTHORITY=SINGLE_STATEFUL_DRIVER"
              <<" REAL4_WORDS_MATCHED="<<matching_words<<"/15000"

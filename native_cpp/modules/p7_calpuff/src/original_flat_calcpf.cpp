@@ -397,7 +397,8 @@ RiseCompSamplingKernel make_original_flat_calcpf_sampler(
                 .closest_approach_squared_km2=screen.closest_distance_squared,
                 .vertical_factor=receptor_vertical,
                 .time_fraction=frac,
-                .deposition_ratio=1.0,.area_source_factor=1.0
+                .deposition_ratio=s.receptor_deposition_ratio,
+                .area_source_factor=1.0
             });
             if(!std::isfinite(inc) ||
                std::abs(inc)>std::numeric_limits<float>::max())

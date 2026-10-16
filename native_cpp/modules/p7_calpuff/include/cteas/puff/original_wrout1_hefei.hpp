@@ -24,7 +24,8 @@ create_original_hefei_2022_wrout1_writer(
     const std::string& output_path,
     const std::string& control_text,
     const std::string& met_path,
-    bool integration_native_weather = false) {
+    bool integration_native_weather = false,
+    bool integration_multi_station = false) {
     std::istringstream deck(control_text);
     OriginalWrout1Identity typed;
     for(auto& line:typed.run_titles)
@@ -65,10 +66,17 @@ create_original_hefei_2022_wrout1_writer(
         if(hemi=='S'||hemi=='W')angle=-angle;
         return angle;
     };
-    require_original_hefei_wrout1(oi("IBYR")==2022 && oi("IBMO")==1 && oi("IBDY")==1 &&
-            oi("IEMO")==1 && oi("IEDY")==6 &&
-            oi("NPT2")==0 && oi("METFM")==1,
-            "WROUT1 authoring test requires frozen Hefei 2022 case");
+    const bool correct_2022 = oi("IBYR")==2022 && oi("IBMO")==1 &&
+        oi("IBDY")==1 && oi("IEMO")==1 && oi("IEDY")==6 &&
+        oi("NX")==50 && oi("NY")==50 && of("DGRIDKM")==0.1F;
+    const bool correct_2024_multi = oi("IBYR")==2024 && oi("IBMO")==1 &&
+        oi("IBDY")==1 && oi("IBHR")==2 && oi("IEYR")==2024 &&
+        oi("IEMO")==1 && oi("IEDY")==7 && oi("IEHR")==1 &&
+        oi("NX")==12 && oi("NY")==12 && of("DGRIDKM")==10.0F;
+    require_original_hefei_wrout1(
+        (integration_multi_station?correct_2024_multi:correct_2022) &&
+        oi("NPT2")==0 && oi("METFM")==1,
+        "WROUT1 source-controlled original 2022 or 2024 C2 case mismatch");
     OriginalWrout1GeneralHeader h;
     h.start={oi("IBYR"),1,oi("IBHR"),oi("IBSEC")};
     h.timezone=opt("ABTZ");

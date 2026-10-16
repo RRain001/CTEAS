@@ -25,7 +25,10 @@ void OriginalCompRisePointDriver::admit(
     require(id>0 && !rise_.contains(id),"duplicate/invalid rising puff");
     require(source.source_type==1 && source.downwash_code==0 &&
             source.stack_height_m>0.0 &&
-            source.effective_height_m>source.stack_height_m &&
+            // Original POINTS1 HEFF=HTSTAK-TIPDW+RISE_B can be
+            // below stack-top under downwash; positive finite required.
+            std::isfinite(source.effective_height_m) &&
+            source.effective_height_m>0.0 &&
             // Vendor PRFIN WSSTK<1 gives XFINAL=0 and completed
             // vertical rise. Native GRISE/RISEWIND already implements
             // the source condition XTOTB<XFINAL, which is false here.
@@ -454,8 +457,18 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     // represented in general NeutralCompControls.
     float vmass_dpbl=sampled.mixing_height_m;
     int vmass_stability=sampled.stability_class;
+    // Vendor COMP L10683-L10691 refreshes ISTAB/DPBL from IXMID/IYMID
+    // on EVERY substep before VMASS, irrespective of JSUP. JSUP only
+    // selects above-PBL dispersion stability later (L10863-L10867).
+    // The former jsup>0 guard reused pre-ADVECT DPBL in C2 JSUP=0,
+    // notably the last H1 puff crossing into a new start cell.
+    // Only authentic source-deck paths provide the positive XMINZI/XMAXZI
+    // admission contract. Isolated synthetic CALM tests intentionally use
+    // a default-initialized calm_mdisp3 without those deck bounds; keep
+    // their pre-existing sampled-PBL contract rather than rejecting them.
+    // A SOURCE deck with positive XMINZI remains strict on every field.
     if(control.gaussian_dry && control.calm_mdisp3 &&
-       control.calm_mdisp3->jsup>0){
+       control.calm_mdisp3->minimum_mixing_height_m>0.0F){
         const auto mid=original_met_cell_clamped(
             0.5F*(before.x_cells+moved.state.x_cells),
             0.5F*(before.y_cells+moved.state.y_cells),
@@ -494,6 +507,11 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     float current_receptor_bvf=0.0F;
     OriginalTerrainSigmaInputs terrain_inputs;
     const OriginalTerrainSigmaInputs* selected_terrain=nullptr;
+    // Vendor COMP computes BVF for PUFRECS regardless of vertical ICODE.
+    // SETPUF L48362-L48365 initializes FRACZ1=0 and LUP1=.FALSE.
+    // for EVERY step. Odd Gaussian code's CTADJ2 may then overwrite these
+    // initial values at L48613-L48632; even code preserves the initialized
+    // pair for PUFRECS PUFFCT2 L5321.
     if(control.mctadj2){
         // SETPUF L48616-48631 owns the authoritative CTADJ2 state.
         // This must use the same *native* x/y/height and RISEWIND WS
@@ -538,7 +556,8 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         current_receptor_bvf=bvf;
         terrain_inputs.brunt_vaisala_s=bvf;
         terrain_inputs.met_spacing_m=control.met_spacing_m;
-        selected_terrain=&terrain_inputs;
+        if((mass.puff_code % 2)==1)
+            selected_terrain=&terrain_inputs;
     }
     const auto sigma=v.commit_sigma(
         id,dispersion,sigma_y,sigma_z,selected_terrain);
@@ -560,6 +579,22 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         m.commit_setpuf_terrain_height(
             id,moved.state.z_m,terrain_height);
         moved.state=m.state(id);
+    } else if(control.mctadj2) {
+        // Original SETPUF L48363-48365 explicitly resets both COMMON
+        // flags before every SIGTZ branch, and even ICODE skips CTADJ2.
+        // This is a source-initialized (not fitted) PUFFCT2 input.
+        require((mass.puff_code % 2)==0,
+                "native even ICODE PUFFCT2 requires non-Gaussian SETPUF");
+        ctadj2_step=OriginalPuffct2Step{
+            .x_begin_m=before.x_cells*control.met_spacing_m,
+            .y_begin_m=before.y_cells*control.met_spacing_m,
+            .z_begin_m=before.z_m,
+            .x_end_m=moved.state.x_cells*control.met_spacing_m,
+            .y_end_m=moved.state.y_cells*control.met_spacing_m,
+            .z_end_m=moved.state.z_m,
+            .terrain_fraction=0.0F,  // SETPUF L48364
+            .upslope=false           // SETPUF L48365
+        };
     }
     order.completed(VendorSubstepPhase::CommitSetpuf);
     // Original COMP calpuff.for L11076–11097 invokes DRY after SETPUF,
@@ -578,54 +613,52 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
     std::optional<DryDepositionStep> dry_input_resistance;
     if(control.gaussian_dry){
         const auto& setup=control.gaussian_dry->setup;
-        // COMP L10695-10703 updates IXMET/IYMET at the post-ADVECT
-        // midpoint before DRY L11084; VDCOMP reads that meteorological
-        // cell, NOT the earlier PUFFDZ/ADVECT starting cell.
-        // Original Hefei DGM #5823 puff200: start cell 1678 has
-        // QSW=522.7593384, while midpoint cell 1628 has the source-exact
-        // QSW=522.7720337 and TEMPK=284.1499329. This accounts for
-        // the first demonstrated RF/VD/QM history divergence.
+        // Original COMP L11084 invokes
+        // DRY(ICODE,IXS,IYS,MDOMS,...,DPBL,HLID,TEMPK,QSW,...).
+        // DRY L26219-26222 and L26229-26230 read U/V, land use, Z0,
+        // USTAR, XMONIN, XLAI and WSTAR from the START cell (IXS/IYS).
+        // Only the explicitly passed DPBL, TEMPK and QSW are sourced
+        // from the refreshed post-ADVECT COMP state. Combining a
+        // midpoint WSTAR with start-cell USTAR caused the C2 H1
+        // uniform ICODE=2 VDPVD difference even with identical MET.
+        // Keep this original call-boundary rule independent of station count.
         const auto dry_cell=original_met_cell_clamped(
             0.5F*(before.x_cells+moved.state.x_cells),
             0.5F*(before.y_cells+moved.state.y_cells),met.nx,met.ny);
         const auto index=dry_cell.offset_0based;
-        // COMP retains the pre-ADVECT wind/stability/roughness authority
-        // for aerodynamic and deposition-layer resistance (RA/RD).
-        // Only TDEGK and QSW must follow post-ADVECT midpoint IXMET/IYMET
-        // for stomatal pore/foliage resistance (RS/RF).
-        // Actual 36-step original puff200 gate after switching *all* fields
-        // to midpoint: RF/QM bitwise 36/36, but RA/RD fell from 36/36 to
-        // 14/36. Preserve the independently accepted pre-step RA/RD inputs.
         const auto wind_index=sampled.cell.offset_0based;
-        const auto has_cell=[index](const auto& field){
+        const auto at_midpoint=[index](const auto& field){
             return index<field.size();
         };
+        const auto at_start=[wind_index](const auto& field){
+            return wind_index<field.size();
+        };
         require(setup.species.size()==mass.mass_mixed.size() &&
-                has_cell(met.u)&&has_cell(met.v)&&
-                has_cell(met.ustar)&&has_cell(met.el)&&
-                has_cell(met.tempk)&&has_cell(met.qsw)&&
-                has_cell(met.wstar)&&
-                has_cell(statics.land_use)&&
-                has_cell(statics.roughness_m)&&
-                has_cell(statics.leaf_area_index) &&
-                wind_index<met.ustar.size() &&
-                wind_index<met.el.size() &&
-                wind_index<statics.roughness_m.size(),
-                "native DRY requires exact METFM1 hourly and static cell inputs");
+                at_midpoint(met.tempk)&&at_midpoint(met.qsw)&&
+                at_start(met.u)&&at_start(met.v)&&
+                at_start(met.ustar)&&at_start(met.el)&&
+                at_start(met.wstar)&&
+                at_start(statics.land_use)&&
+                at_start(statics.roughness_m)&&
+                at_start(statics.leaf_area_index),
+                "native DRY requires original COMP start-cell VDCOMP fields and midpoint scalar inputs");
         DryDepositionEnvironment e;
-        e.u10_ms=met.u[index];
-        e.v10_ms=met.v[index];
-        e.land_use=statics.land_use[index];
+        e.u10_ms=met.u[wind_index];
+        e.v10_ms=met.v[wind_index];
+        e.land_use=statics.land_use[wind_index];
         e.roughness_m=statics.roughness_m[wind_index];
         e.temperature_k=met.tempk[index];
         e.friction_velocity_ms=met.ustar[wind_index];
         e.monin_obukhov_m=met.el[wind_index];
-        e.leaf_area_index=statics.leaf_area_index[index];
+        e.leaf_area_index=statics.leaf_area_index[wind_index];
         e.shortwave_w_m2=met.qsw[index];
         e.vegetation_state=setup.vegetation_state;
+        // COMP L10686 supplies post-ADVECT midpoint DPBL explicitly
+        // to DRY; DRY L26237/26241 uses START-cell WSTAR/USTAR
+        // with that same midpoint DPBL for DIFFK and DZ.
         const auto resistance=dry_deposition_step(
             setup,e,mass.reflecting_lid_m,substep.step_s,
-            sampled.mixing_height_m,met.wstar[index]);
+            vmass_dpbl,met.wstar[wind_index]);
         // Expose exact native VDCOMP values to the read-only mass oracle.
         // Never use these preserved copies as a new solver authority.
         dry_input_resistance=resistance;
@@ -693,6 +726,19 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
         const float receptor_sz0=lcalm?
             r4(sigma.adjust.minimum_sigma_z_m,"LCALM current SZ0") :
             state.minimum_sigma_z_m;
+        float receptor_vdpvd=1.0F;
+        int receptor_icode=mass.puff_code;
+        if(receptor_icode>=11 && receptor_icode<=16)
+            receptor_icode-=10;
+        if(dry_input_resistance &&
+           (receptor_icode==2 || receptor_icode==6)) {
+            const auto& ratio=dry_input_resistance->boundary_ratio;
+            require(ratio.size()==mass.mass_mixed.size() && !ratio.empty(),
+                    "uniform ICODE CALCPF requires native H-3 DRY VDPVD");
+            receptor_vdpvd=r4(ratio.front(),"native DRY VDPVD H-3");
+            require(receptor_vdpvd>=0.0F && receptor_vdpvd<=1.0F,
+                    "CALCPF uniform VDPVD must be a native physical ratio");
+        }
         const RiseCompSamplingState at_receptor{
             id,before,moved.state,v.state(id),sigma,mass,
             r4(substep.step_s,"native sample step seconds"),
@@ -701,7 +747,7 @@ RiseCompStep OriginalCompRisePointDriver::step_pg_rise(
             state.initial_sigma_y_squared_m2,
             receptor_sy0,receptor_sz0,
             ctadj2_step,current_receptor_bvf,ws,original_qold_mixed,
-            native_receptor_calm
+            native_receptor_calm,receptor_vdpvd
         };
         receptor_increments=sampling_kernel(at_receptor);
         for(float increment:receptor_increments){

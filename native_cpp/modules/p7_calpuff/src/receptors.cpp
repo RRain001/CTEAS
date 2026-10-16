@@ -320,10 +320,16 @@ double receptor_concentration_increment(const SamplingIntegrals& integrals,
                       denominator;
     const R t2 = static_cast<R>(integrals.i2) * inverse;
     const R t1 = static_cast<R>(integrals.i1) * inverse - t2;
+    // Original CALCPF L4304: CONC = VDPVD(IPOL)*XTEMP*
+    // (QOLD(IPOL)*T1+QNEW(IPOL)*T2), with XTEMP=F1*TFRACT
+    // formed as one REAL4 intermediate. Keeping this grouping is
+    // essential now that the uniform-puff DRY VDPVD is non-unity.
+    const R xtemp=static_cast<R>(inputs.vertical_factor) *
+                  static_cast<R>(inputs.time_fraction);
     const R concentration =
-        static_cast<R>(inputs.deposition_ratio) * static_cast<R>(inputs.vertical_factor) *
-        static_cast<R>(inputs.time_fraction) *
-        (static_cast<R>(inputs.mass_old) * t1 + static_cast<R>(inputs.mass_new) * t2);
+        static_cast<R>(inputs.deposition_ratio) * xtemp *
+        (static_cast<R>(inputs.mass_old) * t1 +
+         static_cast<R>(inputs.mass_new) * t2);
     require_true(std::isfinite(concentration), "accumulated concentration must be finite");
     return static_cast<double>(concentration);
 }
