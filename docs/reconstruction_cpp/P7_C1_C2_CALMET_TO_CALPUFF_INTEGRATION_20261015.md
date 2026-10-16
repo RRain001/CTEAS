@@ -1,6 +1,6 @@
 # CTEAS P7-C1 / P7-C2 — true P6→P7 weather-variant scientific integration
 
-**Updated 2026-10-15 — C1 = SCIENTIFICALLY ACCEPTED for selected 2022 single-station 143h scope, [GitHub-hosted #38739266720](https://github.com/RRain001/CTEAS/actions/runs/38739266720). C2 = OPEN; multi-station 12×12 2024 native-P7 runs have not yet passed.**
+**Current acceptance, 2026-10-16 — C1 original-MET 143h native P7 full science PASS ([#38830286957](https://github.com/RRain001/CTEAS/actions/runs/38830286957)); original/native-MET C1 four-arm historical PASS ([#38739266720](https://github.com/RRain001/CTEAS/actions/runs/38739266720)). C2 2024 original/native-MET four-arm 143h strict REAL4 PASS ([#38830287087](https://github.com/RRain001/CTEAS/actions/runs/38830287087)); the additive complete [six-pair matrix](P7_C1_C2_SIX_PAIR_MATRIX_20261016.md) PASS ([lightweight postprocess #38840221940](https://github.com/RRain001/CTEAS/actions/runs/38840221940)). Statements below that say C2 OPEN are historical snapshots of unsuccessful earlier commits, not the latest accepted result.**
 
 ## Frozen authorities (no hidden branch-tip drift)
 
@@ -90,3 +90,7 @@ Full 143h original-CALMET/native-P7 A/B and PR63-CALMET/native-P7 C/D runs **bot
 
 The subsequent native [`e20b4a4`](https://github.com/RRain001/CTEAS/commit/e20b4a423218ef29cfe32b62efa53de129674de1) corrects the native DRY diffusion path to use COMP's post-ADVECT midpoint `DPBL` rather than pre-step sampled PBL. This is **code committed, not yet independent 143h scientific PASS**. PR #69 remains Draft/unmerged until both same-MET pairs achieve 20,592/20,592, and the unchanged 2022 C1 full 143h scientific regression remains passing. No adjustment to frozen thresholds, vendor sources or PR63 meteorology is permitted.
 
+
+## Superseding six-pair acceptance (2026-10-16)
+
+The definitive C2 current P7 code [`63fdc01`](https://github.com/RRain001/CTEAS/commit/63fdc01d00623c071c62d4ca5281fbb1d9c2cd2b) corrected the original COMP→DRY start-cell versus midpoint-input interface and achieved **A/B 20,592/20,592**, **C/D 20,592/20,592**, full 143h, no receptor divergence in [#38830287087](https://github.com/RRain001/CTEAS/actions/runs/38830287087). The original-MET C1 143h complete puff.con, DGM and concentration science also passed on that head [#38830286957](https://github.com/RRain001/CTEAS/actions/runs/38830286957). The six-pair follow-on **does not rerun solvers**, but re-evaluates archived outputs and provenance; source/method/metrics and limitations are in [the formal report](P7_C1_C2_SIX_PAIR_MATRIX_20261016.md). C1 D native-MET 143h was originally accepted on a preceding code revision, not reexecuted with final P7 head. No full-year model simulation is asserted.
