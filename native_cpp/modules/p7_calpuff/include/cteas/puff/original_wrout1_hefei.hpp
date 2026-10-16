@@ -23,7 +23,8 @@ inline std::unique_ptr<ConcFileWriter>
 create_original_hefei_2022_wrout1_writer(
     const std::string& output_path,
     const std::string& control_text,
-    const std::string& met_path) {
+    const std::string& met_path,
+    bool integration_native_weather = false) {
     std::istringstream deck(control_text);
     OriginalWrout1Identity typed;
     for(auto& line:typed.run_titles)
@@ -99,7 +100,10 @@ create_original_hefei_2022_wrout1_writer(
     h.latlon_labels={opt("RLAT0"),opt("RLON0"),
                      opt("XLAT1"),opt("XLAT2")};
     const auto echo=original_wrout1_embedded_comments(control_text,met_path);
-    require_original_hefei_wrout1(echo.size()==3218U,
+    // The immutable original 2022 source gate still requires exactly 3,218
+    // embedded comments. Native P6F may legitimately carry a different
+    // source-derived OUTHD block; do not discard it or inject vendor bytes.
+    require_original_hefei_wrout1(integration_native_weather || echo.size()==3218U,
         "source-driven original WROUT1 echo must have 3218 lines");
     auto out=std::make_unique<ConcFileWriter>(
         output_path,"7.0","File structure with embedded control file",echo);
