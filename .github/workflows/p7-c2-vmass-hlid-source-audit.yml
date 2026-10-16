@@ -27,8 +27,8 @@ jobs:
           # Include real DRY/VDPVD and VDCOMP source arithmetic. In C2
           # the last H1 ICODE=2 receptor first diverges at VDPVD; any
           # physical patch must be justified against THESE vendor stages.
-          for a,b in ((10480,10695),(10850,10865),(11680,11710),
-                      (26190,26290)):
+          for a,b in ((10480,10715),(10850,10865),(11065,11110),
+                      (11680,11710),(26150,26290)):
               print(f'==== VENDOR {a} TO {b} ====')
               for i in range(a-1,min(b,len(rows))):
                   print(f'ORIGINAL_L{i+1}: {rows[i]}')
