@@ -1,6 +1,6 @@
 # CTEAS P7-C1 / P7-C2 — true P6→P7 weather-variant scientific integration
 
-**Created 2026-10-15. Current verdict: IN PROGRESS; neither C1 nor C2 can be asserted PASS until their own integrated native P7 execution and comparisons complete.**
+**Updated 2026-10-15 — C1 = SCIENTIFICALLY ACCEPTED for selected 2022 single-station 143h scope, [GitHub-hosted #38739266720](https://github.com/RRain001/CTEAS/actions/runs/38739266720). C2 = OPEN; multi-station 12×12 2024 native-P7 runs have not yet passed.**
 
 ## Frozen authorities (no hidden branch-tip drift)
 
@@ -40,6 +40,20 @@ The dedicated [`compare_p7_hourly_concentrations.py`](../../native_cpp/modules/p
 
 **Do not mark C1 accepted on a queued/running Actions job.** Inspect actual A/C, B/D, C/D scientific JSON and full generated D output. A failed C1 diagnostic must be debugged from the earliest source stage without injecting original puff states.
 
+## C1 exact observed 143-hour scientific result (Actions #38739266720)
+
+| Arm/Comparison | Independently measured evidence |
+|---|---|
+| A: original 2022 CALMET → original CALPUFF | Vendor rerun reproduced pinned reference `puff.con` H-3 REAL4 **357,500/357,500 bits** |
+| B: original 2022 CALMET → native P7 | Previously accepted unchanged P7 science [#38699935854](https://github.com/RRain001/CTEAS/actions/runs/38699935854), **357,500/357,500**, original full file SHA pinned |
+| C: genuine 143h source-generated PR53 `native_causal_independent_header_calmet.dat` → original CALPUFF 7.2.1 | All 143 hours completed from source; **334,126/357,500** float32 words agree with A, MAX_ABS=`0.0011510960757732391 Bq/m³` |
+| D: same exact PR53 `MET.DAT` → native source-faithful P7 | **143/143 hours completed; C↔D 357,500/357,500 IEEE REAL4 bit exact**, no first difference; native complete `puff.con` 1,892,696 B |
+| B↔D cross-MET sensitivity | **334,126/357,500** words identical; first different cell **hour 1, i=24, j=28**, original=`1.552549747430021e-6`, PR53=`1.5525517937931e-6 Bq/m³`; max abs=`0.0011510960757732391` |
+
+The C1 live native D log contains `P7_C1_NATIVE_ON_PR53_MET HOURS=143 REAL4_MATCHED=357500/357500 FIRST_MISMATCH_HOUR=0 ... SAME_MET_VENDOR_PARITY=PASS NO_ORIGINAL_DGM_AS_INPUT=YES`. The independent `compare_p7_hourly_concentrations.py` separately verifies C↔D bit identity and B↔D meteorological sensitivity. Source-derived P6F input header changes the full WROUT1 binary length; **do not infer whole-file SHA parity with the frozen 2022 A/B artifact**. C1 accepts concentration-field physics and real complete output production, not metadata SHA identity between different input decks.
+
+Acceptance is **source/physics scoped**: 50×50×9 100m, one surface+one upper station, H-3 point source, `METFM=1, MWET=0`, and these 143 consecutive hours. There is no new arbitrary-grid, wet-scavenging, multi-station or all-CALPUFF-feature claim. The integrated C1 candidate is opt-in and never alters existing original-MET science gates.
+
 ## C2 measured original CALPUFF response with both real G35 MET.DAT files
 
 [GitHub-hosted run #38743223360](https://github.com/RRain001/CTEAS/actions/runs/38743223360) **SUCCESS** on C2 case input stage; this is **not** native P7 acceptance.
@@ -68,4 +82,11 @@ G36A already shows that **original CALPUFF** can read 143h *native* P6G weather.
 
 The current P7 strict physics test still contains explicit 2022/50×50/100m assumptions. C2 requires an independent source-driven **configurable grid, clock, source-admission, receptor-count and WROUT1** path. Do not bypass bounds checks, inject reference concentration, or call an all-zero plume a pass. First run vendor/P7 on the *same* original multi-station MET.DAT, then the *same* native multi-station MET.DAT, and compare all 143 hourly H-3 grids and puff chronology where applicable.
 
-**Stage verdict at creation:** C1 A/C/C/D runner written and CI launched; C1 cannot pass until actual job logs and artifact comparisons are independently verified. C2 input-adapter scientific execution has not started; no P7 12×12 equivalence is claimed.
+**Latest verdict:** C1 A/B/C/D original/native 143h science **PASS on run #38739266720**, validated by live real-value comparisons. C2 weather dual-run science is under independent development; do not claim native P7 12×12 scientific acceptance without its own real run.
+
+## C2 latest forensic status (2026-10-16; no unverified PASS)
+
+Full 143h original-CALMET/native-P7 A/B and PR63-CALMET/native-P7 C/D runs **both completed**, with original CALPUFF A/C independently completed. The native P7 source-integration scientific gate remains **FAIL**: [last completed post-VDPVD 143h #38768796276](https://github.com/RRain001/CTEAS/actions/runs/38768796276) yielded **20,555/20,592** H-3 REAL4 bitwise values for **each** same-MET pair (37 residual words each), maximum absolute concentration difference `1.7462298274040222e-9 Bq/m³`. Source-first H1 receptor (4,6) audit isolated a uniform ICODE=2 dry deposition VDPVD handoff omission, now fixed; remaining H1 event 23 required VMASS/DRY midpoint-state forensics. See [C2 source forensic report](P7_C2_2024_143H_FIRST_DIFFERENCE_FORENSICS_20261015.md).
+
+The subsequent native [`e20b4a4`](https://github.com/RRain001/CTEAS/commit/e20b4a423218ef29cfe32b62efa53de129674de1) corrects the native DRY diffusion path to use COMP's post-ADVECT midpoint `DPBL` rather than pre-step sampled PBL. This is **code committed, not yet independent 143h scientific PASS**. PR #69 remains Draft/unmerged until both same-MET pairs achieve 20,592/20,592, and the unchanged 2022 C1 full 143h scientific regression remains passing. No adjustment to frozen thresholds, vendor sources or PR63 meteorology is permitted.
+
