@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from engine.run_met.common import GridDef, lon_lat_to_utm_km
 
 from native_cpp.modules.p4_read62.data_prep import download_igra as downloader
 from native_cpp.modules.p4_read62.data_prep import parse_igra_to_csv as parser
@@ -31,12 +32,8 @@ class SelectionIntegrationTest(unittest.TestCase):
             sample_station("FAR00058333", 31.94, 117.33),
         ]
 
-    def select(self, year, counts, stations=None, stack_position=None):
+    def select(self, year, counts, stations=None):
         stations = self.stations if stations is None else stations
-        argv = ["download_igra", "--year", str(year), "--pstop", "500"]
-        if stack_position is not None:
-            argv += ["--stack-lat", str(stack_position[0]),
-                     "--stack-lon", str(stack_position[1])]
 
         def scan(path, station_id, y, elevation_m, pstop):
             valid = counts.get((y, station_id), 0)
@@ -45,14 +42,16 @@ class SelectionIntegrationTest(unittest.TestCase):
                         coverage=valid / exp, eligible=valid * 5 > exp * 4,
                         soundings_cleaned=valid, soundings_dropped=0)
 
+        x, y = lon_lat_to_utm_km(117.14, 31.94, 50, True)
+        grid = GridDef("UTM", 50, "N", "WGS-84", x-2.5, y-2.5, 50, 50, 0.1, 1, [0.0, 20.0])
         fake_raw = lambda sid, out: (self.root / (sid + "-data.txt"), False, None)
         with patch.object(downloader, "DATA_ROOT", self.root), \
              patch.object(downloader, "parse_center", return_value=(31.94, 117.14)), \
-             patch.object(downloader, "parse_grid", return_value=(0.1, 50, 50)), \
+             patch.object(downloader, "load_strict_utm_grid", return_value=grid), \
              patch.object(downloader, "load_station_list", return_value=stations), \
              patch.object(downloader, "download_igra_data", side_effect=fake_raw), \
              patch.object(parser, "observed_year_coverage", side_effect=scan), \
-             patch.object(sys, "argv", argv):
+             patch.object(sys, "argv", ["download_igra", "--year", str(year), "--pstop", "500"]):
             result = downloader.main()
         csv_path = self.root / str(year) / "upperair_station_used_list.txt"
         audit_path = self.root / str(year) / "p4_station_selection_audit.json"
@@ -69,6 +68,7 @@ class SelectionIntegrationTest(unittest.TestCase):
         self.assertTrue(all(x["site_type"] == "OBSERVED" for x in rows))
         self.assertTrue(all(x["lat"] == x["source_lat"] and x["lon"] == x["source_lon"] for x in rows))
         self.assertEqual(len(audit["selected"]), 2)
+        self.assertEqual(audit["selection_geometry"], "STRICT_WGS84_UTM_GRID_CMN_SW_CORNER_CLOSED_EDGES")
 
     def test_none_inside_nearest_qualifying_single_proxy(self):
         rc, rows, audit = self.select(2022, {
@@ -82,34 +82,6 @@ class SelectionIntegrationTest(unittest.TestCase):
         self.assertNotEqual(rows[0]["lon"], rows[0]["source_lon"])
         self.assertEqual(rows[0]["elev_m"], "62.0")
         self.assertEqual(len(audit["checked"]), 4)
-
-    def test_offcentre_chimney_ranks_external_stations_and_relocates_to_stack(self):
-        counts = {
-            (2022, "AAA00058424"): 0,
-            (2022, "BBB00058238"): 0,
-            (2022, "NEAR00058400"): 730,
-            (2022, "FAR00058333"): 730,
-        }
-        rc, rows, audit = self.select(
-            2022, counts, stack_position=(31.94, 117.33))
-        self.assertEqual(rc, 0)
-        self.assertEqual([r["id"] for r in rows], ["FAR00058333"])
-        self.assertEqual(rows[0]["site_type"], "VIRTUAL_RELOCATED")
-        self.assertEqual(
-            (float(rows[0]["lat"]), float(rows[0]["lon"])),
-            (31.94, 117.33))
-        self.assertEqual(audit["chimney_location_source"], "EXPLICIT_CLI")
-        self.assertEqual(audit["domain_center_lon"], 117.14)
-
-    def test_offcentre_chimney_keeps_in_domain_station_positions(self):
-        counts = {(2022, "AAA00058424"): 700,
-                  (2022, "BBB00058238"): 700}
-        rc, rows, _ = self.select(
-            2022, counts, stack_position=(31.94, 117.33))
-        self.assertEqual(rc, 0)
-        self.assertEqual(len(rows), 2)
-        self.assertTrue(all(r["site_type"] == "OBSERVED" for r in rows))
-        self.assertTrue(all(r["lon"] == r["source_lon"] for r in rows))
 
     def test_annual_reselection_not_first_year_locked(self):
         counts = {(2022, "AAA00058424"): 700, (2022, "BBB00058238"): 700,

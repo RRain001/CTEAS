@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 """
-Download ISD global-hourly station CSVs by study-area bounds.
+Download ISD global-hourly station CSVs using the actual CALMET UTM grid.
 
-Workflow:
-1) Read center point from center_location (longitude/latitude).
-2) Read grid size from grid.cmn (DGRIDKM, NX, NY).
-3) Build lat/lon bounding box from center and grid span.
-4) Filter stations in isd_station_list.txt that:
-   - are inside bbox
-   - have data in target year based on BEGIN/END.
-5) Download station files from:
-   https://www.ncei.noaa.gov/data/global-hourly/access/{year}/{station_id}.csv
+The numerical grid's SW corner, projection, spacing and dimensions come
+exclusively from grid.cmn (the P1/P2/P3/P6 authority), NOT from a geographic
+latitude/longitude rectangle centred on center_location. The latter is only
+source metadata. Apply strict projected station geometry before download;
+annual NOAA coverage and fallback policies remain unchanged.
 """
 
 from __future__ import annotations
@@ -25,6 +21,7 @@ from pathlib import Path
 from urllib import error, request
 
 from engine.core.paths import current_project_path, engine_path
+from engine.run_met.common import GridDef, lon_lat_to_utm_km, parse_grid_cmn
 
 CASE_ROOT = current_project_path()
 
@@ -57,19 +54,34 @@ def parse_center(path: Path) -> tuple[float, float]:
     return float(m_lon.group(1)), float(m_lat.group(1))
 
 
-def parse_grid(path: Path) -> tuple[float, int, int]:
-    text = path.read_text(encoding="utf-8", errors="ignore")
+# Backwards-compatible exported functions; P4 and P5 share one geometry kernel.
+from engine.run_met.station_grid import (
+    load_strict_utm_grid, utm_bounds_km as _utm_bounds_km,
+    contains_projected_utm_km as _contains_projected_utm_km,
+    lon_lat_in_utm_grid,
+)
 
-    def find_num(key: str) -> str:
-        m = re.search(rf"!\s*{re.escape(key)}\s*=\s*([^\s!]+)", text, flags=re.IGNORECASE)
-        if not m:
-            raise ValueError(f"Cannot find {key} in {path}")
-        return m.group(1)
 
-    dgrid_km = float(find_num("DGRIDKM"))
-    nx = int(float(find_num("NX")))
-    ny = int(float(find_num("NY")))
-    return dgrid_km, nx, ny
+def load_utm_grid(path: Path) -> GridDef:
+    return load_strict_utm_grid(path, context="P5")
+
+
+def utm_bounds_km(grid: GridDef) -> tuple[float, float, float, float]:
+    return _utm_bounds_km(grid)
+
+
+def contains_projected_utm_km(x: float, y: float, grid: GridDef) -> bool:
+    return _contains_projected_utm_km(x, y, grid)
+
+
+def station_in_utm_grid(st: Station, grid: GridDef) -> bool:
+    # Preserve the P5 projection seam for independent source and zone tests.
+    # Bounds and projection convention are identical to the shared P4 kernel.
+    try:
+        x, y = lon_lat_to_utm_km(st.lon, st.lat, grid.iutmzn, grid.lsohem == "N")
+    except ValueError:
+        return False
+    return contains_projected_utm_km(x, y, grid)
 
 
 def parse_history_txt(path: Path) -> list[Station]:
@@ -157,25 +169,6 @@ def parse_research_time(path: Path) -> tuple[datetime, datetime]:
     return begin, end
 
 
-def build_bbox(center_lon: float, center_lat: float, dgrid_km: float, nx: int, ny: int) -> tuple[float, float, float, float]:
-    # Treat center_location as center of study area.
-    half_w_km = dgrid_km * nx / 2.0
-    half_h_km = dgrid_km * ny / 2.0
-
-    dlat = half_h_km / 111.32
-    cos_lat = math.cos(math.radians(center_lat))
-    if abs(cos_lat) < 1e-8:
-        dlon = 180.0
-    else:
-        dlon = half_w_km / (111.32 * cos_lat)
-
-    min_lon = center_lon - dlon
-    max_lon = center_lon + dlon
-    min_lat = center_lat - dlat
-    max_lat = center_lat + dlat
-    return min_lon, max_lon, min_lat, max_lat
-
-
 def covers_interval(begin: str, end: str, first: datetime, last: datetime) -> bool:
     """Station-history coverage for the exact requested period, inclusive."""
     if not (re.fullmatch(r"\d{8}", begin or "") and re.fullmatch(r"\d{8}", end or "")):
@@ -205,10 +198,6 @@ def read_stack_position(args: argparse.Namespace) -> tuple[float, float] | None:
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise ValueError("stack latitude/longitude outside valid range")
     return lat, lon
-
-
-def inside_bbox(st: Station, min_lon: float, max_lon: float, min_lat: float, max_lat: float) -> bool:
-    return min_lon <= st.lon <= max_lon and min_lat <= st.lat <= max_lat
 
 
 def station_url(year: int, sid: str) -> str:
@@ -325,9 +314,11 @@ def main() -> int:
         years = [args.year]
     else:
         years = list(range(research_start.year, research_end.year + 1))
+    # Validate that geographic centre metadata is present, but never use it
+    # to construct the numerical domain: grid.cmn owns the SW corner.
     center_lon, center_lat = parse_center(args.center_file)
-    dgrid, nx, ny = parse_grid(args.grid_file)
-    bbox = build_bbox(center_lon, center_lat, dgrid, nx, ny)
+    grid = load_utm_grid(args.grid_file)
+    bounds = utm_bounds_km(grid)
     stack = read_stack_position(args)
     stations = parse_history_txt(args.history_file)
     if not stations:
@@ -345,7 +336,7 @@ def main() -> int:
             else:
                 continue
         eligible = [st for st in stations if covers_interval(st.begin, st.end, first, last)]
-        in_domain = sorted((st for st in eligible if inside_bbox(st, *bbox)), key=lambda st: st.sid)
+        in_domain = sorted((st for st in eligible if station_in_utm_grid(st, grid)), key=lambda st: st.sid)
         mode = "OBSERVED" if in_domain else "VIRTUAL_RELOCATED"
         if mode == "VIRTUAL_RELOCATED" and stack is None:
             raise SystemExit("No stations inside research domain: --stack-lat/--stack-lon "
@@ -456,7 +447,12 @@ def main() -> int:
             "IN_DOMAIN_MULTIPLE")
         report = args.out_dir / f"download_report_{year}.json"
         report.write_text(json.dumps({
-            "year": year, "mode": mode, "research_bbox": bbox,
+            "year": year, "mode": mode,
+            "selection_geometry": "STRICT_WGS84_UTM_GRID_CMN_SW_CORNER_CLOSED_EDGES",
+            "utm_zone": grid.iutmzn, "utm_hemisphere": grid.lsohem,
+            "utm_bounds_km": bounds, "utm_grid_shape": [grid.nx, grid.ny],
+            "utm_grid_spacing_km": grid.dgridkm,
+            "center_location_metadata_lonlat": [center_lon, center_lat],
             "stack_latlon": stack, "candidates": decisions,
             "source_coverage_rule": "no in-domain: nearest station with >90% unique original UTC hours in BOTH ISD and ISD-Lite, per calendar year; any in-domain station: no coverage threshold",
             "station_selection_case": station_selection_case,
@@ -491,6 +487,9 @@ def main() -> int:
         manifest = args.out_dir / f"station_selection_{year}.json"
         manifest.write_text(json.dumps({
             "year": year, "mode": mode,
+            "selection_geometry": "STRICT_WGS84_UTM_GRID_CMN_SW_CORNER_CLOSED_EDGES",
+            "utm_zone": grid.iutmzn, "utm_hemisphere": grid.lsohem,
+            "utm_bounds_km": bounds,
             "station_selection_case": station_selection_case,
             "primary_sid": primary.sid,
             "external_raw_coverage_rule": "STRICT_GREATER_THAN_90_PERCENT_BOTH_SOURCES",

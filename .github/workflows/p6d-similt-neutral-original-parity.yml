@@ -182,7 +182,10 @@ jobs:
           build="$RUNNER_TEMP/cteas-similt-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           cmake -S native_cpp/modules/p6_calmet -B "$build" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$build" --parallel 2
-          ctest --test-dir "$build" --output-on-failure
+          # This frozen P6D parity job runs the original P6 suite only.
+          # Newly introduced P6G source-deck tests require their own inputs
+          # and are independently executed by p6g-accepted-baseline-multistation.
+          ctest --test-dir "$build" --output-on-failure -E '^p6g_'
       - name: Compare unchanged original SIMILT against independent C++20
         shell: bash
         run: |

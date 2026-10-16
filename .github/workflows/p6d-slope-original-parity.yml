@@ -5,6 +5,7 @@ concurrency:
 on:
   pull_request:
     paths:
+      - '.github/workflows/p6d-slope-original-parity.yml'
       - '.github/scripts/p6d_verified_checkout.py'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/*slope*'
       - 'native_cpp/modules/p6_calmet/src/slope_flow_main.cpp'
@@ -120,8 +121,15 @@ jobs:
         run: cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/cteas-p6d-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -DCMAKE_BUILD_TYPE=Debug
       - name: Build
         run: cmake --build "$RUNNER_TEMP/cteas-p6d-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --parallel 2
-      - name: CTest (including slope and upstream P6 A/C contracts)
-        run: ctest --test-dir "$RUNNER_TEMP/cteas-p6d-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output-on-failure
+      - name: CTest (frozen P6A/P6C/P6D + hourly contracts; P6G has its own input-complete workflow)
+        run: |
+          # This job sparse-checks out only the original isolated SLOPE
+          # sources. G19+ multi-site CTests need the separate original met.inp
+          # fixture, which this isolated workflow intentionally does not fetch.
+          # Run all non-P6G contracts (including the actual SLOPE test);
+          # dedicated P6G workflows execute and must pass the multi-site tests.
+          ctest --test-dir "$RUNNER_TEMP/cteas-p6d-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --output-on-failure -E '^p6g_'
       - name: Literal original SLOPE vs independent C++20
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_original_slope.py \

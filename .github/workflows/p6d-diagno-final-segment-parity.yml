@@ -123,7 +123,7 @@ jobs:
         run: |
           cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/cteas-p6d-final-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$RUNNER_TEMP/cteas-p6d-final-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --parallel 2
-          ctest --test-dir "$RUNNER_TEMP/cteas-p6d-final-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output-on-failure
+          ctest --test-dir "$RUNNER_TEMP/cteas-p6d-final-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output-on-failure -E '^p6g_'
       - name: Literal DIAGNO source L6119–6148 and vendor Fortran against C++
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_original_diagno_final_segment.py \
