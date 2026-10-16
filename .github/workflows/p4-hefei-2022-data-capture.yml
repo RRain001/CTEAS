@@ -35,11 +35,19 @@ jobs:
           latitude: 31.939774444
           longitude: 117.141610855
           EOF
-          cat > project/current/grid/grid.cmn <<'EOF'
-          ! DGRIDKM = 0.1 !
-          ! NX = 50 !
-          ! NY = 50 !
-          EOF
+          # Use source-pinned 50x50 WGS84 UTM 50N frozen Hefei grid.
+          # The 3-key legacy fixture cannot pass strict P4/P5 station geometry.
+          cp project/cases/hefei5km_2022_reference_case_20261011/grid/grid.cmn project/current/grid/grid.cmn
+          python3 - <<'PY'
+          from pathlib import Path
+          from engine.run_met.station_grid import load_strict_utm_grid
+          g = load_strict_utm_grid(Path("project/current/grid/grid.cmn"), context="P4 CI")
+          assert (g.imap, g.iutmzn, g.lsohem, g.datum, g.nx, g.ny, g.nz) == (
+              "UTM", 50, "N", "WGS-84", 50, 50, 9), g
+          assert abs(g.dgridkm - 0.1) < 1e-9 and abs(g.xrefkm - 510.885) < 1e-9
+          assert abs(g.yrefkm - 3531.269) < 1e-9
+          print("P4_PUBLIC_CAPTURE_PINNED_FULL_UTM=PASS", g)
+          PY
           cat > project/current/grid/research_time <<'EOF'
           BEGIN: 20220101-000000
           END: 20220106-230000
