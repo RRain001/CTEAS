@@ -1,7 +1,9 @@
 name: P7 C2 PR63 original vs native multi-station MET vendor paired science
 on:
-  push:
-    branches: [codex/p7-c2-multistation-vendor-weather-20261015]
+  # Test the actual proposed C2-on-C1 merge on PR #69. Avoid
+  # duplicating the costly 143h A/B/C/D run on push and pull_request.
+  pull_request:
+    branches: [codex/p7-c1-c2-native-met-integration-20261015]
     paths:
       - '.github/workflows/p7-c2-pr63-two-meteorologies-vendor-science.yml'
       - 'native_cpp/modules/p7_calpuff/reference/compare_p7_hourly_concentrations.py'
