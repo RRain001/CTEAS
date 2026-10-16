@@ -5,6 +5,9 @@ on:
   pull_request:
     branches:
       - codex/cteas-p7-calpuff-20261011
+      # C2 PR #69 stacks on accepted C1 PR #68; protect the exact
+      # 2022 143h scientific gate while modifying shared P7 physics.
+      - codex/p7-c1-c2-native-met-integration-20261015
     paths:
       - 'native_cpp/modules/p7_calpuff/**'
       - 'engine/vendor/src/CALPUFF_v7.2.1_L150618/**'
