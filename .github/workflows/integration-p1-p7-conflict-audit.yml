@@ -1,0 +1,57 @@
+name: Integration-only P6 P7 dry-run merge conflict inventory
+on:
+  push:
+    branches: [integration/p1-p7]
+    paths:
+      - '.github/workflows/integration-p1-p7-conflict-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  dry-run-p7-core:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Inspect strict no-commit P7 branch merge against integrated P6
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "CTEAS integration audit (no push)"
+          git config user.email "cteas-integration-audit@users.noreply.github.com"
+          git fetch origin 'refs/heads/codex/cteas-p7-calpuff-20261011:refs/remotes/origin/cteas-p7-calpuff-20261011'
+          report="$RUNNER_TEMP/p7-core-merge-audit.txt"
+          echo "INTEGRATION_BASE_SHA=$(git rev-parse HEAD)" | tee "$report"
+          echo "P7_CORE_HEAD=$(git rev-parse origin/cteas-p7-calpuff-20261011)" | tee -a "$report"
+          echo "MERGE_BASE=$(git merge-base HEAD origin/cteas-p7-calpuff-20261011)" | tee -a "$report"
+          set +e
+          GIT_MERGE_AUTOEDIT=no git merge --no-commit --no-ff origin/cteas-p7-calpuff-20261011 >"$RUNNER_TEMP/merge.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/merge.log" | tee -a "$report"
+          echo "MERGE_EXIT_CODE=$code" | tee -a "$report"
+          git diff --name-only --diff-filter=U >"$RUNNER_TEMP/conflict-paths.txt"
+          cat "$RUNNER_TEMP/conflict-paths.txt" | tee -a "$report"
+          count="$(wc -l <"$RUNNER_TEMP/conflict-paths.txt")"
+          echo "CONFLICT_COUNT=$count" | tee -a "$report"
+          if test "$code" -ne 0; then
+            test "$count" -gt 0 || { echo "MERGE_DRY_RUN=FAILED_WITHOUT_CONFLICT_LIST" | tee -a "$report"; exit 1; }
+            echo "MERGE_DRY_RUN=BLOCKED_REQUIRES_RESOLUTION" | tee -a "$report"
+          else
+            test "$count" -eq 0 || { echo "MERGE_DRY_RUN=INCONSISTENT" | tee -a "$report"; exit 1; }
+            echo "MERGE_DRY_RUN=CLEAN" | tee -a "$report"
+          fi
+          # Never push or produce an unreviewed merge commit.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-p6-p7-dryrun-conflict-inventory
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/p7-core-merge-audit.txt
+            ${{ runner.temp }}/conflict-paths.txt
+            ${{ runner.temp }}/merge.log
