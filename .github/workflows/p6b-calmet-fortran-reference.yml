@@ -31,26 +31,30 @@ jobs:
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-12 gfortran-12
       - name: Select isolated C++20 and Fortran compilers
         uses: ./.github/actions/cteas-linux-toolchain
-      - name: Pin P4/P5/P3 upstream snapshots without merging branches
+      - name: Verify coherent PR checkout and record historical source provenance
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags origin 2908293f061af93e754bc9fe1f00d857d1d6a0d8
-          git restore --source=FETCH_HEAD -- project/cases/smoke5d_coldstart_20260701/case.yaml
-          git fetch --no-tags origin dd473cede495bb04b312dc31d6bdef8afabe26c2
-          git restore --source=FETCH_HEAD -- native_cpp/modules/p5_smerge
-          git fetch --no-tags origin dc4e3f042e5668358fc43f2f2ae98d7a554ecfd3
-          git restore --source=FETCH_HEAD -- native_cpp/modules/p4_read62 native_cpp/tests/p4_read62_tests.cpp native_cpp/include/cteas/met_input/p4_read62.hpp native_cpp/include/cteas/met_input/p4_updat.hpp
-          git fetch --no-tags origin 5b1013baea10c0b3c3946e62ab77428dff05455e
-          git restore --source=FETCH_HEAD -- native_cpp/reference/capture_p3_makegeo.py
+          # The historical P6B workflow previously restored P3/P4/P5 from
+          # three older commits into the PR checkout. That created a hybrid
+          # tree: newer P6 station-contract tests imported symbols absent in
+          # the restored historical P5 module. Never overlay the PR's sources.
+          test -s project/cases/smoke5d_coldstart_20260701/case.yaml
           test -s native_cpp/modules/p4_read62/data_prep/run_cpp_pipeline.py
+          test -s native_cpp/modules/p5_smerge/data_prep/download_isd_by_grid.py
           test -s native_cpp/reference/capture_p3_makegeo.py
           mkdir -p integration-evidence
-          git rev-parse HEAD > integration-evidence/p5-head.sha
-          echo dc4e3f042e5668358fc43f2f2ae98d7a554ecfd3 > integration-evidence/p4-source.sha
-          echo dd473cede495bb04b312dc31d6bdef8afabe26c2 > integration-evidence/p5-source.sha
-          echo 5b1013baea10c0b3c3946e62ab77428dff05455e > integration-evidence/p3-source.sha
-          echo 2908293f061af93e754bc9fe1f00d857d1d6a0d8 > integration-evidence/historical-case-provenance.sha
+          git rev-parse HEAD > integration-evidence/checkout-head.sha
+          for p in native_cpp/modules/p4_read62 native_cpp/modules/p5_smerge native_cpp/reference/capture_p3_makegeo.py project/cases/smoke5d_coldstart_20260701/case.yaml; do
+            git rev-parse "HEAD:$p" >> integration-evidence/coherent-source-trees.sha
+          done
+          # Keep historical parent SHAs as provenance, never as an overlay.
+          printf '%s\n' dc4e3f042e5668358fc43f2f2ae98d7a554ecfd3 > integration-evidence/p4-historical-source.sha
+          printf '%s\n' dd473cede495bb04b312dc31d6bdef8afabe26c2 > integration-evidence/p5-historical-source.sha
+          printf '%s\n' 5b1013baea10c0b3c3946e62ab77428dff05455e > integration-evidence/p3-historical-source.sha
+          printf '%s\n' 2908293f061af93e754bc9fe1f00d857d1d6a0d8 > integration-evidence/historical-case-provenance.sha
+          test -z "$(git status --porcelain -- native_cpp/modules/p4_read62 native_cpp/modules/p5_smerge native_cpp/reference/capture_p3_makegeo.py project/cases/smoke5d_coldstart_20260701/case.yaml)"
+          echo "P6B_SOURCE_TREE=COHERENT_CHECKOUT_HEAD historical_sha_provenance=retained"
       - name: Toolchains
         shell: bash
         run: |
