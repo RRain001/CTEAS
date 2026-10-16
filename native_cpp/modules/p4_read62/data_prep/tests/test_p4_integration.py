@@ -31,8 +31,12 @@ class SelectionIntegrationTest(unittest.TestCase):
             sample_station("FAR00058333", 31.94, 117.33),
         ]
 
-    def select(self, year, counts, stations=None):
+    def select(self, year, counts, stations=None, stack_position=None):
         stations = self.stations if stations is None else stations
+        argv = ["download_igra", "--year", str(year), "--pstop", "500"]
+        if stack_position is not None:
+            argv += ["--stack-lat", str(stack_position[0]),
+                     "--stack-lon", str(stack_position[1])]
 
         def scan(path, station_id, y, elevation_m, pstop):
             valid = counts.get((y, station_id), 0)
@@ -48,7 +52,7 @@ class SelectionIntegrationTest(unittest.TestCase):
              patch.object(downloader, "load_station_list", return_value=stations), \
              patch.object(downloader, "download_igra_data", side_effect=fake_raw), \
              patch.object(parser, "observed_year_coverage", side_effect=scan), \
-             patch.object(sys, "argv", ["download_igra", "--year", str(year), "--pstop", "500"]):
+             patch.object(sys, "argv", argv):
             result = downloader.main()
         csv_path = self.root / str(year) / "upperair_station_used_list.txt"
         audit_path = self.root / str(year) / "p4_station_selection_audit.json"
@@ -78,6 +82,34 @@ class SelectionIntegrationTest(unittest.TestCase):
         self.assertNotEqual(rows[0]["lon"], rows[0]["source_lon"])
         self.assertEqual(rows[0]["elev_m"], "62.0")
         self.assertEqual(len(audit["checked"]), 4)
+
+    def test_offcentre_chimney_ranks_external_stations_and_relocates_to_stack(self):
+        counts = {
+            (2022, "AAA00058424"): 0,
+            (2022, "BBB00058238"): 0,
+            (2022, "NEAR00058400"): 730,
+            (2022, "FAR00058333"): 730,
+        }
+        rc, rows, audit = self.select(
+            2022, counts, stack_position=(31.94, 117.33))
+        self.assertEqual(rc, 0)
+        self.assertEqual([r["id"] for r in rows], ["FAR00058333"])
+        self.assertEqual(rows[0]["site_type"], "VIRTUAL_RELOCATED")
+        self.assertEqual(
+            (float(rows[0]["lat"]), float(rows[0]["lon"])),
+            (31.94, 117.33))
+        self.assertEqual(audit["chimney_location_source"], "EXPLICIT_CLI")
+        self.assertEqual(audit["domain_center_lon"], 117.14)
+
+    def test_offcentre_chimney_keeps_in_domain_station_positions(self):
+        counts = {(2022, "AAA00058424"): 700,
+                  (2022, "BBB00058238"): 700}
+        rc, rows, _ = self.select(
+            2022, counts, stack_position=(31.94, 117.33))
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(r["site_type"] == "OBSERVED" for r in rows))
+        self.assertTrue(all(r["lon"] == r["source_lon"] for r in rows))
 
     def test_annual_reselection_not_first_year_locked(self):
         counts = {(2022, "AAA00058424"): 700, (2022, "BBB00058238"): 700,

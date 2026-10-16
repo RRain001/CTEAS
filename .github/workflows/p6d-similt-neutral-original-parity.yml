@@ -1,4 +1,4 @@
-name: P6D WIND1 neutral SIMILT original source parity
+name: P6D original SIMILT source parity
 on:
   pull_request:
     paths:
@@ -13,11 +13,11 @@ concurrency:
 jobs:
   source-similt-neutral:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    # P6D alone owns this custom label; never select generic self-hosted workers.
-    runs-on: [self-hosted, lhy-desktop]
+    # Isolated P6D scientific job on an ephemeral GitHub-hosted Ubuntu runner.
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
-      - name: Verify dedicated P6D host and source transports
+      - name: Verify GitHub-hosted P6D environment and source transports
         id: network
         shell: bash
         env:
@@ -25,8 +25,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "runner=$RUNNER_NAME os=$RUNNER_OS arch=$RUNNER_ARCH"
-          if [[ "$RUNNER_NAME" != "lhy-desktop" || "$RUNNER_OS" != "Linux" ]]; then
-            echo "::error::P6D must run on the Linux lhy-desktop runner"
+          if [[ "$RUNNER_OS" != "Linux" || "$RUNNER_ARCH" != "X64" ]]; then
+            echo "::error::P6D requires a Linux/X64 GitHub-hosted runner"
             exit 1
           fi
           if curl -fIsS --connect-timeout 5 --max-time 8 https://github.com/ >/dev/null 2>&1; then
@@ -145,8 +145,8 @@ jobs:
           set -euo pipefail
           for path in \
             native_cpp/modules/p6_calmet/CMakeLists.txt \
-            native_cpp/modules/p6_calmet/reference/compare_original_similt_neutral.py \
-            native_cpp/modules/p6_calmet/include/cteas/p6/similt_neutral.hpp \
+            native_cpp/modules/p6_calmet/reference/compare_original_similt_profile.py \
+            native_cpp/modules/p6_calmet/include/cteas/p6/similt_profile.hpp \
             engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
             engine/vendor/src/CALMET_v6.5.0_L150223/params.met; do
             test -s "$path" || { echo "::error::Missing $path"; exit 1; }
@@ -165,7 +165,7 @@ jobs:
             if command -v "$x" >/dev/null 2>&1; then fort="$(command -v "$x")"; break; fi
           done
           if [[ -z "$cpp" || -z "$fort" ]]; then
-            echo "::error::Install g++-12+ (or clang++-15+) and gfortran on lhy-desktop"
+            echo "::error::Install g++-12+ (or clang++-15+) and gfortran on GitHub-hosted Ubuntu"
             exit 1
           fi
           printf '#include <chrono>\nint main(){std::chrono::sys_seconds v{}; (void)v;}\n' | \
@@ -187,15 +187,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 native_cpp/modules/p6_calmet/reference/compare_original_similt_neutral.py \
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_similt_profile.py \
             --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
-            --cpp "$RUNNER_TEMP/cteas-similt-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/cteas_p6_similt_neutral" \
+            --cpp "$RUNNER_TEMP/cteas-similt-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/cteas_p6_similt_profile" \
             --out "$RUNNER_TEMP/cteas-similt-parity-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
       - name: Save unchanged-source numerical comparison evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: p6d-similt-neutral-source-parity
-          path: ${{ runner.temp }}/cteas-similt-parity-${{ github.run_id }}-${{ github.run_attempt }}/p6d-similt-neutral-parity.json
+          path: ${{ runner.temp }}/cteas-similt-parity-${{ github.run_id }}-${{ github.run_attempt }}/p6d-similt-profile-parity.json
           if-no-files-found: warn
           retention-days: 14

@@ -108,6 +108,21 @@ int main(){
     input.corrected_first_guess_u_mps.clear();
     input.corrected_first_guess_v_mps.clear();
     const auto baseline=integrate_diagno_d9_selected(input);
+    // The isolated original Fortran tail fixture starts after L6100 and
+    // supplies its own UB/VB (HTFAC=0 surrogate). The real Hefei GEO HTFAC=1
+    // instead refreshes WINDBC(U,V) from INTER2 before the tail.
+    input.htfac=1.f;
+    const auto second_windbc=integrate_diagno_d9_selected(input);
+    require(second_windbc.final_fields.w_face_mps!=baseline.final_fields.w_face_mps,
+            "HTFAC=1 second WINDBC must change the synthetic tail's W");
+    input.htfac=0.f;
+    require(integrate_diagno_d9_selected(input).final_fields.w_face_mps==
+                baseline.final_fields.w_face_mps,
+            "HTFAC=0 source-isolated legacy tail must be deterministic");
+    input.htfac=std::nanf("");
+    rejected([&]{(void)integrate_diagno_d9_selected(input);},
+             "D9A nonfinite HTFAC accepted");
+    input.htfac=0.f;
     bool baseline_top_nonzero=false;
     for(std::size_t p=0;p<2500;++p)
         baseline_top_nonzero|=std::abs(

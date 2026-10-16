@@ -51,6 +51,24 @@ add_executable(cteas_p6_rdsn_buffered_tests tests/p6_rdsn_buffered_tests.cpp)
 target_link_libraries(cteas_p6_rdsn_buffered_tests PRIVATE cteas_p6a_contracts)
 add_executable(cteas_p6_cgamma src/cgamma_main.cpp)
 target_link_libraries(cteas_p6_cgamma PRIVATE cteas_p6a_contracts)
+# Native CGAMMA integration: consume the previous-hour P6E MIXHT/AVEMIX
+# convective state and export self-computed FRADJ lapse grids (NO Fortran
+# GAMMA injection). This is explicitly one-station / fixed 143h only.
+add_executable(cteas_p6_native_cgamma_grid_143h src/cgamma_from_p6e_143h_main.cpp)
+target_link_libraries(cteas_p6_native_cgamma_grid_143h PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_native_cgamma_grid_143h PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_native_cgamma_grid_143h PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME p6_native_cgamma_grid_rejects_missing_state
+  COMMAND cteas_p6_native_cgamma_grid_143h
+    --up does-not-exist-up.dat
+    --p6e-state-prefix does-not-exist-p6e-state
+    --out ${CMAKE_CURRENT_BINARY_DIR}/missing-native-cgamma
+    --zupt 200 --upper-i 25 --upper-j 26)
+set_tests_properties(p6_native_cgamma_grid_rejects_missing_state
+  PROPERTIES WILL_FAIL TRUE)
 add_executable(cteas_p6_cgamma_tests tests/p6_cgamma_tests.cpp)
 target_link_libraries(cteas_p6_cgamma_tests PRIVATE cteas_p6a_contracts)
 if(MSVC)
@@ -308,6 +326,89 @@ else()
 endif()
 add_test(NAME p6d9a_inchain_terset_envelope_contract COMMAND cteas_p6_terset_envelope_tests)
 
+# Original CALMET met.inp station positions: UTM kilometres -> REAL*4
+# relative metres (not the auxiliary CSV geographic projection).
+add_executable(cteas_p6_station_deck_tests tests/p6_station_deck_input_tests.cpp)
+target_link_libraries(cteas_p6_station_deck_tests PRIVATE cteas_p6a_contracts)
+if(MSVC)
+  target_compile_options(cteas_p6_station_deck_tests PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_station_deck_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+# Isolated P6 kernel workflows sometimes fetch just C++ sources, not the
+# multi-gigabyte frozen Hefei case. They must still test the source in isolation
+# and must NOT claim real-case verification. The dedicated Mode A job requires
+# full case inputs and fails configuration when any required artifact is absent.
+option(CTEAS_P6_MODE_A_REQUIRE_CASE
+       "Require complete frozen Hefei input tree for P6 Mode A numerical gates" OFF)
+set(P6_MODEA_CASE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011")
+set(P6_MODEA_REQUIRED_FILES
+    "case.yaml"
+    "grid/grid.cmn"
+    "grid/center_location"
+    "geo/terrel/terrel.inp"
+    "geo/ctgproc/ctgproc.inp"
+    "geo/makegeo/makegeo.inp"
+    "geo/makegeo/geo.dat"
+    "run/met/met.inp"
+    "met/surface/final/stations.csv"
+    "met/surface/final/surf.dat"
+    "met/upperair/final/stations.csv"
+    "met/upperair/final/up_58424.dat")
+set(P6_MODEA_CASE_READY TRUE)
+foreach(item IN LISTS P6_MODEA_REQUIRED_FILES)
+  if(NOT EXISTS "${P6_MODEA_CASE}/${item}")
+    set(P6_MODEA_CASE_READY FALSE)
+    if(CTEAS_P6_MODE_A_REQUIRE_CASE)
+      message(FATAL_ERROR "P6 Mode A required frozen-case input missing: ${P6_MODEA_CASE}/${item}")
+    endif()
+  endif()
+endforeach()
+add_test(NAME p6d_original_station_deck_synthetic_source_contract
+         COMMAND cteas_p6_station_deck_tests)
+if(P6_MODEA_CASE_READY)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME p6d_original_metinp_station_deck_input
+           COMMAND cteas_p6_station_deck_tests "${P6_MODEA_CASE}/run/met/met.inp")
+  add_test(NAME p6d_p3_p4_p5_metinp_station_contract
+           COMMAND ${Python3_EXECUTABLE}
+             "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_case_station_contract.py"
+             "${P6_MODEA_CASE}")
+  add_test(NAME p6_modea_original_grid_generator_to_metinp
+           COMMAND ${Python3_EXECUTABLE}
+             "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_case_grid_source_contract.py"
+             "${P6_MODEA_CASE}")
+  find_program(P6_STATION_GFORTRAN NAMES gfortran-11 gfortran-12 gfortran)
+  if(P6_STATION_GFORTRAN)
+    add_test(NAME p6d_original_readcf_real4_fortran_source
+             COMMAND ${Python3_EXECUTABLE}
+               "${CMAKE_CURRENT_SOURCE_DIR}/reference/compare_original_deck_station.py"
+               --vendor "${CMAKE_CURRENT_SOURCE_DIR}/../../../engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for"
+               --deck "${P6_MODEA_CASE}/run/met/met.inp"
+               --compiler ${P6_STATION_GFORTRAN}
+               --out "${CMAKE_CURRENT_BINARY_DIR}/original_readcf_station")
+  elseif(CTEAS_P6_MODE_A_REQUIRE_CASE)
+    message(FATAL_ERROR "P6 Mode A original Fortran source oracle requires gfortran")
+  else()
+    message(STATUS "P6 original Fortran source oracle unavailable; not certified")
+  endif()
+else()
+  message(STATUS "P6 Mode A full-case tests NOT REGISTERED; source-only CTests are still valid")
+endif()
+
+# P6D station-only original MIXHTST source-state transition probe.
+# The prior COMP state is supplied as a forensic fixture, never as a native
+# end-to-end wind acceptance input. The production recurrence remains pending.
+add_executable(cteas_p6_station_mixhtst_probe src/station_mixhtst_probe_main.cpp)
+target_link_libraries(cteas_p6_station_mixhtst_probe PRIVATE cteas_p6a_contracts)
+target_include_directories(cteas_p6_station_mixhtst_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/p6e/include)
+if(MSVC)
+  target_compile_options(cteas_p6_station_mixhtst_probe PRIVATE /W4 /WX)
+else()
+  target_compile_options(cteas_p6_station_mixhtst_probe PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 # P6D real-case wind-field producer (partial product: WIND1 step-one UG/VG
 # plus the in-chain TERSET envelope, with explicit provenance metadata).
 add_executable(cteas_p6_realcase_wind_field src/realcase_wind_field_main.cpp)
@@ -325,16 +426,50 @@ else()
   target_compile_options(cteas_p6_realcase_wind_field PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+# Native C++ single-clock, fail-closed P6D->P6E hourly *process adapter*.
+# This transitional executable uses existing verified physics programs,
+# carries no new physical formulas, and is NOT the final in-process adapter.
+# Reuse P6F's independently tested SHA256 implementation to pin the frozen
+# Fortran case rather than weakening the existing Python coordinator checks.
+if(UNIX)
+  add_executable(cteas_p6_native_hourly_driver
+    src/native_hourly_driver_main.cpp p6f/src/sha256.cpp)
+  target_include_directories(cteas_p6_native_hourly_driver PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/p6f/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_compile_options(cteas_p6_native_hourly_driver PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  add_test(NAME p6_native_cpp_hourly_driver_fail_closed_missing_case
+    COMMAND cteas_p6_native_hourly_driver
+      --case does-not-exist-native-hourly-case
+      --p6d $<TARGET_FILE:cteas_p6_realcase_wind_field>
+      --p6e does-not-exist-p6e
+      --bridge does-not-exist-bridge --cgamma does-not-exist-cgamma
+      --work ${CMAKE_CURRENT_BINARY_DIR}/missing-hourly-case)
+  set_tests_properties(p6_native_cpp_hourly_driver_fail_closed_missing_case
+    PROPERTIES WILL_FAIL TRUE)
+  add_executable(cteas_p6_native_comp_history_tests
+    tests/p6_native_comp_history_tests.cpp)
+  target_link_libraries(cteas_p6_native_comp_history_tests PRIVATE cteas_p6a_contracts)
+  target_compile_options(cteas_p6_native_comp_history_tests PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  add_test(NAME p6_native_cpp_comp_history_state_and_rollback
+    COMMAND cteas_p6_native_comp_history_tests
+      ${CMAKE_CURRENT_BINARY_DIR}/native_comp_history_ctest)
+endif()
+
 # Fail-closed contract run of the real-case producer on the frozen 5 km case
 # tree (read-only inputs; outputs go to the build tree). The producer throws on
 # any missing or invalid case input, so exit status plus the emitted hour count
 # is the whole assertion.
-add_test(NAME p6d_realcase_wind_producer_case_contract
-         COMMAND cteas_p6_realcase_wind_field
-                 --case ${CMAKE_CURRENT_SOURCE_DIR}/../../../project/cases/hefei5km_2022_reference_case_20261011
-                 --out ${CMAKE_CURRENT_BINARY_DIR}/realcase_wind_ctest)
-set_tests_properties(p6d_realcase_wind_producer_case_contract PROPERTIES
-                     PASS_REGULAR_EXPRESSION "hours=143")
+if(P6_MODEA_CASE_READY)
+  add_test(NAME p6d_realcase_wind_producer_case_contract
+           COMMAND cteas_p6_realcase_wind_field
+                   --case "${P6_MODEA_CASE}"
+                   --out ${CMAKE_CURRENT_BINARY_DIR}/realcase_wind_ctest)
+  set_tests_properties(p6d_realcase_wind_producer_case_contract PROPERTIES
+                       PASS_REGULAR_EXPRESSION "hours=143")
+endif()
 
 # P6D9A composed trace for chained unmodified original Fortran comparisons.
 add_executable(cteas_p6_d9a_source_trace src/diagno_d9a_trace_main.cpp)

@@ -47,7 +47,10 @@ int main(int argc,char** argv){
         auto& w=station.upper_observed_profile[k];
         if(!(src>>w.u_mps>>w.v_mps))
             throw std::runtime_error("missing WIND1 upper level");
-        cfg.upper_layer_valid[k]=w.u_mps<999998.f&&w.v_mps<999998.f;
+        // CALMET EDIT=999, EDITL=900. Do not assume the deprecated
+        // synthetic 999999 upper-air missing marker.
+        cfg.upper_layer_valid[k]=std::abs(w.u_mps)<900.f&&
+                                 std::abs(w.v_mps)<900.f;
     }
     std::string remainder;
     if(src>>remainder)throw std::runtime_error("extra WIND1 input fields");

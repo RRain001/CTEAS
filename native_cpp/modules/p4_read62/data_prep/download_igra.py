@@ -159,9 +159,14 @@ def download_igra_data(station_id: str, out_dir: Path):
     return txt_path, False, None
 
 
-def candidate_groups(stations, center_lat, center_lon, dgrid_km, nx, ny, year):
+def candidate_groups(stations, center_lat, center_lon, dgrid_km, nx, ny, year,
+                     stack_lat=None, stack_lon=None):
     """Split by the actual model domain; sort exterior candidates by chimney distance."""
     half_x, half_y = dgrid_km * nx / 2.0, dgrid_km * ny / 2.0
+    # The domain bbox is centred on center_location; exterior station
+    # ranking is relative to the physical chimney (not necessarily centre).
+    anchor_lat = center_lat if stack_lat is None else stack_lat
+    anchor_lon = center_lon if stack_lon is None else stack_lon
     inside, outside, seen = [], [], set()
     for s in filter_by_year(stations, year):
         if s["id"] in seen:
@@ -169,7 +174,7 @@ def candidate_groups(stations, center_lat, center_lon, dgrid_km, nx, ny, year):
         seen.add(s["id"])
         dx, dy = signed_offsets_km(center_lat, center_lon, s["lat"], s["lon"])
         row = dict(s)
-        row["dist_km"] = haversine_km(center_lat, center_lon, s["lat"], s["lon"])
+        row["dist_km"] = haversine_km(anchor_lat, anchor_lon, s["lat"], s["lon"])
         (inside if abs(dx) <= half_x and abs(dy) <= half_y else outside).append(row)
     inside.sort(key=lambda s: (s["dist_km"], s["id"]))
     outside.sort(key=lambda s: (s["dist_km"], s["id"]))
@@ -186,6 +191,10 @@ def main():
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--pstop", type=float, default=500.0)
     parser.add_argument("--station-id", type=str, help="Explicit station (still subject to >80% gate)")
+    parser.add_argument("--stack-file", type=Path, default=None,
+                        help="Optional explicit stack_location; default grid/stack_location")
+    parser.add_argument("--stack-lat", type=float, default=None)
+    parser.add_argument("--stack-lon", type=float, default=None)
     parser.add_argument("--auto-select-all", action="store_true",
                         help="Legacy argument; in-domain qualifying stations are always all selected")
     parser.add_argument("--yes", action="store_true")
@@ -196,17 +205,34 @@ def main():
     from native_cpp.modules.p4_read62.data_prep.parse_igra_to_csv import observed_year_coverage
 
     center_lat, center_lon = parse_center(current_project_path("grid", "center_location"))
+    if (args.stack_lat is None) != (args.stack_lon is None):
+        parser.error("--stack-lat and --stack-lon must be supplied together")
+    stack_file = args.stack_file or current_project_path("grid", "stack_location")
+    if args.stack_lat is not None:
+        chimney_lat, chimney_lon = args.stack_lat, args.stack_lon
+        stack_source = "EXPLICIT_CLI"
+    elif stack_file.is_file():
+        chimney_lat, chimney_lon = parse_center(stack_file)
+        stack_source = "EXPLICIT_STACK_LOCATION_FILE"
+    else:
+        # Backward-compatible legacy cases only. G5 cases should provide
+        # an explicit chimney coordinate from the GUI or case model.
+        chimney_lat, chimney_lon = center_lat, center_lon
+        stack_source = "LEGACY_CENTER_FALLBACK"
+    if not (-90 <= chimney_lat <= 90 and -180 <= chimney_lon <= 180):
+        parser.error("chimney latitude/longitude outside valid range")
     dgrid_km, nx, ny = parse_grid(current_project_path("grid", "grid.cmn"))
     all_stations = load_station_list(engine_path("resources", "igra", "igra2-station-list.txt"))
-    in_domain, out_domain = candidate_groups(all_stations, center_lat, center_lon,
-                                              dgrid_km, nx, ny, args.year)
+    in_domain, out_domain = candidate_groups(
+        all_stations, center_lat, center_lon, dgrid_km, nx, ny, args.year,
+        chimney_lat, chimney_lon)
     if args.station_id:
         matches = [s for s in filter_by_year(all_stations, args.year) if s["id"] == args.station_id]
         if not matches:
             raise SystemExit(f"Requested station not available in {args.year}: {args.station_id}")
         station = matches[0]
         dx, dy = signed_offsets_km(center_lat, center_lon, station["lat"], station["lon"])
-        row = {**station, "dist_km": haversine_km(center_lat, center_lon,
+        row = {**station, "dist_km": haversine_km(chimney_lat, chimney_lon,
                                                   station["lat"], station["lon"])}
         if abs(dx) <= dgrid_km * nx / 2 and abs(dy) <= dgrid_km * ny / 2:
             in_domain, out_domain = [row], []
@@ -220,8 +246,9 @@ def main():
     audit = {
         "year": args.year, "pstop_hpa": args.pstop,
         "coverage_rule": "strictly >80% valid original 00/12 UTC, before cloning",
-        "chimney_assumption": "center_location is chimney in the configured case",
-        "chimney_lat": center_lat, "chimney_lon": center_lon,
+        "chimney_location_source": stack_source,
+        "domain_center_lat": center_lat, "domain_center_lon": center_lon,
+        "chimney_lat": chimney_lat, "chimney_lon": chimney_lon,
         "in_domain_candidates": len(in_domain),
         "outside_candidates": len(out_domain),
         "checked": [], "selected": [],
@@ -278,8 +305,8 @@ def main():
                          "valid_original_slots", "expected_slots", "raw_coverage", "distance_km"])
         for station, raw, info, kind in selected:
             proxy = kind == "VIRTUAL_RELOCATED"
-            effective_lat = center_lat if proxy else station["lat"]
-            effective_lon = center_lon if proxy else station["lon"]
+            effective_lat = chimney_lat if proxy else station["lat"]
+            effective_lon = chimney_lon if proxy else station["lon"]
             writer.writerow([station["id"], station["name"], effective_lat, effective_lon,
                              station["elev_m"], args.year, str(raw),
                              station["lat"], station["lon"], kind,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P6G end-to-end runner: P6D wind producer -> P6F CALMET.DAT writer -> P6E
+"""FORENSIC P6G multi-pass validator (NOT the original one-pass COMP/DIAGNO). P6D wind producer -> P6F CALMET.DAT writer -> P6E
 `emit-realcase` -> 45-field comparison against the frozen 2022 reference.
 
 One command runs the whole chain and prints a per-field verdict table plus a
@@ -227,12 +227,28 @@ def main() -> int:
     parser.add_argument("--p6f-bin", default=None)
     parser.add_argument("--p6e-bin", default=None)
     parser.add_argument("--bridge-bin", default=None)
+    parser.add_argument("--require-native-single-pass", action="store_true",
+                        help="fail closed: multi-pass P6D/P6E cannot certify original COMP/DIAGNO")
     parser.add_argument("--hours", type=int, default=FROZEN_HOURS)
     parser.add_argument("--jobs", type=int, default=8)
+    parser.add_argument("--original-gamma-dir", default=None,
+                        help="DIAGNOSTIC ONLY: source-traced original 143h GAMMA *.f32 "
+                             "for independent FRADJ-state bisection")
+    parser.add_argument("--original-gamma-manifest", default=None,
+                        help="required paired source-pinned gamma_source_manifest.json")
+    parser.add_argument("--original-similt-station-dir", default=None,
+                        help="FORENSIC ONLY: original source-extracted 143h "
+                             "REAL4 EL and ZII as received by SIMILT")
+    parser.add_argument("--original-similt-station-manifest", default=None,
+                        help="required byte-verified original source station state proof")
+    parser.add_argument("--export-native-comp-state", action="store_true",
+                        help="write candidate A's native per-hour P6E COMP ZI/ZICONV/DPTT for next-hour P6D state bisection; NOT source injected")
     parser.add_argument("--reuse-p6d", action="store_true",
                         help="reuse an existing <work>/p6d product instead of "
                              "re-running the producer")
     args = parser.parse_args()
+    if args.require_native_single_pass:
+        raise Failure("this forensic multi-pass script cannot certify an independently native single-pass COMP/DIAGNO solver")
 
     repo = pathlib.Path(args.repo).resolve() if args.repo else \
         pathlib.Path(__file__).resolve().parent.parent
@@ -273,6 +289,56 @@ def main() -> int:
         if not path.is_file():
             raise Failure(f"{label} not found: {path}")
 
+    gamma_provenance = None
+    if bool(args.original_gamma_dir) != bool(args.original_gamma_manifest):
+        raise Failure("original GAMMA directory and source proof must be supplied together")
+    if args.original_gamma_dir:
+        gamma_dir = pathlib.Path(args.original_gamma_dir).resolve()
+        proof_file = pathlib.Path(args.original_gamma_manifest).resolve()
+        if not proof_file.is_file() or not gamma_dir.is_dir():
+            raise Failure("original GAMMA oracle directory/manifest unavailable")
+        gamma_provenance = json.loads(proof_file.read_text())
+        if (gamma_provenance.get("status") != "PASS_ORIGINAL_GAMMA_SOURCE_REAL4"
+                or not gamma_provenance.get("met_dat_byte_identical")
+                or not gamma_provenance.get("met_dat_matches_frozen_reference")
+                or gamma_provenance.get("pin", {}).get("original_git_blob")
+                   != "437f43bb7f0e51a1919e56664663e1a046986ed0"):
+            raise Failure("original GAMMA write-only source/unchanged MET.DAT proof invalid")
+        records = gamma_provenance.get("gamma", {}).get("records", [])
+        if len(records) != args.hours:
+            raise Failure("original GAMMA reference hours do not match P6D run")
+        for row in records:
+            name = gamma_dir / f"gamma_{row['hour']}.f32"
+            if not name.is_file() or name.stat().st_size != 50*50*4 or (
+                    sha256_of(name) != row["sha256"]):
+                raise Failure("original source GAMMA bytes differ from trace: " + str(name))
+        print("[gamma-oracle] FORTRAN ORIGINAL-REFERENCE DIAGNOSTIC ONLY "
+              f"({len(records)} hours; source MET.DAT bitwise unchanged)")
+
+    similt_proof = None
+    if bool(args.original_similt_station_dir) != bool(args.original_similt_station_manifest):
+        raise Failure("original SIMILT station dir and manifest must be supplied together")
+    if args.original_similt_station_dir:
+        source_dir = pathlib.Path(args.original_similt_station_dir).resolve()
+        manifest_path = pathlib.Path(args.original_similt_station_manifest).resolve()
+        if not source_dir.is_dir() or not manifest_path.is_file():
+            raise Failure("original SIMILT station manifest/data unavailable")
+        similt_proof = json.loads(manifest_path.read_text())
+        if (similt_proof.get("status")!="PASS_ORIGINAL_SIMILT_ZII_EL_SOURCE_REAL4"
+                or not similt_proof.get("original_and_instrumented_met_dat_byte_identical")
+                or similt_proof.get("original_git_blob")
+                   != "437f43bb7f0e51a1919e56664663e1a046986ed0"
+                or similt_proof.get("reference_met_dat_sha256") != FROZEN_MET_SHA256
+                or similt_proof.get("hours") != args.hours
+                or similt_proof.get("station_1_based") != {"is":26,"js":26,"ns":1}):
+            raise Failure("SIMILT station proof is not tied to frozen original Fortran")
+        for key, hashkey in (("zii_file","zii_sha256"),("el_file","el_sha256")):
+            file=source_dir/similt_proof[key]
+            if file.stat().st_size!=args.hours*4 or sha256_of(file)!=similt_proof[hashkey]:
+                raise Failure("SIMILT source REAL4 file hash/length mismatch: "+str(file))
+        print("[similt-oracle] ORIGINAL FORTRAN STATION ZII/EL, "
+              "FOR DIAGNOSTIC USE ONLY; NOT NATIVE C++ MIXHTST/ELUSTR2")
+
     timings = {}
     started = time.time()
 
@@ -288,12 +354,21 @@ def main() -> int:
     # ---- 1. P6D wind producer --------------------------------------------
     p6d_fields = work / "p6d"
     if args.reuse_p6d and (p6d_fields / "metadata.json").is_file():
+        if gamma_provenance is not None or similt_proof is not None:
+            raise Failure("--reuse-p6d forbidden with source-traced original state")
         print("[p6d] reusing existing product")
     else:
-        _, elapsed = run(
-            [bins[P6D_TARGET], "--case", case, "--out", p6d_fields,
-             "--hours", args.hours],
-            work / "logs/p6d.log", "p6d")
+        p6d_cmd = [bins[P6D_TARGET], "--case", case, "--out", p6d_fields,
+                   "--hours", args.hours]
+        if gamma_provenance is not None:
+            p6d_cmd.extend(["--gamma", pathlib.Path(args.original_gamma_dir).resolve()])
+        if similt_proof is not None:
+            source_dir = pathlib.Path(args.original_similt_station_dir).resolve()
+            p6d_cmd.extend([
+                "--zii-cell", source_dir/similt_proof["zii_file"],
+                "--el-cell", source_dir/similt_proof["el_file"],
+            ])
+        _, elapsed = run(p6d_cmd, work / "logs/p6d.log", "p6d")
         timings["p6d_s"] = elapsed
     p6d_metadata = json.loads((p6d_fields / "metadata.json").read_text())
 
@@ -321,12 +396,14 @@ def main() -> int:
     # ---- 4. P6E consumer, case A (reconstructed wind) ---------------------
     candidate_a = work / "A/candidate.dat"
     candidate_a.parent.mkdir(parents=True, exist_ok=True)
-    _, elapsed = run(
-        [bins[P6E_TARGET], "emit-realcase", "--reference", met_dat,
+    p6e_A_cmd=[bins[P6E_TARGET], "emit-realcase", "--reference", met_dat,
          "--observations", hourly_csv, "--wind-file", reconstructed,
          "--geo-file", geo_dat, "--out", candidate_a,
-         "--report", work / "A/candidate.json"],
-        work / "logs/p6e_A.log", "p6e-A")
+         "--report", work / "A/candidate.json"]
+    if args.export_native_comp_state:
+        p6e_A_cmd.extend(["--state-prefix", work / "A/native_comp",
+                             "--station-flux-csv", p6d_fields / "station_elustr2.csv"])
+    _, elapsed = run(p6e_A_cmd, work / "logs/p6e_A.log", "p6e-A")
     timings["p6e_A_s"] = elapsed
 
     # ---- 5. P6E consumer, case B (original wind, control baseline) --------
@@ -372,6 +449,10 @@ def main() -> int:
 
     # ---- 7. report --------------------------------------------------------
     report = {
+        "scientific_acceptance": "NOT_PASS",
+        "native_single_pass_comp_diagno": False,
+        "original_reference_backfill": {"p6f_statics": True, "p6f_met_fields": True},
+        "scientific_limitation": "Forensic multi-pass with frozen original met.dat backfill; not an independent CALMET.DAT",
         "status": "PASS" if all(
             r["verdict"] in ("PASS", "NOT_PRODUCED") for r in rows_a + rows_b)
             else "FAIL_NUMERIC",
@@ -393,6 +474,26 @@ def main() -> int:
             "B": {"source": "frozen met.dat U/V/W", "wind_file": str(met_dat)},
         },
         "p6d_metadata": p6d_metadata,
+        "forensic_original_gamma": {
+            "mode": ("SOURCE_TRACED_ORIGINAL_REAL4_DIAGNOSTIC_ONLY"
+                     if gamma_provenance is not None else "NOT_SUPPLIED"),
+            "is_self_contained_cpp_calmet": False if gamma_provenance else None,
+            "source_proof": (
+                sha256_of(pathlib.Path(args.original_gamma_manifest))
+                if gamma_provenance is not None else None),
+            "original_met_dat_byte_identical": (
+                gamma_provenance["met_dat_byte_identical"]
+                if gamma_provenance is not None else None),
+        },
+        "forensic_original_similt_station": {
+            "mode": ("ORIGINAL_FORTRAN_SIMILT_ZII_EL_REFERENCE_ONLY"
+                     if similt_proof is not None else "NOT_SUPPLIED"),
+            "self_contained_cpp_state_physics": False if similt_proof is not None else None,
+            "manifest_sha256": (
+                sha256_of(pathlib.Path(args.original_similt_station_manifest))
+                if similt_proof is not None else None),
+            "station_cell": similt_proof.get("station_1_based") if similt_proof else None,
+        },
         "field_table": {
             "A_reconstructed_wind": rows_a,
             "B_original_wind": rows_b,
@@ -411,6 +512,7 @@ def main() -> int:
           f"sha256={report['wind_provenance']['A']['p6f_calmet_dat_sha256']}")
     print(f"B wind source  : {met_dat} (frozen)")
     print(f"report         : {report_path}")
+    print("SCIENTIFIC_ACCEPTANCE=NOT_PASS: forensic multi-pass and reference backfill")
     print_table("A) reconstructed wind  vs frozen met.dat", rows_a)
     print_table("B) original wind (control) vs frozen met.dat", rows_b)
     print_table("A - B) error the P6D wind segment propagates through P6E", rows_ab)

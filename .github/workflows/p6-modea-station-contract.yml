@@ -1,0 +1,210 @@
+name: P6 Mode A original CALMET station and grid parity
+
+on:
+  pull_request:
+    paths:
+      - 'native_cpp/modules/p6_calmet/**'
+      - 'engine/preprocess/grid/**'
+      - 'engine/run_met/**'
+      - '.github/workflows/p6-modea-station-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p6-modea-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  original-readcf:
+    name: Original Fortran READCF and isolated C++ station geometry
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: p6_modea_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6_modea_checkout
+      - uses: ./p6_modea_checkout/.github/actions/cteas-linux-toolchain
+      - name: Verify source deck from the checked-out Git commit
+        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode source
+      - name: Require Fortran compiler and original control deck
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v gfortran-11 || command -v gfortran-12 || command -v gfortran
+          test -s project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp
+          test -s engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for
+      - name: Compare unmodified READCF REAL*4 statements
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v gfortran-11 >/dev/null 2>&1; then FC=gfortran-11;
+          elif command -v gfortran-12 >/dev/null 2>&1; then FC=gfortran-12;
+          else FC=gfortran; fi
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_deck_station.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223/calmet.for \
+            --deck project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp \
+            --compiler "$FC" --out "$RUNNER_TEMP/p6-modea-readcf-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Compile and run C++ isolated station contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/p6-modea-station-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cmake -S native_cpp/modules/p6_calmet -B "$build" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$build" --target cteas_p6_station_deck_tests --parallel 2
+          ctest --test-dir "$build" --output-on-failure -R '^p6d_original_station_deck_synthetic_source_contract$'
+          "$build/cteas_p6_station_deck_tests" project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp
+      - name: Archive original Fortran READCF result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6-modea-original-readcf
+          path: ${{ runner.temp }}/p6-modea-readcf-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: warn
+
+  first-hour-wind1-source:
+    name: Real-case hour 1 original Fortran WIND1 first guess
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: p6_modea_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6_modea_checkout
+      - uses: ./p6_modea_checkout/.github/actions/cteas-linux-toolchain
+      - name: Verify complete frozen observation and grid inputs
+        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+      - name: Build P6D producer and standalone selected WIND1 driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/p6-modea-hour1-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cmake -S native_cpp/modules/p6_calmet -B "$build" -DCMAKE_BUILD_TYPE=Debug
+          cmake --build "$build" --target cteas_p6_realcase_wind_field cteas_p6_wind1_firstguess --parallel 2
+      - name: Compare frozen real hour with unchanged original WIND1 and SIMILT
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/p6-modea-hour1-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          out="$RUNNER_TEMP/p6-modea-hour1-parity-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if command -v gfortran-11 >/dev/null 2>&1; then FC=gfortran-11;
+          elif command -v gfortran-12 >/dev/null 2>&1; then FC=gfortran-12;
+          else FC=gfortran; fi
+          python3 native_cpp/modules/p6_calmet/reference/compare_original_wind1_realcase_first_hour.py \
+            --vendor engine/vendor/src/CALMET_v6.5.0_L150223 \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --p6d "$build/cteas_p6_realcase_wind_field" \
+            --cpp "$build/cteas_p6_wind1_firstguess" \
+            --fortran "$FC" --out "$out"
+      - name: Preserve first-hour WIND1 field residuals
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p6-modea-first-hour-wind1-verdict
+          path: ${{ runner.temp }}/p6-modea-hour1-parity-${{ github.run_id }}-${{ github.run_attempt }}/first_hour_wind1_parity.json
+          if-no-files-found: warn
+
+  grid-and-station-contract:
+    name: Grid generator to P1-P5 to CALMET inputs
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: p6_modea_checkout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: p6_modea_checkout
+      - name: Verify grid and station fixtures from the checked-out Git commit
+        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode grid
+      - name: Require original generated grid and case inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            project/cases/hefei5km_2022_reference_case_20261011/case.yaml \
+            project/cases/hefei5km_2022_reference_case_20261011/grid/grid.cmn \
+            project/cases/hefei5km_2022_reference_case_20261011/grid/center_location \
+            project/cases/hefei5km_2022_reference_case_20261011/geo/makegeo/geo.dat \
+            project/cases/hefei5km_2022_reference_case_20261011/run/met/met.inp \
+            project/cases/hefei5km_2022_reference_case_20261011/met/surface/final/stations.csv \
+            project/cases/hefei5km_2022_reference_case_20261011/met/upperair/final/stations.csv; do
+            test -s "$path" || { echo "::error::Missing input $path"; exit 1; }
+          done
+          python3 -c 'import yaml'
+      - name: Grid generator numeric and corner-vs-centre contract
+        run: python3 native_cpp/modules/p6_calmet/tests/check_case_grid_source_contract.py project/cases/hefei5km_2022_reference_case_20261011
+      - name: Station data handoff contract
+        run: python3 native_cpp/modules/p6_calmet/tests/check_case_station_contract.py project/cases/hefei5km_2022_reference_case_20261011
+
+  full-143h:
+    name: 143-hour original U/V/W and P6F-P6E coupling
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: p6_modea_checkout
+    steps:
+      # Do not demand git-lfs on all sixteen self-hosted workers: most frozen
+      # scientific inputs are immutable Git blobs, and content is checked
+      # explicitly before computation. A real LFS pointer fails closed below.
+      - uses: actions/checkout@v4
+        with:
+          path: p6_modea_checkout
+      - uses: ./p6_modea_checkout/.github/actions/cteas-linux-toolchain
+      - name: Verify full frozen 143-hour scientific data from Git HEAD
+        run: python3 native_cpp/modules/p6_calmet/reference/restore_frozen_case_from_git.py --mode full
+      - name: Reject missing or LFS-pointer frozen scientific inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          case_dir=project/cases/hefei5km_2022_reference_case_20261011
+          for path in \
+            "$case_dir/geo/makegeo/geo.dat" \
+            "$case_dir/met/surface/final/surf.dat" \
+            "$case_dir/met/upperair/final/up_58424.dat" \
+            "$case_dir/run/met/met.inp" \
+            "$case_dir/run/met/met.dat"; do
+            test -s "$path" || { echo "::error::Missing or empty $path"; exit 1; }
+            if head -c 128 "$path" | grep -aq 'version https://git-lfs.github.com/spec/v1'; then
+              echo "::error::Unresolved Git LFS pointer: $path"; exit 1
+            fi
+          done
+          echo 'Frozen case inputs available; no substituting case.yaml projected centre'
+      - name: Strict Debug scoped Mode A CTests
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/p6-modea-debug-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cmake -S native_cpp/modules/p6_calmet -B "$build" -DCMAKE_BUILD_TYPE=Debug -DCTEAS_P6_MODE_A_REQUIRE_CASE=ON
+          cmake --build "$build" --parallel 2
+          ctest --test-dir "$build" --output-on-failure -R '^(p6_modea_original_grid_generator_to_metinp|p6d_(original_metinp_station_deck_input|p3_p4_p5_metinp_station_contract|original_readcf_real4_fortran_source|realcase_wind_producer_case_contract))$'
+      - name: Release REAL*4 original station contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/p6-modea-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cmake -S native_cpp/modules/p6_calmet -B "$build" -DCMAKE_BUILD_TYPE=Release -DCTEAS_P6_MODE_A_REQUIRE_CASE=ON
+          cmake --build "$build" --target cteas_p6_station_deck_tests --parallel 2
+          ctest --test-dir "$build" --output-on-failure -R '^p6d_original_metinp_station_deck_input$'
+      - name: Full 143-hour P6D to P6F to P6E original-field comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/run_p6_end_to_end.py \
+            --case project/cases/hefei5km_2022_reference_case_20261011 \
+            --build-dir "$RUNNER_TEMP/p6-modea-g6-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --work "$RUNNER_TEMP/p6-modea-g6-work-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+      - name: Archive field errors and source numeric evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p6-modea-143h-uv-w-evidence
+          path: ${{ runner.temp }}/p6-modea-g6-work-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: warn

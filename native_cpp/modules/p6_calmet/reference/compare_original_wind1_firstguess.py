@@ -2,7 +2,7 @@
 """Unmodified CALMET WIND1+SIMILT versus C++ selected two-station first guess.
 
 Scope: one land SURF station, one upper station, no overwater, NBAR=0,
-IEXTRP=-4 and NZ=9. All 50x50x9 U/V values per case are compared. This does
+IEXTRP=-4, original DIAGNO EDIT=999 and EDITL=900, NZ=9. All 50x50x9 U/V values per case are compared. This does
 not qualify multi-station WIND1 or complete 2022 DIAGNO meteorology.
 """
 import argparse
@@ -48,8 +48,8 @@ DRIVER = r"""      program originalwind1
       kbar=0
       iwat1=50
       iwat2=55
-      edit=999999.
-      editl=999998.
+      edit=999.
+      editl=900.
       zface(1)=0.
       zface(2)=20.
       zface(3)=40.
@@ -90,8 +90,8 @@ DRIVER = r"""      program originalwind1
       us(1,1)=wu
       vs(1,1)=wv
       do k=2,nz
-        us(k,1)=999999.
-        vs(k,1)=999999.
+        us(k,1)=999.
+        vs(k,1)=999.
       enddo
       call wind1
       open(11,file=trim(outfile),status='replace')
@@ -169,7 +169,7 @@ def scenes():
     for name,u,v,icalm,bias,missing in basics:
         upper=[(1.5+0.17*k,-3.1+0.11*k) for k in range(NZ)]
         for k in missing:
-            upper[k]=(999999.,999999.)
+            upper[k]=(999.,999.)
         yield dict(name=name,surface_x=900.,surface_y=1600.,
                    upper_x=4100.,upper_y=3500.,u=u,v=v,
                    roughness=0.1,latitude=31.939774,height=10.,
