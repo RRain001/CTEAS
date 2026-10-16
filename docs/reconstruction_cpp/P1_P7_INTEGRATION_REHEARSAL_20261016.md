@@ -91,20 +91,45 @@ code for the native P6 build.
   verdict `C2_ACCEPTED=true`. No original DGM injected into P7.
 - This was 143 continuous model hours, **NOT the 2024 leap-year 8,784h**.
 
-### C1: 2022 single-station original MET, 143h strict — UNDERWAY AT INITIAL REPORT
+### C1: 2022 single-station original MET, 143h strict — PASS
 
-Dedicated integration C1 [Actions #38846349292](https://github.com/RRain001/CTEAS/actions/runs/38846349292)
-reruns original Fortran DGM and real native P7 on the integrated branch
-in a full stateful 143h replay with fail-closed H-3 / DGM / binary
-`puff.con` checks. Its final verdict MUST be refreshed from actual
-live workflow logs, not inferred from historical PR69 success.
+Dedicated integrated [Actions #38846349292](https://github.com/RRain001/CTEAS/actions/runs/38846349292)
+completed **SUCCESS** at 2026-10-16 04:11:59 UTC, duration
+approximately 35m 41s. Source SHA for C1 verification:
+`86f2cc1d9e5e9fc8404ebece5b953bc44a62c6d0`.
+The original Fortran DGM generator and full 143h native C++ P7 COMP
+stateful replay **both completed**.
+
+Independent log evidence (not simply the GitHub conclusion):
+
+- `P7_HEFEI_REAL_EXTENDED_SOURCE_PROBE=PASS HOURS=143 ORIGINAL_DGM_ROWS=254687 H3_REAL4_WORDS=357500/357500 FIRST_DIFFERENCE=NONE 143H_SCIENTIFIC_ACCEPTED=YES FULL_PUFF_CON_ACCEPTED=YES`.
+- `P7_REAL_FULL_143H_WROUT1_SHA256_GATE=PASS RECORDS=3655 BYTES=1896056 SHA256=0d51bdb68ff1a5798048bc41067107d3ffe10dc6222f25336df856bcbf48ba10`.
+- `P7_REAL_FULL_143H_SCIENTIFIC_PROBE=PASS HOURS=143 H3_REAL4=357500/357500 DGM=254687/254687 WROUT1=BINARY_EXACT`.
+- Both original and native `puff.con` compared with `cmp` (strict byte parity).
+- [Uploaded artifact #12024269127](https://github.com/RRain001/CTEAS/actions/runs/38846349292/artifacts/12024269127) contains the full native `puff.con` and replay log.
+
+### Git object / CI conflict disposition verified again before review
+
+Both authoritative tree snapshots and current integration-head tree snapshots
+were read through GitHub (nontruncated recursive trees). P1–P3 and original vendor
+source trees agree with current `main`; P4/P5/P6/G5 agree exactly with
+`7a13cc6a2f2d7b4c99e18b8866043a0319733454`; P7 module agrees exactly
+with `6ff9387a4f1416377a41275aed62a52c13e4b251`.
+All **eleven** overlapping P4/P6 workflow blob SHAs on integration match
+the P6 multistation authority, including the two that Git could have
+auto-merged. No accepted P6 workflow was replaced by P7's earlier snapshot.
+
+The current integration head includes subsequent **documentation and CI-only**
+changes after the pinned 2022/2024 scientific run SHAs; the respective physical
+module Git subtree SHAs were checked on the current branch and match the
+accepted science authorities exactly. The new main PR itself and any
+required branch-level CI still need formal review.
 
 ## Acceptance boundaries and next action
 
-Status at the initial report: **P1–P7 GIT_INTEGRATED_ON_ISOLATED_BRANCH;
-C2_UNIFIED_SCIENCE_PASS; C1_INTEGRATION_FULL143_PENDING. MAIN_UNTOUCHED.**
+Status after final C1+C2 results: **P1–P7 GIT_INTEGRATED_ON_ISOLATED_BRANCH; C2_UNIFIED_SCIENCE_PASS; C1_INTEGRATION_FULL143_PASS; MAIN_UNTOUCHED.**
 
-- Verify C1 integration run and publish its actual result.
+- C1 integrated 2022 143h and C2 integrated 2024 143h accepted, as documented above.
 - Keep source SHA pinning evidence and review the eleven accepted P6
   workflow resolutions before final `main` merge.
 - For final main integration, preserve original PR ancestry
