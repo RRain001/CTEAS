@@ -31,13 +31,21 @@ jobs:
           python3 native_cpp/modules/p7_calpuff/reference/test_p7_six_pair_matrix.py -v
           python3 native_cpp/modules/p7_calpuff/reference/test_compare_p7_hourly_concentrations.py -v
 
-      - name: Read frozen C1 original A/C and native D 143h files (historical accepted run)
+      - name: Read frozen C1 vendor A/C and native P7 D (historical accepted C1 run)
         uses: actions/download-artifact@v4
         with:
           name: p7-c1-pr53-original-native-met-143h
           run-id: 38739266720
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: ${{ runner.temp }}/p7-sixpair/C1-frozen
+
+      - name: Read actual current-head native P7 B 143h concentration output
+        uses: actions/download-artifact@v4
+        with:
+          name: p7-real-full143-source-and-puffcon-parity
+          run-id: 38830286957
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/p7-sixpair/B-native-full143
 
       - name: Read C2 four-arm independently measured 143h JSON comparisons
         uses: actions/download-artifact@v4
@@ -65,7 +73,10 @@ jobs:
           A=$(find_one "$c1" 'A-original-calpuff.con')
           C=$(find_one "$c1" 'C-original-calpuff.con')
           D=$(find_one "$c1" 'D-native-p7-native-met.con')
-          B=project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con
+          B=$(find_one "$root/B-native-full143" 'native-full143-puff.con')
+          # B really is the new P7 native output, not an alias of vendor A.
+          # Independently enforce its original-vendor full-output SHA.
+          echo "0d51bdb68ff1a5798048bc41067107d3ffe10dc6222f25336df856bcbf48ba10  $B" | sha256sum -c -
           echo '0d51bdb68ff1a5798048bc41067107d3ffe10dc6222f25336df856bcbf48ba10  project/cases/hefei5km_2022_reference_case_20261011/run/puff/puff.con' | sha256sum -c -
           python3 native_cpp/modules/p7_calpuff/reference/p7_six_pair_matrix.py \
             --case C1 --mode files --nx 50 --ny 50 --hours 143 \
