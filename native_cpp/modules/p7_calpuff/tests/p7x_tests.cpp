@@ -2,7 +2,9 @@
 // semantics, plus every fail-closed refusal.
 #include "cteas/puff/step_integration.hpp"
 
+#include <bit>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -142,6 +144,41 @@ int main() {
     check_close(moved.y_cells, 25.0 + (1.3557 * 66.666666) / 100.0, 1.0e-5, "YNEW");
     check_close(moved.distance_m, advance.wind_speed_ms * 66.666666, 1.0e-4, "DISTM = WS*TSAMP");
     check_close(moved.dx_cells, (-0.5793 * 66.666666) / 100.0, 1.0e-6, "DXOLD in grid units");
+    // Frozen ORIGINAL CALPUFF 2022 COMP DGM (202200101 record 1685,
+    // 202200103 record 5671). They expose one-ULP discrepancies when the
+    // original REAL*4 XGRIDMI multiplication is incorrectly replaced with
+    // mathematically equivalent division by DGRIDM. No epsilon is allowed.
+    AdvanceInputs vendor_y{};
+    vendor_y.x_cells = 25.52056884765625F;
+    vendor_y.y_cells = 30.92965316772461F;
+    vendor_y.u_ms = 0.18750369548797607F;
+    vendor_y.v_ms = 2.267062187194824F;
+    vendor_y.wind_speed_ms = 2.2748029232025146F;
+    vendor_y.step_s = 43.37349319458008F;
+    vendor_y.grid_spacing_m = 100.0F;
+    const auto locked_y = advance_puff(vendor_y);
+    check(std::bit_cast<std::uint32_t>(static_cast<float>(locked_y.y_cells)) ==
+              0x41ff4dbcU, "2022 DGM record 1685 YNEW must be vendor REAL4 bit exact");
+    check(locked_y.x_cells == static_cast<double>(25.601896286010742F),
+          "2022 DGM record 1685 XNEW must be vendor REAL4 exact");
+    check(locked_y.distance_m == static_cast<double>(98.66614532470703F),
+          "2022 DGM record 1685 DISTM must be vendor REAL4 exact");
+
+    AdvanceInputs vendor_x{};
+    vendor_x.x_cells = 30.62416648864746F;
+    vendor_x.y_cells = 38.316463470458984F;
+    vendor_x.u_ms = 1.6575729846954346F;
+    vendor_x.v_ms = -0.9095627665519714F;
+    vendor_x.wind_speed_ms = 1.8907279968261719F;
+    vendor_x.step_s = 52.889686584472656F;
+    vendor_x.grid_spacing_m = 100.0F;
+    const auto locked_x = advance_puff(vendor_x);
+    check(std::bit_cast<std::uint32_t>(static_cast<float>(locked_x.x_cells)) ==
+              0x41fc01beU, "2022 DGM record 5671 XNEW must be vendor REAL4 bit exact");
+    check(locked_x.y_cells == static_cast<double>(37.83539962768555F),
+          "2022 DGM record 5671 YNEW must be vendor REAL4 exact");
+    check(locked_x.distance_m == static_cast<double>(100.00000762939453F),
+          "2022 DGM record 5671 DISTM must be vendor REAL4 exact");
 
     // GETCELL: the single-domain GRIDIJ path (truncate then add one, then the
     // full-precision adjustment).
@@ -176,6 +213,28 @@ int main() {
     located = grid_cell(cell);
     check(located.i == 1 && located.j == 1, "a position before the origin is nudged inside");
 
+    // SETPUF's /CURRENT/ coordinate publication (metres) and the stored position.
+    CurrentCoordinateInputs current;
+    current.x_begin_cells = 25.0;
+    current.y_begin_cells = 25.0;
+    current.z_begin_m = 136.404;
+    current.x_end_cells = 24.6138;
+    current.y_end_cells = 25.9038;
+    current.grid_spacing_m = 100.0;
+    current.step_s = 66.666666;
+    const auto published = current_coordinates(current);
+    check_close(published.x_begin_m, 2500.0, 1.0e-3, "xb1 = XPB*DGRID");
+    check_close(published.y_begin_m, 2500.0, 1.0e-3, "yb1 = YPB*DGRID");
+    check_close(published.x_end_m, 2461.38, 1.0e-2, "xe1 = XNEW*DGRID");
+    check_close(published.y_end_m, 2590.38, 1.0e-2, "ye1 = YNEW*DGRID");
+    check_close(published.z_end_m, 136.404, 1.0e-3, "ze1 without settling keeps the height");
+    current.settling_velocity_ms = 0.01;
+    const auto settled = current_coordinates(current);
+    check_close(settled.z_end_m, 136.404 - 0.01 * 66.666666, 1.0e-3, "ze1 drops with settling");
+    check_close(settled.stored_z_m, settled.z_end_m, 1.0e-9, "ZPB stores the settled height");
+    current.settling_velocity_ms = 100.0;
+    check_close(current_coordinates(current).z_end_m, 0.0, 1.0e-9, "ze1 is floored at the ground");
+
     // Fail-closed refusals.
     SamplingCadenceInputs bad = cadence;
     bad.source_type = 2;
@@ -201,6 +260,13 @@ int main() {
     bad_advance = advance;
     bad_advance.step_s = std::nan("");
     check_refuses([&] { (void)advance_puff(bad_advance); }, "refuses a NaN step");
+    CurrentCoordinateInputs bad_current = current;
+    bad_current.step_s = 0.0;
+    check_refuses([&] { (void)current_coordinates(bad_current); },
+                  "refuses a zero step in the /CURRENT/ publication");
+    bad_current = current;
+    bad_current.settling_velocity_ms = -1.0;
+    check_refuses([&] { (void)current_coordinates(bad_current); }, "refuses a negative settling");
     CellLookupInputs bad_cell = cell;
     bad_cell.domains = 2;
     check_refuses([&] { (void)grid_cell(bad_cell); }, "GETCELL refuses nested domains");

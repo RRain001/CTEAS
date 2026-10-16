@@ -26,6 +26,8 @@
 #include "cteas/p6e/geo_landuse.hpp"
 #include "cteas/p6e/heatfx.hpp"
 #include "cteas/p6e/mixht_observed_mc.hpp"
+#include "cteas/p6/station_mixhtst.hpp"
+#include "cteas/p6e/native_hourly_comp_steps.hpp"
 #include "cteas/p6e/wstarr.hpp"
 #include "cteas/p6e/pgtstb.hpp"
 #include "cteas/p6e/solar.hpp"
@@ -34,10 +36,13 @@
 #include "cteas/p6e/temp3d_observed_land.hpp"
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -286,6 +291,59 @@ struct BridgeObservation {
     MixdtSounding aa,bb;
     std::vector<float> aa_face,bb_face;
 };
+struct NativeStationFlux {
+    float qh=0.f,ustar=0.f,el=0.f,rho=0.f;
+};
+std::vector<NativeStationFlux> read_native_station_flux_csv(
+        const std::string& path,std::size_t hours,std::size_t first_hour=0) {
+    if(path.empty())return {};
+    std::ifstream in(path);
+    if(!in)throw std::invalid_argument("native P6D station flux input missing");
+    std::string header;
+    if(!std::getline(in,header) ||
+       header!="hour_end,QH_Wm2,USTAR_mps,EL_m,solar_sine,temp_K,rho_kgm3,Z0_m,station_cell_i,station_cell_j")
+       throw std::invalid_argument("native station ELUSTR2 columns/provenance invalid");
+    std::vector<NativeStationFlux> rows;
+    std::string line;
+    for(std::size_t i=0;i<hours;++i){
+        if(!std::getline(in,line))
+            throw std::invalid_argument("native ELUSTR2 flux time series truncated");
+        std::vector<std::string> cells;
+        std::istringstream stream(line);
+        std::string part;
+        while(std::getline(stream,part,','))cells.push_back(part);
+        if(cells.size()!=10)
+            throw std::invalid_argument("native ELUSTR2 flux row malformed");
+        // 143 consecutive hour-end labels, beginning 2022-01-01 01 UTC.
+        auto clock=std::chrono::sys_days{std::chrono::year{2022}/1/1}+
+                   std::chrono::hours{static_cast<int>(first_hour+i+1)};
+        const auto d=std::chrono::floor<std::chrono::days>(clock);
+        const std::chrono::year_month_day ymd{d};
+        const int hour=static_cast<int>(
+            std::chrono::duration_cast<std::chrono::hours>(clock-d).count());
+        std::ostringstream expected;
+        expected<<int(ymd.year())<<'-'
+                <<(static_cast<unsigned>(ymd.month())<10?"0":"")
+                <<static_cast<unsigned>(ymd.month())<<'-'
+                <<(static_cast<unsigned>(ymd.day())<10?"0":"")
+                <<static_cast<unsigned>(ymd.day())<<'_'
+                <<(hour<10?"0":"")<<hour;
+        if(cells[0]!=expected.str()||
+           std::stoi(cells[8])!=26||std::stoi(cells[9])!=26)
+            throw std::invalid_argument("native station ELUSTR2 timestamp/cell drift");
+        NativeStationFlux f{
+          std::stof(cells[1]),std::stof(cells[2]),
+          std::stof(cells[3]),std::stof(cells[6])};
+        if(!std::isfinite(f.qh)||!std::isfinite(f.ustar)||
+           !std::isfinite(f.el)||!std::isfinite(f.rho)||
+           f.ustar<=0.f||f.rho<=0.f)
+            throw std::invalid_argument("native station flux nonphysical");
+        rows.push_back(f);
+    }
+    if(std::getline(in,line)&&!line.empty())
+        throw std::invalid_argument("native station ELUSTR2 flux has extra hour");
+    return rows;
+}
 std::vector<BridgeObservation> read_bridge_csv(const std::string& path) {
     std::ifstream file(path);
     if(!file)throw std::invalid_argument("cannot open bridge CSV "+path);
@@ -433,6 +491,87 @@ WindLevels read_wind_levels(const std::string& path,
     return out;
 }
 
+
+std::string native_hour_label(std::size_t hour) {
+    const auto at=std::chrono::sys_days{std::chrono::year{2022}/1/1}+
+                  std::chrono::hours{static_cast<int>(hour+1)};
+    const auto day=std::chrono::floor<std::chrono::days>(at);
+    const std::chrono::year_month_day ymd{day};
+    const int hh=static_cast<int>(
+        std::chrono::duration_cast<std::chrono::hours>(at-day).count());
+    std::ostringstream label;
+    label<<int(ymd.year())<<'-'
+         <<(unsigned(ymd.month())<10?"0":"")<<unsigned(ymd.month())<<'-'
+         <<(unsigned(ymd.day())<10?"0":"")<<unsigned(ymd.day())<<'_'
+         <<(hh<10?"0":"")<<hh;
+    return label.str();
+}
+std::vector<float> read_hourly_native_f32(
+        const std::filesystem::path& path,std::size_t count) {
+    if(!std::filesystem::is_regular_file(path)||
+       std::filesystem::file_size(path)!=count*sizeof(float))
+        throw std::invalid_argument("native REAL4 plane missing/wrong size: "+path.string());
+    std::ifstream in(path,std::ios::binary);
+    std::vector<float> out(count);
+    in.read(reinterpret_cast<char*>(out.data()),
+            static_cast<std::streamsize>(count*sizeof(float)));
+    if(!in||!std::all_of(out.begin(),out.end(),[](float x){
+        return std::isfinite(x)&&x!=9999.f;
+    }))throw std::invalid_argument("invalid native REAL4: "+path.string());
+    return out;
+}
+WindLevels read_p6d_one_hour_native_wind(
+        const std::string& directory,
+        const CalmetDat21Dataset& reference,std::size_t hour) {
+    namespace fs=std::filesystem;
+    const fs::path dir(directory);
+    const auto label=native_hour_label(hour);
+    std::ifstream produced(dir/"produced_hours.txt");
+    std::string actual,second;
+    if(!std::getline(produced,actual)||actual!=label||
+       std::getline(produced,second))
+        throw std::invalid_argument("native P6D single-hour provenance/time label mismatch");
+    const auto nx=static_cast<std::size_t>(reference.header.nx);
+    const auto ny=static_cast<std::size_t>(reference.header.ny);
+    const auto nz=static_cast<std::size_t>(reference.header.nz);
+    if(nx!=50||ny!=50||nz!=9||hour>=reference.intervals)
+        throw std::invalid_argument("native P6D single-hour only supports frozen 50x50x9");
+    const auto cells=nx*ny;
+    const auto uu=read_hourly_native_f32(dir/("blend_u_"+label+".f32"),nz*cells);
+    const auto vv=read_hourly_native_f32(dir/("blend_v_"+label+".f32"),nz*cells);
+    const auto ww=read_hourly_native_f32(dir/("w_face_"+label+".f32"),(nz+1)*cells);
+    WindLevels out;
+    out.u.assign(nz,std::vector<float>(reference.intervals*cells,0.f));
+    out.v.assign(nz,std::vector<float>(reference.intervals*cells,0.f));
+    out.w.assign(nz,std::vector<float>(reference.intervals*cells,0.f));
+    for(std::size_t level=0;level<nz;++level)
+        for(std::size_t k=0;k<cells;++k) {
+            const auto target=hour*cells+k;
+            out.u[level][target]=uu[level*cells+k];
+            out.v[level][target]=vv[level*cells+k];
+            // Original WFACE(k) is the TOP face of layer k, not the ground face.
+            out.w[level][target]=ww[(level+1)*cells+k];
+        }
+    return out;
+}
+cteas::calmet::p6::NativeGridMemory read_previous_comp_hour(
+        const std::string& prefix,std::size_t previous_hour,std::size_t cells) {
+    if(prefix.empty())throw std::invalid_argument(
+        "native hour n>0 requires hour n-1 COMP-owned state, not frozen original");
+    std::ifstream in(prefix+".state.json");
+    std::ostringstream meta;meta<<in.rdbuf();
+    const auto m=meta.str();
+    if(m.find("\"producer\": \"p6e_calmet_dat21 emit-realcase\"")==std::string::npos||
+       m.find("\"first_hour_zero_based\": "+std::to_string(previous_hour))==
+           std::string::npos)
+        throw std::invalid_argument("previous COMP state producer/clock mismatch");
+    return {
+        read_hourly_native_f32(prefix+".zi.f32",cells),
+        read_hourly_native_f32(prefix+".ziconv.f32",cells),
+        read_hourly_native_f32(prefix+".dptt.f32",cells)
+    };
+}
+
 void emit_realcase(const std::string& reference_path,const std::string& observations_path,
                    const std::string& out_path,const std::string& report_path,
                    float ha1,float ha2,float hb1,float hb2,
@@ -440,11 +579,35 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    const std::string& geo_path,float hc1,float hc2,float hc3,
                    const std::string& state_prefix,float fcoriol,
                    bool skip_avemix,int imixh,int dptt_refresh,
-                   const std::string& trace_path) {
+                   const std::string& trace_path,
+                   const std::string& station_flux_path,
+                   bool native_hour_comp,int first_hour,int selected_hours,
+                   const std::string& native_p6d_dir,
+                   const std::string& previous_comp_prefix) {
     const auto reference=read_calmet_dat21(reference_path);
+    if(first_hour<0||selected_hours<0||
+       static_cast<std::size_t>(first_hour)>=reference.intervals||
+       (selected_hours>0 &&
+        static_cast<std::size_t>(selected_hours)>reference.intervals-
+                                      static_cast<std::size_t>(first_hour)))
+        throw std::invalid_argument("invalid one-pass COMP hour selection");
+    const auto first=static_cast<std::size_t>(first_hour);
+    const auto count=selected_hours==0?reference.intervals-first:
+                    static_cast<std::size_t>(selected_hours);
+    const auto end=first+count;
+    if(!native_p6d_dir.empty() &&
+       (!native_hour_comp||!wind_path.empty()||count!=1U))
+        throw std::invalid_argument(
+            "native P6D wind requires native-hour-comp, one hour and NO original wind file");
+    if(!previous_comp_prefix.empty()&&(!native_hour_comp||count!=1U))
+        throw std::invalid_argument("previous COMP state only valid for one native hour");
+    if(!native_p6d_dir.empty()&&first>0U&&previous_comp_prefix.empty())
+        throw std::invalid_argument("native P6D hour n>0 requires preceding COMP state");
     // Optional wind source: the frozen original U/V/W for the same intervals.
     std::optional<WindLevels> wind;
-    if(!wind_path.empty())wind=read_wind_levels(wind_path,reference);
+    if(!native_p6d_dir.empty())
+        wind=read_p6d_one_hour_native_wind(native_p6d_dir,reference,first);
+    else if(!wind_path.empty())wind=read_wind_levels(wind_path,reference);
     std::optional<GeoLandUse> geo;
     if(!geo_path.empty()) {
         geo=read_geo_landuse(geo_path,reference.header.nx,reference.header.ny);
@@ -455,6 +618,9 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             throw std::invalid_argument("GEO.DAT water range does not match the reference");
     }
     const auto observations=read_bridge_csv(observations_path);
+    const auto native_station_flux=read_native_station_flux_csv(station_flux_path,count,first);
+    if(native_hour_comp && native_station_flux.empty())
+        throw std::invalid_argument("native-hour-comp requires native P6D --station-flux-csv, no surrogate DPTT refresh");
     const auto& h=reference.header;
     if(observations.size()!=reference.intervals)
         throw std::invalid_argument("observation hours do not match the reference intervals");
@@ -479,7 +645,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     candidate_header.comments={"P6E partial CALMET.DAT 2.1 candidate for the real 2022 case",
         "Geometry, station coordinates and time labels are copied run inputs",
         "Only TEMPK, IRH and T-LEV1 are produced; every other field is 9999. missing"};
-    candidate_header.run_hours=static_cast<int>(reference.intervals);
+    candidate_header.run_hours=static_cast<int>(count);
     const auto labels=calmet21_hourly_labels(h.nz,h.irtype,h.lcalgrd,h.npsta);
     const int base_timezone=timezone_hours_from_axtz(h.timezone);
     // Grid solar geometry through the documented interface
@@ -491,11 +657,21 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     std::size_t produced_temperature=0U,missing_humidity=0U;
     // Previous-hour MIXHT state for the ZICONV/DPTT memory (starts at zero,
     // the original SETUP initialisation for land cells).
-    std::vector<float> previous_ziconv(cells,0.f),previous_dptt(cells,0.f);
+    std::vector<float> previous_ziconv(cells,0.f),previous_dptt(cells,0.f),previous_zi(cells,0.f);
+    cteas::calmet::p6::NativeGridMemory shared_comp_state{
+        std::vector<float>(cells,0.f), std::vector<float>(cells,0.f),
+        std::vector<float>(cells,0.f)};
+    if(!previous_comp_prefix.empty()) {
+        shared_comp_state=read_previous_comp_hour(previous_comp_prefix,first-1U,cells);
+        previous_zi=shared_comp_state.zi_m;
+        previous_ziconv=shared_comp_state.ziconv_m;
+        previous_dptt=shared_comp_state.dptt_k;
+    }
     // Exported chain state (hour-major, i-fastest) when --state-prefix is set.
     std::vector<float> exported_ziconv,exported_zi;
     std::vector<float> exported_pre_ziconv,exported_pre_zi;
     std::vector<float> exported_qh,exported_ustar,exported_el;
+    std::vector<float> exported_dptt,exported_pre_mixht_dptt;
     std::vector<float> exported_qsw,exported_wstar;
     // The cell carrying the surface station (XSSTA/YSSTA are metres from the
     // SW corner of cell (1,1)). The original processes exactly this cell
@@ -511,7 +687,12 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                    "dptt_in,gamma_used,dpttp1_k,ziconv_m,zi_m,dptt_out,tht_k,"
                    "thtp_k,tave_k,bvf,hmech_m,mean_k\n";
     }
-    for(std::size_t hour=0;hour<reference.intervals;++hour) {
+    for(std::size_t hour=first;hour<end;++hour) {
+        // Experimental real P6E single-pass COMP stepping: DIAGNO wind is
+        // still read from --wind-file, therefore FULL P6D→P6E G2=NOT_PASS.
+        cteas::calmet::p6::NativeHourFrame comp_frame{
+            {hour,1,std::to_string(hour)},shared_comp_state,shared_comp_state,{}};
+        cteas::calmet::p6::NativeCompHourControls native_controls;
         const auto& observation=observations[hour];
         surf.stations[0].temp_k=static_cast<float>(observation.air_temperature_k);
         surf.stations[0].rh_pct=observation.humidity_pct>=9999.0
@@ -687,7 +868,55 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             if(!trace_path.empty()) {
                 mh.trace=&trace_row;mh.trace_i=trace_i;mh.trace_j=trace_j;
             }
-            const auto mixing=mixht_observed_mc(mh);
+            // Source order: DIAGNO/STHEOR calls ELUSTR2 -> MIXHTST before
+            // the current COMP gridded MIXHT. The COMMON /TJMP/ DPTT at
+            // the surface station is therefore pre-mutated *this hour*.
+            // Use the native P6D station ELUSTR2 flux and native previous
+            // COMP fields, never original station QH/EL/ZII. This removes
+            // the previous approximate "dptt_refresh" surrogate.
+            if(!native_station_flux.empty()){
+                if(trace_i>=static_cast<std::size_t>(h.nx)||
+                   trace_j>=static_cast<std::size_t>(h.ny))
+                    throw std::invalid_argument("native station outside P6E COMP grid");
+                const std::size_t tk=trace_j*static_cast<std::size_t>(h.nx)+trace_i;
+                const auto& station=native_station_flux[hour-first];
+                cteas::calmet::p6::StationMixhtstInput m;
+                m.previous.zi_m=previous_zi[tk];
+                m.previous.ziconv_m=previous_ziconv[tk];
+                m.previous.dptt_k=previous_dptt[tk];
+                m.qh_wm2=station.qh;m.ustar_mps=station.ustar;
+                m.el_m=station.el;m.rho_kg_m3=station.rho;
+                m.fcori_s=mh.fcori[tk];m.cmech=mh.cmech[tk];
+                m.zimin_m=mh.zimin;m.zimax_m=mh.zimax;
+                m.constn=mh.constn;m.dptmin_kperm=mh.dptmin;
+                m.dzzi_m=mh.dzzi;m.threshl=mh.threshl;
+                m.tzicrlx_s=mh.tzicrlx;m.onedte_s=mh.onedte;
+                m.twodte_s=mh.twodte;m.timestep_s=mh.timestep_s;
+                m.imixh=mh.imixh;m.izicrlx=mh.izicrlx;
+                m.landuse=mh.landuse[tk];
+                m.water_first=mh.water_first;m.water_last=mh.water_last;
+                m.older_sounding=observation.justa>0?
+                    observation.aa:observation.bb;
+                const auto local=cteas::calmet::p6::station_mixhtst(m);
+                mh.initial_dptt[tk]=local.dptt_for_comp_k;
+                if(native_hour_comp)
+                    comp_frame.next.dptt_k[tk]=local.dptt_for_comp_k;
+                mh.dptt_refresh=0;
+            }
+            if(!state_prefix.empty())
+                exported_pre_mixht_dptt.insert(exported_pre_mixht_dptt.end(),
+                    mh.initial_dptt.begin(),mh.initial_dptt.end());
+            const auto mixing=[&]() -> MixhtObservedMcResult {
+                if(!native_hour_comp)return mixht_observed_mc(mh);
+                native_controls.mixing=mh;
+                native_controls.station_cell=trace_j*static_cast<std::size_t>(h.nx)+trace_i;
+                comp_frame.fields.qh_wm2=heat_flux;
+                comp_frame.fields.ustar_mps=ustar;
+                comp_frame.fields.el_m=el;
+                native_comp_grid_mixht(comp_frame,native_controls);
+                return {comp_frame.next.zi_m,comp_frame.next.ziconv_m,
+                        comp_frame.next.dptt_k};
+            }();
             if(!trace_path.empty()) {
                 const auto tk=trace_j*static_cast<std::size_t>(h.nx)+trace_i;
                 trace_out<<(hour+1)<<','<<trace_i<<','<<trace_j<<','<<trace_row.branch
@@ -720,12 +949,27 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                     av.u_ms[k]=wind->u[0][hour*cells+k];
                     av.v_ms[k]=wind->v[0][hour*cells+k];
                 }
-                const auto mixed=avemix(av,zi_height,ziconv);
+                const auto mixed=[&]() -> AvemixResult {
+                    if(!native_hour_comp)return avemix(av,zi_height,ziconv);
+                    native_controls.averaging=av;
+                    comp_frame.fields.u_mps=av.u_ms;
+                    comp_frame.fields.v_mps=av.v_ms;
+                    comp_frame.next.zi_m=zi_height;
+                    comp_frame.next.ziconv_m=ziconv;
+                    native_comp_avemix(comp_frame,native_controls);
+                    return {comp_frame.next.zi_m,comp_frame.next.ziconv_m};
+                }();
                 zi_height=mixed.zi_m;
                 ziconv=mixed.ziconv_m;
             }
-            previous_ziconv=ziconv;
-            previous_dptt=mixing.dptt;
+            if(!native_hour_comp) {
+                previous_ziconv=ziconv;
+                previous_zi=zi_height;
+                previous_dptt=mixing.dptt;
+            }
+            if(!state_prefix.empty())
+                exported_dptt.insert(exported_dptt.end(),
+                                     mixing.dptt.begin(),mixing.dptt.end());
             if(!state_prefix.empty()) {
                 // Term-by-term diagnostics for the E34 station-cell table.
                 exported_qh.insert(exported_qh.end(),heat_flux.begin(),heat_flux.end());
@@ -755,7 +999,11 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             sw.rho_kgm3=density;
             sw.initial_wstar_ms.assign(cells,0.f);
             sw.landuse=reference.statics.ilandu;
-            wstar_field=wstarr(sw);
+            if(native_hour_comp) {
+                native_controls.convective_scale=sw;
+                native_comp_wstarr(comp_frame,native_controls);
+                wstar_field=comp_frame.fields.wstar_mps;
+            } else wstar_field=wstarr(sw);
             // WSTAR is produced after the state export point, so it is
             // recorded here (hour-major, i fastest, same as the others).
             if(!state_prefix.empty())
@@ -780,8 +1028,16 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
             t3.convective_zi_m=ziconv;
             t3.past_seconds={observation.past_seconds};
             t3.to_go_seconds={observation.to_go_seconds};
-            const auto columns3d=temp3d_observed_land(t3);
-            three_d_temperature=columns3d;
+            if(native_hour_comp) {
+                native_controls.temperature=t3;
+                native_comp_temp3d(comp_frame,native_controls);
+                three_d_temperature=comp_frame.fields.temperature_k;
+                // Commit after all same-hour P6E kernels have succeeded.
+                shared_comp_state=std::move(comp_frame.next);
+                previous_zi=shared_comp_state.zi_m;
+                previous_ziconv=shared_comp_state.ziconv_m;
+                previous_dptt=shared_comp_state.dptt_k;
+            } else three_d_temperature=temp3d_observed_land(t3);
         }
         std::vector<float> shortwave(cells,0.f);
         if(heatfx_shortwave_field.empty())
@@ -807,6 +1063,23 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
                         field.integer_values[k]=stability[k];
             } else {
                 field.real_values.assign(cells,calmet21_missing);
+                // Native single-hour DIAGNO owns exactly 27 wind records,
+                // including WFACE at the top face of each vertical cell.
+                // The original met.dat supplies CASE METADATA ONLY here.
+                if(!native_p6d_dir.empty()&&wind &&
+                   (label.rfind("U-LEV",0)==0||
+                    label.rfind("V-LEV",0)==0||
+                    label.rfind("WFACE",0)==0)) {
+                    const auto lev=static_cast<std::size_t>(
+                        std::stoi(label.substr(5U))-1);
+                    for(std::size_t k=0;k<cells;++k) {
+                        const auto index=hour*cells+k;
+                        field.real_values[k]=label.rfind("U-LEV",0)==0?
+                            wind->u[lev][index]:
+                            (label.rfind("V-LEV",0)==0?
+                              wind->v[lev][index]:wind->w[lev][index]);
+                    }
+                }
                 if(surface_temperature||layer_one)
                     for(std::size_t k=0;k<cells;++k)
                         field.real_values[k]=surface.temp2d_k[k];
@@ -841,8 +1114,10 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     }
     write_calmet_dat21(out_path,candidate_header,reference.statics,hourly);
     if(!state_prefix.empty()) {
-        if(exported_ziconv.size()!=reference.intervals*cells||
-           exported_zi.size()!=reference.intervals*cells)
+        if(exported_ziconv.size()!=count*cells||
+           exported_zi.size()!=count*cells||
+           exported_dptt.size()!=count*cells||
+           exported_pre_mixht_dptt.size()!=count*cells)
             throw std::invalid_argument(
                 "state export requires a wind and GEO source for every hour");
         const auto write_binary=[&](const std::string& path,
@@ -859,6 +1134,8 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         write_binary(state_prefix+".qsw.f32",exported_qsw);
         write_binary(state_prefix+".wstar.f32",exported_wstar);
         write_binary(state_prefix+".ziconv.f32",exported_ziconv);
+        write_binary(state_prefix+".dptt.f32",exported_dptt);
+        write_binary(state_prefix+".pre_mixht.dptt.f32",exported_pre_mixht_dptt);
         write_binary(state_prefix+".zi.f32",exported_zi);
         if(exported_pre_ziconv.size()==exported_ziconv.size()) {
             write_binary(state_prefix+".pre_avemix.ziconv.f32",exported_pre_ziconv);
@@ -867,24 +1144,28 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
         std::string meta="{\n";
         meta+="  \"producer\": \"p6e_calmet_dat21 emit-realcase\",\n";
         meta+="  \"source\": \"chain-internal MIXHT state advanced hour by hour; NOT copied from the reference met.dat\",\n";
-        meta+="  \"fields\": [\"ziconv\",\"zi\",\"pre_avemix.ziconv\",\"pre_avemix.zi\"],\n";
-        meta+="  \"units\": \"m\",\n";
+        meta+="  \"fields\": [\"ziconv\",\"zi\",\"dptt\",\"pre_mixht.dptt\",\"pre_avemix.ziconv\",\"pre_avemix.zi\"],\n";
+        meta+="  \"units\": {\"zi\":\"m\",\"ziconv\":\"m\",\"dptt\":\"K\"},\n";
         meta+="  \"dtype\": \"float32 little-endian\",\n";
         meta+="  \"layout\": \"hour-major, then j-major rows with i fastest, exactly as CALMET.DAT field payloads\",\n";
-        meta+="  \"shape\": ["+std::to_string(reference.intervals)+", "+
+        meta+="  \"first_hour_zero_based\": "+std::to_string(first)+",\n";
+        meta+="  \"shape\": ["+std::to_string(count)+", "+
               std::to_string(h.ny)+", "+std::to_string(h.nx)+"],\n";
         meta+="  \"values_per_file\": "+std::to_string(exported_zi.size())+",\n";
         meta+="  \"water_sentinel\": -7777.0,\n";
         meta+="  \"missing_sentinel\": 9999.0,\n";
         meta+="  \"negative_dptt_or_zero_ziconv_is_physical\": true,\n";
-        meta+="  \"wind_source\": "+json_string(wind_path)+",\n";
+        meta+="  \"comp_dptt_provenance\": \"post-MIXHT /TJMP/ DPTT at every hour; not spatially averaged by AVEMIX, required to initialize next DIAGNO ELUSTR2-MIXHTST\",\n";
+        meta+="  \"wind_source\": "+json_string(native_p6d_dir.empty()?wind_path:native_p6d_dir)+",\n";
+        meta+="  \"station_flux_source\": "+json_string(station_flux_path)+",\n";
+        meta+="  \"station_dptt_mutation\": \""+std::string(station_flux_path.empty()?"LEGACY_ESTIMATE_FROM_GRID":"SOURCE_ORDER_NATIVE_ELUSTR2_MIXHTST")+"\",\n";
         meta+="  \"geo_source\": "+json_string(geo_path)+",\n";
         meta+="  \"candidate_artifact\": "+json_string(out_path)+",\n";
         meta+="  \"difference_from_met_dat_ZI\": \"CALMET.DAT carries ZI (max of convective and mechanical, after AVEMIX averaging); ZICONV is the internal convective height that CGAMMA consumes. This export provides both from the P6E chain; the ZI field here still disagrees with the frozen reference on 4488 of 357500 cells (1.26%, max abs 51.06 m, concentrated in 42 daylight hours), so use ZICONV for wiring until the convective-growth audit closes.\",\n";
         meta+="  \"hour_labels\": [";
-        for(std::size_t hour=0;hour<reference.intervals;++hour) {
+        for(std::size_t hour=first;hour<end;++hour) {
             const auto& begin=reference.hourly[hour*reference.fields_per_hour].begin;
-            meta+=std::string(hour?", ":"")+"{\"packed\": "+std::to_string(calmet21_pack(begin))+
+            meta+=std::string(hour==first?"":", ")+"{\"packed\": "+std::to_string(calmet21_pack(begin))+
                   ", \"seconds\": "+std::to_string(begin.seconds)+
                   ", \"year\": "+std::to_string(begin.year)+
                   ", \"julian_day\": "+std::to_string(begin.julian_day)+
@@ -900,7 +1181,7 @@ void emit_realcase(const std::string& reference_path,const std::string& observat
     if(!state_prefix.empty())report+="  \"state_export_prefix\": "+json_string(state_prefix)+",\n";
     report+="  \"reference\": "+json_string(reference_path)+",\n";
     report+="  \"observations\": "+json_string(observations_path)+",\n";
-    report+="  \"intervals\": "+std::to_string(reference.intervals)+",\n";
+    report+="  \"intervals\": "+std::to_string(count)+",\n";
     report+="  \"produced_fields\": [\"TEMPK\",\"IRH\",\"T-LEV  1\",\"QSW\",\"RHO\"";
     if(wind)report+=",\"IPGT\"";
     if(geo&&wind)report+=",\"USTAR\",\"EL\",\"ZI\",\"WSTAR\",\"T-LEV1..NZ\"";
@@ -1206,6 +1487,62 @@ int run_compare(const std::string& reference_path,const std::string& candidate_p
     return exceedances==0.0?0:1;
 }
 
+
+void merge_native_causal_hours(const std::string& manifest_path,
+                               const std::string& output_path) {
+    std::ifstream list(manifest_path);
+    if(!list)throw std::invalid_argument("native hourly manifest absent");
+    std::string path;
+    std::vector<CalmetDat21Field> combined;
+    std::optional<CalmetDat21Dataset> first;
+    std::size_t hours=0;
+    while(std::getline(list,path)) {
+        if(path.empty())continue;
+        const auto candidate=read_calmet_dat21(path);
+        if(candidate.intervals!=1U||candidate.fields_per_hour!=45U||
+           candidate.header.nx!=50||candidate.header.ny!=50||
+           candidate.header.nz!=9)
+            throw std::invalid_argument("expected one complete 45-field real Hefei hour");
+        if(first) {
+            const auto& a=first->header;
+            const auto& b=candidate.header;
+            if(a.nx!=b.nx||a.ny!=b.ny||a.nz!=b.nz||
+               a.timezone!=b.timezone||a.dgrid_m!=b.dgrid_m||
+               a.xorigin_m!=b.xorigin_m||a.yorigin_m!=b.yorigin_m||
+               first->statics.ilandu!=candidate.statics.ilandu||
+               first->statics.zface_m!=candidate.statics.zface_m||
+               first->statics.surface_x_m!=candidate.statics.surface_x_m||
+               first->statics.upper_x_m!=candidate.statics.upper_x_m)
+                throw std::invalid_argument("native hourly header/static geometry drift");
+        } else first=candidate;
+        // The native producer must supply all 27 U/V/W and 18 P6E fields.
+        // CALMET.DAT missing values may not be filled from the original ref.
+        for(const auto& field:candidate.hourly) {
+            if(field.integer) {
+                for(auto v:field.integer_values)
+                    if(v==calmet21_missing_int)
+                        throw std::invalid_argument("unproduced native integer field "+field.label);
+            } else {
+                for(auto v:field.real_values)
+                    if(!std::isfinite(v)||v==calmet21_missing)
+                        throw std::invalid_argument("unproduced native real field "+field.label);
+            }
+        }
+        combined.insert(combined.end(),candidate.hourly.begin(),candidate.hourly.end());
+        ++hours;
+    }
+    if(!first||hours==0||hours>143)
+        throw std::invalid_argument("native hour manifest must contain 1..143 valid intervals");
+    auto h=first->header;
+    h.run_hours=static_cast<int>(hours);
+    h.comments={"C++ P6D->P6E causal one-pass original-order prototype",
+                "Native 45 meteorological field values, case grid header external",
+                "SCIENTIFIC ORIGINAL NUMERIC PARITY NOT YET ESTABLISHED"};
+    write_calmet_dat21(output_path,h,first->statics,combined);
+    std::cout<<"P6_NATIVE_CAUSAL_CALMET_DAT_FORMAT_PASS hours="<<hours
+             <<" fields_per_hour=45; ORIGINAL_NUMERIC_PARITY=NOT_PASS\\n";
+}
+
 std::string argument(int argc,char** argv,const std::string& flag,
                      const std::string& fallback=std::string()) {
     for(int k=1;k+1<argc;++k)if(flag==argv[k])return argv[k+1];
@@ -1224,6 +1561,14 @@ int main(int argc,char** argv) {
             return 2;
         }
         const std::string mode=argv[1];
+        if(mode=="merge-native-hours") {
+            const auto manifest=argument(argc,argv,"--manifest");
+            const auto out=argument(argc,argv,"--out");
+            if(manifest.empty()||out.empty())
+                throw std::invalid_argument("merge-native-hours needs --manifest and --out");
+            merge_native_causal_hours(manifest,out);
+            return 0;
+        }
         if(mode=="emit-synthetic") {
             const auto out=argument(argc,argv,"--out");
             if(out.empty())throw std::invalid_argument("emit-synthetic needs --out");
@@ -1260,7 +1605,13 @@ int main(int argc,char** argv) {
                           std::stoi(argument(argc,argv,"--skip-avemix","0"))!=0,
                           std::stoi(argument(argc,argv,"--imixh","1")),
                           std::stoi(argument(argc,argv,"--dptt-refresh","1")),
-                          argument(argc,argv,"--mixht-trace"));
+                          argument(argc,argv,"--mixht-trace"),
+                          argument(argc,argv,"--station-flux-csv"),
+                          std::stoi(argument(argc,argv,"--native-hour-comp","0"))!=0,
+                          number_argument(argc,argv,"--first-hour",0),
+                          number_argument(argc,argv,"--hours",0),
+                          argument(argc,argv,"--native-p6d-dir"),
+                          argument(argc,argv,"--previous-comp-prefix"));
             return 0;
         }
         if(mode=="dump-field") {

@@ -246,6 +246,13 @@ void validate_calmet_dat21(const Calmet21File& file);
 // (with their original padding) so that parse|serialize is the identity.
 Calmet21File parse_calmet_dat21(const std::vector<std::uint8_t>& bytes);
 Calmet21File read_calmet_dat21(const std::string& path);
+// The native P6E "emit-realcase --hours 1" transport has one hour's
+// actual 45 weather fields, but its copied run-control calendar can still
+// describe a longer source window. Normalize ONLY the control calendar
+// in-memory from the one-hour field clocks before applying all of the same
+// strict CALMET.DAT structural and numerical invariants. Never use this
+// loader for independent reference/oracle validation.
+Calmet21File read_calmet_dat21_native_one_hour(const std::string& path);
 void write_calmet_dat21(const std::string& path, const Calmet21File& file);
 
 // Per-field inventory of a dataset, used by the file checker: the denominator

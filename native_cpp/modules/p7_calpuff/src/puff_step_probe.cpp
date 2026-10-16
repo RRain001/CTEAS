@@ -322,6 +322,7 @@ int dgm_steps_mode(const std::string& dump_path, const std::string& met_path,
     Tally adjusted_u, adjusted_v, adjusted_ws, adjusted_calm;
     Tally step_length, step_distance, position_x, position_y, step_distance_m;
     Tally cadence_nsam, cadence_tsamp, cadence_reftsamp, cell_i, cell_j;
+    Tally current_xb1, current_yb1, current_zb1, current_xe1, current_ye1, current_ze1;
     long risewind_applied = 0;
     long risewind_skipped = 0;
     long puffs = 0;
@@ -452,6 +453,23 @@ int dgm_steps_mode(const std::string& dump_path, const std::string& met_path,
                 compare(step_distance_m, record.at(60), advance.distance_m, 1.0e-2, "distm",
                         record);
 
+                // SETPUF's /CURRENT/ coordinate publication.
+                cteas::puff::CurrentCoordinateInputs current_inputs;
+                current_inputs.x_begin_cells = record.at(24);   // xpb_in
+                current_inputs.y_begin_cells = record.at(25);   // ypb_in
+                current_inputs.z_begin_m = record.at(26);       // zpb_in
+                current_inputs.x_end_cells = record.at(39);     // xnew
+                current_inputs.y_end_cells = record.at(40);     // ynew
+                current_inputs.grid_spacing_m = summary.header.dx_m;
+                current_inputs.step_s = record.at(63);          // tsamp_effective
+                const auto current = cteas::puff::current_coordinates(current_inputs);
+                compare(current_xb1, record.at(48), current.x_begin_m, 1.0e-3, "xb1", record);
+                compare(current_yb1, record.at(49), current.y_begin_m, 1.0e-3, "yb1", record);
+                compare(current_zb1, record.at(50), current.z_begin_m, 1.0e-3, "zb1", record);
+                compare(current_xe1, record.at(51), current.x_end_m, 1.0e-3, "xe1", record);
+                compare(current_ye1, record.at(52), current.y_end_m, 1.0e-3, "ye1", record);
+                compare(current_ze1, record.at(53), current.z_end_m, 1.0e-3, "ze1", record);
+
                 // GETCELL: the vendor's own cell for the puff's position.
                 cteas::puff::CellLookupInputs cell_inputs;
                 cell_inputs.x_cells = record.at(1);
@@ -550,6 +568,12 @@ int dgm_steps_mode(const std::string& dump_path, const std::string& met_path,
         report("TSAMP_NOT_ABOVE_REFERENCE", cadence_reftsamp);
         report("GETCELL_I_VENDOR_VS_PORT", cell_i);
         report("GETCELL_J_VENDOR_VS_PORT", cell_j);
+        report("CURRENT_XB1_VENDOR_VS_PORT", current_xb1);
+        report("CURRENT_YB1_VENDOR_VS_PORT", current_yb1);
+        report("CURRENT_ZB1_VENDOR_VS_PORT", current_zb1);
+        report("CURRENT_XE1_VENDOR_VS_PORT", current_xe1);
+        report("CURRENT_YE1_VENDOR_VS_PORT", current_ye1);
+        report("CURRENT_ZE1_VENDOR_VS_PORT", current_ze1);
     }
     std::cout << "P7W_DGM_STEP_COMPARISON_IS_NOT_A_CONC_COMPARISON=true\n";
     return 0;

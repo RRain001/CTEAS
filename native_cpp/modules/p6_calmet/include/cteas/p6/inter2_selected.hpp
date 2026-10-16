@@ -132,9 +132,15 @@ inline Inter2SelectedOutput original_inter2_selected(const Inter2SelectedInput& 
                     std::size_t(k)*std::size_t(in.nstations)+std::size_t(l)];
                 if(observed>in.editl)continue;
                 if(rs[std::size_t(l)]>(land?radius:in.rmax3_km))continue;
-                const double wt=static_cast<double>(in.observation_weight[p])/
-                                (static_cast<double>(rs[std::size_t(l)])*
-                                 static_cast<double>(rs[std::size_t(l)]));
+                // Fortran INTER2 declares WT DOUBLE PRECISION, but its
+                // RHS WO(I,J,K)/(RS(L)**2) is evaluated as REAL*4
+                // (WTGRD.MET WO and local RS are both REAL*4); only then
+                // is that single-precision quotient widened into WT.
+                // Do not square/divide in C++ double before assigning WT.
+                const float range_m=rs[std::size_t(l)];
+                const float rs_square=range_m*range_m;
+                const float weight_real4=in.observation_weight[p]/rs_square;
+                const double wt=static_cast<double>(weight_real4);
                 sum=static_cast<float>(static_cast<double>(sum)+
                                       static_cast<double>(observed)*wt);
                 weighted=static_cast<float>(static_cast<double>(weighted)+wt);
@@ -145,8 +151,9 @@ inline Inter2SelectedOutput original_inter2_selected(const Inter2SelectedInput& 
                 const float r=std::max(closest[std::size_t(k)],in.rmin_km);
                 const float observed=in.station_component_mps[
                     std::size_t(k)*std::size_t(in.nstations)+std::size_t(l)];
-                const double wt=static_cast<double>(in.observation_weight[p])/
-                                (static_cast<double>(r)*static_cast<double>(r));
+                const float rs_square=r*r;
+                const float weight_real4=in.observation_weight[p]/rs_square;
+                const double wt=static_cast<double>(weight_real4);
                 sum=static_cast<float>(static_cast<double>(sum)+
                                       static_cast<double>(observed)*wt);
                 weighted=static_cast<float>(static_cast<double>(weighted)+wt);

@@ -11,7 +11,7 @@ on:
 jobs:
   original-fortran:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     permissions:
       contents: read
@@ -54,11 +54,29 @@ jobs:
           latitude: 31.939774444
           longitude: 117.141610855
           EOF
-          cat > project/current/grid/grid.cmn <<'EOF'
-          ! DGRIDKM = 0.1 !
-          ! NX = 50 !
-          ! NY = 50 !
-          EOF
+          # Strict P4/P5 station selection now reads the complete WGS-84
+          # grid.cmn contract. This is an isolated P4-only 5km fixture;
+          # NZ/ZFACE are parse-contract fields, not P6 physics inputs.
+          python3 - <<'PY'
+          from pathlib import Path
+          from engine.run_met.common import lon_lat_to_utm_km
+          from engine.run_met.station_grid import load_strict_utm_grid, lon_lat_in_utm_grid
+          lat, lon = 31.939774444, 117.141610855
+          x_km, y_km = lon_lat_to_utm_km(lon, lat, 50, True)
+          path = Path("project/current/grid/grid.cmn")
+          path.write_text(
+              f"! IMAP = UTM !\n! IUTMZN = 50 !\n! LSOHEM = N !\n"
+              f"! DATUM = WGS-84 !\n"
+              f"! XREFKM = {x_km - 2.5:.9f} !\n"
+              f"! YREFKM = {y_km - 2.5:.9f} !\n"
+              "! DGRIDKM = 0.1 !\n! NX = 50 !\n! NY = 50 !\n"
+              "! NZ = 1 !\n! ZFACE = 0.0 !\n! ZFACE = 20.0 !\n",
+              encoding="utf-8")
+          grid = load_strict_utm_grid(path, context="P4_FORTRAN_PARITY")
+          if not lon_lat_in_utm_grid(lon, lat, grid):
+              raise RuntimeError("P4 original-reference fixture excludes chimney")
+          print("P4_REFERENCE_STRICT_UTM_GRID=PASS")
+          PY
           cat > project/current/grid/research_time <<'EOF'
           BEGIN: 20220101-000000
           END: 20220106-230000

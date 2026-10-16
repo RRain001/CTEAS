@@ -9,13 +9,19 @@ on:
 jobs:
   audit:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 14
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Select self-hosted C++20 and Fortran tools
+      - name: Provision GitHub-hosted GCC12 and Fortran12
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-12 gfortran-12
+      - name: Select isolated C++20 and Fortran compilers
         uses: ./.github/actions/cteas-linux-toolchain
       - name: Download actual NOAA gzip files and audit source wind values
         shell: bash

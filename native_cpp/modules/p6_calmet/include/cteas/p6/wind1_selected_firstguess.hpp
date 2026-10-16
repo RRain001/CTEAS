@@ -34,6 +34,14 @@ struct Wind1FirstGuessSelectedFields {
     int nx{},ny{},nz{};
     // Flat k-major, j-major, i-fastest; original UG(i,j,k)/VG(i,j,k).
     std::vector<float> ug_mps,vg_mps;
+    // Write-only diagnostic: actual normalized WIND1 two-station RSQWT per gridpoint.
+    std::vector<float> rsq_surface,rsq_upper;
+    // Final level-one weights after BIAS and upper missing-value redistribution.
+    std::vector<float> vvw_surface1,vvw_upper1;
+    // Weights after BETA/GAMMA, before any calm or upper-missing reallocation.
+    std::vector<float> pre_vvw_surface1,pre_vvw_upper1;
+    // VVW after BIAS/calm weighting but BEFORE upper missing-data rebalance.
+    std::vector<float> vvw_surface_before1,vvw_upper_before1;
 };
 inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
     const Wind1SelectedStationHour& station,
@@ -65,8 +73,12 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
         if(c.upper_layer_valid[k]) {
             if(std::abs(u.u_mps)>=998.99f||std::abs(u.v_mps)>=998.99f)
                 throw std::invalid_argument("WIND1 upper validity mask disagrees with values");
-        } else if(u.u_mps<=999998.f||u.v_mps<=999998.f) {
-            throw std::invalid_argument("WIND1 invalid upper mask must use original sentinel");
+        } else if(u.u_mps!=999.f||u.v_mps!=999.f) {
+            // CALMET's DIAGNO initializes EDIT=999 (EDITL=900).
+            // The IEXTRP<=0 PREPDI first upper level must use this exact
+            // REAL*4 missing value. The earlier 999998 threshold incorrectly
+            // rejected 999.f and aborted all native 143-hour production.
+            throw std::invalid_argument("WIND1 invalid upper mask must use original EDIT=999 sentinel");
         }
     }
     const float first_speed=std::sqrt(
@@ -84,6 +96,14 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
     const std::size_t cells=static_cast<std::size_t>(c.nx)*static_cast<std::size_t>(c.ny);
     out.ug_mps.assign(cells*9,0.f);
     out.vg_mps.assign(cells*9,0.f);
+    out.rsq_surface.assign(cells,0.f);
+    out.rsq_upper.assign(cells,0.f);
+    out.vvw_surface1.assign(cells,0.f);
+    out.vvw_upper1.assign(cells,0.f);
+    out.pre_vvw_surface1.assign(cells,0.f);
+    out.pre_vvw_upper1.assign(cells,0.f);
+    out.vvw_surface_before1.assign(cells,0.f);
+    out.vvw_upper_before1.assign(cells,0.f);
 
     // Original WIND1: DGRIDI=1./DGRID; XC=FLOAT(I)-0.5, YC likewise.
     const float dgridi=1.f/c.grid_spacing_m;
@@ -105,6 +125,10 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
         if(!(std::isfinite(rsq_surface)&&std::isfinite(rsq_upper)&&
              rsq_surface>0.f&&rsq_upper>0.f))
             throw std::invalid_argument("WIND1 invalid inverse distance weights");
+        const auto cell=static_cast<std::size_t>(j-1)*static_cast<std::size_t>(c.nx)+
+                        static_cast<std::size_t>(i-1);
+        out.rsq_surface[cell]=rsq_surface;
+        out.rsq_upper[cell]=rsq_upper;
 
         for(std::size_t k=0;k<9;k++){
             const float bias=c.vertical_bias[k];
@@ -118,6 +142,10 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
             }
             float vsurface=beta*rsq_surface;
             float vupper=gamma*rsq_upper;
+            if(k==0){
+                out.pre_vvw_surface1[cell]=vsurface;
+                out.pre_vvw_upper1[cell]=vupper;
+            }
             if(c.icalm==0&&first_speed<0.0001f&&k>0){
                 if(vsurface<0.9999f) {
                     vupper=vupper/(1.f-vsurface);
@@ -126,11 +154,19 @@ inline Wind1FirstGuessSelectedFields wind1_firstguess_selected(
                 }
                 vsurface=0.f;
             }
+            if(k==0) {
+                out.vvw_surface_before1[cell]=vsurface;
+                out.vvw_upper_before1[cell]=vupper;
+            }
             if(bias> -0.9999f&&!c.upper_layer_valid[k]){
                 if(vupper==1.f)
                     throw std::invalid_argument("WIND1 no valid upper observation at layer");
                 vsurface=vsurface/(1.f-vupper);
                 vupper=0.f;
+            }
+            if(k==0) {
+                out.vvw_surface1[cell]=vsurface;
+                out.vvw_upper1[cell]=vupper;
             }
             const auto& s=station.surface_neutral_profile[k];
             const auto& u=station.upper_observed_profile[k];

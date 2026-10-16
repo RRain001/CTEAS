@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - '.github/scripts/p6d_verified_checkout.py'
+      - '.github/workflows/p6d-minim-original-parity.yml'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/*minim*'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/*divcel*'
       - 'native_cpp/modules/p6_calmet/include/cteas/p6/*wind*'
@@ -19,15 +20,15 @@ permissions:
 jobs:
   source-minim:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, lhy-desktop]
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
-      - name: Verify dedicated P6D runner
+      - name: Verify GitHub-hosted P6D environment
         shell: bash
         run: |
           echo "P6D runner=$RUNNER_NAME os=$RUNNER_OS arch=$RUNNER_ARCH"
-          if [[ "$RUNNER_NAME" != "lhy-desktop" || "$RUNNER_OS" != "Linux" ]]; then
-            echo "::error::P6D must run on the Linux lhy-desktop runner"
+          if [[ "$RUNNER_OS" != "Linux" || "$RUNNER_ARCH" != "X64" ]]; then
+            echo "::error::P6D requires a Linux/X64 GitHub-hosted runner"
             exit 1
           fi
       - name: Probe GitHub checkout transports on dedicated P6D host
@@ -114,7 +115,7 @@ jobs:
                    .github/actions/cteas-linux-toolchain/action.yml; do
             test -s "$p" || { echo "::error::Missing source $p"; exit 1; }
           done
-      - name: Select self-hosted C++20 and Fortran tools
+      - name: Select GitHub-hosted C++20 and Fortran tools
         uses: ./.github/actions/cteas-linux-toolchain
       - name: Install original Fortran toolchain
         run: gfortran --version | head -1
@@ -122,7 +123,10 @@ jobs:
         run: |
           cmake -S native_cpp/modules/p6_calmet -B "$RUNNER_TEMP/cteas-p6d-minim-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$RUNNER_TEMP/cteas-p6d-minim-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --parallel 2
-          ctest --test-dir "$RUNNER_TEMP/cteas-p6d-minim-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output-on-failure
+          # This frozen P6D parity job runs the original P6 suite only.
+          # Newly introduced P6G source-deck tests require their own inputs
+          # and are independently executed by p6g-accepted-baseline-multistation.
+          ctest --test-dir "$RUNNER_TEMP/cteas-p6d-minim-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --output-on-failure -E '^p6g_'
       - name: Execute literal original MINIM DIVCEL WINDBC source parity
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_original_minim.py \

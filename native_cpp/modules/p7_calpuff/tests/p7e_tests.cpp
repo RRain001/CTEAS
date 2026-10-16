@@ -3,10 +3,13 @@
 // artifact. Vendor-routine parity (PFSAMP, WRTI1D/WRTR1D framing) is checked
 // separately by tests/p7e_parity_tests.py.
 #include "cteas/puff/conc_file.hpp"
+#include "cteas/puff/fortran_records.hpp"
 #include "cteas/puff/receptors.hpp"
 
 #include <chrono>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -46,6 +49,52 @@ std::string read_text(const std::string& path) {
     std::ifstream input(path);
     require(bool(input), "cannot read " + path);
     return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+}
+
+// Unlike read_conc_species_fields(), this preserves the seven raw I7
+// characters and detects record-content differences that ordinary roundtrip
+// parsing and record-length-only tests would silently accept.
+std::string raw_species_I7(const std::string& path) {
+    cteas::puff::FortranRecordReader reader(
+        path, 4, cteas::puff::RecordByteOrder::LittleEndian);
+    std::vector<std::uint8_t> record;
+    while(reader.next(record)) {
+        if (record.size() < 15U) continue;
+        if (std::memcmp(record.data(), "H-3", 3U) == 0) {
+            return std::string(
+                reinterpret_cast<const char*>(record.data() + 8U), 7U);
+        }
+    }
+    throw std::runtime_error("H-3 species field not found in original CONC.DAT");
+}
+
+// The frozen 143h WROUT1 output has exactly 286 32-byte period/grid
+// descriptors. Compare the RAW payload bytes, not merely their counts and
+// human-decoded timestamps. Original Fortran record markers are checked by
+// the reader itself.
+std::vector<std::string> original_32byte_descriptors(const std::string& path) {
+    cteas::puff::FortranRecordReader reader(
+        path, 4, cteas::puff::RecordByteOrder::LittleEndian);
+    std::vector<std::uint8_t> record;
+    std::vector<std::string> fields;
+    while(reader.next(record)) {
+        if (record.size() == 32U) {
+            fields.emplace_back(
+                reinterpret_cast<const char*>(record.data()),record.size());
+        }
+    }
+    return fields;
+}
+
+std::string bytes_hex(const std::string& raw) {
+    static constexpr char hex[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(raw.size()*2U);
+    for(const unsigned char v : raw) {
+        out.push_back(hex[v>>4U]);
+        out.push_back(hex[v&0xfU]);
+    }
+    return out;
 }
 
 std::string control_text() {
@@ -136,6 +185,35 @@ void test_receptor_geometry() {
             "NON-GRIDDED (DISCRETE) RECEPTOR DATA\n!END!"));
     }, "discrete receptor with too few values");
     std::cout << "P7E_RECEPTOR_GEOMETRY=PASS GRID_RECEPTORS=2500 SPACING_KM=0.1\n";
+}
+
+void test_original_pfscrn() {
+    using cteas::puff::original_puff_screen;
+    // CALPUFF L4649-4679, REAL4. Moving 0->2 along X with radius 1.
+    const auto on=original_puff_screen(0,0,2,0,1,0,1);
+    require(on.has_impact && !on.calm_midpoint_branch &&
+            on.closest_distance_squared==0.0,
+            "PFSCRN moving on-track receptor incorrectly screened");
+    const auto near=original_puff_screen(0,0,2,0,1,0.5,1);
+    require(near.has_impact && near.closest_distance_squared==0.25,
+            "PFSCRN missed perpendicular nearest approach");
+    const auto edge=original_puff_screen(0,0,2,0,3,0,1);
+    require(edge.has_impact && edge.closest_distance_squared==1.0,
+            "PFSCRN radius threshold must be inclusive");
+    const auto far=original_puff_screen(0,0,2,0,3.01,0,1);
+    require(!far.has_impact,"PFSCRN out-of-radius receptor not excluded");
+    const auto still=original_puff_screen(0,0,0,0,0.2,0,1);
+    require(still.has_impact && still.calm_midpoint_branch,
+            "PFSCRN calm midpoint branch incorrectly selected");
+    const auto midpoint=original_puff_screen(0,0,0.00001,0,0.2,0,1);
+    require(midpoint.calm_midpoint_branch && midpoint.has_impact,
+            "PFSCRN short trajectory must use original a<1.e-4");
+    require_throw([]{(void)original_puff_screen(0,0,1,0,0,0,0);},
+                  "PFSCRN accepted zero radius");
+    require_throw([]{(void)original_puff_screen(0,0,1,0,0,0,std::nan(""));},
+                  "PFSCRN accepted NaN radius");
+    std::cout<<"P7E_ORIGINAL_PFSCRN_REAL4=PASS MOVING=YES CALM=YES"
+             <<" INCLUSIVE_RADIUS=YES FAIL_CLOSED=YES\n";
 }
 
 void test_sampling_integrals() {
@@ -258,6 +336,8 @@ void test_conc_file_round_trip(const fs::path& root) {
         writer.write_species_field("H-3", 1, 2, 2, values);
         writer.close();
     }
+    require(raw_species_I7(path.string()) == "      1",
+            "new writer must encode original species I7 right-justified");
     const auto summary = cteas::puff::summarize_conc_file(path.string());
     require(summary.records == 7U, "version + count + 2 comments + period + grid + field");
     require(summary.period_records == 1U && summary.grid_records == 1U &&
@@ -318,14 +398,26 @@ void test_frozen_structure(const fs::path& root, const std::string& frozen_path)
             period.end_julian = 1 + static_cast<int>((hour + 1U) / 24U);
             period.end_hour = static_cast<int>((hour + 1U) % 24U);
             writer.write_period_record(period);
-            cteas::puff::ConcGridDescriptor descriptor;
-            descriptor.x_origin_km = 510.885;
-            descriptor.y_origin_km = 3531.269;
+            // The original WROUT1 header uses MET.DAT grid origins in
+            // metres and a single REAL4 0.001 multiplier, not a float cast
+            // of the 3-decimal puff.inp kilometre text.
+            const auto descriptor = cteas::puff::original_met_grid_descriptor(
+                510885.0F, 3531269.0F);
+            require(descriptor.group_index == 1 &&
+                    descriptor.x_origin_km == static_cast<double>(510.885009765625F) &&
+                    descriptor.y_origin_km == static_cast<double>(3531.269287109375F),
+                    "WROUT1 original metadata must use REAL4 MET origin and group one");
             writer.write_grid_descriptor(descriptor);
             writer.write_species_field("H-3", 1, 50, 50, values);
         }
         writer.close();
     }
+    const auto original_I7 = raw_species_I7(frozen_path);
+    const auto native_I7 = raw_species_I7(path.string());
+    require(original_I7 == "      1",
+            "locked original Fortran species field no longer has canonical I7 bytes");
+    require(native_I7 == original_I7,
+            "native WROUT1 species index bytes differ from original frozen puff.con");
     const auto ours = cteas::puff::summarize_conc_file(path.string());
     require(ours.period_records == frozen.period_records &&
                 ours.grid_records == frozen.grid_records &&
@@ -336,6 +428,17 @@ void test_frozen_structure(const fs::path& root, const std::string& frozen_path)
     require(ours.species_field_counts.front().second ==
                 frozen.species_field_counts.front().second,
             "species field counts must match the frozen artifact");
+    const auto frozen_descriptors=original_32byte_descriptors(frozen_path);
+    const auto native_descriptors=original_32byte_descriptors(path.string());
+    require(frozen_descriptors.size()==286U && native_descriptors.size()==286U,
+            "143-hour original WROUT1 must have exactly 286 period/grid records");
+    for(std::size_t i=0; i<286U; ++i) {
+        require(native_descriptors[i]==frozen_descriptors[i],
+                "2022 original WROUT1 32-byte metadata mismatch at record " +
+                std::to_string(i+1U) + " original=" + bytes_hex(frozen_descriptors[i]) +
+                " native=" + bytes_hex(native_descriptors[i]));
+    }
+    std::cout<<"P7E_ORIGINAL_WROUT1_32BYTE_METADATA=PASS RECORDS=286 HOURS=143\n";
     const auto ours_periods = cteas::puff::read_conc_periods(path.string());
     const auto frozen_periods = cteas::puff::read_conc_periods(frozen_path);
     require(ours_periods.size() == frozen_periods.size(), "period record counts must match");
@@ -375,6 +478,7 @@ int main(int argc, char** argv) {
         fs::create_directories(root);
 
         test_receptor_geometry();
+        test_original_pfscrn();
         test_sampling_integrals();
         test_accumulation();
         test_conc_file_round_trip(root);

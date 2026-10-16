@@ -10,13 +10,19 @@ on:
 jobs:
   download:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 18
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Select self-hosted C++20 and Fortran tools
+      - name: Provision GitHub-hosted GCC12 and Fortran12
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-12 gfortran-12
+      - name: Select isolated C++20 and Fortran compilers
         uses: ./.github/actions/cteas-linux-toolchain
       - name: Dependencies
         run: python3 -m pip install --disable-pip-version-check PyYAML numpy pandas
@@ -29,11 +35,19 @@ jobs:
           latitude: 31.939774444
           longitude: 117.141610855
           EOF
-          cat > project/current/grid/grid.cmn <<'EOF'
-          ! DGRIDKM = 0.1 !
-          ! NX = 50 !
-          ! NY = 50 !
-          EOF
+          # Canonical pinned 2022 UTM grid (with projection, origin, datum, layers).
+          # A 3-key mock grid fails the accepted P4/P5 strict UTM reader.
+          cp project/cases/hefei5km_2022_reference_case_20261011/grid/grid.cmn project/current/grid/grid.cmn
+          python3 - <<'PY'
+          from pathlib import Path
+          from engine.run_met.station_grid import load_strict_utm_grid
+          g = load_strict_utm_grid(Path("project/current/grid/grid.cmn"), context="P5 CI")
+          assert (g.imap, g.iutmzn, g.lsohem, g.datum, g.nx, g.ny, g.nz) == (
+              "UTM", 50, "N", "WGS-84", 50, 50, 9), g
+          assert abs(g.dgridkm - 0.1) < 1e-9 and abs(g.xrefkm - 510.885) < 1e-9
+          assert abs(g.yrefkm - 3531.269) < 1e-9
+          print("P5_PUBLIC_CAPTURE_PINNED_FULL_UTM=PASS", g)
+          PY
           cat > project/current/grid/research_time <<'EOF'
           BEGIN: 20220101-000000
           END: 20220106-230000

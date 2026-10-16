@@ -137,6 +137,9 @@ std::vector<double> level_centers_from_zface(const std::vector<double>& edges) {
 }
 PointRelease point_source_from_control(const ControlFile& c) {
     check(c.required_int("NPT1")==1,"only one constant point source supported");
+    // Selected original-compatible case: IPTU=8 is Bq/s. No implicit
+    // conversion from g/s, kg/h, or another IPTU mode is permitted.
+    check(c.required_int("IPTU")==8,"selected point-source emission units must be IPTU=8 (Bq/s)");
     const auto x=c.required_float_list("X");
     const int species=c.required_int("NSPEC");
     check(species>0&&species<=64&&x.size()==std::size_t(8+species),
@@ -144,9 +147,36 @@ PointRelease point_source_from_control(const ControlFile& c) {
     check(x[2]>=0&&x[3]>=0&&x[4]>0&&x[5]>=0&&x[6]>0&&x[7]==0,
           "unsupported geometry or building downwash");
     PointRelease s;
-    s.x_m=x[0]*1000.0;s.y_m=x[1]*1000.0;s.z_m=x[2]+x[3];
+    // The original Fortran control reader stores the source X/Y as REAL*4.
+    // Keep that input-rounding boundary, even though the isolated P7C wind
+    // replay uses absolute UTM metres rather than vendor-relative grid units.
+    // Vendor-relative XPT1GRD/YPT1GRD assembly still needs its own oracle gate.
+    s.x_m=static_cast<double>(static_cast<float>(x[0]))*1000.0;
+    s.y_m=static_cast<double>(static_cast<float>(x[1]))*1000.0;
+    s.z_m=x[2]+x[3];
     s.rate_per_s.assign(x.begin()+8,x.end());
     for(double r:s.rate_per_s) check(finite(r)&&r>=0,"nonfinite source rate");
     return s;
+}
+
+PointRelease point_source_from_original_met_grid(
+    const ControlFile& control, const OriginalMetGridFrame& met) {
+    auto source = point_source_from_control(control);
+    const auto x = control.required_float_list("X");
+    const auto control_x_origin_km = control.required_float_list("XORIGKM");
+    const auto control_y_origin_km = control.required_float_list("YORIGKM");
+    if (control_x_origin_km.size() != 1U || control_y_origin_km.size() != 1U) {
+        throw std::invalid_argument("P7 original source needs scalar XORIGKM/YORIGKM");
+    }
+    // Preserve each separately rounded original input, including the
+    // CALMET metre -> kilometre REAL*4 multiply and the REAL*4 local offset.
+    // Absolute QA coordinates are not the internal XPT1GRD/YPT1GRD fields.
+    const auto qa = original_point_qa_xy(
+        met, static_cast<float>(x[0]), static_cast<float>(x[1]),
+        static_cast<float>(control_x_origin_km[0]),
+        static_cast<float>(control_y_origin_km[0]));
+    source.x_m = static_cast<double>(qa.x_km) * 1000.0;
+    source.y_m = static_cast<double>(qa.y_km) * 1000.0;
+    return source;
 }
 } // namespace cteas::puff

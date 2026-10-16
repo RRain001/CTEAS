@@ -294,6 +294,7 @@ add_test(NAME p6e_realcase_option_profile_contract COMMAND p6e_realcase_options_
 # E22 CALMET.DAT 2.1 output contract and truth-comparison harness.
 add_executable(p6e_calmet_dat21 src/calmet_dat21_tool_main.cpp)
 target_link_libraries(p6e_calmet_dat21 PRIVATE p6e_solar)
+target_include_directories(p6e_calmet_dat21 PRIVATE ../include) # native P6D station MIXHTST physical contract
 if(MSVC)
  target_compile_options(p6e_calmet_dat21 PRIVATE /W4 /WX)
 else()

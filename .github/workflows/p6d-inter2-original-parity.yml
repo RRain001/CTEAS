@@ -16,18 +16,18 @@ permissions:
 jobs:
   original-inter2:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, lhy-desktop]
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     concurrency:
       group: p6d-inter2-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      - name: Verify dedicated P6D runner
+      - name: Verify GitHub-hosted P6D environment
         shell: bash
         run: |
           echo "P6D runner=$RUNNER_NAME os=$RUNNER_OS arch=$RUNNER_ARCH"
-          if [[ "$RUNNER_NAME" != "lhy-desktop" || "$RUNNER_OS" != "Linux" ]]; then
-            echo "::error::P6D must run on the Linux lhy-desktop runner"
+          if [[ "$RUNNER_OS" != "Linux" || "$RUNNER_ARCH" != "X64" ]]; then
+            echo "::error::P6D requires a Linux/X64 GitHub-hosted runner"
             exit 1
           fi
       - name: Probe GitHub checkout transports on dedicated P6D host
@@ -114,7 +114,7 @@ jobs:
                    .github/actions/cteas-linux-toolchain/action.yml; do
             test -s "$p" || { echo "::error::Missing source $p"; exit 1; }
           done
-      - name: Resolve modern C++20 and Fortran toolchains on self-hosted runner
+      - name: Resolve modern C++20 and Fortran toolchains on GitHub-hosted runner
         shell: bash
         run: |
           set -euo pipefail
@@ -180,7 +180,10 @@ jobs:
           build="$RUNNER_TEMP/cteas-inter2-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           cmake -S native_cpp/modules/p6_calmet -B "$build" -DCMAKE_BUILD_TYPE=Debug
           cmake --build "$build" --parallel 2
-          ctest --test-dir "$build" --output-on-failure
+          # This frozen P6D parity job runs the original P6 suite only.
+          # Newly introduced P6G source-deck tests require their own inputs
+          # and are independently executed by p6g-accepted-baseline-multistation.
+          ctest --test-dir "$build" --output-on-failure -E '^p6g_'
       - name: Original CALMET unchanged INTER2 against independent C++
         run: |
           python3 native_cpp/modules/p6_calmet/reference/compare_original_inter2.py \

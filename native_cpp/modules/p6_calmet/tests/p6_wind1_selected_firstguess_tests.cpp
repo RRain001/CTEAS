@@ -49,12 +49,19 @@ int main(){
 
     c.vertical_bias.fill(0.f);
     c.upper_layer_valid[2]=false;
-    station.upper_observed_profile[2]=LayerWind{999999.f,999999.f};
+    station.upper_observed_profile[2]=LayerWind{999.f,999.f};
     f=wind1_firstguess_selected(station,c);
     const std::size_t missing=5000u+near_surface;
     check(std::abs(f.ug_mps[missing]-3.f)<1e-5f &&
           std::abs(f.vg_mps[missing]-4.f)<1e-5f,
           "missing upper layer must return all weight to surface");
+    station.upper_observed_profile[2]=LayerWind{999999.f,999999.f};
+    fails([&]{(void)wind1_firstguess_selected(station,c);},
+          "legacy 999999 masked upper sentinel must not silently replace original EDIT=999");
+    station.upper_observed_profile[2]=LayerWind{999.f,998.f};
+    fails([&]{(void)wind1_firstguess_selected(station,c);},
+          "partially missing upper layer must reject unequal mask/sentinel");
+    station.upper_observed_profile[2]=LayerWind{999.f,999.f};
     c.vertical_bias[2]=1.f;
     fails([&]{(void)wind1_firstguess_selected(station,c);},
           "missing only weighted upper observation must fail");

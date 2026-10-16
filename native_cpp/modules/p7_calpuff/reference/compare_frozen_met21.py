@@ -28,8 +28,18 @@ def compare(met: Path, binary: Path, report_path: Path) -> dict:
         oracle=json.loads(expected_path.read_text())
     run=subprocess.run([str(binary),str(met),"--hefei-2022"],
                        check=True,capture_output=True,text=True)
-    items=dict(line.split("=",1) for line in run.stdout.splitlines()
-               if "=" in line and line.count("=")==1)
+    # The C++ inspector emits FIRST_UNIX_SEC=<n> END_UNIX_SEC=<n>
+    # on one line. Each whitespace-delimited KEY=VALUE is independent.
+    # Rejecting lines with multiple '=' dropped BOTH times and caused a
+    # Python KeyError, although the original 2022 reader tests had passed.
+    items=dict(token.split("=",1) for token in run.stdout.split()
+               if token.count("=")==1)
+    required=("P7B_CALMET21_FIELD_DECODE", "INTERVALS", "HOURLY_FIELDS",
+              "FIRST_UNIX_SEC", "END_UNIX_SEC")
+    missing=[key for key in required if key not in items]
+    if missing:
+        raise AssertionError("CALMET21 inspector missing keys: " +
+                             ", ".join(missing) + "; stdout=" + repr(run.stdout[-500:]))
     if items.get("P7B_CALMET21_FIELD_DECODE")!="PASS":
         raise AssertionError("Native MET21 decode never returned PASS")
     if (int(items["INTERVALS"])!=oracle["actual_n_hour_intervals"] or

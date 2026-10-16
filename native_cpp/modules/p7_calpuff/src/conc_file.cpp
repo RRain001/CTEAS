@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -140,19 +141,210 @@ void ConcFileWriter::write_period_record(const ConcPeriod& period) {
     ++records_written_;
 }
 
-void ConcFileWriter::write_grid_descriptor(const ConcGridDescriptor& descriptor) {
-    require_true(impl_ != nullptr && !impl_->closed, "writer is closed");
-    require_true(descriptor.discrete_receptors >= 0, "discrete receptor count must not be negative");
+ConcGridDescriptor original_met_grid_descriptor(
+    float origin_x_m, float origin_y_m, int discrete_receptors) {
+    require_true(std::isfinite(origin_x_m) && std::isfinite(origin_y_m),
+                 "original MET.DAT grid origin must be finite");
+    require_true(discrete_receptors >= 0,
+                 "original discrete receptor count must not be negative");
+    constexpr float kOriginalMetresToKm = 0.001F;
+    ConcGridDescriptor result;
+    result.discrete_receptors = discrete_receptors;
+    result.group_index = 1;
+    result.group_name = "TOTAL";
+    // Preserve original REAL*4 multiply, not double or text conversion.
+    result.x_origin_km = static_cast<double>(origin_x_m * kOriginalMetresToKm);
+    result.y_origin_km = static_cast<double>(origin_y_m * kOriginalMetresToKm);
+    return result;
+}
+
+ConcSourceDescriptor original_total_source_descriptor(float origin_x_m,float origin_y_m) {
+    const auto legacy=original_met_grid_descriptor(origin_x_m,origin_y_m);
+    return {0,1,"TOTAL",legacy.x_origin_km,legacy.y_origin_km};
+}
+
+void ConcFileWriter::write_source_descriptor(const ConcSourceDescriptor& source) {
+    require_true(impl_!=nullptr && !impl_->closed,"writer is closed");
+    require_true(source.source_type>=0 && source.source_type<=8,
+                 "invalid OUTPUT source KTYPE");
+    require_true(source.source_index>=1,
+                 "invalid OUTPUT source KSOURCE");
+    require_true(!source.source_name.empty() && source.source_name.size()<=16U,
+                 "invalid OUTPUT source CSRCNAM");
+    require_true(std::isfinite(source.x_map_km) && std::isfinite(source.y_map_km),
+                 "invalid OUTPUT source XY coordinates");
+    if(source.source_type==0)
+        require_true(source.source_index==1 && source.source_name=="TOTAL",
+                     "TOTAL must have KTYPE=0 KSOURCE=1 name TOTAL");
     std::vector<std::uint8_t> payload;
-    append_int(payload, descriptor.discrete_receptors);
-    append_int(payload, descriptor.group_index);
-    const std::string name = padded(descriptor.group_name, 16U, "receptor group name");
-    append_bytes(payload, name.data(), name.size());
-    append_float(payload, static_cast<float>(descriptor.x_origin_km));
-    append_float(payload, static_cast<float>(descriptor.y_origin_km));
-    require_true(payload.size() == 32U, "grid descriptor must be 32 bytes");
-    write_framed(impl_->stream, payload);
+    append_int(payload,source.source_type);
+    append_int(payload,source.source_index);
+    const auto name=padded(source.source_name,16U,"source name");
+    append_bytes(payload,name.data(),name.size());
+    append_float(payload,static_cast<float>(source.x_map_km));
+    append_float(payload,static_cast<float>(source.y_map_km));
+    require_true(payload.size()==32U,"OUTPUT source descriptor must be 32 bytes");
+    write_framed(impl_->stream,payload);
     ++records_written_;
+}
+
+std::vector<std::string> original_wrout1_embedded_comments(
+    const std::string& active_puff_control,
+    const std::string& calmet_dat_path) {
+    if(active_puff_control.empty())
+        throw std::invalid_argument("WROUT1 embedded controls cannot be empty");
+    std::vector<std::string> comments;
+    comments.emplace_back("Produced by CALPUFF Version: 7.2.1  Level: 150618");
+    comments.emplace_back(
+        "Internal Coordinate Transformations  ---  COORDLIB   Version: 1.99   Level: 070921");
+    std::istringstream control(active_puff_control);
+    std::string line;
+    while(std::getline(control,line)) {
+        if(!line.empty() && line.back()=='\r')line.pop_back();
+        require_true(line.size()<=132U,"WROUT1 raw control line too wide");
+        comments.push_back(line);
+    }
+    FortranRecordReader met(calmet_dat_path,4,RecordByteOrder::LittleEndian);
+    std::vector<std::uint8_t> raw;
+    require_true(met.next(raw) && raw.size()==96U &&
+                 std::string(reinterpret_cast<const char*>(raw.data()),10U)
+                     =="CALMET.DAT",
+                 "WROUT1 requires CALMET.DAT version record from source MET");
+    std::string met_header(reinterpret_cast<const char*>(raw.data()),raw.size());
+    met_header.erase(met_header.find_last_not_of(' ')+1);
+    require_true(met.next(raw) && raw.size()==4U,
+                 "WROUT1 expected MET.DAT embedded comment-count record");
+    std::int32_t ncomments=0;
+    std::memcpy(&ncomments,raw.data(),sizeof(ncomments));
+    require_true(ncomments>0 && ncomments<100000,
+                 "WROUT1 MET.DAT embedded comment count invalid");
+    comments.emplace_back("");
+    comments.emplace_back(132,'.');
+    comments.emplace_back("");
+    comments.emplace_back(std::move(met_header));
+    for(std::int32_t i=0;i<ncomments;++i) {
+        require_true(met.next(raw) && raw.size()==132U,
+                     "WROUT1 MET.DAT embedded comment payload width drift");
+        comments.emplace_back(reinterpret_cast<const char*>(raw.data()),
+                              raw.size());
+    }
+    return comments;
+}
+
+void ConcFileWriter::write_original_wrout1_general_header(
+    const OriginalWrout1GeneralHeader& h) {
+    require_true(impl_!=nullptr && !impl_->closed,"writer is closed");
+    require_true(h.start[0]>=1900 && h.start[0]<=2100 &&
+                 h.start[1]>=1 && h.start[1]<=366 &&
+                 h.start[2]>=0 && h.start[2]<=23 &&
+                 h.start[3]>=0 && h.start[3]<=3600,
+                 "WROUT1 general header invalid start date");
+    require_true(h.timing_grid[0]>0 && h.timing_grid[2]>0 &&
+                 h.timing_grid[3]>0 && h.timing_grid[4]>0 &&
+                 h.options[10]==13,
+                 "WROUT1 general header unsupported grid/source groups");
+    std::vector<std::uint8_t> body;
+    const auto chars=[&](const std::string& value,
+                         std::size_t width,const char* what) {
+        const auto text=padded(value,width,what);
+        append_bytes(body,text.data(),text.size());
+    };
+    chars(h.model,12,"WROUT1 model");
+    chars(h.model_version,12,"WROUT1 version");
+    chars(h.model_level,12,"WROUT1 level");
+    for(const auto value:h.start)append_int(body,value);
+    chars(h.timezone,8,"WROUT1 timezone");
+    for(const auto value:h.timing_grid)append_int(body,value);
+    for(const auto value:h.spacing_km){
+        require_true(std::isfinite(value)&&value>0.0F,
+                     "WROUT1 spacing invalid");
+        append_float(body,value);
+    }
+    append_int(body,h.original_one);
+    for(const auto value:h.met_origins_km){
+        require_true(std::isfinite(value),"WROUT1 MET origin invalid");
+        append_float(body,value);
+    }
+    for(const auto value:h.options)append_int(body,value);
+    for(const auto value:h.projection){
+        require_true(std::isfinite(value),"WROUT1 projection invalid");
+        append_float(body,value);
+    }
+    chars(h.pmap,8,"WROUT1 PMAP");
+    chars(h.utmhem,4,"WROUT1 UTMHEM");
+    chars(h.datum,8,"WROUT1 DATUM");
+    chars(h.datum_epoch,12,"WROUT1 DATEN");
+    for(const auto& text:h.latlon_labels)
+        chars(text,16,"WROUT1 raw latitude/longitude");
+    require_true(body.size()==300U,
+                 "WROUT1 source-ordered general header not 300 bytes");
+    write_framed(impl_->stream,body);
+    ++records_written_;
+}
+
+void ConcFileWriter::write_original_wrout1_source_type_counts(
+    const std::array<std::int32_t,13>& counts) {
+    require_true(impl_!=nullptr && !impl_->closed,"writer is closed");
+    std::vector<std::uint8_t> payload;
+    payload.reserve(counts.size()*sizeof(std::int32_t));
+    for(const auto count:counts) {
+        require_true(count>=0,"WROUT1 negative source type count");
+        append_int(payload,count);
+    }
+    require_true(payload.size()==52U,"WROUT1 13 INTEGER*4 source counters invalid");
+    write_framed(impl_->stream,payload);
+    ++records_written_;
+}
+
+void ConcFileWriter::write_original_wrout1_identity(
+    const OriginalWrout1Identity& item) {
+    require_true(impl_!=nullptr && !impl_->closed,"writer is closed");
+    require_true(!item.species_name.empty() && item.species_name.size()<=8,
+                 "WROUT1 species A8 invalid");
+    require_true(item.species_index>=1 && item.species_index<=9999999,
+                 "WROUT1 species I7 invalid");
+    require_true(!item.concentration_units.empty() &&
+                 item.concentration_units.size()<=16,
+                 "WROUT1 unit A16 invalid");
+    require_true(item.source_identifier>=1,
+                 "WROUT1 source identifier invalid");
+    require_true(!item.source_name.empty() && item.source_name.size()<=16,
+                 "WROUT1 source name A16 invalid");
+    for(const auto& line:item.run_titles)
+        require_true(line.size()<=80,"WROUT1 title A80 too long");
+    // Stage and validate ALL payloads before the first sequential write.
+    std::array<std::vector<std::uint8_t>,4> records;
+    for(const auto& title:item.run_titles){
+        const auto line=padded(title,80,"WROUT1 title");
+        append_bytes(records[0],line.data(),line.size());
+    }
+    const auto label=padded(item.species_name,8,"WROUT1 species");
+    append_bytes(records[1],label.data(),label.size());
+    std::string species_index=std::to_string(item.species_index);
+    species_index.insert(0,7-species_index.size(),' ');
+    append_bytes(records[1],species_index.data(),species_index.size());
+    const auto units=padded(item.concentration_units,16,"WROUT1 units");
+    append_bytes(records[2],units.data(),units.size());
+    append_int(records[3],item.source_identifier);
+    const auto source=padded(item.source_name,16,"WROUT1 source");
+    append_bytes(records[3],source.data(),source.size());
+    require_true(records[0].size()==240 && records[1].size()==15 &&
+                 records[2].size()==16 && records[3].size()==20,
+                 "WROUT1 identity payload width drift");
+    for(const auto& rec:records){
+        write_framed(impl_->stream,rec);
+        ++records_written_;
+    }
+}
+
+void ConcFileWriter::write_grid_descriptor(const ConcGridDescriptor& descriptor) {
+    // Backward-compatible TOTAL-only alias. These fields NEVER describe
+    // receptor grid dimensions in vendor OUTPUT L57912-57913.
+    require_true(descriptor.discrete_receptors==0 &&
+                 descriptor.group_index==1 && descriptor.group_name=="TOTAL",
+                 "legacy TOTAL descriptor cannot represent individual source");
+    write_source_descriptor({0,1,"TOTAL",
+        descriptor.x_origin_km,descriptor.y_origin_km});
 }
 
 void ConcFileWriter::write_species_field(const std::string& label, int species_index, int nx, int ny,
@@ -170,8 +362,12 @@ void ConcFileWriter::write_species_field(const std::string& label, int species_i
     std::vector<std::uint8_t> payload;
     const std::string name = padded(label, 8U, "species label");
     append_bytes(payload, name.data(), name.size());
-    // The original writes a right-justified 7-character index field here.
-    const std::string index = padded(std::to_string(species_index), 7U, "species index field");
+    // Original WROUT1 writes an I7 numeric field, right-justified with
+    // LEADING spaces. Padded("1",7) used to left-justify it ("1      "),
+    // which escaped structure-only CONC.DAT tests but changes the bytes.
+    std::string index = std::to_string(species_index);
+    require_true(index.size() <= 7U, "species index exceeds original I7 field");
+    index.insert(0U, 7U - index.size(), ' ');
     append_bytes(payload, index.data(), index.size());
     payload.reserve(payload.size() + values.size() * sizeof(float));
     for (const float value : values) append_float(payload, value);

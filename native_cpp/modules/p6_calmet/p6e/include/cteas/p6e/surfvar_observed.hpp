@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <vector>
 #include "cteas/p6e/avetmp.hpp"
+#include "cteas/p6e/surfvar_multistation.hpp"
 namespace cteas::p6e {
 struct ObservedSurface {
     std::size_t nx=0,ny=0;
@@ -34,6 +35,12 @@ struct ObservedSurface {
     float dgrid_m=100.f;
     int mnmdav=1;
     float hafang_deg=30.f;
+    // Preserve source CALMET SURFVAR's single-station REAL*4 interpolation:
+    // even one station uses (wt * observed_temp) / wt within TRADKM.
+    // Enable only with actual station coordinates and validated met.inp controls.
+    bool preserve_single_station_weight_rounding=false;
+    float station_x_m=0.f,station_y_m=0.f,tradkm=500.f;
+    int irad=1,numts=5;
 };
 struct SurfaceState {
     std::size_t nx,ny;
@@ -57,6 +64,21 @@ inline SurfaceState surfvar_one_station(const ObservedSurface& s) {
     // Missing observed RH invokes original 80% land fallback.
     const int rh=s.station_rh_percent==9999?80:s.station_rh_percent;
     std::vector<float> temperature(n,s.station_temp_k);
+    if(s.preserve_single_station_weight_rounding) {
+        if(!std::isfinite(s.station_x_m)||!std::isfinite(s.station_y_m)||
+           !std::isfinite(s.tradkm)||s.tradkm<0.f||
+           !std::isfinite(s.dgrid_m)||s.dgrid_m<=0.f||
+           (s.irad!=1&&s.irad!=2)||s.numts<=0)
+            throw std::invalid_argument("SURFVAR single-station source weighting controls invalid");
+        SurfvarMultistationInput m;
+        m.nx=s.nx;m.ny=s.ny;m.dgrid_m=s.dgrid_m;
+        // Source RDSURF/TRADKM: km -> grid-cell radius.
+        m.trad_grid=(s.tradkm*1000.f)/s.dgrid_m;
+        m.irad=s.irad;m.numts=s.numts;
+        m.stations.push_back(ObservedSurfaceStation{
+            s.station_x_m,s.station_y_m,s.station_temp_k,s.station_rh_percent});
+        temperature=surfvar_multistation(m).temp2d_k;
+    }
     if(s.average_temperature&&s.iall!=2) {
         // IAVET=1: SURFVAR L12878-12881 calls AVETMP with the diagnostic wind.
         if(s.u_ms.size()!=n||s.v_ms.size()!=n)
