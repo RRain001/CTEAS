@@ -220,6 +220,8 @@ TRACKS: dict[str, dict] = {
             {"cmd": ["python3", "native_cpp/modules/p7_calpuff/reference/p7x_source_anchor.py",
                      "--check", "native_cpp/modules/p7_calpuff/reference/p7x_source_anchor.json"]},
             {"cmd": ["{build}/cteas_p7x_tests"]},
+            {"cmd": ["python3", "native_cpp/modules/p7_calpuff/tests/p7g_structure_tests.py",
+                     "--probe", "{build}/cteas_p7e_probe", "--repo-root", "."]},
             {"cmd": ["{build}/cteas_p7w_probe", "--dgm-steps",
                      "native_cpp/modules/p7_calpuff/reference/dgm_p7_advection_2022/dgm_puffstep_hour202200100.bin",
                      MET_DAT, PUFF_INP, "513.3846439571", "3533.7689269678", "70.8", "1.6",

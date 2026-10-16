@@ -180,9 +180,21 @@ void test_new_puff_state() {
     inputs.source_index = 1;
     inputs.source_type = 1;
     const auto state = cteas::puff::new_puff_state(inputs);
-    require_close(state.x_km, 513.385, 1.0e-9, "release x");
+    // The original unqualified COMMON /PUFF/ scalar is REAL*4. A double
+    // diagnostic must report the promoted *stored float*, not the double
+    // original input literal.
+    const auto real4 = [](double value) {
+        return static_cast<double>(static_cast<float>(value));
+    };
+    require_close(state.x_km, real4(513.385), 0.0, "release XPT1GRD REAL4");
+    require_close(state.y_km, real4(3533.769), 0.0, "release YPT1GRD REAL4");
+    require(state.x_km != inputs.source_x_km && state.y_km != inputs.source_y_km,
+            "REAL4 COMMON x/y must not retain double-literal precision");
     require_close(state.tibl_height_m, -1.0, 0.0, "TIBL height is disabled at release");
-    require_close(state.final_height_m, 136.158, 1.0e-6, "release height is the effective height");
+    require_close(state.final_height_m, real4(136.158), 0.0,
+                  "release height is the REAL4 effective height");
+    require_close(state.exit_velocity_ms, real4(17.26), 0.0, "exit velocity stored as REAL4");
+    require_close(state.buoyancy_flux, real4(6.9035), 0.0, "buoyancy flux stored as REAL4");
     require_close(state.height_begin_m, state.final_height_m, 0.0, "ZPB = HEFF");
     require_close(state.height_end_m, state.final_height_m, 0.0, "ZPE = HEFF");
     require(state.split_flag == 1, "ISPLIT starts at one");

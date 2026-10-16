@@ -1,4 +1,5 @@
 #include "cteas/puff/calmet21.hpp"
+#include "cteas/puff/original_met_hours.hpp"
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -186,6 +187,32 @@ int main(int argc, char** argv) {
     assert(summary.header.nx==2 && summary.header.ny==2 && summary.header.nz==2);
     assert(summary.final_end.unix_seconds-summary.first_begin.unix_seconds==7200);
     assert(called==34 && integers==4);
+    std::size_t emitted_hours=0;
+    std::uint64_t first_digest=0;
+    const auto assembled=cteas::puff::OriginalMetHourlyReader::read(
+        good.string(),[&](const auto& header,const auto& statics,const auto& hour) {
+            assert(header.nx==2 && header.ny==2 && header.nz==2);
+            assert(statics.roughness_m.size()==4);
+            assert(hour.nx==2 && hour.ny==2 && hour.nz==2);
+            assert(hour.u.size()==8 && hour.v.size()==8 && hour.w.size()==8 &&
+                   hour.t.size()==8);
+            assert(hour.ustar.size()==4 && hour.zi.size()==4 &&
+                   hour.el.size()==4 && hour.tempk.size()==4 &&
+                   hour.ipgt.size()==4 && hour.irh.size()==4);
+            assert(hour.u.at(0)==2.5F && hour.u.at(7)==5.5F &&
+                   hour.t.at(0)==2.5F);
+            assert(hour.ipgt.at(0)==11 && hour.irh.at(3)==14);
+            assert(hour.end.unix_seconds-hour.begin.unix_seconds==3600);
+            const auto digest=hour.original_field_fingerprint();
+            if(emitted_hours==0)first_digest=digest;
+            else assert(first_digest==digest); // same fixture values, new hour
+            ++emitted_hours;
+        });
+    assert(assembled.intervals==2 && emitted_hours==2);
+    must_fail([&] {
+        (void)cteas::puff::OriginalMetHourlyReader::read(
+            good.string(),cteas::puff::OriginalMetHourlyReader::Observer{});
+    });
     for (const auto& [name,wrong_order,gap,nan]:
          std::vector<std::tuple<std::string,bool,bool,bool>>{
              {"bad-order",true,false,false},
@@ -194,6 +221,10 @@ int main(int argc, char** argv) {
         const auto p=root/name;
         create_fixture(p,wrong_order,gap,nan);
         must_fail([&]{(void)Calmet21Reader::read(p.string());});
+        must_fail([&] {
+            (void)cteas::puff::OriginalMetHourlyReader::read(
+                p.string(),[](const auto&,const auto&,const auto&){});
+        });
     }
     must_fail([&]{(void)Calmet21Reader::read(good.string(),{},true);});
     for (const auto& [name,mode] : std::vector<std::pair<std::string,int>>{
@@ -201,5 +232,9 @@ int main(int argc, char** argv) {
         const auto p=root/name;
         create_fixture(p,false,false,false,mode);
         must_fail([&]{(void)Calmet21Reader::read(p.string());});
+        must_fail([&] {
+            (void)cteas::puff::OriginalMetHourlyReader::read(
+                p.string(),[](const auto&,const auto&,const auto&){});
+        });
     }
 }

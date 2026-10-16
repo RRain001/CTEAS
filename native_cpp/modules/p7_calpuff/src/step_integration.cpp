@@ -122,8 +122,14 @@ Advance advance_puff(const AdvanceInputs& inputs) {
     const R dxoldm = uadv * tsamp;
     const R dyoldm = vadv * tsamp;
     const R distance = ws * tsamp;
-    const R dxmold = dxoldm / spacing;
-    const R dymold = dyoldm / spacing;
+    // COMP (original XGRIDMI): compute the inverse grid spacing ONCE in
+    // original REAL*4, then multiply each metre displacement by XGRIDMI.
+    // A mathematically equivalent 'dxoldm / spacing' changes the rounding
+    // sequence and diverges from unmodified Fortran by one ULP at locked
+    // Hefei 2022 DGM record 1685 (hour 2, puff 55, YNEW).
+    const R xgridmi = kOne / spacing;
+    const R dxmold = dxoldm * xgridmi;
+    const R dymold = dyoldm * xgridmi;
     Advance advance;
     advance.dx_cells = static_cast<double>(dxmold);
     advance.dy_cells = static_cast<double>(dymold);
@@ -173,6 +179,36 @@ CellLookup grid_cell(const CellLookupInputs& inputs) {
     lookup.i = std::min(static_cast<int>(ix0), inputs.nx);
     lookup.j = std::min(static_cast<int>(iy0), inputs.ny);
     return lookup;
+}
+
+CurrentCoordinates current_coordinates(const CurrentCoordinateInputs& inputs) {
+    // SETPUF L48673-48723, REAL*4. Puff coordinates in /CURRENT/ are metres.
+    require_true(inputs.grid_spacing_m > 0.0, "the met grid spacing must be positive");
+    const R spacing = to_real(inputs.grid_spacing_m, "the grid spacing");
+    const R x_begin = to_real(inputs.x_begin_cells, "XPB");
+    const R y_begin = to_real(inputs.y_begin_cells, "YPB");
+    const R z_begin = to_real(inputs.z_begin_m, "ZPB");
+    const R x_end = to_real(inputs.x_end_cells, "XNEW");
+    const R y_end = to_real(inputs.y_end_cells, "YNEW");
+    const R settling = to_real(inputs.settling_velocity_ms, "VSETL");
+    const R tsamp = to_real(inputs.step_s, "TSAMP");
+    require_true(tsamp > 0.0, "the step length must be positive");
+    require_true(settling >= 0.0, "the settling velocity must not be negative");
+
+    CurrentCoordinates result;
+    result.x_begin_m = static_cast<double>(x_begin * spacing);
+    result.y_begin_m = static_cast<double>(y_begin * spacing);
+    result.z_begin_m = static_cast<double>(z_begin);
+    result.x_end_m = static_cast<double>(x_end * spacing);
+    result.y_end_m = static_cast<double>(y_end * spacing);
+    // The end height drops with gravitational settling, floored at the ground.
+    R z_end = z_begin - settling * tsamp;
+    z_end = std::max(z_end, kZero);
+    result.z_end_m = static_cast<double>(z_end);
+    result.stored_x_cells = static_cast<double>(x_end);
+    result.stored_y_cells = static_cast<double>(y_end);
+    result.stored_z_m = static_cast<double>(z_end);
+    return result;
 }
 
 } // namespace cteas::puff

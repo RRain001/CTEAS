@@ -10,19 +10,26 @@ on:
       - 'native_cpp/modules/p6_calmet/reference/*readge*'
       - 'native_cpp/modules/p6_calmet/tests/p6_read_geo_tests.cpp'
       - 'docs/reconstruction_cpp/CI_FULL_REGRESSION_REQUEST.md'
+      - '.github/workflows/p6c-readge-fortran-parity.yml'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   selected-fortran-readge-format-parity:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'RRain001/CTEAS'
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Select self-hosted C++20 and Fortran tools
+      - name: Provision GitHub-hosted GCC12 and Fortran12
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq g++-12 gfortran-12
+      - name: Select isolated C++20 and Fortran compilers
         uses: ./.github/actions/cteas-linux-toolchain
       - name: Original P3 capture without modifying P3 branch
         run: |
@@ -40,7 +47,7 @@ jobs:
       - name: Build C++20 READGE with strict warnings
         run: |
           set -euo pipefail
-          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-readge-build -DCMAKE_BUILD_TYPE=Release
+          cmake -S native_cpp/modules/p6_calmet -B /tmp/p6c-readge-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-fno-strict-aliasing
           cmake --build /tmp/p6c-readge-build --parallel 2
           ctest --test-dir /tmp/p6c-readge-build --output-on-failure
       - name: Generate identical 2022 REAL P3 GEO.DAT via untouched original Fortran

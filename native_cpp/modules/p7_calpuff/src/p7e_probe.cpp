@@ -324,6 +324,60 @@ int real_grid_mode(const std::string& met_path, const std::string& control_path,
     return 0;
 }
 
+// P7G: the CONC.DAT structure comparison. Writes a file with this module's own
+// framing for every period the frozen artifact carries, then reports the record
+// inventory of both so the structural difference is explicit and measured.
+int structure_compare_mode(const std::string& frozen_path, const std::string& out_path,
+                           int nx, int ny) {
+    const auto frozen = cteas::puff::summarize_conc_file(frozen_path);
+    const auto periods = cteas::puff::read_conc_periods(frozen_path);
+    require_true(!periods.empty(), "the frozen artifact has no period records");
+
+    cteas::puff::ConcFileWriter writer(out_path, "7.0",
+                                       "CALPUFF Version: 7.2.1  Level: 150618", {});
+    std::vector<float> values(static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny), 0.0F);
+    for (const auto& period : periods) {
+        cteas::puff::ConcPeriod record;
+        record.begin_year = period.begin_year;
+        record.begin_julian = period.begin_julian;
+        record.begin_hour = period.begin_hour;
+        record.begin_seconds = period.begin_seconds;
+        record.end_year = period.end_year;
+        record.end_julian = period.end_julian;
+        record.end_hour = period.end_hour;
+        record.end_seconds = period.end_seconds;
+        writer.write_period_record(record);
+        cteas::puff::ConcGridDescriptor descriptor;
+        writer.write_grid_descriptor(descriptor);
+        writer.write_species_field("H-3     ", 1, nx, ny, values);
+    }
+    writer.close();
+
+    const auto written = cteas::puff::summarize_conc_file(out_path);
+    std::cout << "P7G_CONC_STRUCTURE_COMPARE FROZEN_RECORDS=" << frozen.records
+              << " FROZEN_BYTES=" << frozen.bytes << " WRITTEN_RECORDS=" << written.records
+              << " WRITTEN_BYTES=" << written.bytes << " PERIODS=" << periods.size()
+              << " FROZEN_PERIODS=" << frozen.period_records
+              << " FROZEN_GRID=" << frozen.grid_records
+              << " FROZEN_SPECIES_FIELDS=" << frozen.species_field_records
+              << " WRITTEN_PERIODS=" << written.period_records
+              << " WRITTEN_GRID=" << written.grid_records
+              << " WRITTEN_SPECIES_FIELDS=" << written.species_field_records
+              << " FIRST_BEGIN=" << frozen.first_begin_date
+              << " LAST_END=" << frozen.last_end_date << '\n';
+    for (const auto& entry : frozen.species_field_counts) {
+        std::cout << "P7G_CONC_STRUCTURE_SPECIES FROZEN_LABEL=\"" << entry.first
+                  << "\" FROZEN_COUNT=" << entry.second << '\n';
+    }
+    std::cout << "P7G_CONC_STRUCTURE_LABELS FROZEN=" << frozen.label_counts.size()
+              << " WRITTEN=" << written.label_counts.size() << '\n';
+    for (const auto& entry : frozen.label_counts) {
+        std::cout << "P7G_CONC_STRUCTURE_LABEL FROZEN_LABEL=\"" << entry.first
+                  << "\" FROZEN_COUNT=" << entry.second << '\n';
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -332,6 +386,9 @@ int main(int argc, char** argv) {
         if (argc == 3 && std::string(argv[1]) == "--structure") return structure_mode(argv[2]);
         if (argc == 2 && std::string(argv[1]) == "--vcoup-matrix") return vcoup_matrix_mode();
         if (argc == 2 && std::string(argv[1]) == "--vcbar-matrix") return vcbar_matrix_mode();
+        if (argc == 6 && std::string(argv[1]) == "--structure-compare") {
+            return structure_compare_mode(argv[2], argv[3], std::stoi(argv[4]), std::stoi(argv[5]));
+        }
         if (argc == 9 && std::string(argv[1]) == "--real-grid") {
             return real_grid_mode(argv[2], argv[3], std::stoi(argv[4]), std::stod(argv[5]),
                                   std::stod(argv[6]), std::stod(argv[7]), std::stod(argv[8]));

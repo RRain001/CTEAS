@@ -183,7 +183,13 @@ TerrainStrain terrain_strain(const TerrainStrainInputs& inputs, const TerrainLoo
         const R tzsq = tz * tz;
         R dxbyl = kOne;
         if (arise < relief_along) dxbyl = arise / relief_along;
-        const R dtz = -dxbyl * (kTwo * aslope * tzsq / (etabyl * (kOne + xbyl2) * (kOne + xbyl2))) *
+        // Original CTADJ2 calpuff.for L20800:
+        // DTZ=-DXBYL*(TWO*ASLOPE*TZSQ/(ETABYL*(ONE+XBYL2)**2))*...
+        // REAL*4 evaluates (ONE+XBYL2)**2 before multiplying ETABYL.
+        // Left-associating ETABYL*TERM*TERM changes an intermediate ULP.
+        const R hill_term=kOne+xbyl2;
+        const R hill_squared=hill_term*hill_term;
+        const R dtz = -dxbyl * (kTwo * aslope * tzsq / (etabyl * hill_squared)) *
                       (-kTwo * xbyl +
                        expnli * (kTwo * xbyl * cosln + (kOne - xbyl2) * sinln));
         const R sfcnsq = std::exp(kTwo * (kOne - tz));

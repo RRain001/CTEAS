@@ -182,6 +182,45 @@ double erf_difference(double x1, double x2) {
     return static_cast<double>(difference);
 }
 
+PuffScreeningResult original_puff_screen(
+    double x_old,double y_old,double x_new,double y_new,
+    double x_receptor,double y_receptor,double puff_radius_squared) {
+    for(double v:{x_old,y_old,x_new,y_new,x_receptor,y_receptor,puff_radius_squared})
+        require_finite(v,"PFSCRN input");
+    require_true(puff_radius_squared>0.0,"PFSCRN radius squared must be positive");
+    // Vendor calpuff.for L4649-4678. Preserve REAL*4 and MIN/MAX order.
+    const R dx=static_cast<R>(x_new)-static_cast<R>(x_old);
+    const R dy=static_cast<R>(y_new)-static_cast<R>(y_old);
+    const R dx1=static_cast<R>(x_old)-static_cast<R>(x_receptor);
+    const R dy1=static_cast<R>(y_old)-static_cast<R>(y_receptor);
+    const R c1=dx*dx+dy*dy;
+    const R radius2=static_cast<R>(puff_radius_squared);
+    require_true(std::isfinite(radius2)&&radius2>0.0F,
+                 "PFSCRN radius squared underflows/overflows REAL4");
+    const R a=c1/radius2;
+    R dist2=0.0F;
+    const bool calm=a<1.0e-4F;
+    if(calm){
+        const R rx=static_cast<R>(x_receptor) -
+                   (static_cast<R>(x_old)+0.5F*dx);
+        const R ry=static_cast<R>(y_receptor) -
+                   (static_cast<R>(y_old)+0.5F*dy);
+        dist2=rx*rx+ry*ry;
+    }else{
+        const R c2=dx*dx1+dy*dy1;
+        R fraction=-c2/c1;
+        fraction=std::max(fraction,0.0F);
+        fraction=std::min(fraction,1.0F);
+        const R nearest_x=static_cast<R>(x_old)+dx*fraction;
+        const R nearest_y=static_cast<R>(y_old)+dy*fraction;
+        const R rx=static_cast<R>(x_receptor)-nearest_x;
+        const R ry=static_cast<R>(y_receptor)-nearest_y;
+        dist2=rx*rx+ry*ry;
+    }
+    require_true(std::isfinite(dist2),"PFSCRN nearest-distance overflow");
+    return {static_cast<double>(dist2),dist2<=radius2,calm};
+}
+
 SamplingIntegrals puff_sampling_integrals(double x_old_km, double y_old_km, double x_new_km,
                                           double y_new_km, double x_receptor_km,
                                           double y_receptor_km, double sigma_y_at_receptor_m,
@@ -216,8 +255,12 @@ SamplingIntegrals puff_sampling_integrals(double x_old_km, double y_old_km, doub
     const R tsy = sygu * sygu;
     const R a = c1 / tsy;
     if (a < static_cast<R>(kLowWindThreshold)) {
-        integrals.i2 = 0.5F * std::exp(-dist2 / (2.0F * tsy));
-        integrals.i1 = 2.0F * integrals.i2;
+        // Original PFSAMP L4732-4733 uses REAL4 XI2 and then REAL4 XI1.
+        // Do not re-import the widened public double member to form XI1.
+        const R xi2 = 0.5F * std::exp(-dist2 / (2.0F * tsy));
+        const R xi1 = 2.0F * xi2;
+        integrals.i2 = static_cast<double>(xi2);
+        integrals.i1 = static_cast<double>(xi1);
         integrals.low_wind_branch = true;
         return integrals;
     }
@@ -231,8 +274,17 @@ SamplingIntegrals puff_sampling_integrals(double x_old_km, double y_old_km, doub
                    static_cast<R>(erf_difference(static_cast<double>((a + b) / sqrt2a),
                                                  static_cast<double>(b / sqrt2a)));
     const R b2da = b * b / a;
-    integrals.i2 = -b * integrals.i1 / a +
-                   (xxexp / a) * (std::exp(-0.5F * b2da) - std::exp(-0.5F * (a + 2.0F * b + b2da)));
+    // Vendor PFSAMP L4746-4748: XI1 and XI2 are distinct default REAL*4
+    // variables. SamplingIntegrals exposes double storage at the public
+    // C++ boundary, so using integrals.i1 here promotes -B*XI1/A to REAL*8
+    // and loses the intermediate REAL*4 rounding performed by Fortran.
+    // Keep XI1 and the entire XI2 expression in float before widening only
+    // the finished result to the interface type.
+    const R xi1 = static_cast<R>(integrals.i1);
+    const R xi2 = (-b * xi1 / a) +
+                  (xxexp / a) * (std::exp(-0.5F * b2da) -
+                                std::exp(-0.5F * (a + 2.0F * b + b2da)));
+    integrals.i2 = static_cast<double>(xi2);
     return integrals;
 }
 
@@ -258,8 +310,14 @@ double receptor_concentration_increment(const SamplingIntegrals& integrals,
     // CALCPF gridded-receptor branch: normalize by 1/(2*pi*sigma_y**2) and
     // weight the start/end masses by the two sampling integrals.
     const R sigma = static_cast<R>(inputs.sigma_y_at_receptor_m);
+    // Vendor CALCPF L4293: ASDF/(6.2831853*SYREC**2).
+    // The exponent evaluates SYREC*SYREC in REAL*4 *before* multiplying
+    // by 6.2831853. Left-associated (2*pi*sigma)*sigma instead rounds
+    // a different intermediate and can perturb T1/T2 and concentration.
+    const R sigma_squared = sigma * sigma;
+    const R denominator = static_cast<R>(kTwoPi) * sigma_squared;
     const R inverse = static_cast<R>(inputs.area_source_factor) /
-                      (static_cast<R>(kTwoPi) * sigma * sigma);
+                      denominator;
     const R t2 = static_cast<R>(integrals.i2) * inverse;
     const R t1 = static_cast<R>(integrals.i1) * inverse - t2;
     const R concentration =
@@ -351,6 +409,37 @@ ReceptorSet receptors_from_control(const std::string& control_text) {
                                 static_cast<double>(j) * receptors.spacing_km;
                 receptors.grid.push_back(receptor);
             }
+        }
+    }
+    return receptors;
+}
+
+ReceptorSet receptors_from_original_met_grid(
+    const std::string& control_text, const OriginalMetGridFrame& met) {
+    validate_original_met_frame(met);
+    auto receptors = receptors_from_control(control_text);
+    if (!receptors.gridded || receptors.mesh_down != 1) {
+        throw std::invalid_argument(
+            "P7 original QA grid mapping currently supports gridded MESHDN=1");
+    }
+    // The selected P7 2022 original deck has DGRIDKM=0.1 matching the
+    // original CALMET.DAT 100 m horizontal spacing. Do not silently map a
+    // different control geometry onto that meteorological frame.
+    const float control_spacing_km = static_cast<float>(receptors.spacing_km);
+    const float met_spacing_km = met.spacing_m * 0.001f;
+    if (!std::isfinite(control_spacing_km) ||
+        std::abs(control_spacing_km - met_spacing_km) > 1.0e-6f) {
+        throw std::invalid_argument("P7 CALPUFF control/CALMET grid spacing mismatch");
+    }
+    for (int j = 0; j < receptors.sampling_ny; ++j) {
+        for (int i = 0; i < receptors.sampling_nx; ++i) {
+            const auto qa = original_gridded_receptor_qa_xy(
+                met, receptors.ibsamp - 1 + i, receptors.jbsamp - 1 + j);
+            auto& receptor = receptors.grid[static_cast<std::size_t>(j) *
+                                                  static_cast<std::size_t>(receptors.sampling_nx) +
+                                              static_cast<std::size_t>(i)];
+            receptor.x_km = static_cast<double>(qa.x_km);
+            receptor.y_km = static_cast<double>(qa.y_km);
         }
     }
     return receptors;

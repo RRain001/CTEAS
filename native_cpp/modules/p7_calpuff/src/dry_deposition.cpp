@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <limits>
 #include <cstddef>
 #include <optional>
 #include <regex>
@@ -186,6 +187,97 @@ std::vector<TableRow> parse_table(const std::vector<std::string>& lines, std::si
 
 } // namespace
 
+OriginalDryMassResult original_uniform_dry_mass(
+    const DryDepositionStep& d,int puff_code,
+    const std::vector<float>& before) {
+    int code=puff_code;
+    if(code>=11 && code<=16)code-=10;
+    if(puff_code!=99 && code!=4 && code!=2 && code!=6)
+        throw std::invalid_argument(
+            "P7F original uniform DRY refuses Gaussian puff code");
+    if(d.fraction_remaining.size()!=before.size() ||
+       d.velocity_ms.size()!=before.size() ||
+       d.boundary_ratio.size()!=before.size())
+        throw std::invalid_argument(
+            "P7F original uniform DRY species dimension mismatch");
+    const bool skipped=(puff_code==99||code==4);
+    OriginalDryMassResult out;
+    out.fraction_remaining.reserve(before.size());
+    out.mixed_mass_after.reserve(before.size());
+    out.removed_mass.reserve(before.size());
+    for(std::size_t j=0;j<before.size();++j) {
+        const R mass=before[j];
+        // Uniform DRY L26227–26261 is already computed by the
+        // native dry_deposition_step; unlike Gaussian DRY, VDPVD
+        // is NOT equal to unity for deposited gases here.
+        const R fraction=skipped?1.0F:
+            static_cast<R>(d.fraction_remaining[j]);
+        const R after=static_cast<R>(mass*fraction);
+        if(!std::isfinite(mass)||mass<0.0F ||
+           !std::isfinite(fraction)||fraction<0.0F||fraction>1.0F ||
+           !std::isfinite(after)||after<0.0F)
+            throw std::invalid_argument(
+                "P7F original uniform DRY invalid fraction or QM");
+        out.fraction_remaining.push_back(fraction);
+        out.mixed_mass_after.push_back(after);
+        out.removed_mass.push_back(static_cast<R>(mass-after));
+    }
+    return out;
+}
+
+OriginalGaussianDryResult original_gaussian_dry_mass(
+    const DryDepositionStep& d, int puff_code,
+    float tsamp, float vcbar, const std::vector<float>& before) {
+    if(!std::isfinite(tsamp)||tsamp<=0.0F ||
+       !std::isfinite(vcbar)||vcbar<0.0F ||
+       d.velocity_ms.size()!=before.size() ||
+       d.boundary_ratio.size()!=before.size())
+        throw std::invalid_argument(
+            "P7F original Gaussian DRY invalid substep, VCBAR or species");
+    int normalized=puff_code;
+    if(normalized>=11 && normalized<=16)normalized-=10;
+    if(puff_code!=99 && (normalized<1||normalized>6 ||
+                         normalized==2||normalized==6))
+        throw std::invalid_argument(
+            "P7F Gaussian DRY refuses non-Gaussian puff code");
+    OriginalGaussianDryResult out;
+    out.vcbar_m_inverse=vcbar;
+    out.fraction_remaining.reserve(before.size());
+    out.mixed_mass_after.reserve(before.size());
+    out.removed_mass.reserve(before.size());
+    // Original DRY L26198–26203: ICODE=99 or 4/14 return untouched.
+    const bool skipped=(puff_code==99||normalized==4);
+    // DRY L26266–26276: CONST=TSAMP*VCBAR and
+    // FRACDRY=EXP(-VDPVD*VD*CONST), QM=FRACDRY*QM.
+    const R exponent_factor=static_cast<R>(tsamp*vcbar);
+    for(std::size_t j=0;j<before.size();++j) {
+        const R mass=before[j];
+        const R vd=static_cast<R>(d.velocity_ms[j]);
+        // In original DRY L26227–26254 the VDPVD boundary ratio
+        // is calculated ONLY for the uniform codes 2 and 6.
+        // Gaussian codes 1/3/5 keep the initial VDPVD=1.0.
+        const R ratio=1.0F;
+        if(!std::isfinite(mass)||mass<0.0F ||
+           !std::isfinite(vd)||vd<0.0F ||
+           !std::isfinite(ratio)||ratio<0.0F ||
+           !std::isfinite(exponent_factor))
+            throw std::invalid_argument(
+                "P7F original Gaussian DRY nonfinite/negative REAL4 input");
+        const R fraction=skipped?1.0F:
+            static_cast<R>(std::exp(static_cast<R>(
+                -ratio*vd*exponent_factor)));
+        const R remaining=static_cast<R>(fraction*mass);
+        if(!std::isfinite(fraction)||fraction<0.0F||fraction>1.0F ||
+           !std::isfinite(remaining)||remaining<0.0F)
+            throw std::overflow_error(
+                "P7F original Gaussian DRY invalid remaining QM");
+        out.fraction_remaining.push_back(fraction);
+        out.mixed_mass_after.push_back(remaining);
+        out.removed_mass.push_back(static_cast<R>(mass-remaining));
+    }
+    return out;
+}
+
 DryDepositionMethod require_supported_dry_deposition_method(int method, const std::string& species) {
     switch (method) {
     case 0: return DryDepositionMethod::none;
@@ -314,7 +406,15 @@ void finalize_dry_deposition_setup(DryDepositionSetup& setup) {
                      "mesophyll resistance must not be negative for " + species.name);
         require_true(species.gas.henry_law_coefficient >= 0.0,
                      "Henry's law coefficient must not be negative for " + species.name);
-        const R diffusivity = static_cast<R>(species.gas.diffusivity_cm2_s * kCentimetreToMetre);
+        // Original DRYI calpuff.for L26969:
+        //   PDIFF(I)=PDIFF(I)*1.E-4   (both operands REAL*4).
+        // The deck's H-3 value .1509 has different binary32 results for
+        // REAL4(.1509)*REAL4(1E-4) and REAL4(.1509*1E-4).
+        // The latter one-ULP conversion perturbs RS -> RF -> RC -> VD,
+        // propagating into puff200 DRY QM and original H3 concentration.
+        const R diffusivity=static_cast<R>(
+            static_cast<R>(species.gas.diffusivity_cm2_s) *
+            static_cast<R>(kCentimetreToMetre));
         const R mesophyll =
             static_cast<R>(species.gas.mesophyll_resistance_s_cm * kMetrePerCentimetre);
         const R schmidt = kAirViscosity / diffusivity;
@@ -362,6 +462,12 @@ DryDepositionStep dry_deposition_step(const DryDepositionSetup& setup,
 
     DryDepositionStep step;
     step.velocity_ms.assign(count, 0.0);
+    step.deposition_layer_resistance_s_m.assign(count, 0.0);
+    step.canopy_resistance_s_m.assign(count, 0.0);
+    step.foliage_resistance_s_m.assign(count, 0.0);
+    step.ground_resistance_s_m.assign(count, 0.0);
+    step.cuticle_resistance_s_m.assign(count, 0.0);
+    step.source_leaf_area_index=static_cast<R>(environment.leaf_area_index);
     step.boundary_ratio.assign(count, 1.0);
     step.fraction_remaining.assign(count, 1.0);
     step.vegetation_state = environment.vegetation_state;
@@ -446,6 +552,12 @@ DryDepositionStep dry_deposition_step(const DryDepositionSetup& setup,
         const R resistance_c = 1.0F / (leaf_area / resistance_f +
                                        leaf_area / static_cast<R>(setup.cuticle_resistance_s_m[index]) +
                                        1.0F / resistance_g);
+        step.deposition_layer_resistance_s_m[index]=deposition_layer;
+        step.canopy_resistance_s_m[index]=resistance_c;
+        step.foliage_resistance_s_m[index]=resistance_f;
+        step.ground_resistance_s_m[index]=resistance_g;
+        step.cuticle_resistance_s_m[index]=static_cast<R>(
+            setup.cuticle_resistance_s_m[index]);
         step.velocity_ms[index] = 1.0F / (resistance_a + deposition_layer + resistance_c);
     }
 
